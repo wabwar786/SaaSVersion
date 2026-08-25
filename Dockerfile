@@ -1,8 +1,11 @@
 FROM php:8.2-apache
 
 # Extensions the app needs
-RUN docker-php-ext-install pdo_mysql mysqli \
- && a2enmod rewrite headers
+RUN docker-php-ext-install pdo_mysql mysqli
+
+# Force exactly ONE MPM (mod_php requires prefork). Fixes "More than one MPM loaded".
+RUN a2dismod mpm_event mpm_worker 2>/dev/null || true \
+ && a2enmod mpm_prefork rewrite headers
 
 # Serve from public/
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
