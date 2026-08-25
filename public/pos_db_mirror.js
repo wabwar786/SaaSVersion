@@ -30,7 +30,7 @@
       if(typeof toast==='function')toast('POS running on cached data: '+(r.message||'server unreachable'));
       return;
     }
-    var b=r.boot;
+    var b=r.boot;window.__AIO_LAST_BOOT=b;
 
     // products (const P -> mutate in place)
     if(typeof P!=='undefined'&&Array.isArray(P)&&Array.isArray(b.products)){
@@ -92,7 +92,55 @@
     try{if(typeof populateRateItems==='function')populateRateItems();}catch(e){}
     try{if(typeof renderCustomerList==='function')renderCustomerList();}catch(e){}
     try{if(typeof applyMainBillContext==='function')applyMainBillContext();}catch(e){}
+
+    injectDesign(b);
   }
+
+  /* ============ VISIBLE design layer (approved UI ke upar) ============ */
+  var VERSION='POS v19.2';
+
+  function injectDesign(b){
+    if(!document.getElementById('aioPosCss')){
+      var st=document.createElement('style');st.id='aioPosCss';
+      st.textContent=[
+        /* product cards: depth + hover lift + price pill */
+        '#pgrid .prod{border-radius:14px;box-shadow:0 1px 2px rgba(21,34,27,.06),0 8px 22px rgba(21,34,27,.05);transition:transform .14s ease, box-shadow .14s ease;overflow:hidden}',
+        '#pgrid .prod:hover{transform:translateY(-3px);box-shadow:0 4px 10px rgba(21,34,27,.08),0 16px 34px rgba(21,34,27,.10)}',
+        '#pgrid .prod .price{background:#eef7f1;color:#0f7a3d;border-radius:999px;padding:3px 9px;font-weight:800}',
+        '#pgrid .prod .add{border-radius:999px;font-weight:800;box-shadow:0 4px 10px rgba(226,55,68,.25)}',
+        /* category pills: active glow */
+        '.catbar button.active, .cats .active{box-shadow:0 6px 16px rgba(21,34,27,.18)}',
+        /* status strip */
+        '#aioStatusStrip{display:flex;gap:10px;align-items:center;padding:8px 14px;background:linear-gradient(90deg,#f4faf6,#ffffff);border-bottom:1px solid #e4eae6;font-size:12px;color:#41504a}',
+        '#aioStatusStrip .sb{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e4eae6;border-radius:999px;padding:4px 12px;font-weight:700}',
+        '#aioStatusStrip .dotg{width:7px;height:7px;border-radius:99px;background:#28a745;display:inline-block}',
+        '#aioStatusStrip .dotr{width:7px;height:7px;border-radius:99px;background:#e23744;display:inline-block}',
+        '#aioVer{margin-left:auto;font-size:10px;color:#9aa8a0;font-weight:700;letter-spacing:.4px}'
+      ].join('');
+      document.head.appendChild(st);
+    }
+    var strip=document.getElementById('aioStatusStrip');
+    if(!strip){
+      strip=document.createElement('div');strip.id='aioStatusStrip';
+      var hdr=document.querySelector('header');
+      if(hdr&&hdr.parentElement)hdr.parentElement.insertBefore(strip,hdr.nextSibling);
+      else document.body.insertBefore(strip,document.body.firstChild);
+    }
+    var items=(typeof P!=='undefined'&&Array.isArray(P))?P.length:0;
+    var shiftHtml=window.__AIO_SHIFT_NO
+      ?'<span class="sb"><span class="dotg"></span>Shift '+window.__AIO_SHIFT_NO+' <a href="#" id="aioStripClose" style="margin-left:6px;color:#e23744;font-weight:800;text-decoration:none">Close</a></span>'
+      :'<span class="sb"><span class="dotr"></span>Shift not opened <a href="#" id="aioStripOpen" style="margin-left:6px;color:#0f7a3d;font-weight:800;text-decoration:none">Open</a></span>';
+    strip.innerHTML=
+      '<span class="sb">🏬 '+((b&&b.site&&b.site.name)||'Branch')+'</span>'
+      +shiftHtml
+      +'<span class="sb">🍽 '+items+' menu item'+(items===1?'':'s')+'</span>'
+      +(items===0?'<span style="color:#b3541e;font-weight:700">Menu khali hai — “+ New Item” se pehla item banayein</span>':'')
+      +'<span id="aioVer">'+VERSION+'</span>';
+    var oc=document.getElementById('aioStripOpen');if(oc)oc.onclick=function(e){e.preventDefault();showOpenGate();};
+    var cc=document.getElementById('aioStripClose');if(cc)cc.onclick=function(e){e.preventDefault();showCloseModal();};
+  }
+
+  function refreshStrip(){try{injectDesign(window.__AIO_LAST_BOOT||null);}catch(e){}}
 
   /* ---------------------- PAYLOAD ---------------------- */
 
@@ -154,7 +202,7 @@
     var r=req('shift-current');
     if(r.ok&&r.shift&&r.shift.id){
       window.__AIO_SHIFT_ID=r.shift.id;window.__AIO_SHIFT_NO=r.shift.shift_no;
-      updateShiftChip(r.shift.shift_no);
+      updateShiftChip(r.shift.shift_no);refreshStrip();
       return;
     }
     showOpenGate();
@@ -187,7 +235,7 @@
       var r=req('shift-open',{opening_cash:Number(document.getElementById('aioOpenCash').value||0)});
       if(!r.ok){this.disabled=false;this.textContent='Open Shift & Start Billing';if(typeof toast==='function')toast(r.message||'Failed');return;}
       window.__AIO_SHIFT_ID=r.id;window.__AIO_SHIFT_NO=r.shift_no;
-      updateShiftChip(r.shift_no);
+      updateShiftChip(r.shift_no);refreshStrip();
       ov.remove();
       if(typeof toast==='function')toast('Shift '+r.shift_no+' opened');
     };
@@ -240,7 +288,7 @@
       this.disabled=true;this.textContent='Closing…';
       var r=req('shift-close',{actual_cash:Number(document.getElementById('aioActualCash').value||0)});
       if(!r.ok){this.disabled=false;this.textContent='Close Shift & Report';if(typeof toast==='function')toast(r.message||'Failed');return;}
-      ov.remove();window.__AIO_SHIFT_ID='';window.__AIO_SHIFT_NO='';
+      ov.remove();window.__AIO_SHIFT_ID='';window.__AIO_SHIFT_NO='';refreshStrip();
       showReport(r.report,true);
     };
   }

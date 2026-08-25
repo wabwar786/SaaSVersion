@@ -46,7 +46,7 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script src="/db_api.js?b=v14"></script>';
 // DB-first hydration only on authenticated app pages (source of truth = DB).
 if(!in_array($name,$publicPages,true) && Auth::user()){
-  $head.='<script src="/db_boot.js?b=v15"></script>';
+  $head.='<script src="/db_boot.js?b=v16"></script>';
 }
 $html=str_replace('</head>',$head.'</head>',$html);
 
@@ -59,10 +59,11 @@ if(!in_array($name,$publicPages,true)){
   $tail.='<script src="/ui_action_modal.js?b=v14"></script>';
 }
 
-if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v16"></script>';
-if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v16"></script>';
+if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v17"></script>';
+if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v17"></script>';
 
 $html=str_replace('</body>',$tail.'</body>',$html);
+header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
 // build: V17.1 build 2026-08-25

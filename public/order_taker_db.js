@@ -26,6 +26,9 @@
     }
     var b=r.boot;
 
+    /* demo cart saaf — asli order khali cart se shuru hota hai */
+    if(typeof cart!=='undefined'&&Array.isArray(cart))cart.length=0;
+
     /* ---- menu ---- */
     PRODUCTS.length=0;
     (b.products||[]).forEach(function(x,i){
@@ -107,6 +110,35 @@
       };
     }
     if(tsel)tsel.onchange=function(){window.__AIO_TABLET_BILL='';};
+
+    /* ---- table CARDS strip DB se ---- */
+    var strip=document.querySelector('.table-strip');
+    if(strip&&Array.isArray(b.tables)&&b.tables.length){
+      strip.innerHTML=b.tables.slice(0,12).map(function(t,i){
+        var busy=t.status==='OCCUPIED';
+        return '<button class="table-card'+(busy?' running':'')+(i===0?' selected':'')+'" data-aiotable="'+(t.name||t.display_name)+'"><b>'+(t.name||t.display_name)+'</b><small>'+(busy?'Occupied':'Available')+'</small></button>';
+      }).join('');
+      var cards=strip.querySelectorAll('[data-aiotable]');
+      for(var ci=0;ci<cards.length;ci++){
+        cards[ci].onclick=function(){
+          for(var j=0;j<cards.length;j++)cards[j].classList.remove('selected');
+          this.classList.add('selected');
+          if(tsel){tsel.value=this.dataset.aiotable;window.__AIO_TABLET_BILL='';}
+          var h2=document.querySelector('.tablet-order h2, .order-panel h2, aside h2');
+          if(h2)h2.textContent=this.dataset.aiotable;
+        };
+      }
+    }
+
+    /* ---- design polish + version badge ---- */
+    if(!document.getElementById('aioTabCss')){
+      var st=document.createElement('style');st.id='aioTabCss';
+      st.textContent='.product-card,.tablet-products>div{transition:transform .14s,box-shadow .14s;border-radius:14px}'
+        +'.product-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(21,34,27,.12)}'
+        +'#aioTabVer{position:fixed;bottom:8px;right:12px;font-size:10px;color:#9aa8a0;font-weight:700;z-index:50}';
+      document.head.appendChild(st);
+      var v=document.createElement('div');v.id='aioTabVer';v.textContent='Tablet v19.2';document.body.appendChild(v);
+    }
 
     try{renderCats();renderProducts();renderCart();}catch(e){}
   }

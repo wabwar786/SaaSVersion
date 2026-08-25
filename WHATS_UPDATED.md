@@ -240,3 +240,28 @@ tablet-style KOT Table 3 → order + kitchen_ticket DB mein ✓ Inactive
 toggle → POS list se ghayab, Active par wapis ✓ cashier naam real ✓
 local-node regression (login/pos-boot/menu-list/store/dashboard) ✓ PHP
 lint clean ✓
+
+---
+
+# V19.2 — Visible POS/Tablet Enhancements + Cache-proofing
+
+## Ab har change NAZAR aayega
+- **Status strip** POS header ke neeche (naya visible layer): Branch naam ·
+  Shift status (green/red dot + Open/Close inline action) · live menu-item
+  count · khali menu par guidance line · **version badge (POS v19.2)** —
+  ab screen dekh kar hi pata chal jayega kaunsa build chal raha hai.
+- Product cards: depth/hover-lift, price pill, rounded Add button;
+  active category glow. (Approved layout wahi ka wahi — sirf polish layer.)
+- Tablet: **demo cart ab clear hota hai**, table CARDS strip DB ki asli
+  tables se (occupied/available + tap-to-select), hover polish, corner
+  par "Tablet v19.2" badge.
+- pos-boot ab branch (site) ka naam bhi deta hai.
+
+## Stale-cache hamesha ke liye khatam
+- HTML responses par `Cache-Control: no-store` — browser purana page
+  pakar kar nahi baithega. JS `?b=` versions bump. (Phir bhi pehli dafa
+  ek hard-refresh Ctrl+Shift+R kar lein.)
+
+## Tested
+pos-boot site/cashier/products/tables ✓ HTML no-store header ✓ local
+regression ✓ PHP lint clean ✓ JS syntax clean ✓
