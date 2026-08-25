@@ -48,7 +48,12 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
 if(!in_array($name,$publicPages,true) && Auth::user()){
   $head.='<script src="/db_boot.js?b=v16"></script>';
 }
-$html=str_replace('</head>',$head.'</head>',$html);
+// SIRF pehla </head> replace hota hai. str_replace HAR occurrence badal deta
+// tha — agar kisi page ki JS string mein wahi closing tag likha ho (print window,
+// email template) to script tags us string ke andar inject ho kar page ki
+// poori JS ko syntax-error se maar dete the.
+$pos=stripos($html,'</head>');
+if($pos!==false)$html=substr($html,0,$pos).$head.substr($html,$pos);
 
 $tail='';
 if($name==='login.html')$tail.='<script src="/login_form_bridge.js?b=v14"></script>';
@@ -62,7 +67,10 @@ if(!in_array($name,$publicPages,true)){
 // restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.
 if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v17"></script>';
 
-$html=str_replace('</body>',$tail.'</body>',$html);
+// AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
+$posB=strripos($html,'</body>');
+if($posB!==false)$html=substr($html,0,$posB).$tail.substr($html,$posB);
+else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 

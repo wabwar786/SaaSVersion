@@ -195,7 +195,7 @@ label.f{display:block;font-size:10.5px;font-weight:800;color:var(--ink2);text-tr
          menu-category-create / menu-item-rate / shift-* / records-*
    ========================================================= */
 'use strict';
-var VERSION='POS v20.1';
+var VERSION='POS v20.2';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -678,9 +678,23 @@ function showReport(rep){
     +'<div class="db" id="repBody">'+repRows(rep)+'</div>'
     +'<div class="df"><button class="sec" id="prn">Print</button><button class="go" id="dn">Done</button></div>',false,true);
   ov.querySelector('#prn').onclick=function(){
+    /* NOTE: yahan poora HTML document ek JS string mein NAHI likhna.
+       Router closing head/body tags par script tags inject karta hai; agar
+       wo tags kisi JS string ke andar hon to injection wahin ghus kar poori
+       POS JS ko syntax-error se maar deta hai. Isliye DOM API use karte hain.
+       (Isi wajah se yahan koi bhi closing HTML tag literal nahi likha jata.) */
     var w=window.open('','_blank','width=420,height=680');
-    w.document.write('<html><head><title>Shift Report</title><style>body{font-family:monospace;font-size:12px;padding:16px}.kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #ccc}</style></head><body><h3>SHIFT REPORT</h3>'+document.getElementById('repBody').innerHTML+'</body></html>');
-    w.document.close();w.print();
+    var doc=w.document;
+    doc.title='Shift Report';
+    var st=doc.createElement('style');
+    st.textContent='body{font-family:monospace;font-size:12px;padding:16px}.kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #ccc}';
+    doc.head.appendChild(st);
+    var h3=doc.createElement('h3');h3.textContent='SHIFT REPORT';
+    doc.body.appendChild(h3);
+    var wrap=doc.createElement('div');
+    wrap.innerHTML=document.getElementById('repBody').innerHTML;
+    doc.body.appendChild(wrap);
+    w.focus();w.print();
   };
   ov.querySelector('#dn').onclick=function(){ov.remove();openGate()};
 }

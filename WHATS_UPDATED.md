@@ -337,3 +337,36 @@ A) category orphan → item ab bhi POS par ('General') ✓ diag ne broken=1 pakr
 B) is_pos=0 → diag ne this_site=4 vs pos_visible=3 ka farq dikhaya ✓
 C) table missing → user ko asli SQL error mila (generic nahi) ✓
 Normal state: 4 products, posBoot=4 ✓ local node ✓ PHP lint clean ✓ JS OK ✓
+
+---
+
+# V20.2 — ASAL BUG MILA: router injection ne POS ki JS tor di thi
+
+## Root cause (aapke console error se pakra: "Uncaught SyntaxError ... :682")
+POS ke `showReport()` mein print-window ka poora HTML ek JS **string** mein
+likha tha, jismein closing head/body tags literal thay. Router un tags par
+`<script src=...>` inject karta hai — aur wo injection **JS string ke andar**
+ja ghusi. Nateeja: page ki poori JS parse-error se mar gayi, is liye:
+koi products nahi, koi categories nahi, Cashier "--", koi shift gate nahi,
+aur koi error banner bhi nahi (kyunki banner ka code bhi usi JS mein tha).
+
+**Yehi bug purane POS page mein bhi tha** — is liye mere pichhle patches
+(categories replace, mirror) us par kabhi poora asar nahi kar rahe thay.
+
+## Fix (teen level par)
+1. `showReport()` ab DOM API se print window banata hai — koi HTML document
+   string nahi.
+2. **Router hardened**: ab sirf PEHLE closing-head aur AAKHRI closing-body par
+   inject karta hai (pehle `str_replace` har occurrence par karta tha).
+3. **`tools/check_pages.php`** — guard script: approved_ui ki har page ke
+   inline scripts scan karke aisa literal tag pakarti hai. Isi ne legacy POS
+   page ka same bug foran pakra (wo ab `docs/` mein bhej diya gaya).
+
+## Asli browser (headless Chromium) se verify kiya — pehli dafa
+Sirf API nahi, poora page render karke:
+page errors: **0** · strip: "Main Branch | Shift S-... | 4 menu items |
+Bill #0011 | POS v20.2" · cashier: Ahmed Khan · categories with counts:
+All 4, Fast Food 3, Desserts 1 · products: 4 ✓
+Cart add → PKR 650 ✓ search "gulab" → filter ✓ category filter ✓
+Diagnostics modal (13 rows) ✓ Item Management 3 tabs + inventory fields ✓
+naya item create → grid mein foran ✓ Charge modal 6 payment methods ✓
