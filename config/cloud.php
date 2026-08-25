@@ -9,7 +9,7 @@ return [
         'role' => 'cloud',
         'debug' => $env('APP_DEBUG','0')==='1',
         'timezone' => $env('APP_TZ','Asia/Karachi'),
-        'base_url' => rtrim($env('APP_BASE_URL','https://your-app.up.railway.app'),'/'),
+        'base_url' => (function($u){ $u=rtrim($u,'/'); return preg_match('#^https?://#',$u)?$u:('https://'.$u); })($env('APP_BASE_URL','https://your-app.up.railway.app')),
         // Cloud is multi-tenant: these are only fallbacks; real tenant comes from login/slug.
         'tenant_id' => '11111111-1111-1111-1111-111111111111',
         'organization_id' => '22222222-2222-2222-2222-222222222222',

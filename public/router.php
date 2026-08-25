@@ -10,7 +10,7 @@ $static=__DIR__.'/'.$name;
 if(is_file($static)&&!str_ends_with(strtolower($name),'.html'))return false;
 
 require_once dirname(__DIR__).'/src/bootstrap.php';
-if(($name==='login.html') && isset($_GET['b']) && (($GLOBALS['config']['app']['role']??'')==='cloud')){ $_SESSION['login_tenant_slug']=preg_replace('/[^a-z0-9-]/','',strtolower((string)$_GET['b'])); }
+if(($name==='login.html') && isset($_GET['b']) && (($GLOBALS['config']['app']['role']??'')==='cloud')){ $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)$_GET['b'])); $_SESSION['login_tenant_slug']=$slug; $tid=\Aio\Services\Platform::tenantIdBySlug($slug); if($tid){$_SESSION['login_tenant_id']=$tid;} }
 
 use Aio\Auth;
 use Aio\Csrf;
