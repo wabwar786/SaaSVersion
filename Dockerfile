@@ -16,6 +16,10 @@ RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-av
 WORKDIR /var/www/html
 COPY . /var/www/html
 
+# HTML pages are served through router.php (which injects CSRF/auth). Any .html
+# sitting in the docroot would be served statically and bypass that. Remove them.
+RUN rm -f /var/www/html/public/*.html
+
 # Everything not a real file -> router.php (so /login.html?b=slug, /dashboard.html etc. work)
 RUN printf '<Directory /var/www/html/public>\n  AllowOverride All\n  Require all granted\n  FallbackResource /router.php\n</Directory>\n' > /etc/apache2/conf-available/z-router.conf \
  && a2enconf z-router \

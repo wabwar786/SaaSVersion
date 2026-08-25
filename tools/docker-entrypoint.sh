@@ -3,6 +3,9 @@ set -e
 cd /var/www/html
 export AIO_CONFIG=config/cloud.php
 
+# Static .html in public/ would bypass router.php (no CSRF/auth injection). Remove them.
+rm -f public/*.html 2>/dev/null || true
+
 # --- Railway gives a dynamic PORT; Apache must listen on it ---
 PORT="${PORT:-8080}"
 sed -ri "s/^Listen [0-9]+/Listen ${PORT}/" /etc/apache2/ports.conf
