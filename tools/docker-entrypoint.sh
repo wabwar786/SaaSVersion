@@ -9,6 +9,12 @@ sed -ri "s/^Listen [0-9]+/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s!<VirtualHost \*:[0-9]+>!<VirtualHost *:${PORT}>!" /etc/apache2/sites-available/000-default.conf
 echo "[boot] Apache listening on ${PORT}"
 
+# --- Guarantee exactly ONE MPM (prefork) at RUNTIME — cache-proof.
+# (Build-layer fixes can be skipped by Docker cache on some platforms.)
+rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf 2>/dev/null || true
+a2enmod mpm_prefork >/dev/null 2>&1 || true
+echo "[boot] MPM normalized to prefork"
+
 # --- wait for the database (up to ~60s) ---
 php -r '
 $c=require "config/cloud.php"; $d=$c["db"];

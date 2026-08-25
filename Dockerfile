@@ -3,9 +3,9 @@ FROM php:8.2-apache
 # Extensions the app needs
 RUN docker-php-ext-install pdo_mysql mysqli
 
-# Force exactly ONE MPM (mod_php requires prefork). Disable event/worker if present, then remove any MPM symlinks (bulletproof). Fixes "More than one MPM loaded".
-RUN a2dismod mpm_event mpm_worker 2>/dev/null || true \
-    && rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf \
+# Force exactly ONE MPM (mod_php requires prefork). Bulletproof: drop every MPM
+# symlink, then enable only prefork. Fixes "More than one MPM loaded".
+RUN rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf \
  && a2enmod mpm_prefork rewrite headers
 
 # Serve from public/
