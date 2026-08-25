@@ -152,12 +152,12 @@ final class Platform
         $pdo = DB::pdo();
         $rows = $pdo->query("
             SELECT t.id, t.name, t.slug, t.industry_code, t.status, t.owner_email, t.created_at,
-                   s.status AS sub_status, s.expiry_date, s.amount,
+                   (SELECT s.status      FROM tenant_subscriptions s WHERE s.tenant_id=t.id ORDER BY s.created_at DESC LIMIT 1) AS sub_status,
+                   (SELECT s.expiry_date FROM tenant_subscriptions s WHERE s.tenant_id=t.id ORDER BY s.created_at DESC LIMIT 1) AS expiry_date,
+                   (SELECT s.amount      FROM tenant_subscriptions s WHERE s.tenant_id=t.id ORDER BY s.created_at DESC LIMIT 1) AS amount,
                    (SELECT COUNT(*) FROM sites si WHERE si.tenant_id=t.id AND si.deleted_at IS NULL) AS branches
               FROM tenants t
-              LEFT JOIN tenant_subscriptions s ON s.tenant_id=t.id
              WHERE t.slug IS NOT NULL
-             GROUP BY t.id
              ORDER BY t.created_at DESC
         ")->fetchAll(PDO::FETCH_ASSOC);
         $base = \rtrim((string)($GLOBALS['config']['app']['base_url'] ?? ''), '/');

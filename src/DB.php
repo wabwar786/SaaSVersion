@@ -15,6 +15,10 @@ final class DB {
             PDO::ATTR_EMULATE_PREPARES=>false,
             PDO::ATTR_STRINGIFY_FETCHES=>false,
         ]);
+        // MySQL 8 enables ONLY_FULL_GROUP_BY by default (Railway); the app's
+        // GROUP BY queries were written for MariaDB. Relax it per-session so
+        // behaviour matches across both engines.
+        try { self::$pdo->exec("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))"); } catch (\Throwable $e) {}
         return self::$pdo;
     }
     public static function tx(callable $fn): mixed {
