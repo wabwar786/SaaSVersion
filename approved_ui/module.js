@@ -40,10 +40,8 @@
         if(useDB){
           var rows=dbList();
           if(rows!==null){
-            if(rows.length===0 && !localStorage.getItem(KEY+'_seeded')){
-              (cfg.seed||[]).forEach(function(s){var c=JSON.parse(JSON.stringify(s));delete c.id;dbSave(c)});
-              localStorage.setItem(KEY+'_seeded','1'); rows=dbList()||[];
-            }
+            /* Demo seed ab DB mein inject NAHI hota — clients ka data
+               sirf unka apna hota hai. Demo chahiye to seed script chalao. */
             return rows;
           }
           this.mode='local'; // API dropped -> offline fallback

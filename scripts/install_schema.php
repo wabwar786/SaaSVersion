@@ -15,6 +15,10 @@ $sql = preg_replace('/CREATE\s+DATABASE[^;]*;/i', '', $sql);
 $sql = preg_replace('/USE\s+`?[a-z0-9_]+`?\s*;/i', '', $sql);
 // idempotent: don't fail on re-runs when tables already exist
 $sql = preg_replace('/CREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS)/i', 'CREATE TABLE IF NOT EXISTS ', $sql);
+// Strip whole-line -- comments BEFORE splitting. Otherwise a chunk that begins
+// with a section-header comment ("-- PAYMENT ...\nCREATE TABLE ...") used to be
+// skipped entirely by the str_starts_with('--') check, silently dropping tables.
+$sql = preg_replace('/^\s*--[^\n]*$/m', '', $sql);
 
 $pdo = DB::pdo();
 $pdo->exec('SET FOREIGN_KEY_CHECKS=0');

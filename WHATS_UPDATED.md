@@ -1,45 +1,66 @@
-# Urban Spoon — UI Rebuild & Completion (V14)
+# WHATS UPDATED — V15 (DB-First Restaurant Core)
 
-Poora project naye unified design system par rebuild kiya gaya hai aur har dead/placeholder
-page ko functional bana diya gaya hai. Backend, PHP, scripts, config, batch files aur data
-stores waise ke waise hain — sirf UI aur pages update/complete hue hain.
+## Sab se bara change: data direction palat gayi
+Pehle browser localStorage source-of-truth tha aur DB sirf best-effort shadow.
+Ab **DB source of truth hai, localStorage sirf cache** (`public/db_boot.js`,
+har logged-in page ke head mein inject hota hai). Faide:
+- Dashboard REAL orders/payments/expenses dikhata hai (fake demo counters khatam).
+- Multi-terminal consistent: har terminal DB se hydrate hota hai.
+- Browser data clear hone par kuch nahi khota.
 
-## Kya naya hai
+## Fixed production bugs
+1. `scripts/install_schema.php` — `--` comment ke baad wale CREATE TABLE silently
+   skip hote the ⇒ **14 tables (orders, customers, payment_methods, suppliers,
+   printers, cashier_shifts...) create hi nahi hote the.** Ab strip-comments-first.
+2. `scripts/seed_full_demo_legacy.php` — PHP 8 strict-types crash (int→preg_replace).
+3. `src/Services/PageData.php` — `lines` reserved word (MariaDB 10.6+/MySQL 8) ⇒
+   store-state 500 deta tha. Backticked.
+4. `menu_item_variants` insert — tenant_id/site_id missing.
 
-**Naya design system** — `approved_ui/shared.css` (+ `public/shared.css`)
-- Ek hi refined Urban Spoon red brand (pehle 2 clashing themes thी: green index vs red dashboard)
-- Clean SaaS operations-console look: grouped sidebar + icons, KPI cards, crisp tables, badges,
-  modals, toasts, empty states, mobile drawer
-- Legacy compatibility layer taake purane rich pages (POS/KDS/inventory/purchasing/recipe/users)
-  na tooten aur naya theme inherit karein
+## POS (server-side, verified)
+- `pos-boot`: products/customers/tables/categories/printers/nextBill DB se.
+- **Server-authoritative bill numbers**: closed bill par dubara KOT/finalize aaye
+  to server agla number assign karke `bill_no` wapis deta hai (duplicate bills
+  across terminals khatam). Helper: `pos_bill_guard()`.
+- KOT ab **blocking** hai: DB save fail ⇒ kitchen-sent mark nahi hota.
+- `pos-quick-item`: POS ke andar item creation ab DB mein — category auto-create,
+  weighted/standard, **variants**, aur inventory link:
+  `inventory.mode = none | existing (deduct qty/sale) | new (naya inventory item
+  + opening stock + cost, phir link)`. Transaction-wrapped.
+- `menu-category-create`: category + printer route.
+- Shifts: `shift-open` / `shift-current` / `shift-close` (close par expected vs
+  actual cash reconciliation: opening + cash sales − cash expenses, variance).
+- POS page auto: DB hydration + shift ensure + item-create modal mein inventory
+  fields inject (`public/pos_db_mirror.js` v2).
 
-**Ek unified sidebar** — `approved_ui/shell.js`
-- Har page par same grouped navigation (pehle har file mein duplicate inline sidebar tha)
-- User ke assigned modules ke hisab se auto-filter, active-state, mobile drawer
+## ModuleBridge — generic modules ab REAL tables par
+`src/Services/ModuleBridge.php`: approved UI ka `records-*` contract wahi ka wahi,
+lekin ye modules ab relational tables mein jaate hain:
+- **customers** → customers + customer_addresses (POS customer list se shared —
+  yahan banao, POS mein foran milta hai)
+- **suppliers** → suppliers (MTD purchases REAL GRNs se, balance GRN − payments)
+- **expenses** → expenses + expense_categories (dashboard/shift-close mein counted)
+- **wastage** → stock_adjustments + stock_transactions ⇒ **asli stock ghat-ta hai**,
+  value costed; delete FORBIDDEN (audit) — correcting entry post karo.
+Baqi modules pehle ki tarah `ui_records` mein (ab site_id-scoped).
 
-**Config-driven page engine** — `approved_ui/module.js` + `module_config.js`
-- 23 pehle "broken" (sirf static table, dead buttons) pages ab poori tarah functional:
-  KPIs + search + add/edit/delete (localStorage), realistic Pakistani restaurant demo data
-- Pages: suppliers, customers, staff, riders, printers, branches, tables, menu, reservations,
-  expenses, promotions, loyalty, whatsapp, delivery, orders, online, wastage, transfer,
-  count, void, accounting, fbr, shift
+## Aur
+- `ui_records` list ab site-scoped (multi-branch data mixing band).
+- Demo seed ab client DB mein inject NahI hota (module.js) — demo sirf seed scripts se.
+- `live_store.js` defaults = 0 (fake PKR 282,930 khatam).
+- Whole-state client→DB mirror hataya (stale cache DB overwrite kar sakta tha).
+- `scripts/migrate_bridge.php` (suppliers.city/category/deleted_at) — Docker
+  entrypoint + Windows bootstrap dono mein hooked.
 
-**Bespoke rebuilt pages**
-- `index.html` / `dashboard.html` — live command-center dashboard (sales, hourly chart, alerts)
-- `reports.html` — analytics (hourly bars, channel-mix donut, top items, payments, Today/Week/Month)
-- `settings.html` — business/tax/receipt/operations settings (saves locally)
-- `offline_sync.html` — offline & cloud-sync status
-- `customer_mobile_app.html` — branded customer ordering app preview
-- `customer_web_qr.html` — scan-to-order QR flow
-- `login/signup/setup/signup_pending` — reskinned to new red brand (functionality same)
+## Seed order (fresh DB)
+install_schema → migrate_platform → migrate_sync → migrate_bridge →
+docs/03_seed_restaurant_base.sql → seed_roles → ensure_default_admin →
+seed_restaurant_demo (master data) → [optional] seed_full_demo.
 
-**Preserved as-is (already functional, ab naya theme)**
-- `restaurant_pos.html`, `kds.html`, `restaurant_order_taker_tablet.html` — fullscreen operational screens
-- `inventory_creation.html`, `purchasing.html`, `recipe_making.html`, `users_access.html`
-  — apni functionality intact, naya sidebar + theme
-
-## Chalane ka tareeqa
-Pehle jaise — `START_RESTAURANT.bat` (ya `start_local_unix.sh`). Login:
-**admin@urbanspoon.local** / **Admin@123**
-
-> Note: sab shared assets `public/` mein bhi copy kar diye gaye hain taake PHP router theek serve kare.
+## Tested (real MariaDB, ONLY_FULL_GROUP_BY on)
+Login ✓ pos-boot ✓ KOT→kitchen_tickets ✓ finalize→payments+stock deduction
+(recipe 2×160g ✓, direct 2×200ml ✓) ✓ closed-bill reassign (2099→2100) ✓
+quick-item (new/existing inventory, variants, dupe guard) ✓ wastage 500g stock
+decrement + delete-refusal ✓ expenses→dashboard ✓ shift close reconciliation
+(variance ✓) ✓ suppliers/customers bridge ✓ riders ui_records fallback ✓
+sync-status ✓ db_boot sirf authed pages par ✓

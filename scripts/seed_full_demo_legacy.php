@@ -52,7 +52,7 @@ foreach($demoRes as $r){
 foreach([['Kitchen Supplies',3200],['Fuel / Delivery',1800],['Cleaning',1250]] as $e){
   $q=$p->prepare("SELECT id FROM expense_categories WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$e[0]]);$cid=$q->fetchColumn();
   if(!$cid){$cid=uuid();$p->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)")->execute([$cid,tenant_id(),$e[0]]);}
-  $ref='DEMO-EXP-'.preg_replace('/\D/','',$e[1]);
+  $ref='DEMO-EXP-'.preg_replace('/\D/','',(string)$e[1]);
   $q=$p->prepare("SELECT id FROM expenses WHERE site_id=? AND expense_no=? LIMIT 1");$q->execute([site_id(),$ref]);
   if(!$q->fetchColumn())$p->prepare("INSERT INTO expenses(id,tenant_id,site_id,expense_no,expense_date,category_id,amount,payment_method,description,status,created_by_user_id,created_at) VALUES(?,?,?,?,CURDATE(),?,?,'CASH','Demo restaurant expense','APPROVED',?,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$ref,$cid,$e[1],$ali]);
 }

@@ -24,13 +24,9 @@
       getState:RestaurantStore.getState?.bind(RestaurantStore)
     };
 
-    if(original.saveState){
-      RestaurantStore.saveState=function(state){
-        const local=original.saveState(state);
-        safeReq('store-save-state',state);
-        return local;
-      };
-    }
+    /* DB-first ke baad whole-state mirror hata diya gaya hai:
+       stale browser cache DB ko overwrite kar sakta tha. Writes ab
+       sirf explicit actions (inventory/purchase/recipe/pos) se hote hain. */
 
     if(original.addInventoryCategory){
       RestaurantStore.addInventoryCategory=function(name){

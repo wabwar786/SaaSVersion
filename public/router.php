@@ -44,6 +44,10 @@ $html=preg_replace('/(["\'])assets\//','$1/assets/',$html);
 $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';</script>'
      .'<script src="/db_api.js?b=v14"></script>';
+// DB-first hydration only on authenticated app pages (source of truth = DB).
+if(!in_array($name,$publicPages,true) && Auth::user()){
+  $head.='<script src="/db_boot.js?b=v15"></script>';
+}
 $html=str_replace('</head>',$head.'</head>',$html);
 
 $tail='';
@@ -51,11 +55,11 @@ if($name==='login.html')$tail.='<script src="/login_form_bridge.js?b=v14"></scri
 
 if(!in_array($name,$publicPages,true)){
   $tail.='<script src="/approved_auth_exact.js?b=v14"></script>';
-  $tail.='<script src="/db_mirror_bridge.js?b=v14"></script>';
+  $tail.='<script src="/db_mirror_bridge.js?b=v15"></script>';
   $tail.='<script src="/ui_action_modal.js?b=v14"></script>';
 }
 
-if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v14"></script>';
+if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v15"></script>';
 
 $html=str_replace('</body>',$tail.'</body>',$html);
 echo$html;
