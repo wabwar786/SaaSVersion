@@ -19,6 +19,8 @@ final class DB {
         // GROUP BY queries were written for MariaDB. Relax it per-session so
         // behaviour matches across both engines.
         try { self::$pdo->exec("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))"); } catch (\Throwable $e) {}
+        // Collation pin: literals/params hamesha unicode_ci se compare hon (mix se bachao).
+        try { self::$pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"); } catch (\Throwable $e) {}
         return self::$pdo;
     }
     public static function tx(callable $fn): mixed {

@@ -67,8 +67,8 @@
     }
 
     // server-authoritative bill number
-    if(typeof b.nextBill!=='undefined'&&typeof window.activeBillNo!=='undefined'){
-      window.activeBillNo=Number(b.nextBill)||window.activeBillNo;
+    if(typeof b.nextBill!=='undefined'){
+      try{activeBillNo=Number(b.nextBill)||activeBillNo;}catch(e){}
     }
 
     // re-render with DB data
@@ -94,7 +94,7 @@
     var t=typeof tots==='function'?tots():{d:0,sc:0,tax:0,total:0};
     var customer=(typeof selectedCustomer!=='undefined'&&selectedCustomer)?selectedCustomer:null;
     return {
-      bill_no:String(typeof activeBillNo!=='undefined'?activeBillNo:1).padStart(4,'0'),
+      bill_no:(function(){try{return String(activeBillNo).padStart(4,'0')}catch(e){return '0001'}})(),
       service_mode:typeof orderMode!=='undefined'?orderMode:'Dine In',
       table_name:typeof selectedTable!=='undefined'?(selectedTable||''):'',
       customer_id:(customer&&customer.id)||'walkin',
@@ -120,10 +120,11 @@
   }
 
   function syncBillNoFromServer(r){
-    if(r&&r.ok&&r.bill_no&&typeof window.activeBillNo!=='undefined'){
+    if(r&&r.ok&&r.bill_no){
       var n=parseInt(String(r.bill_no).replace(/\D/g,''),10);
-      if(n&&n!==Number(window.activeBillNo)){
-        window.activeBillNo=n;
+      var cur=0;try{cur=Number(activeBillNo);}catch(e){return}
+      if(n&&n!==cur){
+        try{activeBillNo=n;}catch(e){return}
         try{if(typeof applyMainBillContext==='function')applyMainBillContext();}catch(e){}
         if(typeof toast==='function')toast('Bill number assigned by server: '+(typeof formatBillNo==='function'?formatBillNo(n):n));
       }
@@ -149,6 +150,12 @@
 
     hydrateFromDb();
     ensureShift();
+
+    // rp() pgrid ko poora overwrite karta hai — empty-state uske BAAD lagta hai.
+    if(typeof window.rp==='function'){
+      var originalRp=window.rp;
+      window.rp=function(){var out=originalRp.apply(this,arguments);try{renderEmptyState();}catch(e){}return out;};
+    }
 
     // KOT: DB save is REQUIRED (blocking) — kitchen ticket kabhi silently lost na ho.
     if(typeof window.markPendingAsSent==='function'){
@@ -186,9 +193,7 @@
         }catch(e){}
         var out=originalCharge.apply(this,arguments);
         // agla bill number bhi server ka
-        if(r.next&&typeof window.activeBillNo!=='undefined'){
-          try{window.__AIO_NEXT_BILL=Number(r.next)||null;}catch(e){}
-        }
+        if(r.next){try{window.__AIO_NEXT_BILL=Number(r.next)||null;}catch(e){}}
         return out;
       };
     }
@@ -199,9 +204,9 @@
       window.startNewBill=function(){
         var out=originalNew.apply(this,arguments);
         var n=req('pos-next-bill');
-        if(n.ok&&n.next&&typeof window.activeBillNo!=='undefined'){
-          window.activeBillNo=Number(n.next)||window.activeBillNo;
-          try{if(typeof applyMainBillContext==='function')applyMainBillContext();}catch(e){}
+        if(n.ok&&n.next){
+          try{activeBillNo=Number(n.next)||activeBillNo;
+            if(typeof applyMainBillContext==='function')applyMainBillContext();}catch(e){}
         }
         return out;
       };
@@ -267,13 +272,57 @@
               if(created&&r.id)created.id=r.id;
             }catch(e){}
             if(typeof toast==='function')toast(d.name+' saved to database'+(r.inventory_item_id?' + inventory linked':''));
+            var eb=document.getElementById('aioEmptyMenu');if(eb)eb.remove();
           }
         }
         return ok;
       };
     }
 
+    // RATE CHANGE -> persist to DB
+    if(typeof window.updateExistingRate==='function'){
+      var originalRate=window.updateExistingRate;
+      window.updateExistingRate=function(){
+        var sel=document.querySelector('#rateItemSelect');
+        var id=sel?sel.value:'';
+        var name=(sel&&sel.selectedIndex>=0)?sel.options[sel.selectedIndex].textContent:'';
+        var rate=Number((document.querySelector('#newItemRate')||{}).value||0);
+        var ok=originalRate.apply(this,arguments);
+        if(ok===true){
+          var r=req('menu-item-rate',{menu_item_id:id,name:name,price:rate});
+          if(!r.ok&&typeof toast==='function')toast('Rate changed on screen; DB: '+(r.message||'failed'));
+        }
+        return ok;
+      };
+    }
+
     injectInventoryFields();
+    renderEmptyState();
+  }
+
+  /* ---- empty menu: pehle item tak clear guidance ---- */
+  function renderEmptyState(){
+    if(typeof P==='undefined'||!Array.isArray(P)||P.length)return;
+    if(document.getElementById('aioEmptyMenu'))return;
+    var grid=document.getElementById('pgrid');
+    if(!grid)return;
+    var box=document.createElement('div');
+    box.id='aioEmptyMenu';
+    box.style.cssText='grid-column:1/-1;padding:34px 18px;text-align:center;border:1px dashed var(--l,#d7e0da);border-radius:12px;margin:8px';
+    box.innerHTML='<div style="font-size:30px;margin-bottom:8px">🍽️</div>'+
+      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">Menu abhi khali hai</div>'+
+      '<div style="font-size:12px;color:#7b8a80;margin-bottom:14px">Apna pehla item banayein — POS foran ready ho jayega.</div>'+
+      '<button id="aioFirstItem" style="padding:10px 18px;border:0;border-radius:10px;background:#e23744;color:#fff;font-weight:700;cursor:pointer;font-size:13px">＋ Create First Item</button>';
+    grid.appendChild(box);
+    var btn=document.getElementById('aioFirstItem');
+    if(btn)btn.onclick=function(){
+      try{
+        if(typeof populateCategorySelects==='function')populateCategorySelects();
+        if(typeof populateRateItems==='function')populateRateItems();
+        if(typeof setItemManagementMode==='function')setItemManagementMode('item');
+        if(typeof om==='function')om('newitem');
+      }catch(e){}
+    };
   }
 
   /* ---- "+ New Item" modal: inventory link/create fields ---- */

@@ -110,3 +110,47 @@ expired → renew message ✓ renew+payment ✓ detail (2 payments) ✓ reset ad
 password + login with new ✓ super password change (wrong-current rejected) ✓
 diagnostics healthy ✓ LOCAL mode regression: form login + pos-boot +
 dashboard + store + shift sab ✓
+
+---
+
+# V17 — Collation Fix + New-Business Defaults + POS Fixes
+
+## 1. "Illegal mix of collations" (super admin business list)
+Railway MySQL 8 par purani tables `utf8mb4_0900_ai_ci` aur nayi migrations
+`utf8mb4_unicode_ci` — cross-table joins par 1267 error.
+- `scripts/migrate_collation.php`: DB default + HAR table ko
+  utf8mb4_unicode_ci par normalize (idempotent; entrypoint + Windows
+  bootstrap dono mein hooked — **redeploy par khud fix**).
+- `DB.php`: connection par `SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci` pin.
+- Sandbox mein exact 1267 error reproduce karke normalize→join verify hua.
+
+## 2. POS par data kyun nahi tha — naya business EMPTY SHELL tha
+Provisioning sirf tenant+site+admin banati thi. Payment methods na hone se
+bill hi nahi ban sakta tha, stock location na hone se inventory posting
+throw karti thi. Ab `Platform::seedSiteDefaults()` har naye business par:
+- 7 payment methods (CASH/CARD/RAAST/EASYPAISA/JAZZCASH/BANK/COD)
+- 2 stock locations (Main Store, Kitchen) · Main Kitchen printer
+- 4 starter menu categories (routes ke saath) · Main Floor + 8 tables
+- 5 units (global, agar missing) · 6 expense categories
+Menu jaan-boojh kar khali — client POS se apna menu banata hai.
+
+## 3. POS fixes
+- **`activeBillNo` bug**: top-level `let` window par attach nahi hota —
+  server bill numbers/hydration ka sync silently fail tha. Fixed (bare
+  global binding).
+- **Rate change ab DB mein persist** hota hai (`menu-item-rate` action +
+  updateExistingRate wrap). Item create pehle se persist tha (V15).
+- **Empty-menu state**: products na hon to "Create First Item" card, jo
+  seedha Item Management modal kholta hai (search re-render par bhi rehta
+  hai).
+- NOTE: inventory-screen ke items POS par as-products NAHI aate — POS
+  **menu items** dikhata hai. Inventory ko bechne ke liye POS ke "+ New
+  Item" mein "Deduct existing inventory item" mode use karein.
+
+## Tested (fresh business full lifecycle, cloud sim)
+Create "Lahore Karahi House" → client login → pos-boot: 4 cats, 1 printer,
+8 tables ✓ → quick-item "Chicken Karahi" + new inventory 20kg ✓ → rate
+1400→1550 persist ✓ → pehla bill PKR 1550: KOT fired ✓ stock 20→19.5kg ✓
+tenant-isolated dashboard ✓. Collation: 1267 repro→normalize→join OK ✓.
+Regressions: sa-business-list ✓ diagnostics healthy ✓ local node full ✓
+PHP lint clean ✓.

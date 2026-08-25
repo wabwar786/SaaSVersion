@@ -122,6 +122,7 @@ final class Platform
                                ($d['payment_reference']??null),($d['payer_name']??$adminName),($d['payment_note']??null),
                                ($_SESSION['platform_user']['id']??null)]);
             }
+            self::seedSiteDefaults($pdo, $tenantId, $siteId);
             return ['tenant'=>$tenantId,'org'=>$orgId,'site'=>$siteId,'user'=>$userId,'sub'=>$subId];
         });
 
@@ -136,6 +137,55 @@ final class Platform
             'admin_password' => $password,   // shown once to hand to the client
             'sync_token' => $syncToken,
         ];
+    }
+
+
+    /**
+     * Naye business ke liye OPERATIONAL DEFAULTS — iske baghair site khali
+     * shell hoti thi: POS mein na payment method (bill hi nahi banta), na
+     * stock location (inventory posting throw karti thi), na printer (KOT
+     * routing nahi), na tables/floor, na units. Ab pehle din se billing
+     * possible hai. Menu jaan-boojh kar khali rehta hai — client POS ke
+     * "+ New Item" se apna menu banata hai (starter categories ready hain).
+     */
+    public static function seedSiteDefaults(PDO $pdo, string $tenantId, string $siteId): void
+    {
+        // Units (GLOBAL table) — sirf missing codes insert hote hain.
+        $units = [['PCS','Piece','COUNT',0],['G','Gram','WEIGHT',3],['KG','Kilogram','WEIGHT',3],['ML','Millilitre','VOLUME',3],['L','Litre','VOLUME',3]];
+        $uq = $pdo->prepare("SELECT COUNT(*) FROM units WHERE code=?");
+        $ui = $pdo->prepare("INSERT INTO units(id,code,name,unit_type,decimal_places) VALUES(?,?,?,?,?)");
+        foreach ($units as $u) { $uq->execute([$u[0]]); if (!(int)$uq->fetchColumn()) $ui->execute([\uuid(),$u[0],$u[1],$u[2],$u[3]]); }
+
+        // Payment methods — POS finalize inhi par depend karta hai.
+        $pm = $pdo->prepare("INSERT INTO payment_methods(id,tenant_id,site_id,code,name,method_type) VALUES(?,?,?,?,?,?)");
+        foreach ([['CASH','Cash','CASH'],['CARD','Card','CARD'],['RAAST','Raast','BANK'],['EASYPAISA','Easypaisa','WALLET'],['JAZZCASH','JazzCash','WALLET'],['BANK','Bank Transfer','BANK'],['COD','Cash on Delivery','COD']] as $m) {
+            $pm->execute([\uuid(),$tenantId,$siteId,$m[0],$m[1],$m[2]]);
+        }
+
+        // Stock locations — inventory/recipe posting ke liye lazmi.
+        $sl = $pdo->prepare("INSERT INTO stock_locations(id,tenant_id,site_id,code,name,location_type,is_active) VALUES(?,?,?,?,?,?,1)");
+        $sl->execute([\uuid(),$tenantId,$siteId,'STORE','Main Store','STORE']);
+        $sl->execute([\uuid(),$tenantId,$siteId,'KITCHEN','Kitchen','KITCHEN']);
+
+        // Default kitchen printer + starter menu categories (routes ke saath).
+        $printerId = \uuid();
+        $pdo->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,station_code,connection_type,is_active,is_default) VALUES(?,?,?,?,?,?,?,1,1)")
+            ->execute([$printerId,$tenantId,$siteId,'Main Kitchen','KITCHEN','main','WINDOWS']);
+        $cats = ['Pakistani','Fast Food','BBQ','Beverages'];
+        $ci = $pdo->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,?,1)");
+        $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,is_active) VALUES(?,?,?,?,?,1,1,1)");
+        foreach ($cats as $i => $c) { $cid=\uuid(); $ci->execute([$cid,$tenantId,$siteId,$c,'•',$i+1]); $ri->execute([\uuid(),$tenantId,$siteId,$cid,$printerId]); }
+
+        // Floor + 8 tables — dine-in pehle din se.
+        $floorId = \uuid();
+        $pdo->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,1,1)")
+            ->execute([$floorId,$tenantId,$siteId,'Main Floor']);
+        $ti = $pdo->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,?,?,1)");
+        for ($i=1; $i<=8; $i++) { $ti->execute([\uuid(),$tenantId,$siteId,$floorId,'T-'.str_pad((string)$i,2,'0',STR_PAD_LEFT),'Table '.$i,4,'SQUARE','AVAILABLE']); }
+
+        // Expense categories.
+        $ec = $pdo->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)");
+        foreach (['Kitchen Supplies','Utilities','Staff','Fuel / Delivery','Cleaning','General'] as $c) { $ec->execute([\uuid(),$tenantId,$c]); }
     }
 
     private static function genPassword(): string
