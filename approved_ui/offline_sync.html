@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Offline & Sync · Urban Spoon</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.sync-hero{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:var(--r);background:linear-gradient(135deg,#0f7a45,#15804a);color:#fff;box-shadow:var(--sh)}
+.sync-hero .dot{width:12px;height:12px;border-radius:50%;background:#8effc0;box-shadow:0 0 0 6px rgba(142,255,192,.25)}
+.sync-hero h2{margin:0;font-family:var(--display);font-size:20px}
+.sync-hero p{margin:3px 0 0;font-size:13px;color:rgba(255,255,255,.85)}
+.q-item{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.q-item:last-child{border-bottom:0}
+.q-ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);font-size:15px}
+.q-item b{font-size:13px}.q-item small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Offline & Sync</h1><p>Local-first data with automatic cloud sync</p></div>
+      <div class="header-spacer"></div>
+      <button class="btn primary" id="syncBtn">Sync now</button>
+    </header>
+    <div class="content">
+      <div class="sync-hero">
+        <span class="dot"></span>
+        <div><h2>All data synced</h2><p id="syncMsg">Last sync just now · working online</p></div>
+      </div>
+      <div class="kpis" style="margin-top:14px">
+        <div class="kpi ok"><div class="lab">Connection</div><div class="val" style="font-size:20px">Online</div><div class="sub">Auto-sync active</div></div>
+        <div class="kpi"><div class="lab">Pending changes</div><div class="val" id="pending">0</div><div class="sub">Queued to upload</div></div>
+        <div class="kpi info"><div class="lab">Local records</div><div class="val">3,412</div><div class="sub">Cached on this device</div></div>
+        <div class="kpi warn"><div class="lab">Last full backup</div><div class="val" style="font-size:20px">Today</div><div class="sub">02:00 AM</div></div>
+      </div>
+      <div class="split" style="margin-top:14px">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Sync activity</h2><p>Recent uploads to cloud</p></div></div>
+          <div class="panel-body">
+            <div class="q-item"><div class="q-ico">🧾</div><div style="flex:1"><b>Sales & invoices</b><small>184 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">📦</div><div style="flex:1"><b>Inventory movements</b><small>62 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">👥</div><div style="flex:1"><b>Customers & loyalty</b><small>28 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">⚙️</div><div style="flex:1"><b>Settings & menu</b><small>synced</small></div><span class="tag ok">Done</span></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>How offline works</h2></div></div>
+          <div class="panel-body">
+            <p style="font-size:13px;line-height:1.65;color:var(--ink-2);margin:0 0 10px">The POS keeps running even when the internet drops. Every sale, order and stock change is written to this device first, then pushed to the cloud automatically the moment the connection returns — nothing is lost.</p>
+            <div class="note">Tip: keep at least one device online at each branch so head-office reports stay live.</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="offline"></script>
+<script>
+(function(){
+  var hasDB=(location.protocol!=='file:' && typeof window.DBApi!=='undefined');
+  function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast'},1700)}
+  function fmt(ts){if(!ts)return 'never';var d=new Date(ts.replace(' ','T'));return isNaN(d)?ts:d.toLocaleString()}
+
+  function paint(s){
+    if(!s)return;
+    document.getElementById('pending').textContent=s.pending||0;
+    var msg=document.getElementById('syncMsg');
+    var head=document.querySelector('.content h2');
+    if(!s.cloud_configured){
+      if(head)head.textContent='Running local-first (offline mode)';
+      msg.textContent='Cloud URL not set · data is saved on this device. Set sync.cloud_api_url to upload automatically.';
+    }else{
+      var e=s.engine||{};var st=(e.last_status||'IDLE');
+      if(head)head.textContent = st==='OK' ? 'All data synced' : (st==='SYNCING'?'Syncing…':(st==='ERROR'?'Sync problem':'Ready to sync'));
+      msg.textContent='Last sync: '+fmt(e.last_run_at)+' · '+(st==='ERROR'?('error: '+(e.last_error||'')):('status: '+st));
+    }
+    // per-table activity
+    if(s.tables && s.tables.length){
+      var box=document.querySelectorAll('.panel-body')[0];
+      if(box){
+        box.innerHTML=s.tables.filter(function(t){return t.synced>0||t.pending>0}).slice(0,12).map(function(t){
+          var tone=t.pending>0?'warn':'ok';var lbl=t.pending>0?(t.pending+' queued'):'synced';
+          return '<div class="q-item"><div class="q-ico">🧾</div><div style="flex:1"><b>'+t.table+'</b><small>'+(t.synced||0)+' uploaded · '+lbl+'</small></div><span class="tag '+tone+'">'+(t.pending>0?'Queued':'Done')+'</span></div>';
+        }).join('')||'<p style="color:var(--ink-2);font-size:13px">No sync activity yet.</p>';
+      }
+    }
+  }
+  function refresh(){ if(!hasDB)return; try{var r=window.DBApi.req('sync-status');if(r&&r.ok)paint(r.status);}catch(e){} }
+
+  document.getElementById('syncBtn').onclick=function(){
+    var b=this;b.disabled=true;b.textContent='Syncing…';
+    if(!hasDB){setTimeout(function(){b.disabled=false;b.textContent='Sync now';toast('Local-only mode');},500);return;}
+    setTimeout(function(){
+      var r=window.DBApi.req('sync-run');
+      b.disabled=false;b.textContent='Sync now';
+      if(r&&r.ok){toast(r.skipped?'Local-only mode (no cloud URL set)':'Sync complete');}
+      else{toast('Sync failed: '+((r&&r.message)||'unknown'));}
+      refresh();
+    },50);
+  };
+  refresh();
+  setInterval(refresh,15000);
+})();
+</script>
+</body>
+</html>

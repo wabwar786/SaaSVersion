@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platform · Super Admin</title>
+<style>
+  :root{--bg:#0b1020;--panel:#141b2e;--line:#26304a;--ink:#e9edf6;--ink2:#9aa6c0;--brand:#e23744;--brand2:#ff5864;--ok:#28c76f;--warn:#ff9f43;--chip:#1d2740}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,Segoe UI,Roboto,Inter,sans-serif;background:linear-gradient(160deg,#0b1020,#0e1428);color:var(--ink);min-height:100vh}
+  a{color:var(--brand2)}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:grid;place-items:center;font-weight:800}
+  .brand h1{font-size:18px;font-weight:700}.brand p{font-size:12px;color:var(--ink2)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:14px;font-weight:650}
+  label{display:block;font-size:12px;color:var(--ink2);margin:0 0 5px}
+  input,select{width:100%;padding:10px 12px;background:#0d1424;border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:14px;outline:none}
+  input:focus,select:focus{border-color:var(--brand)}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .grid .full{grid-column:1/-1}
+  .btn{padding:11px 18px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;font-weight:650;cursor:pointer;font-size:14px}
+  .btn.sec{background:var(--chip);border:1px solid var(--line)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .center{max-width:400px;margin:8vh auto}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);font-size:13px}
+  th{color:var(--ink2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  .tag{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
+  .tag.ok{background:rgba(40,199,111,.15);color:var(--ok)}.tag.warn{background:rgba(255,159,67,.15);color:var(--warn)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--ink2);font-size:12px}
+  .linkbox{background:#0d1424;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13px;word-break:break-all}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:#0d1424;border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:12px;opacity:0;transition:.25s;z-index:99}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .hide{display:none!important}
+  .succ{background:linear-gradient(135deg,rgba(40,199,111,.12),transparent);border:1px solid rgba(40,199,111,.35)}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .kv b{color:#fff}
+  .head-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="logo">◆</div><div><h1>All-in-One Platform</h1><p>Super Admin · Business Management</p></div></div>
+
+  <!-- LOGIN -->
+  <div id="loginView" class="card center">
+    <h2>Super Admin Login</h2>
+    <div style="margin-bottom:12px"><label>Email</label><input id="saEmail" placeholder="super@admin.local" value="super@admin.local"></div>
+    <div style="margin-bottom:16px"><label>Password</label><input id="saPass" type="password" placeholder="••••••••"></div>
+    <button class="btn" id="saLoginBtn" style="width:100%">Sign in</button>
+    <p class="muted" style="margin-top:12px">Default: super@admin.local / Super@123 — pehli baar login ke baad change karein.</p>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashView" class="hide">
+    <div class="head-row">
+      <div class="muted">Signed in as <b id="saWho"></b></div>
+      <button class="btn sec" id="saLogout">Logout</button>
+    </div>
+
+    <div class="card">
+      <h2>Create Restaurant Business</h2>
+      <div class="grid">
+        <div><label>Business Name *</label><input id="f_business_name" placeholder="Royal Grill"></div>
+        <div><label>Owner Name *</label><input id="f_owner_name" placeholder="Ahmed Khan"></div>
+        <div><label>Owner Email *</label><input id="f_owner_email" type="email" placeholder="owner@royalgrill.pk"></div>
+        <div><label>Owner Phone</label><input id="f_owner_phone" placeholder="0300-1234567"></div>
+        <div><label>Branch Name</label><input id="f_branch_name" placeholder="Main Branch" value="Main Branch"></div>
+        <div><label>Industry</label><select id="f_industry"><option value="RESTAURANT">Restaurant</option></select></div>
+        <div class="full"><label>Business Address</label><input id="f_address" placeholder="Blue Area, Islamabad"></div>
+        <div><label>Subscription Plan</label><select id="f_plan"></select></div>
+        <div><label>Amount (PKR)</label><input id="f_amount" type="number" min="0" value="10000"></div>
+        <div><label>Payment Method</label><select id="f_payment_method"><option>CASH</option><option>BANK</option><option>CARD</option><option>EASYPAISA</option><option>JAZZCASH</option><option>RAAST</option></select></div>
+        <div><label>Start Date</label><input id="f_start_date" type="date"></div>
+        <div><label>Expiry Date</label><input id="f_expiry_date" type="date"></div>
+        <div><label>Payment Reference</label><input id="f_payment_reference" placeholder="TRX-99881"></div>
+      </div>
+      <div class="row" style="margin-top:16px"><button class="btn" id="createBtn">Create Business</button><span class="muted">Create hone par client link + admin password milega (ek dafa).</span></div>
+    </div>
+
+    <!-- success -->
+    <div id="successCard" class="card succ hide">
+      <h2>✅ Business Created</h2>
+      <div class="kv"><span>Business</span><b id="s_name"></b></div>
+      <div class="kv"><span>Client Login Link</span><b><a id="s_link" href="#" target="_blank"></a></b></div>
+      <div class="kv"><span>Admin Email</span><b id="s_email"></b></div>
+      <div class="kv"><span>Admin Password (save now)</span><b id="s_pass" style="color:var(--warn)"></b></div>
+      <div class="kv"><span>Sync Token (for offline)</span><b id="s_token" style="font-size:11px"></b></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sec" id="copyLink">Copy client link</button>
+        <button class="btn sec" id="copyCreds">Copy login details</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head-row"><h2 style="margin:0">Businesses</h2><button class="btn sec" id="refreshBtn">Refresh</button></div>
+      <div style="overflow:auto"><table>
+        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th>Client Link</th></tr></thead>
+        <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const CSRF = window.APP_CSRF || '';
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(()=>t.className='toast',1900)}
+async function api(action, payload){
+  const opt={method:payload?'POST':'GET',headers:{'Accept':'application/json'}};
+  if(payload){opt.headers['Content-Type']='application/json';opt.headers['X-CSRF-Token']=CSRF;opt.body=JSON.stringify(payload)}
+  const res=await fetch('/api.php?action='+action,opt);
+  let j={ok:false,message:'Request failed'};try{j=await res.json()}catch(e){}
+  return j;
+}
+const $=id=>document.getElementById(id);
+function show(view){$('loginView').classList.toggle('hide',view!=='login');$('dashView').classList.toggle('hide',view!=='dash')}
+
+async function boot(){
+  const me=await api('sa-me');
+  if(me.ok && me.user){enterDash(me.user)} else {show('login')}
+}
+function enterDash(u){show('dash');$('saWho').textContent=u.name+' ('+u.email+')';
+  // default dates
+  const t=new Date();const iso=d=>d.toISOString().slice(0,10);
+  $('f_start_date').value=iso(t);const nm=new Date(t);nm.setMonth(nm.getMonth()+1);$('f_expiry_date').value=iso(nm);
+  loadPlans();loadBiz();
+}
+async function loadPlans(){const r=await api('sa-plans');const sel=$('f_plan');sel.innerHTML='';
+  (r.plans||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.price>0?(' · PKR '+Number(p.price).toLocaleString()):'');sel.appendChild(o)});}
+async function loadBiz(){const r=await api('sa-business-list');const tb=$('bizRows');
+  if(!r.ok){tb.innerHTML='<tr><td colspan=6 class=muted>'+(r.message||'Failed')+'</td></tr>';return}
+  const rows=r.businesses||[];
+  tb.innerHTML=rows.length?rows.map(b=>`<tr>
+    <td><b>${b.name||''}</b><br><span class="muted">${b.owner_email||''}</span></td>
+    <td>${b.slug||''}</td><td>${b.branches||1}</td>
+    <td>${b.expiry_date||'—'}</td>
+    <td><span class="tag ${b.expired?'warn':'ok'}">${b.expired?'Expired':(b.status||'Active')}</span></td>
+    <td><button class="btn sec" style="padding:6px 10px" onclick="copyText('${b.client_link}')">Copy link</button></td>
+  </tr>`).join(''):'<tr><td colspan=6 class=muted>No businesses yet. Create one above.</td></tr>';
+}
+function copyText(t){navigator.clipboard?.writeText(t);toast('Copied')}
+
+$('saLoginBtn').onclick=async function(){this.disabled=true;
+  const r=await api('sa-login',{email:$('saEmail').value.trim(),password:$('saPass').value});
+  this.disabled=false;
+  if(r.ok){enterDash(r.user)} else {toast(r.message||'Login failed')}
+};
+$('saLogout').onclick=async()=>{await api('sa-logout',{});show('login')};
+$('refreshBtn').onclick=loadBiz;
+
+$('createBtn').onclick=async function(){
+  const d={
+    business_name:$('f_business_name').value.trim(), owner_name:$('f_owner_name').value.trim(),
+    owner_email:$('f_owner_email').value.trim(), owner_phone:$('f_owner_phone').value.trim(),
+    branch_name:$('f_branch_name').value.trim(), industry_code:$('f_industry').value,
+    address:$('f_address').value.trim(), plan_id:$('f_plan').value,
+    amount:Number($('f_amount').value||0), payment_method:$('f_payment_method').value,
+    start_date:$('f_start_date').value, expiry_date:$('f_expiry_date').value,
+    payment_reference:$('f_payment_reference').value.trim()
+  };
+  if(!d.business_name||!d.owner_email){toast('Business name & owner email required');return}
+  this.disabled=true;this.textContent='Creating…';
+  const r=await api('sa-business-create',d);
+  this.disabled=false;this.textContent='Create Business';
+  if(!r.ok){toast(r.message||'Create failed');return}
+  const b=r.business;
+  $('s_name').textContent=b.business_name;
+  const link=$('s_link');link.textContent=b.client_link;link.href=b.client_link;
+  $('s_email').textContent=b.admin_email;$('s_pass').textContent=b.admin_password;$('s_token').textContent=b.sync_token;
+  $('successCard').classList.remove('hide');
+  $('successCard').scrollIntoView({behavior:'smooth'});
+  window.__lastBiz=b;
+  ['f_business_name','f_owner_name','f_owner_email','f_owner_phone','f_address','f_payment_reference'].forEach(id=>$(id).value='');
+  loadBiz();toast('Business created');
+};
+$('copyLink').onclick=()=>copyText(window.__lastBiz?.client_link||'');
+$('copyCreds').onclick=()=>{const b=window.__lastBiz;if(b)copyText(`Login: ${b.client_link}\nEmail: ${b.admin_email}\nPassword: ${b.admin_password}`)};
+
+boot();
+</script>
+</body>
+</html>

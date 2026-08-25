@@ -1,0 +1,20 @@
+RESTAURANT SOFTWARE V13 SUPPORT CHECK
+
+Normal start:
+  START_RESTAURANT.bat
+
+Reset only approved UI demo data:
+  RESET_DEMO_UI.bat
+
+Reset local administrator login:
+  RESET_ADMIN_LOGIN.bat
+
+System/runtime check:
+  CHECK_SYSTEM.bat
+
+Local MySQL:
+  existing aio_local database is used
+
+Approved UI:
+  original demo data + original modal workflows are preserved.
+  PHP/MySQL integration mirrors actions without replacing the approved DOM tables.

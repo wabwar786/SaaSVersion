@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Physical Stock Count · Urban Spoon</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Physical Stock Count</h1><p>System vs counted quantity</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content"></div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="count"></script>
+<script src="module.js"></script>
+<script src="module_config.js"></script>
+<script>RestaurantModule.render(MODULE_CONFIGS['count']);</script>
+</body>
+</html>

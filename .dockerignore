@@ -1,0 +1,5 @@
+.git
+storage/logs/*
+storage/sessions/*
+runtime/php
+*.test.php

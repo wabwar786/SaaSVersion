@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard · Urban Spoon</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* Page-specific dashboard bits */
+.dash-hero{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:16px}
+.hero{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:22px;color:#fff;
+  background:linear-gradient(135deg,#b8210f,#e0301a 55%,#f0663c);box-shadow:var(--sh)}
+.hero:after{content:"";position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.09)}
+.hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#ffdfd7;font-weight:600}
+.hero h2{font-size:30px;margin:8px 0 0;letter-spacing:-.02em}
+.hero p{margin:8px 0 0;max-width:560px;font-size:12.5px;color:#ffe4dd;line-height:1.55}
+.hero-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.hero-actions a{height:38px;padding:0 14px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.32);color:#fff}
+.hero-actions a:hover{background:rgba(255,255,255,.14)}
+.hero-actions a.solid{background:#fff;color:var(--brand-ink);border-color:#fff}
+.hero-actions a.solid:hover{background:#fff5f3}
+.hero-side{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.htile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm)}
+.htile span{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.htile b{display:block;margin-top:5px;font-family:var(--display);font-weight:800;font-size:17px}
+.htile small{display:block;margin-top:3px;color:var(--faint);font-size:10.5px}
+.chart{height:230px;display:flex;align-items:flex-end;gap:9px;padding:8px 4px 0}
+.bar-col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+.bar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#f0663c,#e0301a);min-height:5px;transition:.5s;position:relative}
+.bar:hover{background:linear-gradient(180deg,#e0301a,#a81c0c)}
+.bar:hover:after{content:attr(data-v);position:absolute;left:50%;bottom:100%;transform:translate(-50%,-6px);background:var(--ink);color:#fff;font-size:10px;padding:3px 6px;border-radius:5px;white-space:nowrap;font-weight:600}
+.bar-col span{font-size:10px;color:var(--faint)}
+.quick{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm);transition:.14s}
+.qcard:hover{border-color:var(--brand-line);box-shadow:var(--sh);transform:translateY(-2px)}
+.qcard .qi{width:34px;height:34px;border-radius:9px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:16px;margin-bottom:9px}
+.qcard b{display:block;font-family:var(--display);font-weight:700;font-size:13px}
+.qcard span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.alert{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:9px}
+.alert:last-child{margin-bottom:0}
+.alert .ai{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:14px;flex-shrink:0}
+.alert b{font-size:12.5px}
+.alert small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.alert .btn{margin-left:auto}
+.mix{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mix .cell{padding:11px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.mix .cell span{color:var(--muted);font-size:11px}
+.mix .cell b{display:block;margin-top:3px;font-family:var(--display);font-weight:800;font-size:16px}
+@media(max-width:1100px){.quick{grid-template-columns:repeat(3,1fr)}.dash-hero{grid-template-columns:1fr}}
+@media(max-width:560px){.quick{grid-template-columns:1fr 1fr}.hero-side{grid-template-columns:1fr 1fr}.hero h2{font-size:23px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Dashboard</h1><p>Live command center for sales, kitchen, stock and delivery</p></div>
+      <div class="header-spacer"></div>
+      <span class="live-pill">Live</span>
+      <button class="btn" id="clockBtn">Today</button>
+      <a class="btn primary" href="restaurant_pos.html">Open POS</a>
+    </header>
+    <div class="content">
+
+      <section class="dash-hero">
+        <div class="hero">
+          <span class="eyebrow">Islamabad — F10 · Shift <span id="heroShift">S-2048</span></span>
+          <h2 id="heroSales">PKR 0 net sales today</h2>
+          <p>Everything runs locally first — POS, kitchen and printers stay online on the branch network while the cloud syncs quietly in the background.</p>
+          <div class="hero-actions">
+            <a class="solid" href="restaurant_pos.html">▤ New sale</a>
+            <a href="online_orders.html">◈ Online orders <b id="heroOnline" style="margin-left:4px">0</b></a>
+            <a href="kds.html">♨ Kitchen</a>
+            <a href="shift_management.html">◔ Shift</a>
+          </div>
+        </div>
+        <div class="hero-side">
+          <div class="htile"><span>Local system</span><b style="color:var(--ok)">Online</b><small>Branch network healthy</small></div>
+          <div class="htile"><span>Cloud sync</span><b style="color:var(--ok)">Synced</b><small id="lastSync">Just now</small></div>
+          <div class="htile"><span>Kitchen printers</span><b>5 / 5</b><small>All responding</small></div>
+          <div class="htile"><span>Signup requests</span><b id="heroReq">0</b><small>Awaiting approval</small></div>
+        </div>
+      </section>
+
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Net sales</div><div class="val" id="kNet">PKR 0</div><div class="sub" id="kOrders">0 orders</div><span class="trend up">▲ 12%</span></div>
+        <div class="kpi info"><div class="lab">Running orders</div><div class="val" id="kRun">0</div><div class="sub"><span id="kPrep">0</span> preparing · <span id="kReady">0</span> ready</div></div>
+        <div class="kpi warn"><div class="lab">Online waiting</div><div class="val" id="kOnline">0</div><div class="sub">Accept or reject</div></div>
+        <div class="kpi violet"><div class="lab">Gross profit</div><div class="val" id="kProfit">PKR 0</div><div class="sub">After food cost + expenses</div></div>
+        <div class="kpi ok"><div class="lab">Occupied tables</div><div class="val" id="kTables">0 / 0</div><div class="sub"><span id="kRiders">0</span> riders on road</div></div>
+        <div class="kpi cyan"><div class="lab">Low stock</div><div class="val" id="kLow">0</div><div class="sub">At or below reorder</div></div>
+      </div>
+
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Hourly sales</h2><p>Reads the same local state POS writes to</p></div><span class="spacer"></span><span class="tag brand plain">Today</span></div>
+          <div class="panel-body"><div class="chart" id="chart"></div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Needs attention</h2><p>Act on these first</p></div></div>
+          <div class="panel-body">
+            <div class="alert"><div class="ai" style="background:var(--danger-soft);color:var(--danger)">♨</div><div><b><span id="aDelay">0</span> delayed kitchen orders</b><small>Prioritise the oldest KOT</small></div><a class="btn sm danger" href="kds.html">Open</a></div>
+            <div class="alert"><div class="ai" style="background:var(--warn-soft);color:var(--warn)">◈</div><div><b><span id="aOnline">0</span> new online orders</b><small>Acceptance pending</small></div><a class="btn sm" href="online_orders.html">Review</a></div>
+            <div class="alert"><div class="ai" style="background:var(--info-soft);color:var(--info)">▣</div><div><b><span id="aLow">0</span> low-stock items</b><small>Raise a purchase order</small></div><a class="btn sm" href="inventory_creation.html">Stock</a></div>
+            <div class="alert"><div class="ai" style="background:var(--brand-soft);color:var(--brand-ink)">⚿</div><div><b><span id="aReq">0</span> signup approvals</b><small>Assign role and modules</small></div><a class="btn sm" href="users_access.html">Users</a></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Quick operations</h2><p>Your most-used screens</p></div></div>
+        <div class="panel-body"><div class="quick">
+          <a class="qcard" href="restaurant_pos.html"><div class="qi">▤</div><b>Sale Point</b><span>New / running bill</span></a>
+          <a class="qcard" href="shift_management.html"><div class="qi">◔</div><b>Shift</b><span>Cashier & till</span></a>
+          <a class="qcard" href="online_orders.html"><div class="qi">◈</div><b>Online</b><span id="qOnline">0 waiting</span></a>
+          <a class="qcard" href="kds.html"><div class="qi">♨</div><b>Kitchen</b><span id="qDelay">0 delayed</span></a>
+          <a class="qcard" href="inventory_creation.html"><div class="qi">▣</div><b>Inventory</b><span id="qLow">0 low</span></a>
+          <a class="qcard" href="reports.html"><div class="qi">▥</div><b>Reports</b><span>Sales & profit</span></a>
+        </div></div>
+      </section>
+
+      <div class="split" style="margin-top:14px">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Best sellers today</h2></div><span class="spacer"></span><a class="btn sm" href="reports.html">Full report</a></div>
+          <div class="panel-body flush"><div class="table-wrap"><table class="table">
+            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th class="num">Food cost</th></tr></thead>
+            <tbody id="bestRows"></tbody></table></div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Sales mix & collection</h2></div></div>
+          <div class="panel-body">
+            <div class="mix">
+              <div class="cell"><span>Dine in</span><b id="mDine">PKR 0</b></div>
+              <div class="cell"><span>Takeaway</span><b id="mTake">PKR 0</b></div>
+              <div class="cell"><span>Delivery</span><b id="mDeliv">PKR 0</b></div>
+              <div class="cell"><span>Online</span><b id="mOnline">PKR 0</b></div>
+            </div>
+            <div class="mix" style="margin-top:10px">
+              <div class="cell"><span>Cash</span><b id="pCash">PKR 0</b></div>
+              <div class="cell"><span>Card</span><b id="pCard">PKR 0</b></div>
+              <div class="cell"><span>Raast</span><b id="pRaast">PKR 0</b></div>
+              <div class="cell"><span>Wallet / bank</span><b id="pWallet">PKR 0</b></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="dashboard"></script>
+<script>
+var $=function(s){return document.querySelector(s)};
+var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
+function render(){
+  var s=RestaurantLive.get(), inv=RestaurantStore.getState(), acc=RestaurantAccess.get();
+  var low=inv.inventoryItems.filter(function(i){return Number(i.stockQty)<=Number(i.reorderQty)}).length;
+  var pending=acc.requests.length, profit=s.netSales-s.foodCost-s.expenses;
+  $('#heroShift').textContent=s.shift; $('#heroSales').textContent=money(s.netSales)+' net sales today';
+  $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
+  $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
+  $('#kRun').textContent=s.runningOrders; $('#kPrep').textContent=s.preparing; $('#kReady').textContent=s.ready;
+  $('#kOnline').textContent=s.onlineNew; $('#kProfit').textContent=money(profit);
+  $('#kTables').textContent=s.occupiedTables+' / '+s.totalTables; $('#kRiders').textContent=s.ridersRoad; $('#kLow').textContent=low;
+  $('#aDelay').textContent=s.delayed; $('#aOnline').textContent=s.onlineNew; $('#aLow').textContent=low; $('#aReq').textContent=pending;
+  $('#qOnline').textContent=s.onlineNew+' waiting'; $('#qDelay').textContent=s.delayed+' delayed'; $('#qLow').textContent=low+' low';
+  $('#mDine').textContent=money(s.dineIn); $('#mTake').textContent=money(s.takeaway); $('#mDeliv').textContent=money(s.delivery); $('#mOnline').textContent=money(s.online);
+  $('#pCash').textContent=money(s.cash); $('#pCard').textContent=money(s.card); $('#pRaast').textContent=money(s.raast); $('#pWallet').textContent=money(s.walletBank);
+  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
+  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bar-col"><div class="bar" data-v="'+money(v)+'" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
+  $('#bestRows').innerHTML=s.best.map(function(x){return '<tr><td class="t-main">'+x.name+'</td><td class="num">'+x.qty+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+x.cost+'%</td></tr>'}).join('');
+  $('#lastSync').textContent='Updated '+new Date(s.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function clock(){var d=new Date();$('#clockBtn').textContent=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+render();clock();setInterval(clock,30000);window.addEventListener('storage',render);
+</script>
+</body>
+</html>

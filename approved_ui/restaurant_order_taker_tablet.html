@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Urban Spoon — Order Taker Tablet</title>
+<style>
+:root{
+  --bg:#f4f7f5;--white:#fff;--line:#dfe7e2;--text:#26372e;--muted:#77857d;
+  --green:#0f9d65;--greenSoft:#eaf8f1;--orange:#ef9535;--blue:#3e81d3;--violet:#7458c7;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg)}
+body{
+  font-family:"Segoe UI Variable Text","Segoe UI",Inter,Arial,sans-serif;
+  color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased
+}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hidden{display:none!important}
+
+.tablet-app{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:76px minmax(0,1fr) 360px;
+  background:#fff
+}
+
+/* slim tablet rail */
+.rail{
+  background:#fff;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;padding:10px 8px;gap:8px;
+  position:sticky;top:0;height:100vh
+}
+.rail-logo{
+  width:44px;height:44px;border-radius:10px;background:var(--green);color:#fff;
+  display:grid;place-items:center;font-size:18px;margin-bottom:8px
+}
+.rail button{
+  width:56px;min-height:54px;border:1px solid transparent;border-radius:10px;background:#fff;
+  color:#6c7971;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:9px
+}
+.rail button.active{background:var(--greenSoft);border-color:#cce5d8;color:#087c4f}
+.rail button:hover{background:#f5f9f7}
+.rail .spacer{flex:1}
+.rail-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#eef4ff;color:#356fae;font-size:10px}
+
+/* center */
+.center{min-width:0;display:flex;flex-direction:column;background:#fbfcfb}
+.tab-head{
+  min-height:68px;background:#fff;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;padding:10px 14px;position:sticky;top:0;z-index:10
+}
+.title-block{min-width:170px}
+.title-block span{display:block;font-size:10px;color:#7e8b83}
+.title-block b{display:block;margin-top:2px;font-size:17px;font-weight:600}
+.table-picker{
+  height:42px;border:1px solid #d8e4de;background:#fff;padding:0 10px;min-width:140px;font-size:12px
+}
+.search{
+  flex:1;height:42px;border:1px solid #dce5e0;background:#fff;display:flex;align-items:center;gap:7px;padding:0 10px
+}
+.search input{border:0;outline:0;flex:1;min-width:0;font-size:12px}
+.waiter-chip{
+  height:42px;border:1px solid #e0e7e3;background:#fff;display:flex;align-items:center;gap:7px;padding:0 9px
+}
+.waiter-chip .avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--greenSoft);color:#087c4f;font-size:9px}
+.waiter-chip small{display:block;color:#7f8b84;font-size:8px}
+.waiter-chip b{display:block;font-size:10px;font-weight:500}
+.new-order{
+  height:42px;border:0;background:var(--green);color:#fff;padding:0 13px;font-size:11px
+}
+
+.table-strip{
+  background:#fff;border-bottom:1px solid var(--line);padding:8px 12px;
+  display:flex;gap:7px;overflow:auto
+}
+.table-card{
+  min-width:94px;height:54px;border:1px solid #dce5e0;background:#fff;padding:6px 8px;text-align:left
+}
+.table-card b{display:block;font-size:10px;font-weight:500}
+.table-card small{display:block;margin-top:3px;font-size:8px;color:#7e8a83}
+.table-card.available{background:#f2fbf6;border-color:#cde6da;color:#087c4f}
+.table-card.running{background:#fff7eb;border-color:#eed8b9;color:#a26017}
+.table-card.selected{box-shadow:inset 0 0 0 2px currentColor}
+
+.categories{
+  display:flex;gap:7px;padding:9px 12px 7px;overflow:auto;background:#fff
+}
+.category{
+  flex:0 0 auto;height:36px;border:1px solid #dfe6e2;background:#fff;padding:0 12px;font-size:10px;color:#57655d
+}
+.category.active{background:var(--greenSoft);border-color:#cce6d8;color:#087c4f}
+.menu-grid{
+  flex:1;min-height:0;padding:10px 12px 22px;
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;overflow:auto
+}
+.menu-item{
+  border:1px solid #dfe6e2;background:#fff;min-width:0;padding:0;position:relative
+}
+.menu-item img{width:100%;height:118px;object-fit:cover;display:block}
+.menu-item-body{padding:8px}
+.menu-item h3{margin:0;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu-item p{margin:3px 0 0;color:#7d8982;font-size:9px;line-height:1.3;height:24px;overflow:hidden}
+.menu-item-foot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:7px}
+.menu-item .price{font-size:11px;color:#7252bd}
+.menu-item .add{height:29px;border:1px solid #cce5d8;background:#eff9f4;color:#087c4f;padding:0 9px;font-size:9px}
+.menu-item .flag{position:absolute;top:6px;right:6px;background:#fff;border:1px solid #e0e6e2;padding:3px 5px;font-size:7px}
+
+/* right order */
+.order{
+  border-left:1px solid var(--line);height:100vh;position:sticky;top:0;background:#fff;
+  display:flex;flex-direction:column;min-width:0
+}
+.order-head{padding:11px 12px;border-bottom:1px solid var(--line)}
+.order-head-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.order-head h2{margin:0;font-size:15px;font-weight:600}
+.order-head .bill{font-size:9px;color:#7d8981}
+.order-context{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.order-context div{border:1px solid #e1e7e4;background:#f9fbfa;padding:6px 7px}
+.order-context span{display:block;font-size:7px;color:#859188}
+.order-context b{display:block;margin-top:2px;font-size:9px;font-weight:500}
+.order-list{flex:1;min-height:0;overflow:auto}
+.order-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.order-table th{
+  position:sticky;top:0;background:#f4f8f6;border-bottom:1px solid #dce5e0;
+  padding:6px 5px;text-align:left;font-size:8px;color:#65736b;font-weight:500
+}
+.order-table td{padding:7px 5px;border-bottom:1px solid #edf1ef;font-size:9px;vertical-align:top}
+.order-table .qty{width:48px;text-align:center}
+.order-table .amt{width:72px;text-align:right}
+.order-table .del{width:30px;text-align:center}
+.order-table td strong{display:block;font-size:10px;font-weight:500}
+.order-table td small{display:block;margin-top:2px;font-size:8px;color:#7f8b84}
+.order-table .delete{width:24px;height:24px;border:1px solid #efd4d7;background:#fff5f6;color:#c54f59}
+.order-summary{padding:8px 12px;border-top:1px solid var(--line);background:#fbfdfc}
+.summary-row{display:flex;justify-content:space-between;padding:2px 0;font-size:9px}
+.summary-row.grand{margin-top:4px;padding-top:6px;border-top:1px solid #dde5e0;font-size:14px;font-weight:700}
+.order-actions{padding:8px 12px 12px}
+.order-actions button{width:100%;height:44px;border:0;font-size:11px}
+.send-kitchen{background:var(--orange);color:#fff}
+.hold-order{margin-top:6px!important;background:#f3efff;color:#624eae;border:1px solid #ddd7f4!important}
+
+/* modals */
+.modal{position:fixed;inset:0;background:rgba(20,35,27,.35);display:none;align-items:center;justify-content:center;padding:14px;z-index:100}
+.modal.show{display:flex}
+.dialog{width:min(460px,96vw);background:#fff;border:1px solid var(--line);box-shadow:0 20px 60px rgba(22,43,33,.2)}
+.dialog-head{display:flex;justify-content:space-between;gap:10px;padding:12px;border-bottom:1px solid var(--line)}
+.dialog-head h3{margin:0;font-size:15px;font-weight:600}
+.dialog-head p{margin:3px 0 0;font-size:9px;color:#7e8a83}
+.close{width:30px;height:30px;border:1px solid #dfe6e2;background:#fff}
+.dialog-body{padding:12px}
+.calc-display{height:70px;border:1px solid #cee3d8;background:#f5fbf8;display:grid;place-items:center;font-size:31px;color:#087c4f}
+.quick-values{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:7px}
+.quick-values button,.pad button{border:1px solid #dce5e0;background:#fff}
+.quick-values button{height:34px;font-size:10px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:7px}
+.pad button{height:48px;font-size:15px}
+.dialog-foot{display:flex;justify-content:flex-end;gap:6px;padding:9px 12px;border-top:1px solid var(--line)}
+.dialog-foot button{height:36px;padding:0 11px;border:1px solid #dce5e0;background:#fff}
+.dialog-foot .primary{background:var(--green);color:#fff;border-color:var(--green)}
+.variant-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.variant{border:1px solid #dce5e0;background:#fff;padding:9px;text-align:left}
+.variant.active{background:var(--greenSoft);border-color:#bddfcf}
+.variant b{display:block;font-size:11px;font-weight:500}
+.variant small{display:block;margin-top:3px;font-size:8px;color:#7f8b84}
+.note{width:100%;min-height:70px;border:1px solid #dce5e0;margin-top:8px;padding:7px}
+
+.toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,10px);opacity:0;background:#203129;color:#fff;padding:9px 13px;font-size:9px;z-index:200;transition:.18s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media(max-width:1050px){
+  .tablet-app{grid-template-columns:66px minmax(0,1fr) 330px}
+  .menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:820px){
+  .tablet-app{grid-template-columns:62px 1fr}
+  .order{grid-column:2;position:relative;height:auto;min-height:650px}
+  .center{grid-column:2}
+  .menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:650px){
+  .tablet-app{display:block}
+  .rail{height:auto;position:static;flex-direction:row;width:100%;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .rail button{min-width:62px}
+  .rail .spacer{display:none}
+  .tab-head{position:static;flex-wrap:wrap}
+  .search{order:3;flex-basis:100%}
+  .menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .order{height:auto;position:static}
+}
+</style>
+</head>
+<body>
+<div class="tablet-app">
+  <aside class="rail">
+    <div class="rail-logo">U</div>
+    <button class="active"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg><span>Menu</span></button>
+    <button><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 5v14M16 5v14M4 12h16"/></svg><span>Tables</span></button>
+    <button><svg viewBox="0 0 24 24"><path d="M5 3h14v18H5zM8 7h8M8 11h8"/></svg><span>Orders</span></button>
+    <button><svg viewBox="0 0 24 24"><path d="M4 18h16M7 18v-5a5 5 0 0 1 10 0v5"/></svg><span>KOT</span></button>
+    <button><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v6h6"/></svg><span>History</span></button>
+    <div class="spacer"></div>
+    <div class="rail-avatar">SA</div>
+  </aside>
+
+  <main class="center">
+    <header class="tab-head">
+      <div class="title-block">
+        <span>Urban Spoon</span>
+        <b>Order Taker</b>
+      </div>
+
+      <select class="table-picker" id="tabletTable">
+        <option>Table 12</option><option>Table 1</option><option>Table 2</option><option>Table 3</option>
+        <option>Table 4</option><option>Table 5</option><option>Table 6</option><option>Table 7</option>
+      </select>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <input id="tabletSearch" placeholder="Search item...">
+      </div>
+
+      <div class="waiter-chip">
+        <div class="avatar">SA</div>
+        <div><small>Waiter</small><b>Saad Ali</b></div>
+      </div>
+
+      <button class="new-order" id="tabletNewOrder">New Order</button>
+    </header>
+
+    <div class="table-strip">
+      <button class="table-card available"><b>Table 1</b><small>Available</small></button>
+      <button class="table-card running"><b>Table 4</b><small>Running · 18 min</small></button>
+      <button class="table-card available"><b>Table 6</b><small>Available</small></button>
+      <button class="table-card running"><b>Table 7</b><small>Held Bill</small></button>
+      <button class="table-card available"><b>Table 9</b><small>Available</small></button>
+      <button class="table-card selected running"><b>Table 12</b><small>Current Order</small></button>
+    </div>
+
+    <div class="categories" id="tabletCategories"></div>
+    <section class="menu-grid" id="tabletMenuGrid"></section>
+  </main>
+
+  <aside class="order">
+    <div class="order-head">
+      <div class="order-head-top">
+        <div>
+          <h2>Table 12</h2>
+          <div class="bill">Order #WT-0088 · Dine In</div>
+        </div>
+        <button style="height:31px;border:1px solid var(--line);background:#fff;padding:0 8px;font-size:9px">Guest 4</button>
+      </div>
+      <div class="order-context">
+        <div><span>Waiter</span><b>Saad Ali</b></div>
+        <div><span>Kitchen</span><b style="color:#087c4f">Connected</b></div>
+      </div>
+    </div>
+
+    <div class="order-list">
+      <table class="order-table">
+        <thead><tr><th class="qty">Qty</th><th>Description</th><th class="amt">Amount</th><th class="del"></th></tr></thead>
+        <tbody id="tabletCart"></tbody>
+      </table>
+    </div>
+
+    <div class="order-summary">
+      <div class="summary-row"><span>Items</span><span id="tabletItemsCount">0</span></div>
+      <div class="summary-row grand"><span>Order Total</span><span id="tabletTotal">PKR 0</span></div>
+    </div>
+
+    <div class="order-actions">
+      <button class="send-kitchen" id="tabletSendKitchen">Send Pending Items to Kitchen</button><div style="margin-top:6px;text-align:center;font-size:9px;color:#748078">Inventory posts when the bill is finalized, not when KOT is sent.</div>
+      <button class="hold-order" id="tabletHold">Hold / Save Order</button>
+    </div>
+  </aside>
+</div>
+
+<div class="modal" id="tabletQtyModal">
+  <div class="dialog">
+    <div class="dialog-head">
+      <div><h3>Quantity</h3><p>Enter quantity and press Enter.</p></div>
+      <button class="close" data-close-modal="tabletQtyModal">×</button>
+    </div>
+    <div class="dialog-body">
+      <div class="calc-display" id="tabletCalc">1</div>
+      <div class="quick-values">
+        <button data-qv="0.25">0.25</button><button data-qv="0.5">0.50</button><button data-qv="1">1</button><button data-qv="2">2</button>
+      </div>
+      <div class="pad">
+        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+        <button data-key=".">.</button><button data-key="0">0</button><button data-clear>Clear</button>
+      </div>
+    </div>
+    <div class="dialog-foot"><button data-close-modal="tabletQtyModal">Cancel</button><button class="primary" id="tabletQtyApply">Apply</button></div>
+  </div>
+</div>
+
+<div class="modal" id="tabletVariantModal">
+  <div class="dialog">
+    <div class="dialog-head">
+      <div><h3 id="tabletVariantTitle">Fajita Pizza</h3><p>Select size and kitchen note.</p></div>
+      <button class="close" data-close-modal="tabletVariantModal">×</button>
+    </div>
+    <div class="dialog-body">
+      <div class="variant-grid">
+        <button class="variant active" data-variant="Small" data-price="1050"><b>Small</b><small>PKR 1,050</small></button>
+        <button class="variant" data-variant="Medium" data-price="1550"><b>Medium</b><small>PKR 1,550</small></button>
+        <button class="variant" data-variant="Large" data-price="1890"><b>Large</b><small>PKR 1,890</small></button>
+      </div>
+      <textarea class="note" id="tabletNote" placeholder="Kitchen note: no olives, extra cheese..."></textarea>
+    </div>
+    <div class="dialog-foot"><button data-close-modal="tabletVariantModal">Cancel</button><button class="primary" id="tabletVariantAdd">Add to Order</button></div>
+  </div>
+</div>
+
+<div class="toast" id="tabletToast"></div>
+
+<script>
+const PRODUCTS=[
+  {id:'bir',name:'Chicken Biryani',cat:'Pakistani',price:750,img:'assets/menu_01.jpg',desc:'Basmati rice with tender chicken',weighted:true},
+  {id:'faj',name:'Fajita Pizza',cat:'Pizza',price:1050,img:'assets/menu_02.jpg',desc:'Fajita chicken, capsicum & mozzarella',pizza:true},
+  {id:'seekh',name:'Chicken Seekh Kabab',cat:'BBQ',price:650,img:'assets/menu_03.jpg',desc:'6 pieces with mint raita'},
+  {id:'zing',name:'Zinger Burger',cat:'Fast Food',price:560,img:'assets/menu_04.jpg',desc:'Crispy fillet, cheese & mayo'},
+  {id:'kar',name:'Chicken Karahi',cat:'Pakistani',price:1250,img:'assets/menu_05.jpg',desc:'Traditional karahi',weighted:true},
+  {id:'tikka',name:'Chicken Tikka Boneless',cat:'BBQ',price:950,img:'assets/menu_06.jpg',desc:'Boneless tikka with spices'},
+  {id:'fries',name:'French Fries',cat:'Sides',price:320,img:'assets/menu_07.jpg',desc:'Crispy golden fries'},
+  {id:'mint',name:'Mint Margarita',cat:'Drinks',price:280,img:'assets/menu_08.jpg',desc:'Mint, lime and soda'},
+  {id:'lava',name:'Chocolate Lava Cake',cat:'Desserts',price:650,img:'assets/menu_09.jpg',desc:'Warm chocolate dessert'},
+  {id:'coffee',name:'Cold Coffee',cat:'Drinks',price:350,img:'assets/menu_10.jpg',desc:'Chilled coffee'},
+  {id:'lassi',name:'Sweet Lassi',cat:'Drinks',price:220,img:'assets/menu_11.jpg',desc:'Fresh creamy lassi'},
+  {id:'naan',name:'Garlic Naan',cat:'Pakistani',price:120,img:'assets/menu_12.jpg',desc:'Soft naan with garlic'}
+];
+const CATEGORY_PRINTER={'Pakistani':'Main Kitchen Printer','Fast Food':'Main Kitchen Printer','Sides':'Main Kitchen Printer','Pizza':'Pizza Printer','BBQ':'BBQ Printer','Drinks':'Drinks Printer','Desserts':'Dessert Printer'};
+const CATS=['All','Pakistani','Pizza','BBQ','Fast Food','Drinks','Desserts','Sides'];
+let cat='All',search='',qtyTarget=null,calcFresh=true,currentVariant=null;
+const cart=[
+  {id:'naan',name:'Garlic Naan',qty:3,price:120,note:'Fresh / hot',sentQty:0},
+  {id:'mint',name:'Mint Margarita',qty:2,price:280,note:'',sentQty:2}
+];
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const money=n=>'PKR '+Number(n).toLocaleString('en-PK',{maximumFractionDigits:2});
+function toast(m){const t=$('#tabletToast');t.textContent=m;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),1600)}
+function openModal(id){$('#'+id).classList.add('show')}
+function closeModal(id){$('#'+id).classList.remove('show')}
+
+function renderCats(){
+  $('#tabletCategories').innerHTML=CATS.map(c=>`<button class="category ${cat===c?'active':''}" data-cat="${c}">${c}</button>`).join('');
+}
+function renderProducts(){
+  let list=cat==='All'?PRODUCTS:PRODUCTS.filter(p=>p.cat===cat);
+  const q=search.trim().toLowerCase();
+  if(q)list=list.filter(p=>p.name.toLowerCase().includes(q)||p.cat.toLowerCase().includes(q));
+  $('#tabletMenuGrid').innerHTML=list.map(p=>`
+    <article class="menu-item" data-product="${p.id}">
+      <img src="${p.img}" alt="${p.name}">
+      ${p.weighted?'<span class="flag">Weighted</span>':p.pizza?'<span class="flag">Sizes</span>':''}
+      <div class="menu-item-body">
+        <h3>${p.name}</h3>
+        <p>${p.desc}</p>
+        <div class="menu-item-foot"><span class="price">${p.weighted?money(p.price)+'/KG':'From '+money(p.price)}</span><button class="add" data-add="${p.id}">Add</button></div>
+      </div>
+    </article>`).join('');
+}
+function renderCart(){
+  $('#tabletCart').innerHTML=cart.map((i,n)=>`
+    <tr data-cart-row="${n}">
+      <td class="qty">${i.qty}</td>
+      <td><strong>${i.name}</strong>${i.note?`<small>${i.note}</small>`:''}${i.sentQty?`<small style="color:#087c4f">Kitchen sent: ${i.sentQty}</small>`:''}</td>
+      <td class="amt">${money(i.qty*i.price)}</td>
+      <td class="del"><button class="delete" data-del="${n}">×</button></td>
+    </tr>`).join('');
+  $('#tabletItemsCount').textContent=cart.reduce((a,i)=>a+Number(i.qty),0);
+  $('#tabletTotal').textContent=money(cart.reduce((a,i)=>a+i.qty*i.price,0));
+}
+function addProduct(id){
+  const p=PRODUCTS.find(x=>x.id===id);if(!p)return;
+  if(p.pizza){currentVariant=p;$('#tabletVariantTitle').textContent=p.name;openModal('tabletVariantModal');return}
+  if(p.weighted){qtyTarget={type:'new',product:p};$('#tabletCalc').textContent='1';calcFresh=true;openModal('tabletQtyModal');return}
+  const ex=cart.find(i=>i.id===id&&!i.note);
+  if(ex)ex.qty+=1;else cart.push({id:p.id,name:p.name,qty:1,price:p.price,note:'',sentQty:0});
+  renderCart();toast(p.name+' added');
+}
+function openQtyForRow(n){
+  qtyTarget={type:'row',index:n};
+  $('#tabletCalc').textContent='1';
+  calcFresh=true;
+  openModal('tabletQtyModal');
+}
+function applyQty(){
+  const q=Number($('#tabletCalc').textContent);if(!q||q<=0){toast('Enter valid quantity');return}
+  if(qtyTarget?.type==='row'){cart[qtyTarget.index].qty=q}
+  if(qtyTarget?.type==='new'){
+    const p=qtyTarget.product;
+    cart.push({id:p.id,name:p.name,qty:q,price:p.price,note:'',sentQty:0});
+  }
+  renderCart();closeModal('tabletQtyModal');
+}
+document.addEventListener('click',e=>{
+  const c=e.target.closest('[data-cat]');if(c){cat=c.dataset.cat;renderCats();renderProducts();return}
+  const del=e.target.closest('[data-del]');if(del){e.stopPropagation();cart.splice(+del.dataset.del,1);renderCart();return}
+  const row=e.target.closest('[data-cart-row]');if(row){openQtyForRow(+row.dataset.cartRow);return}
+  const add=e.target.closest('[data-add]');if(add){e.stopPropagation();addProduct(add.dataset.add);return}
+  const product=e.target.closest('[data-product]');if(product){addProduct(product.dataset.product);return}
+  const qv=e.target.closest('[data-qv]');if(qv){$('#tabletCalc').textContent=qv.dataset.qv;calcFresh=false;return}
+  const key=e.target.closest('[data-key]');if(key){let v=calcFresh?'':$('#tabletCalc').textContent;calcFresh=false;if(key.dataset.key==='.'&&v.includes('.'))return;$('#tabletCalc').textContent=v+key.dataset.key;return}
+  if(e.target.closest('[data-clear]')){$('#tabletCalc').textContent='';calcFresh=false;return}
+  const variant=e.target.closest('[data-variant]');if(variant){$$('[data-variant]').forEach(x=>x.classList.remove('active'));variant.classList.add('active');return}
+  const close=e.target.closest('[data-close-modal]');if(close){closeModal(close.dataset.closeModal);return}
+});
+$('#tabletSearch').oninput=e=>{search=e.target.value;renderProducts()};
+$('#tabletQtyApply').onclick=applyQty;
+$('#tabletVariantAdd').onclick=()=>{
+  const v=$('[data-variant].active'),note=$('#tabletNote').value.trim();
+  cart.push({id:currentVariant.id,name:currentVariant.name+' '+v.dataset.variant,qty:1,price:Number(v.dataset.price),note,sentQty:0});
+  $('#tabletNote').value='';renderCart();closeModal('tabletVariantModal');toast('Pizza added');
+};
+$('#tabletSendKitchen').onclick=()=>{
+  const pending=cart.filter(i=>i.qty-(i.sentQty||0)>0);
+  if(!pending.length){toast('Nothing pending for kitchen');return}
+  const printers=new Set();
+  pending.forEach(i=>{const p=PRODUCTS.find(x=>x.id===i.id);printers.add(CATEGORY_PRINTER[p?.cat]||'Main Kitchen Printer');i.sentQty=i.qty;});
+  renderCart();toast(`Pending items routed to ${printers.size} configured printer${printers.size===1?'':'s'}`);
+};
+$('#tabletHold').onclick=()=>toast('Order held for Table 12');
+$('#tabletNewOrder').onclick=()=>toast('New table order started');
+document.addEventListener('keydown',e=>{
+  if(!$('#tabletQtyModal').classList.contains('show'))return;
+  if(/^[0-9]$/.test(e.key)||e.key==='.'){
+    e.preventDefault();let v=calcFresh?'':$('#tabletCalc').textContent;calcFresh=false;
+    if(e.key==='.'&&v.includes('.'))return;$('#tabletCalc').textContent=v+e.key;return
+  }
+  if(e.key==='Enter'){e.preventDefault();applyQty()}
+});
+renderCats();renderProducts();renderCart();
+</script>
+<a href="index.html" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#fff;border:1px solid #dfe6e2;padding:6px 8px;font:10px Segoe UI;color:#087d50;text-decoration:none">UI Suite</a></body>
+</html>

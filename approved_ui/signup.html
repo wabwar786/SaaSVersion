@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Urban Spoon · Create account</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="auth.css">
+</head>
+<body>
+<div class="auth">
+  <section class="auth-brand">
+    <div class="brand-mark">U</div>
+    <h1>Start with Urban Spoon</h1>
+    <p>Set up your restaurant in minutes. One account runs every branch — dine-in, delivery, kitchen and accounts, all in sync.</p>
+    <div class="badges"><span>✓ 14-day free trial</span><span>✓ No card needed</span><span>✓ Unlimited items</span></div>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h2>Create your account</h2>
+      <p>Your request is reviewed by an administrator before activation</p>
+      <label class="field-g"><span>Full name</span><input id="name" placeholder="Ali Raza"></label>
+      <label class="field-g"><span>Business / restaurant</span><input id="business" placeholder="Urban Spoon — F10"></label>
+      <label class="field-g"><span>Email</span><input id="email" type="email" placeholder="you@restaurant.pk"></label>
+      <label class="field-g"><span>Phone</span><input id="phone" type="tel" placeholder="0300-0000000"></label>
+      <label class="field-g"><span>Password</span><input id="password" type="password" placeholder="Choose a strong password"></label>
+      <div class="err" id="error"></div>
+      <button class="primary-btn" id="signupBtn">Create account</button>
+      <div class="auth-foot">Already registered? <a href="login.html">Sign in</a></div>
+    </div>
+  </section>
+</div>
+<script src="access_store.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+$('#signupBtn').onclick=()=>{const data={name:$('#name').value.trim(),email:$('#email').value.trim(),phone:$('#phone').value.trim(),business:$('#business').value.trim(),password:$('#password').value};if(!data.name||!data.email||!data.password){$('#error').textContent='Name, email and password are required';$('#error').classList.add('show');return}const r=RestaurantAccess.signup(data);if(!r.ok){$('#error').textContent=r.message;$('#error').classList.add('show');return}location.href='signup_pending.html?email='+encodeURIComponent(data.email)};
+</script>
+</body>
+</html>

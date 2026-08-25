@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Urban Spoon — Kitchen Display System</title>
+<style>
+:root{
+  --bg:#f4f6f5;
+  --panel:#ffffff;
+  --line:#dfe6e2;
+  --line2:#cfd9d3;
+  --text:#1f2f27;
+  --muted:#6d7b73;
+
+  --green:#149b66;
+  --green-soft:#eaf8f1;
+
+  --orange:#ef9737;
+  --orange-soft:#fff3e6;
+
+  --blue:#3d82d5;
+  --blue-soft:#edf5ff;
+
+  --red:#d95661;
+  --red-soft:#fff1f2;
+
+  --violet:#7459c8;
+  --violet-soft:#f3efff;
+
+  --yellow:#c89018;
+  --yellow-soft:#fff8df;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg)}
+body{
+  font-family:"Segoe UI Variable Text","Segoe UI",Inter,Arial,sans-serif;
+  color:var(--text);
+  font-size:17px;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+button,input,select{font:inherit}
+button{cursor:pointer}
+svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hidden{display:none!important}
+
+.kds{
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+/* HEADER */
+.topbar{
+  min-height:76px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px 14px;
+  background:#fff;
+  border-bottom:1px solid var(--line);
+}
+.brand{
+  min-width:240px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.brand-mark{
+  width:48px;height:48px;border-radius:10px;
+  background:var(--green);
+  color:#fff;
+  display:grid;place-items:center;
+  font-size:20px;
+  font-weight:700;
+}
+.brand strong{
+  display:block;
+  font-size:19px;
+  font-weight:650;
+}
+.brand small{
+  display:block;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:12px;
+}
+.station-select{
+  min-width:175px;
+  height:46px;
+  border:1px solid var(--line2);
+  background:#fff;
+  padding:0 12px;
+  color:#2d4036;
+  font-size:15px;
+  border-radius:8px;
+}
+.top-stats{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex:1;
+  min-width:0;
+  overflow:auto;
+}
+.stat{
+  min-width:112px;
+  height:48px;
+  border:1px solid var(--line);
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:0 10px;
+  border-radius:8px;
+}
+.stat span{
+  color:var(--muted);
+  font-size:11px;
+}
+.stat b{
+  margin-top:1px;
+  font-size:17px;
+  font-weight:600;
+}
+.stat.new b{color:var(--orange)}
+.stat.prep b{color:var(--blue)}
+.stat.ready b{color:var(--green)}
+.stat.delay b{color:var(--red)}
+.top-actions{
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.icon-btn,.text-btn{
+  height:44px;
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:8px;
+  color:#526159;
+}
+.icon-btn{width:44px;display:grid;place-items:center}
+.text-btn{padding:0 12px;font-size:13px}
+.text-btn.active{background:var(--green-soft);color:#087d50;border-color:#cae4d7}
+
+/* FILTER BAR */
+.filterbar{
+  min-height:58px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:8px 14px;
+  background:#fbfcfb;
+  border-bottom:1px solid var(--line);
+}
+.filter-group{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+.filter-label{
+  color:#7d8a82;
+  font-size:12px;
+  margin-right:2px;
+}
+.filter-btn{
+  height:38px;
+  border:1px solid var(--line);
+  background:#fff;
+  color:#58665e;
+  padding:0 11px;
+  border-radius:7px;
+  font-size:13px;
+}
+.filter-btn.active{
+  background:#26372e;
+  color:#fff;
+  border-color:#26372e;
+}
+.filter-spacer{flex:1}
+.search{
+  height:40px;
+  width:min(330px,35vw);
+  border:1px solid var(--line);
+  background:#fff;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:0 9px;
+  border-radius:8px;
+}
+.search input{
+  border:0;
+  outline:0;
+  min-width:0;
+  flex:1;
+  font-size:13px;
+}
+
+/* BOARD */
+.board{
+  flex:1;
+  min-height:0;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(280px,1fr));
+  gap:10px;
+  padding:10px;
+  overflow:auto;
+}
+.column{
+  min-width:0;
+  background:#eef2f0;
+  border:1px solid var(--line);
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+.col-head{
+  min-height:56px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:9px 11px;
+  border-bottom:1px solid var(--line);
+  background:#fff;
+}
+.col-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.col-dot{width:11px;height:11px;border-radius:50%}
+.col-dot.new{background:var(--orange)}
+.col-dot.prep{background:var(--blue)}
+.col-dot.ready{background:var(--green)}
+.col-dot.delay{background:var(--red)}
+.col-head h2{
+  margin:0;
+  font-size:17px;
+  font-weight:650;
+}
+.col-count{
+  min-width:31px;
+  height:31px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#f2f5f3;
+  border:1px solid #e0e6e2;
+  font-size:13px;
+}
+.cards{
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  padding:8px;
+  display:grid;
+  align-content:start;
+  gap:8px;
+}
+
+/* ORDER CARDS */
+.ticket{
+  background:#fff;
+  border:1px solid #d8e1dc;
+  min-width:0;
+  position:relative;
+}
+.ticket.priority{
+  border-color:#e0b46b;
+  box-shadow:inset 4px 0 0 var(--orange);
+}
+.ticket.delayed{
+  border-color:#e1a2a8;
+  box-shadow:inset 4px 0 0 var(--red);
+}
+.ticket.ready{
+  border-color:#a8d6c0;
+  box-shadow:inset 4px 0 0 var(--green);
+}
+.ticket-head{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:8px;
+  padding:10px 11px 8px;
+  border-bottom:1px solid #e7ece9;
+}
+.ticket-id{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.ticket-id strong{
+  font-size:18px;
+  font-weight:700;
+}
+.type-badge{
+  display:inline-flex;
+  align-items:center;
+  height:26px;
+  padding:0 7px;
+  border-radius:6px;
+  font-size:11px;
+  border:1px solid;
+}
+.type-badge.dine{background:var(--green-soft);color:#087b4e;border-color:#cce4d7}
+.type-badge.takeaway{background:var(--orange-soft);color:#a86118;border-color:#edd7bb}
+.type-badge.delivery{background:var(--blue-soft);color:#366fae;border-color:#d4e4f6}
+.ticket-meta{
+  margin-top:4px;
+  color:#6d7b73;
+  font-size:12px;
+  line-height:1.4;
+}
+.timer{
+  min-width:74px;
+  height:42px;
+  border:1px solid #dce4df;
+  background:#f9fbfa;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  border-radius:7px;
+}
+.timer span{font-size:10px;color:#829087}
+.timer b{font-size:16px;font-weight:650}
+.timer.warn{background:var(--yellow-soft);border-color:#eadba9;color:#8a6816}
+.timer.late{background:var(--red-soft);border-color:#ecc8cc;color:#b23d47}
+
+.ticket-info{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:6px;
+  padding:8px 11px;
+  border-bottom:1px solid #edf1ef;
+  background:#fbfcfb;
+}
+.info-cell span{
+  display:block;
+  color:#7a8780;
+  font-size:10px;
+}
+.info-cell b{
+  display:block;
+  margin-top:2px;
+  font-size:13px;
+  font-weight:550;
+  color:#304239;
+}
+
+/* ITEMS */
+.item-list{
+  display:grid;
+}
+.kitem{
+  display:grid;
+  grid-template-columns:54px minmax(0,1fr) auto;
+  gap:8px;
+  padding:10px 11px;
+  border-bottom:1px solid #edf1ef;
+  align-items:start;
+}
+.kitem:last-child{border-bottom:0}
+.kqty{
+  min-height:48px;
+  border:1px solid #cfdad4;
+  background:#f8fbf9;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  font-size:21px;
+  line-height:1.1;
+  font-weight:750;
+  border-radius:6px;
+}
+.kdesc strong{
+  display:block;
+  font-size:16px;
+  line-height:1.25;
+  font-weight:650;
+}
+.kdesc .variant{
+  display:block;
+  margin-top:3px;
+  color:#4c5b53;
+  font-size:13px;
+}
+.kdesc .note{
+  display:block;
+  margin-top:5px;
+  padding:5px 6px;
+  background:#fff7e8;
+  border-left:3px solid var(--orange);
+  color:#785017;
+  font-size:13px;
+  line-height:1.3;
+}
+.kdesc .newqty{
+  display:inline-flex;
+  margin-top:5px;
+  padding:3px 6px;
+  background:#f1f7ff;
+  border:1px solid #d5e3f4;
+  color:#356aa5;
+  font-size:11px;
+}
+.item-state{
+  min-width:70px;
+  text-align:right;
+}
+.item-state button{
+  height:31px;
+  border:1px solid #dce5e0;
+  background:#fff;
+  color:#59675f;
+  padding:0 7px;
+  border-radius:6px;
+  font-size:11px;
+}
+.item-state button.done{
+  background:var(--green-soft);
+  border-color:#cce4d7;
+  color:#087b4e;
+}
+
+.void-alert{
+  margin:7px 11px 0;
+  padding:7px 8px;
+  background:#fff2f3;
+  border:1px solid #ebc8cb;
+  color:#a63d46;
+  font-size:12px;
+  line-height:1.35;
+}
+.void-alert b{font-weight:650}
+
+/* ACTIONS */
+.ticket-actions{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:6px;
+  padding:9px 10px;
+  border-top:1px solid #e7ece9;
+  background:#fbfcfb;
+}
+.primary-action,.secondary-action,.small-action{
+  height:42px;
+  border-radius:7px;
+  font-size:13px;
+}
+.primary-action{
+  border:0;
+  color:#fff;
+  background:#2f4238;
+}
+.primary-action.start{background:var(--blue)}
+.primary-action.ready{background:var(--green)}
+.primary-action.serve{background:#2e4036}
+.secondary-action{
+  min-width:76px;
+  border:1px solid #dce4df;
+  background:#fff;
+  color:#58665e;
+  padding:0 9px;
+}
+.small-action{
+  width:43px;
+  border:1px solid #dce4df;
+  background:#fff;
+  color:#66746c;
+  display:grid;place-items:center;
+  font-size:16px;
+}
+
+/* FOOTER */
+.footerbar{
+  min-height:48px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:7px 14px;
+  background:#fff;
+  border-top:1px solid var(--line);
+  color:#627068;
+  font-size:12px;
+}
+.footerbar .ok{color:#087d50}
+.footerbar .warn{color:#a86614}
+.footer-spacer{flex:1}
+
+/* MODALS */
+.modal{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  background:rgba(20,34,27,.38);
+}
+.modal.show{display:flex}
+.dialog{
+  width:min(560px,94vw);
+  max-height:92vh;
+  overflow:auto;
+  background:#fff;
+  border:1px solid var(--line);
+  box-shadow:0 24px 70px rgba(23,45,34,.22);
+}
+.dialog-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+  padding:12px 13px;
+  border-bottom:1px solid var(--line);
+}
+.dialog-head h3{
+  margin:0;
+  font-size:18px;
+  font-weight:650;
+}
+.dialog-head p{
+  margin:4px 0 0;
+  font-size:12px;
+  color:#77847c;
+}
+.close{
+  width:34px;height:34px;border:1px solid var(--line);background:#fff;font-size:18px
+}
+.dialog-body{padding:13px}
+.dialog-foot{
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+  padding:10px 13px;
+  border-top:1px solid var(--line);
+}
+.dialog-foot button{
+  height:40px;
+  padding:0 12px;
+  border:1px solid var(--line);
+  background:#fff;
+  font-size:13px;
+}
+.dialog-foot .primary{background:var(--green);border-color:var(--green);color:#fff}
+.history-list{display:grid;gap:7px}
+.history-row{
+  border:1px solid #dfe6e2;
+  background:#fff;
+  padding:9px;
+}
+.history-row strong{font-size:14px;font-weight:600}
+.history-row small{display:block;margin-top:3px;color:#77847c;font-size:11px}
+.history-row .tag{display:inline-flex;margin-top:6px;padding:3px 6px;border:1px solid #dfe6e2;background:#f7faf8;font-size:10px}
+
+.toast{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:200;
+  opacity:0;
+  transform:translateY(8px);
+  transition:.18s;
+  background:#203129;
+  color:#fff;
+  padding:10px 13px;
+  border-radius:7px;
+  font-size:12px;
+}
+.toast.show{opacity:1;transform:none}
+
+@media(max-width:1450px){
+  body{font-size:16px}
+  .board{grid-template-columns:repeat(4,minmax(260px,1fr))}
+  .kdesc strong{font-size:15px}
+  .kqty{font-size:20px}
+}
+@media(max-width:1180px){
+  .board{grid-template-columns:repeat(2,minmax(300px,1fr))}
+  .brand{min-width:200px}
+}
+@media(max-width:760px){
+  .topbar{flex-wrap:wrap}
+  .brand{min-width:0;flex:1}
+  .top-stats{order:3;flex-basis:100%}
+  .filterbar{flex-wrap:wrap}
+  .filter-spacer{display:none}
+  .search{width:100%;order:5}
+  .board{grid-template-columns:1fr}
+  .column{min-height:520px}
+  .ticket-id strong{font-size:19px}
+  .kdesc strong{font-size:17px}
+  .kqty{font-size:23px}
+}
+</style>
+</head>
+<body>
+<div class="kds">
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">K</div>
+    <div>
+      <strong>Urban Spoon Kitchen</strong>
+      <small>Kitchen Display System</small>
+    </div>
+  </div>
+
+  <select class="station-select" id="stationSelect">
+    <option value="All">All Kitchen Stations</option>
+    <option value="Main Kitchen">Main Kitchen</option>
+    <option value="BBQ">BBQ</option>
+    <option value="Pizza">Pizza</option>
+    <option value="Drinks">Drinks</option>
+    <option value="Desserts">Desserts</option>
+  </select>
+
+  <div class="top-stats">
+    <div class="stat new"><span>New Orders</span><b id="statNew">0</b></div>
+    <div class="stat prep"><span>Preparing</span><b id="statPrep">0</b></div>
+    <div class="stat ready"><span>Ready</span><b id="statReady">0</b></div>
+    <div class="stat delay"><span>Delayed</span><b id="statDelay">0</b></div>
+  </div>
+
+  <div class="top-actions">
+    <button class="text-btn active" id="soundBtn">Sound On</button>
+    <button class="text-btn" id="historyBtn">Completed</button>
+    <button class="icon-btn" id="fullscreenBtn" title="Full screen">
+      <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="filterbar">
+  <div class="filter-group">
+    <span class="filter-label">Order Type</span>
+    <button class="filter-btn active" data-type="All">All</button>
+    <button class="filter-btn" data-type="Dine In">Dine In</button>
+    <button class="filter-btn" data-type="Takeaway">Takeaway</button>
+    <button class="filter-btn" data-type="Home Delivery">Delivery</button>
+  </div>
+
+  <div class="filter-group">
+    <span class="filter-label">Priority</span>
+    <button class="filter-btn" data-priority="Delayed">Delayed Only</button>
+  </div>
+
+  <div class="filter-spacer"></div>
+
+  <div class="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="searchInput" placeholder="Search bill, table, item or waiter...">
+  </div>
+</div>
+
+<main class="board">
+  <section class="column">
+    <div class="col-head">
+      <div class="col-title"><span class="col-dot new"></span><h2>New</h2></div>
+      <div class="col-count" id="countNew">0</div>
+    </div>
+    <div class="cards" id="newCards"></div>
+  </section>
+
+  <section class="column">
+    <div class="col-head">
+      <div class="col-title"><span class="col-dot prep"></span><h2>Preparing</h2></div>
+      <div class="col-count" id="countPreparing">0</div>
+    </div>
+    <div class="cards" id="preparingCards"></div>
+  </section>
+
+  <section class="column">
+    <div class="col-head">
+      <div class="col-title"><span class="col-dot ready"></span><h2>Ready</h2></div>
+      <div class="col-count" id="countReady">0</div>
+    </div>
+    <div class="cards" id="readyCards"></div>
+  </section>
+
+  <section class="column">
+    <div class="col-head">
+      <div class="col-title"><span class="col-dot delay"></span><h2>Delayed</h2></div>
+      <div class="col-count" id="countDelayed">0</div>
+    </div>
+    <div class="cards" id="delayedCards"></div>
+  </section>
+</main>
+
+<footer class="footerbar">
+  <span><b>Station:</b> <span id="footerStation">All Kitchen Stations</span></span>
+  <span><b>Kitchen:</b> <span class="ok">Online</span></span>
+  <span><b>Printer:</b> <span class="ok">Connected</span></span>
+  <span><b>Last Sync:</b> Just now</span>
+  <span class="footer-spacer"></span>
+  <span><b>Chef:</b> Imran Shah</span>
+</footer>
+
+</div>
+
+<div class="modal" id="historyModal">
+  <div class="dialog">
+    <div class="dialog-head">
+      <div><h3>Completed Kitchen Orders</h3><p>Orders completed during the current shift.</p></div>
+      <button class="close" data-close="historyModal">×</button>
+    </div>
+    <div class="dialog-body">
+      <div class="history-list" id="historyList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="reprintModal">
+  <div class="dialog">
+    <div class="dialog-head">
+      <div><h3>Reprint KOT</h3><p>Kitchen slip preview for thermal printer.</p></div>
+      <button class="close" data-close="reprintModal">×</button>
+    </div>
+    <div class="dialog-body" id="reprintBody"></div>
+    <div class="dialog-foot">
+      <button data-close="reprintModal">Close</button>
+      <button class="primary" id="printKotBtn">Print KOT</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+
+const orders=[
+  {
+    id:'KOT-0128', bill:'#0024', type:'Dine In', table:'Table 12', waiter:'Saad Ali',
+    status:'New', station:'All', createdMinutesAgo:3, priority:false,
+    items:[
+      {qty:3,name:'Garlic Naan',variant:'',note:'Fresh / hot',station:'Main Kitchen',newQty:true},
+      {qty:1,name:'Chicken Handi',variant:'Full Portion',note:'Medium spicy',station:'Main Kitchen',newQty:true},
+      {qty:2,name:'Mint Margarita',variant:'',note:'Less ice',station:'Drinks',newQty:true}
+    ]
+  },
+  {
+    id:'KOT-0127', bill:'#0023', type:'Takeaway', table:'—', waiter:'Ali Raza',
+    status:'New', station:'All', createdMinutesAgo:5, priority:true,
+    items:[
+      {qty:1,name:'Fajita Pizza',variant:'Large',note:'Extra cheese · No olives',station:'Pizza',newQty:true},
+      {qty:1,name:'French Fries',variant:'Large',note:'Less salt',station:'Main Kitchen',newQty:true}
+    ]
+  },
+  {
+    id:'KOT-0126', bill:'#0022', type:'Home Delivery', table:'—', waiter:'Counter',
+    status:'Preparing', station:'All', createdMinutesAgo:11, priority:false,
+    customer:'Ahmed Khan',
+    items:[
+      {qty:1,name:'Chicken Karahi',variant:'1 KG',note:'Medium spicy',station:'Main Kitchen',newQty:false},
+      {qty:6,name:'Garlic Naan',variant:'',note:'',station:'Main Kitchen',newQty:false},
+      {qty:2,name:'Sweet Lassi',variant:'',note:'',station:'Drinks',newQty:false}
+    ]
+  },
+  {
+    id:'KOT-0125', bill:'#0021', type:'Dine In', table:'Table 4', waiter:'Hamza',
+    status:'Preparing', station:'All', createdMinutesAgo:14, priority:false,
+    items:[
+      {qty:2,name:'Chicken Tikka Boneless',variant:'',note:'One less spicy',station:'BBQ',newQty:false},
+      {qty:4,name:'Garlic Naan',variant:'',note:'Fresh / hot',station:'Main Kitchen',newQty:false}
+    ]
+  },
+  {
+    id:'KOT-0124', bill:'#0020', type:'Dine In', table:'Table 7', waiter:'Usman',
+    status:'Ready', station:'All', createdMinutesAgo:9, priority:false,
+    items:[
+      {qty:2,name:'Zinger Burger',variant:'',note:'No mayo',station:'Main Kitchen',newQty:false},
+      {qty:2,name:'Cold Coffee',variant:'',note:'No extra sugar',station:'Drinks',newQty:false}
+    ]
+  },
+  {
+    id:'KOT-0123', bill:'#0019', type:'Dine In', table:'Table 9', waiter:'Saad Ali',
+    status:'Delayed', station:'All', createdMinutesAgo:23, priority:true,
+    items:[
+      {qty:1,name:'Fajita Pizza',variant:'Large',note:'Extra cheese',station:'Pizza',newQty:false},
+      {qty:1,name:'Chicken Seekh Kabab',variant:'',note:'',station:'BBQ',newQty:false},
+      {qty:3,name:'Mint Margarita',variant:'',note:'',station:'Drinks',newQty:false}
+    ]
+  },
+  {
+    id:'KOT-0122', bill:'#0018', type:'Takeaway', table:'—', waiter:'Counter',
+    status:'Delayed', station:'All', createdMinutesAgo:19, priority:true,
+    voidAlert:{
+      item:'French Fries',
+      qty:1,
+      reason:'Customer Cancelled',
+      approvedBy:'Manager'
+    },
+    items:[
+      {qty:2,name:'Zinger Burger',variant:'',note:'One without cheese',station:'Main Kitchen',newQty:false}
+    ]
+  }
+];
+
+const completed=[
+  {id:'KOT-0119',bill:'#0015',type:'Dine In',table:'Table 3',minutes:12,time:'12:04 PM'},
+  {id:'KOT-0118',bill:'#0014',type:'Takeaway',table:'—',minutes:8,time:'11:56 AM'},
+  {id:'KOT-0117',bill:'#0013',type:'Home Delivery',table:'—',minutes:17,time:'11:43 AM'}
+];
+
+let typeFilter='All';
+let priorityFilter=false;
+let stationFilter='All';
+let search='';
+let soundOn=true;
+let activeReprint=null;
+
+function money(n){return 'PKR '+Number(n).toLocaleString('en-PK')}
+function toast(msg){
+  const t=$('#toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(window._toast);
+  window._toast=setTimeout(()=>t.classList.remove('show'),1700);
+}
+function openModal(id){$('#'+id).classList.add('show')}
+function closeModal(id){$('#'+id).classList.remove('show')}
+
+function orderMinutes(order){
+  return order.createdMinutesAgo;
+}
+function visibleItems(order){
+  if(stationFilter==='All')return order.items;
+  return order.items.filter(i=>i.station===stationFilter);
+}
+function orderMatches(order){
+  if(typeFilter!=='All' && order.type!==typeFilter)return false;
+  if(priorityFilter && order.status!=='Delayed' && orderMinutes(order)<15)return false;
+
+  const vis=visibleItems(order);
+  if(!vis.length)return false;
+
+  const q=search.trim().toLowerCase();
+  if(q){
+    const bag=[
+      order.id,order.bill,order.type,order.table,order.waiter,
+      ...vis.map(i=>i.name+' '+i.variant+' '+i.note)
+    ].join(' ').toLowerCase();
+    if(!bag.includes(q))return false;
+  }
+  return true;
+}
+function typeClass(type){
+  if(type==='Dine In')return 'dine';
+  if(type==='Takeaway')return 'takeaway';
+  return 'delivery';
+}
+function timerClass(min){
+  if(min>=18)return 'late';
+  if(min>=12)return 'warn';
+  return '';
+}
+function cardClass(order){
+  const arr=[];
+  if(order.priority)arr.push('priority');
+  if(order.status==='Delayed')arr.push('delayed');
+  if(order.status==='Ready')arr.push('ready');
+  return arr.join(' ');
+}
+function actionLabel(order){
+  if(order.status==='New')return ['Start Preparing','start'];
+  if(order.status==='Preparing'||order.status==='Delayed')return ['Mark Ready','ready'];
+  if(order.status==='Ready')return [order.type==='Dine In'?'Serve Order':'Dispatch Order','serve'];
+  return ['Open',''];
+}
+
+function ticketHtml(order){
+  const items=visibleItems(order);
+  const [label,cls]=actionLabel(order);
+  return `
+    <article class="ticket ${cardClass(order)}" data-order="${order.id}">
+      <div class="ticket-head">
+        <div>
+          <div class="ticket-id">
+            <strong>${order.bill}</strong>
+            <span class="type-badge ${typeClass(order.type)}">${order.type}</span>
+          </div>
+          <div class="ticket-meta">${order.id} · ${order.table!=='—'?order.table+' · ':''}${order.waiter}</div>
+        </div>
+        <div class="timer ${timerClass(orderMinutes(order))}">
+          <span>Waiting</span>
+          <b>${orderMinutes(order)}m</b>
+        </div>
+      </div>
+
+      <div class="ticket-info">
+        <div class="info-cell">
+          <span>Kitchen Station</span>
+          <b>${stationFilter==='All'?'Multiple':stationFilter}</b>
+        </div>
+        <div class="info-cell">
+          <span>Items</span>
+          <b>${items.reduce((a,i)=>a+Number(i.qty),0)} Qty</b>
+        </div>
+      </div>
+
+      ${order.voidAlert?`
+        <div class="void-alert">
+          <b>VOID ALERT:</b> ${order.voidAlert.qty} × ${order.voidAlert.item}<br>
+          ${order.voidAlert.reason} · Approved by ${order.voidAlert.approvedBy}
+        </div>`:''}
+
+      <div class="item-list">
+        ${items.map((i,idx)=>`
+          <div class="kitem">
+            <div class="kqty">${i.qty}</div>
+            <div class="kdesc">
+              <strong>${i.name}</strong>
+              ${i.variant?`<span class="variant">${i.variant}</span>`:''}
+              ${i.note?`<span class="note">${i.note}</span>`:''}
+              ${i.newQty?`<span class="newqty">New quantity only</span>`:''}
+            </div>
+            <div class="item-state">
+              <button data-item-done="${order.id}:${idx}">${i.done?'Done':'Item Done'}</button>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <div class="ticket-actions">
+        <button class="primary-action ${cls}" data-main-action="${order.id}">${label}</button>
+        <button class="secondary-action" data-recall="${order.id}">${order.status==='Ready'?'Recall':'Details'}</button>
+        <button class="small-action" data-reprint="${order.id}" title="Reprint KOT">⎙</button>
+      </div>
+    </article>`;
+}
+
+function render(){
+  const filtered=orders.filter(orderMatches);
+
+  const groups={
+    New:filtered.filter(o=>o.status==='New'),
+    Preparing:filtered.filter(o=>o.status==='Preparing'),
+    Ready:filtered.filter(o=>o.status==='Ready'),
+    Delayed:filtered.filter(o=>o.status==='Delayed')
+  };
+
+  $('#newCards').innerHTML=groups.New.map(ticketHtml).join('') || '<div style="padding:18px;color:#7d8982;font-size:14px">No new orders.</div>';
+  $('#preparingCards').innerHTML=groups.Preparing.map(ticketHtml).join('') || '<div style="padding:18px;color:#7d8982;font-size:14px">No preparing orders.</div>';
+  $('#readyCards').innerHTML=groups.Ready.map(ticketHtml).join('') || '<div style="padding:18px;color:#7d8982;font-size:14px">No ready orders.</div>';
+  $('#delayedCards').innerHTML=groups.Delayed.map(ticketHtml).join('') || '<div style="padding:18px;color:#7d8982;font-size:14px">No delayed orders.</div>';
+
+  $('#countNew').textContent=groups.New.length;
+  $('#countPreparing').textContent=groups.Preparing.length;
+  $('#countReady').textContent=groups.Ready.length;
+  $('#countDelayed').textContent=groups.Delayed.length;
+
+  $('#statNew').textContent=orders.filter(o=>o.status==='New').length;
+  $('#statPrep').textContent=orders.filter(o=>o.status==='Preparing').length;
+  $('#statReady').textContent=orders.filter(o=>o.status==='Ready').length;
+  $('#statDelay').textContent=orders.filter(o=>o.status==='Delayed').length;
+
+  $('#footerStation').textContent=stationFilter==='All'?'All Kitchen Stations':stationFilter;
+}
+
+function moveOrder(id){
+  const o=orders.find(x=>x.id===id);if(!o)return;
+
+  if(o.status==='New'){
+    o.status='Preparing';
+    toast(`${o.bill} started`);
+  }else if(o.status==='Preparing'||o.status==='Delayed'){
+    o.status='Ready';
+    toast(`${o.bill} ready · waiter notified`);
+  }else if(o.status==='Ready'){
+    completed.unshift({
+      id:o.id,bill:o.bill,type:o.type,table:o.table,minutes:o.createdMinutesAgo,
+      time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    });
+    const i=orders.indexOf(o);
+    orders.splice(i,1);
+    toast(`${o.bill} completed`);
+  }
+  render();
+}
+
+function reprint(order){
+  activeReprint=order;
+  const items=visibleItems(order);
+  $('#reprintBody').innerHTML=`
+    <div style="font-family:Arial,sans-serif;color:#111">
+      <div style="text-align:center">
+        <div style="font-size:18px;font-weight:700">URBAN SPOON — KOT</div>
+        <div style="font-size:11px;margin-top:3px">Kitchen Reprint</div>
+      </div>
+      <div style="border-top:1px dashed #777;border-bottom:1px dashed #777;padding:7px 0;margin:8px 0;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <div>Bill: ${order.bill}</div>
+        <div>Type: ${order.type}</div>
+        <div>Table: ${order.table}</div>
+        <div>Waiter: ${order.waiter}</div>
+      </div>
+      ${items.map(i=>`
+        <div style="display:grid;grid-template-columns:48px 1fr;gap:8px;padding:7px 0;border-bottom:1px dashed #ccc">
+          <div style="font-size:18px;font-weight:700">${i.qty}x</div>
+          <div>
+            <div style="font-size:14px;font-weight:700">${i.name}</div>
+            ${i.variant?`<div style="font-size:11px;margin-top:2px">${i.variant}</div>`:''}
+            ${i.note?`<div style="font-size:11px;margin-top:3px">${i.note}</div>`:''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+  openModal('reprintModal');
+}
+
+function renderHistory(){
+  $('#historyList').innerHTML=completed.length
+    ? completed.map(x=>`
+      <div class="history-row">
+        <strong>${x.bill} · ${x.type}${x.table!=='—'?' · '+x.table:''}</strong>
+        <small>${x.id} · Completed in ${x.minutes} min · ${x.time}</small>
+        <span class="tag">Completed</span>
+      </div>`).join('')
+    : '<div style="padding:20px;color:#7c8881;font-size:14px">No completed orders.</div>';
+}
+
+document.addEventListener('click',e=>{
+  const type=e.target.closest('[data-type]');
+  if(type){
+    typeFilter=type.dataset.type;
+    $$('[data-type]').forEach(b=>b.classList.toggle('active',b===type));
+    render();return;
+  }
+
+  const pri=e.target.closest('[data-priority]');
+  if(pri){
+    priorityFilter=!priorityFilter;
+    pri.classList.toggle('active',priorityFilter);
+    render();return;
+  }
+
+  const main=e.target.closest('[data-main-action]');
+  if(main){moveOrder(main.dataset.mainAction);return}
+
+  const done=e.target.closest('[data-item-done]');
+  if(done){
+    const [id,idx]=done.dataset.itemDone.split(':');
+    const o=orders.find(x=>x.id===id);
+    if(o){
+      const item=visibleItems(o)[Number(idx)];
+      if(item){item.done=!item.done;render()}
+    }
+    return;
+  }
+
+  const recall=e.target.closest('[data-recall]');
+  if(recall){
+    const o=orders.find(x=>x.id===recall.dataset.recall);
+    if(!o)return;
+    if(o.status==='Ready'){
+      o.status='Preparing';
+      toast(`${o.bill} recalled to Preparing`);
+      render();
+    }else{
+      toast(`${o.bill} details opened`);
+    }
+    return;
+  }
+
+  const rp=e.target.closest('[data-reprint]');
+  if(rp){
+    const o=orders.find(x=>x.id===rp.dataset.reprint);
+    if(o)reprint(o);
+    return;
+  }
+
+  const close=e.target.closest('[data-close]');
+  if(close){closeModal(close.dataset.close);return}
+  if(e.target.classList.contains('modal'))e.target.classList.remove('show');
+});
+
+$('#stationSelect').onchange=e=>{
+  stationFilter=e.target.value;
+  render();
+};
+$('#searchInput').oninput=e=>{
+  search=e.target.value;
+  render();
+};
+$('#soundBtn').onclick=()=>{
+  soundOn=!soundOn;
+  $('#soundBtn').textContent=soundOn?'Sound On':'Sound Off';
+  $('#soundBtn').classList.toggle('active',soundOn);
+};
+$('#historyBtn').onclick=()=>{
+  renderHistory();
+  openModal('historyModal');
+};
+$('#fullscreenBtn').onclick=async()=>{
+  try{
+    if(!document.fullscreenElement)await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  }catch{}
+};
+$('#printKotBtn').onclick=()=>{
+  if(!activeReprint)return;
+  toast(`KOT ${activeReprint.id} sent to kitchen printer`);
+};
+
+render();
+</script>
+<a href="index.html" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#fff;border:1px solid #dfe6e2;padding:6px 8px;font:10px Segoe UI;color:#087d50;text-decoration:none">UI Suite</a></body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings · Urban Spoon</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Settings</h1><p>Business, tax and receipt configuration</p></div>
+      <div class="header-spacer"></div>
+      <button class="btn primary" id="saveBtn">Save changes</button>
+    </header>
+    <div class="content">
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Business information</h2><p>Shown on receipts and invoices</p></div></div>
+          <div class="panel-body"><div class="form-grid">
+            <label class="field full"><span>Restaurant name</span><input data-s="name" value="Urban Spoon"></label>
+            <label class="field full"><span>Branch</span><input data-s="branch" value="Islamabad — F10"></label>
+            <label class="field"><span>Phone</span><input data-s="phone" value="051-111-000-999"></label>
+            <label class="field"><span>NTN / STRN</span><input data-s="ntn" value="1234567-8"></label>
+            <label class="field full"><span>Address</span><textarea data-s="address">Plot 21, F-10 Markaz, Islamabad</textarea></label>
+          </div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Tax & currency</h2></div></div>
+          <div class="panel-body"><div class="form-grid">
+            <label class="field"><span>Currency</span><select data-s="currency"><option>PKR</option><option>USD</option><option>AED</option></select></label>
+            <label class="field"><span>Sales tax %</span><input type="number" data-s="tax" value="16"></label>
+            <label class="field"><span>Service charge %</span><input type="number" data-s="service" value="0"></label>
+            <label class="field"><span>FBR POS mode</span><select data-s="fbr"><option>Enabled</option><option>Disabled</option></select></label>
+            <label class="field full"><span>Rounding</span><select data-s="round"><option>Nearest 1</option><option>Nearest 5</option><option>No rounding</option></select></label>
+          </div></div>
+        </section>
+      </div>
+      <div class="split" style="margin-top:14px">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Receipt</h2></div></div>
+          <div class="panel-body"><div class="form-grid">
+            <label class="field full"><span>Header line</span><input data-s="rhead" value="Thank you for dining with Urban Spoon"></label>
+            <label class="field full"><span>Footer line</span><input data-s="rfoot" value="Follow us @urbanspoon.pk"></label>
+            <label class="field"><span>Print logo</span><select data-s="logo"><option>Yes</option><option>No</option></select></label>
+            <label class="field"><span>Paper size</span><select data-s="paper"><option>80mm</option><option>58mm</option></select></label>
+          </div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Operations</h2></div></div>
+          <div class="panel-body"><div class="form-grid">
+            <label class="field"><span>Default order type</span><select data-s="otype"><option>Dine In</option><option>Takeaway</option><option>Delivery</option></select></label>
+            <label class="field"><span>KOT auto-print</span><select data-s="kot"><option>On</option><option>Off</option></select></label>
+            <label class="field"><span>Low-stock alert</span><select data-s="lowstock"><option>On</option><option>Off</option></select></label>
+            <label class="field"><span>Offline mode</span><select data-s="offline"><option>Auto</option><option>Always on</option></select></label>
+          </div></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="settings"></script>
+<script>
+var KEY='urban_spoon_settings_v1';
+try{var saved=JSON.parse(localStorage.getItem(KEY)||'{}');Object.keys(saved).forEach(function(k){var el=document.querySelector('[data-s="'+k+'"]');if(el)el.value=saved[k]})}catch(e){}
+document.getElementById('saveBtn').onclick=function(){
+  var o={};document.querySelectorAll('[data-s]').forEach(function(el){o[el.getAttribute('data-s')]=el.value});
+  localStorage.setItem(KEY,JSON.stringify(o));
+  var t=document.getElementById('toast');t.textContent='Settings saved';t.className='toast show';setTimeout(function(){t.className='toast'},1600);
+};
+</script>
+</body>
+</html>

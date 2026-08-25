@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purchasing</title><link rel="stylesheet" href="shared.css">
+<style>
+.purchase-cards{display:none}.purchase-card{border:1px solid var(--line);background:#fff;padding:11px;margin-bottom:8px}.purchase-card-top{display:flex;justify-content:space-between;gap:8px}.purchase-card h3{margin:0;font-size:14px}.purchase-card small{display:block;margin-top:3px;color:var(--muted);font-size:10px}.purchase-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.purchase-card-grid div{padding:7px;background:#f7faf8}.purchase-card-grid span{display:block;font-size:9px;color:var(--muted)}.purchase-card-grid b{display:block;margin-top:2px;font-size:11px}
+.po-lines{display:grid;gap:7px}.po-line{display:grid;grid-template-columns:1.3fr .55fr .7fr .7fr 34px;gap:6px;align-items:end}.po-line .remove{height:40px;border:1px solid #eccfd2;background:#fff3f4;color:#b8444e}
+.receive-note{padding:8px;background:#edf7ff;border:1px solid #d8e7f5;color:#516c86;font-size:10px;line-height:1.45}
+@media(max-width:720px){
+ .header{align-items:flex-start;flex-wrap:wrap}.header .header-btn.primary{width:100%;order:3}.table-wrap{display:none}.purchase-cards{display:block}
+ .dialog{width:100%;height:100%;max-height:none}.po-line{grid-template-columns:1fr 1fr}.po-line label:first-child{grid-column:1/-1}.po-line .remove{grid-column:2}.stats{grid-template-columns:1fr 1fr}
+}
+</style></head><body>
+<div class="app"><aside class="sidebar" id="side"></aside><main class="main">
+<header class="header"><button class="menu-btn" id="menuBtn">☰</button><div class="header-title"><h1>Purchasing</h1><p>Default view shows purchase history. Receive purchase quantities directly into inventory.</p></div><div class="header-spacer"></div><button class="header-btn primary" id="newPurchaseBtn">+ New Purchase</button></header>
+<div class="content">
+<div class="stats"><div class="stat"><span>Purchase Orders</span><b id="poCount">0</b><small>Current demo data</small></div><div class="stat"><span>Received</span><b id="receivedCount">0</b><small>Inventory updated</small></div><div class="stat"><span>Pending Receive</span><b id="pendingCount" style="color:var(--orange)">0</b><small>Awaiting GRN</small></div><div class="stat"><span>Total Purchase Value</span><b id="purchaseValue">PKR 0</b><small>Current list</small></div></div>
+<section class="panel"><div class="panel-head"><div><h2>Purchase List</h2><p>Latest purchase orders and goods receiving.</p></div><div class="spacer"></div><input id="purchaseSearch" placeholder="Search PO or supplier..." style="max-width:280px"></div>
+<div class="table-wrap"><table class="table"><thead><tr><th>PO</th><th>Date</th><th>Supplier</th><th>Items</th><th>Amount</th><th>Status</th><th>Inventory</th></tr></thead><tbody id="poRows"></tbody></table></div><div class="purchase-cards" id="poCards"></div></section>
+</div></main></div>
+
+<div class="modal" id="purchaseModal"><div class="dialog" style="width:min(820px,96vw)"><div class="dialog-head"><div><h3>New Purchase / Goods Receiving</h3><p>On Receive, stock quantity is added to Inventory immediately.</p></div><button class="close" data-close="purchaseModal">×</button></div>
+<div class="dialog-body"><div class="form-grid"><label><span>Supplier</span><select id="supplier"><option>Fresh Foods Traders</option><option>Islamabad Poultry</option><option>Metro Wholesale</option><option>Beverage Distributor</option></select></label><label><span>PO / Supplier Reference</span><input id="poReference" value="PO-1042"></label></div>
+<div style="font-size:12px;font-weight:650;margin-top:12px">Purchase Items</div><div class="po-lines" id="poLines" style="margin-top:7px"></div><button class="btn" id="addLine" style="margin-top:7px">+ Add Item</button>
+<div class="receive-note" style="margin-top:10px">Example: Coke Tin purchase unit is Carton (24). Receiving 5 cartons adds 120 pieces to inventory. Recipe items such as chicken/rice update their stock units using their purchase conversion.</div>
+</div><div class="dialog-foot"><button class="btn" data-close="purchaseModal">Cancel</button><button class="btn primary" id="receivePurchase">Receive & Update Inventory</button></div></div></div>
+<div class="toast" id="toast"></div><script src="shared_store.js"></script><script src="live_store.js"></script><script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let lines=[];
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),1700)}
+function openM(id){$('#'+id).classList.add('show')}function closeM(id){$('#'+id).classList.remove('show')}
+function money(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2})}
+function addLine(itemId){
+ const state=RestaurantStore.getState(),item=state.inventoryItems.find(x=>x.id===(itemId||state.inventoryItems[0].id));
+ lines.push({key:Date.now()+Math.random(),itemId:item.id,purchaseQty:1,unitCost:Number(item.avgStockCost)*Number(item.purchaseFactor)});
+ renderLines();
+}
+function renderLines(){
+ const state=RestaurantStore.getState();
+ $('#poLines').innerHTML=lines.map((l,idx)=>{
+   const item=state.inventoryItems.find(x=>x.id===l.itemId)||state.inventoryItems[0];
+   const opts=state.inventoryItems.map(i=>'<option value="'+i.id+'" '+(i.id===l.itemId?'selected':'')+'>'+i.name+'</option>').join('');
+   return '<div class="po-line"><label><span>Inventory Item</span><select data-line-item="'+idx+'">'+opts+'</select></label><label><span>Qty</span><input data-line-qty="'+idx+'" type="number" step="0.01" value="'+l.purchaseQty+'"></label><label><span>Purchase Unit</span><input value="'+item.purchaseUnit+'" readonly></label><label><span>Cost / Unit</span><input data-line-cost="'+idx+'" type="number" step="0.01" value="'+Number(l.unitCost).toFixed(2)+'"></label><button class="remove" data-remove-line="'+idx+'">×</button></div>';
+ }).join('');
+}
+function render(){
+ const state=RestaurantStore.getState(),q=$('#purchaseSearch').value.toLowerCase();
+ const list=state.purchaseOrders.filter(p=>!q||(p.id+' '+p.supplier).toLowerCase().includes(q));
+ $('#poCount').textContent=state.purchaseOrders.length;$('#receivedCount').textContent=state.purchaseOrders.filter(p=>p.status==='Received').length;$('#pendingCount').textContent=state.purchaseOrders.filter(p=>p.status!=='Received').length;$('#purchaseValue').textContent=money(state.purchaseOrders.reduce((a,p)=>a+Number(p.amount||0),0));
+ $('#poRows').innerHTML=list.map(p=>'<tr><td><b>'+p.id+'</b></td><td>'+p.date+'</td><td>'+p.supplier+'</td><td>'+p.lines+'</td><td>'+money(p.amount)+'</td><td><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></td><td>'+(p.status==='Received'?'<span class="tag green">Stock Updated</span>':'Pending')+'</td></tr>').join('');
+ $('#poCards').innerHTML=list.map(p=>'<article class="purchase-card"><div class="purchase-card-top"><div><h3>'+p.id+'</h3><small>'+p.supplier+' · '+p.date+'</small></div><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></div><div class="purchase-card-grid"><div><span>Items</span><b>'+p.lines+'</b></div><div><span>Amount</span><b>'+money(p.amount)+'</b></div><div><span>Inventory</span><b>'+(p.status==='Received'?'Updated':'Pending')+'</b></div><div><span>Reference</span><b>'+p.id+'</b></div></div></article>').join('');
+}
+$('#newPurchaseBtn').onclick=()=>{lines=[];addLine('chicken');addLine('coke_tin');openM('purchaseModal')};$('#addLine').onclick=()=>addLine();
+document.addEventListener('input',e=>{let m=e.target.dataset.lineQty;if(m!==undefined)lines[+m].purchaseQty=Number(e.target.value||0);m=e.target.dataset.lineCost;if(m!==undefined)lines[+m].unitCost=Number(e.target.value||0)});
+document.addEventListener('change',e=>{const idx=e.target.dataset.lineItem;if(idx!==undefined){const state=RestaurantStore.getState(),item=state.inventoryItems.find(x=>x.id===e.target.value);lines[+idx].itemId=item.id;lines[+idx].unitCost=Number(item.avgStockCost)*Number(item.purchaseFactor);renderLines()}});
+document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-remove-line]');if(r){lines.splice(+r.dataset.removeLine,1);renderLines();return}});
+$('#receivePurchase').onclick=()=>{if(!lines.length){toast('Add at least one purchase item');return}const result=RestaurantStore.receivePurchase(lines,{supplier:$('#supplier').value,reference:$('#poReference').value.trim()||undefined});if(window.RestaurantLive) RestaurantLive.recordPurchase(result.amount);closeM('purchaseModal');render();toast('Purchase received · '+result.movements.length+' inventory items updated')};
+$('#purchaseSearch').oninput=render;render();
+</script><script src="access_store.js"></script><script src="shell.js" data-active="purchasing"></script><div class="scrim" id="scrim"></div></body></html>

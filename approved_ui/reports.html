@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports · Urban Spoon</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.chart{height:240px;display:flex;align-items:flex-end;gap:10px;padding:8px 4px 0}
+.bcol{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+.bar{width:100%;max-width:38px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#f0663c,#e0301a);min-height:5px}
+.bcol span{font-size:10px;color:var(--faint)}
+.bars-h{display:grid;gap:11px}
+.brow{display:grid;grid-template-columns:130px 1fr 90px;gap:10px;align-items:center}
+.brow .track{height:12px;border-radius:20px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line)}
+.brow .fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#e0301a,#f0663c)}
+.brow .lab{font-size:12.5px;font-weight:600}
+.brow .val{font-size:12px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.don{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.don-legend{display:grid;gap:8px}
+.leg{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.leg i{width:12px;height:12px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Reports</h1><p>Sales, profit and product performance</p></div>
+      <div class="header-spacer"></div>
+      <div class="seg" id="range"><button class="active" data-r="today">Today</button><button data-r="week">Week</button><button data-r="month">Month</button></div>
+      <button class="btn" id="exportBtn">Export CSV</button>
+    </header>
+    <div class="content">
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Net sales</div><div class="val" id="rNet">PKR 0</div><div class="sub" id="rOrders">0 orders</div></div>
+        <div class="kpi ok"><div class="lab">Gross profit</div><div class="val" id="rProfit">PKR 0</div><div class="sub" id="rMargin">0% margin</div></div>
+        <div class="kpi warn"><div class="lab">Food cost</div><div class="val" id="rFood">PKR 0</div><div class="sub" id="rFoodPct">0% of sales</div></div>
+        <div class="kpi info"><div class="lab">Avg. order value</div><div class="val" id="rAov">PKR 0</div><div class="sub">Per bill</div></div>
+      </div>
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Sales by hour</h2><p>Peak trading times</p></div></div>
+          <div class="panel-body"><div class="chart" id="chart"></div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Sales channel mix</h2></div></div>
+          <div class="panel-body"><div class="don">
+            <svg width="150" height="150" viewBox="0 0 42 42" id="donut" style="flex-shrink:0"></svg>
+            <div class="don-legend" id="legend"></div>
+          </div></div>
+        </section>
+      </div>
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Top selling items</h2><p>By revenue</p></div></div>
+        <div class="panel-body"><div class="bars-h" id="topBars"></div></div>
+      </section>
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Payment collection</h2></div></div>
+        <div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead><tr><th>Method</th><th class="num">Amount</th><th class="num">Share</th></tr></thead>
+          <tbody id="payRows"></tbody></table></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="reports"></script>
+<script>
+var $=function(s){return document.querySelector(s)};
+var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
+var mult={today:1,week:6.4,month:27};
+function toast(m){var t=$('#toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast'},1600)}
+function render(range){
+  var s=RestaurantLive.get(), k=mult[range]||1;
+  var net=Math.round(s.netSales*k), food=Math.round(s.foodCost*k), exp=Math.round(s.expenses*k);
+  var orders=Math.round(s.orders*k), profit=net-food-exp;
+  $('#rNet').textContent=money(net); $('#rOrders').textContent=orders+' orders';
+  $('#rProfit').textContent=money(profit); $('#rMargin').textContent=(net?Math.round(profit/net*100):0)+'% margin';
+  $('#rFood').textContent=money(food); $('#rFoodPct').textContent=(net?Math.round(food/net*100):0)+'% of sales';
+  $('#rAov').textContent=money(orders?net/orders:0);
+  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
+  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bcol"><div class="bar" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
+  var ch=[['Dine in',s.dineIn,'#e0301a'],['Takeaway',s.takeaway,'#f0663c'],['Delivery',s.delivery,'#1f6fb2'],['Online',s.online,'#15804a']];
+  var tot=ch.reduce(function(a,c){return a+c[1]},0), off=25, svg='';
+  ch.forEach(function(c){var pct=tot?c[1]/tot*100:0;svg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+c[2]+'" stroke-width="6" stroke-dasharray="'+pct+' '+(100-pct)+'" stroke-dashoffset="'+off+'"/>';off-=pct});
+  $('#donut').innerHTML=svg;
+  $('#legend').innerHTML=ch.map(function(c){return '<div class="leg"><i style="background:'+c[2]+'"></i>'+c[0]+' — <b>'+(tot?Math.round(c[1]/tot*100):0)+'%</b></div>'}).join('');
+  var bmax=Math.max.apply(null,s.best.map(function(x){return x.sales}).concat([1]));
+  $('#topBars').innerHTML=s.best.map(function(x){return '<div class="brow"><span class="lab">'+x.name+'</span><div class="track"><div class="fill" style="width:'+(x.sales/bmax*100)+'%"></div></div><span class="val">'+money(Math.round(x.sales*k))+'</span></div>'}).join('');
+  var pay=[['Cash',s.cash],['Card',s.card],['Raast',s.raast],['Wallet / bank',s.walletBank]];
+  var ptot=pay.reduce(function(a,p){return a+p[1]},0);
+  $('#payRows').innerHTML=pay.map(function(p){return '<tr><td class="t-main">'+p[0]+'</td><td class="num">'+money(Math.round(p[1]*k))+'</td><td class="num">'+(ptot?Math.round(p[1]/ptot*100):0)+'%</td></tr>'}).join('');
+}
+document.querySelectorAll('#range button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#range button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');render(b.getAttribute('data-r'))}});
+$('#exportBtn').onclick=function(){toast('Report exported to CSV')};
+render('today');
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+<?php
+require_once dirname(__DIR__).'/src/bootstrap.php';use Aio\DB;$pdo=DB::pdo();$names=['Fresh Foods Traders','Islamabad Poultry','Metro Wholesale','Beverage Distributor'];foreach($names as $n){$q=$pdo->prepare('SELECT COUNT(*) FROM suppliers WHERE tenant_id=? AND name=?');$q->execute([tenant_id(),$n]);if(!$q->fetchColumn())$pdo->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,status) VALUES(?,?,?,?,'ACTIVE')")->execute([uuid(),tenant_id(),site_id(),$n]);}echo "Suppliers seeded.\n";

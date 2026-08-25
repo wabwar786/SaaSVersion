@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Urban Spoon · First-time setup</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="auth.css">
+</head>
+<body>
+<div class="auth">
+  <section class="auth-brand">
+    <div class="brand-mark">U</div>
+    <h1>First-time setup</h1>
+    <p>Create the owner / administrator account for this installation. This is the master login that can approve staff and access every module.</p>
+    <div class="badges"><span>👑 Owner access</span><span>🔐 Full control</span></div>
+  </section>
+  <section class="auth-panel">
+    <div class="auth-card">
+      <h2>Create administrator</h2>
+      <p>Set up the master account to get started</p>
+      <label class="field-g"><span>Full name</span><input id="name" placeholder="System Administrator"></label>
+      <label class="field-g"><span>Email</span><input id="email" type="email" placeholder="admin@urbanspoon.local"></label>
+      <label class="field-g"><span>Username</span><input id="username" placeholder="admin"></label>
+      <label class="field-g"><span>Password</span><input id="password" type="password" placeholder="Choose a strong password"></label>
+      <div class="err" id="error"></div>
+      <button class="primary-btn" id="setupBtn">Create administrator</button>
+      <div class="auth-foot">Already set up? <a href="login.html">Sign in</a></div>
+    </div>
+  </section>
+</div>
+<script src="access_store.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+$('#setupBtn').onclick=()=>{const r=RestaurantAccess.setup({name:$('#name').value.trim(),email:$('#email').value.trim(),username:$('#username').value.trim(),password:$('#password').value});if(!r.ok){$('#error').textContent=r.message||'Unable to create administrator';$('#error').classList.add('show');return}location.href='login.html'};
+</script>
+</body>
+</html>

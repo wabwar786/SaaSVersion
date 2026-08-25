@@ -1,0 +1,2 @@
+<?php
+require_once dirname(__DIR__).'/src/bootstrap.php';use Aio\DB;$pdo=DB::pdo();$q=$pdo->prepare("SELECT COUNT(*) FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE'");$q->execute([tenant_id(),site_id()]);if(!$q->fetchColumn())$pdo->prepare("INSERT INTO sync_nodes(id,tenant_id,site_id,node_type,node_code,status,app_version,schema_version) VALUES(?,?,?,'EDGE',?,'ACTIVE','php-v1','V1')")->execute([uuid(),tenant_id(),site_id(),'EDGE-'.substr(site_id(),0,8)]);echo "Edge node ready.\n";

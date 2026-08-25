@@ -1,0 +1,171 @@
+<?php
+declare(strict_types=1);require_once dirname(__DIR__).'/src/bootstrap.php';
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;
+header('Content-Type: application/json; charset=utf-8');
+function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){fail('Security token expired. Refresh the screen and try again.',419);}}}
+function needLogin(){if(!Auth::user())fail('Login required',401);}function needSuper(){if(!Platform::superUser())fail('Super admin login required',401);}
+function syncToken(){$t=$_SERVER['HTTP_X_SYNC_TOKEN']??'';$want=(string)(cfg('sync.token')?:'');if($want===''||!hash_equals($want,(string)$t))fail('Invalid sync token',401);}function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
+function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
+function applyUser(string $id,array $d,bool $create=false,?string $requestId=null):string{$p=DB::pdo();$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;$perm=$d['permissions']??[];if($create){return UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'','phone'=>$d['phone']??'','password'=>$d['password']?:'1234','role_id'=>$role,'modules'=>$mods,'is_admin'=>($d['role']??'')==='Owner / Admin','form_permissions'=>[]],$requestId);}return DB::tx(function($p)use($id,$d,$role,$mods){$p->prepare("UPDATE users SET full_name=?,email=?,phone=?,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$d['name'],$d['email'],$d['phone']??'',$id,tenant_id()]);if(!empty($d['password'])){[$h,$a]=UserService::passwordHash($d['password']);$p->prepare("UPDATE users SET password_hash=?,password_algo=? WHERE id=?")->execute([$h,$a,$id]);}$p->prepare("DELETE FROM user_roles WHERE user_id=?")->execute([$id]);$p->prepare("DELETE FROM user_module_access WHERE user_id=?")->execute([$id]);if($role)$p->prepare("INSERT INTO user_roles(id,user_id,role_id,site_id,assigned_by) VALUES(?,?,?,?,?)")->execute([uuid(),$id,$role,site_id(),current_user()['id']??null]);foreach($mods as $m)$p->prepare("INSERT INTO user_module_access(id,user_id,site_id,module_id,access_mode) VALUES(?,?,?,?, 'ALLOW')")->execute([uuid(),$id,site_id(),$m]);return$id;});}
+try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-ping','sa-login'],true))csrf_json();switch($a){
+case 'current-user':
+    $u=Auth::user();
+    if(!$u) fail('Not logged in',401);
+
+    $role='Owner / Admin';
+    if(empty($u['is_tenant_admin'])){
+        try{
+            $p=DB::pdo();
+            $q=$p->prepare("SELECT r.name
+                              FROM user_roles ur
+                              JOIN roles r ON r.id=ur.role_id
+                             WHERE ur.user_id=?
+                             ORDER BY ur.assigned_at DESC
+                             LIMIT 1");
+            $q->execute([$u['id']]);
+            $role=$q->fetchColumn()?:'User';
+        }catch(Throwable $e){
+            $role='User';
+        }
+    }
+
+    ok(['user'=>[
+        'id'=>$u['id'],
+        'name'=>$u['full_name'],
+        'email'=>$u['email'],
+        'role'=>$role,
+        'modules'=>$u['modules']??[],
+        'isAdmin'=>(bool)($u['is_tenant_admin']??false)
+    ]]);
+
+case 'login':
+    $d=body();
+    $email=trim((string)($d['email']??''));
+    $password=(string)($d['password']??'');
+
+    if($email==='' || $password===''){
+        fail('Email/login and password are required.',422);
+    }
+
+    // Cloud multi-tenant: scope login to the business identified by its slug.
+    if(cfg('app.role')==='cloud'){
+        $slug=trim((string)($d['b']??($_SESSION['login_tenant_slug']??'')));
+        if($slug!==''){ $tid=\Aio\Services\Platform::tenantIdBySlug($slug); if($tid){$_SESSION['login_tenant_id']=$tid;} }
+    }
+
+    if(!Auth::login($email,$password)){
+        fail('Invalid login or account not approved.',401);
+    }
+
+    $u=Auth::user();
+    if(!$u){
+        fail('Login succeeded but the local session could not be created.',500);
+    }
+
+    ok(['user'=>[
+        'id'=>$u['id'],
+        'name'=>$u['full_name'],
+        'email'=>$u['email'],
+        'modules'=>$u['modules']??[],
+        'isAdmin'=>(bool)($u['is_tenant_admin']??false)
+    ]]);
+
+case 'logout':Auth::logout();ok();
+case 'setup':$d=body();$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE'");$q->execute([tenant_id()]);if((int)$q->fetchColumn())fail('Administrator already exists.');if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$mods=array_column($p->query("SELECT id FROM platform_modules WHERE is_active=1")->fetchAll(),'id');UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'admin','phone'=>'','password'=>$d['password'],'role_id'=>roleIdByName('Owner / Admin'),'modules'=>$mods,'is_admin'=>1]);ok();
+case 'signup':$d=body();if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND email=?");$q->execute([tenant_id(),$d['email']]);$exists=(int)$q->fetchColumn();$q=$p->prepare("SELECT COUNT(*) FROM signup_requests WHERE email=? AND status='PENDING'");$q->execute([$d['email']]);$exists+=(int)$q->fetchColumn();if($exists)fail('Email already registered or pending.');UserService::signup(['full_name'=>$d['name'],'email'=>$d['email'],'phone'=>$d['phone']??'','business'=>$d['business']??'Restaurant','password'=>$d['password']]);$_SESSION['pending_signup_email']=$d['email'];ok();
+case 'access-state':ok(['state'=>accessState()]);
+case 'user-create':needLogin();Auth::requireModule('users');$d=body();$id=applyUser('', $d,true);ok(['id'=>$id,'state'=>accessState()]);
+case 'user-update':needLogin();Auth::requireModule('users');$d=body();applyUser($d['id'],$d,false);ok(['state'=>accessState()]);
+case 'signup-approve':needLogin();Auth::requireModule('users');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT * FROM signup_requests WHERE id=? AND status='PENDING'");$q->execute([$d['id']]);$r=$q->fetch();if(!$r)fail('Request not found.');$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;UserService::create(['full_name'=>$r['full_name'],'email'=>$r['email'],'username'=>'','phone'=>$r['phone']??'','password'=>'','password_hash_override'=>$r['password_hash'],'password_algo'=>'ARGON2ID','role_id'=>$role,'modules'=>$mods,'is_admin'=>0],$r['id']);ok(['state'=>accessState()]);
+case 'signup-reject':needLogin();Auth::requireModule('users');$d=body();DB::pdo()->prepare("UPDATE signup_requests SET status='REJECTED',reviewed_by_user_id=?,reviewed_at=NOW(6) WHERE id=? AND status='PENDING'")->execute([current_user()['id'],$d['id']]);ok(['state'=>accessState()]);
+case 'dashboard-state':needLogin();ok(['state'=>PageData::dashboard()]);
+case 'store-state':needLogin();ok(['state'=>PageData::storeState()]);
+case 'inventory-category-create':needLogin();Auth::requireModule('inventory');$d=body();InventoryService::createCategory(trim($d['name']??''));ok(['state'=>PageData::storeState()]);
+case 'inventory-item-create':needLogin();Auth::requireModule('inventory');$d=body();$p=DB::pdo();$cat=$p->prepare("SELECT id FROM inventory_categories WHERE site_id=? AND name=? LIMIT 1");$cat->execute([site_id(),$d['category']]);$cid=$cat->fetchColumn();$unitCode=strtoupper($d['stockUnit']==='piece'?'PCS':$d['stockUnit']);$u=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$u->execute([$unitCode]);$uid=$u->fetchColumn();$l=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND name=? LIMIT 1");$l->execute([site_id(),$d['storage']]);$lid=$l->fetchColumn()?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn();$usage=['Recipe Ingredient'=>'RECIPE_INGREDIENT','Direct Sale'=>'DIRECT_SALE','Both'=>'BOTH'][$d['usage']]??'RECIPE_INGREDIENT';InventoryService::createItem(['name'=>$d['name'],'category_id'=>$cid,'sku'=>$d['sku']??'','barcode'=>$d['barcode']??'','usage_mode'=>$usage,'stock_unit_id'=>$uid,'purchase_unit_name'=>$d['purchaseUnit'],'purchase_factor'=>(float)$d['purchaseFactor'],'avg_cost'=>(float)$d['avgStockCost'],'reorder_level'=>(float)$d['reorderQty'],'opening_qty'=>(float)$d['stockQty'],'location_id'=>$lid,'track_batch'=>!empty($d['batch']),'track_expiry'=>!empty($d['expiry'])]);ok(['state'=>PageData::storeState()]);
+case 'purchase-receive':needLogin();Auth::requireModule('purchasing');$d=body();$p=DB::pdo();$supplierName=$d['meta']['supplier']??'Supplier';$q=$p->prepare("SELECT id FROM suppliers WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$supplierName]);$sid=$q->fetchColumn();if(!$sid){$sid=uuid();$p->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,status) VALUES(?,?,?,?,'ACTIVE')")->execute([$sid,tenant_id(),site_id(),$supplierName]);}$lines=[];foreach($d['lines'] as $x){$itemId=(string)($x['itemId']??'');$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE id=? AND site_id=?");$iq->execute([$itemId,site_id()]);$it=$iq->fetch();if(!$it&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$it=$iq->fetch();}if(!$it)continue;$lines[]=['item_id'=>$it['id'],'purchase_qty'=>(float)$x['purchaseQty'],'purchase_factor'=>(float)$it['purchase_factor'],'unit_cost'=>(float)$x['unitCost'],'location_id'=>$it['default_storage_location_id']?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn(),'batch_no'=>'','expiry_date'=>''];}$grn=$d['meta']['reference']??('GRN-'.date('Ymd-His'));PurchaseService::receive(['grn_no'=>$grn,'supplier_id'=>$sid,'supplier_invoice_no'=>''],$lines);$amount=array_sum(array_map(fn($x)=>(float)$x['purchaseQty']*(float)$x['unitCost'],$d['lines']));ok(['amount'=>$amount,'movements'=>$lines,'state'=>PageData::storeState()]);
+case 'store-save-state':needLogin();$d=body();$p=DB::pdo();foreach($d['menuCategories']??[] as $c){$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$c['name']]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,is_active) VALUES(?,?,?,?,1)")->execute([$cid,tenant_id(),site_id(),$c['name']]);}$station=strtoupper($c['printer']??'MAIN');$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND UPPER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$station]);$pid=$pr->fetchColumn();if($pid){$p->prepare("DELETE FROM menu_category_printer_routes WHERE category_id=?")->execute([$cid]);$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,is_active) VALUES(?,?,?,?,?,1,1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}}ok(['state'=>PageData::storeState()]);
+case 'recipe-save':needLogin();Auth::requireModule('recipe');$d=body();$p=DB::pdo();$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$cq->execute([site_id(),$d['category']]);$cid=$cq->fetchColumn();if(!$cid)fail('Menu category not found.');$menuId=$d['id']??'';if($menuId&&!preg_match('/^[0-9a-f-]{36}$/i',$menuId))$menuId='';$ingredients=[];foreach($d['ingredients']??[] as $x){$iid=(string)($x['itemId']??'');if(!preg_match('/^[0-9a-f-]{36}$/i',$iid)&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$iid=$iq->fetchColumn()?:'';}if($iid)$ingredients[]=['item_id'=>$iid,'qty'=>(float)$x['qty'],'waste_pct'=>(float)($x['wastePct']??0)];}$id=RecipeService::save(['menu_item_id'=>$menuId,'category_id'=>$cid,'code'=>'','name'=>$d['menuName'],'description'=>'','consumption_type'=>$d['mode']==='direct'?'DIRECT_INVENTORY':'RECIPE','direct_inventory_item_id'=>(function()use($p,$d){$iid=$d['inventoryItemId']??null;if($iid&&preg_match('/^[0-9a-f-]{36}$/i',(string)$iid))return$iid;if(!empty($d['inventoryItemName'])){$q=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$d['inventoryItemName']]);return$q->fetchColumn()?:null;}return null;})(),'direct_inventory_qty'=>$d['directQty']??null,'base_price'=>0,'yield_qty'=>$d['yieldQty']??1],$ingredients);$state=PageData::storeState();$recipe=null;foreach($state['recipes'] as $r)if($r['id']===$id)$recipe=$r;ok(['recipe'=>$recipe?:['id'=>$id]+$d,'state'=>$state]);
+case 'pos-next-bill':needLogin();ok(['next'=>PageData::nextBill()]);
+case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$id=PosService::finalize($d,$d['items']??[]);ok(['order_id'=>$id,'next'=>PageData::nextBill(),'dashboard'=>PageData::dashboard()]);
+case 'pos-kot':needLogin();Auth::requireModule('pos');$d=body();$r=PosService::sendKot($d,$d['items']??[]);ok($r);
+case 'customer-order':
+$d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();
+$p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,opened_at,created_by_user_id,subtotal,grand_total) VALUES(?,?,?,?,?,'CUSTOMER_APP','DELIVERY','OPEN','UNPAID',NOW(6),?,0,0)")->execute([$oid,tenant_id(),site_id(),$bill,today(),current_user()['id']??null]);
+$total=0;foreach($d['cart']??[] as $x){$q=$p->prepare("SELECT id,base_price FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$x['name']??'']);$mi=$q->fetch();if(!$mi)continue;$qty=(float)($x['qty']??1);$line=$qty*(float)$mi['base_price'];$total+=$line;$p->prepare("INSERT INTO order_items(id,tenant_id,site_id,order_id,menu_item_id,item_name_snapshot,qty,sent_qty,unit_price,line_total,status) VALUES(?,?,?,?,?,?,?,0,?,?,'ACTIVE')")->execute([uuid(),tenant_id(),site_id(),$oid,$mi['id'],$x['name'],$qty,$mi['base_price'],$line]);}
+$p->prepare("UPDATE orders SET subtotal=?,grand_total=? WHERE id=?")->execute([$total,$total,$oid]);
+$p->prepare("INSERT INTO online_order_details(id,tenant_id,site_id,order_id,channel_code,external_order_no,acceptance_status,requested_at) VALUES(?,?,?,?, 'APP',?,'PENDING',NOW(6))")->execute([uuid(),tenant_id(),site_id(),$oid,$bill]);
+ok(['order_id'=>$oid,'movements'=>[],'shortages'=>[],'state'=>PageData::storeState()]);
+
+case 'module-demo-create':
+$d=body();needLogin();$page=(string)($d['page']??'');$f=is_array($d['fields']??null)?$d['fields']:[];$p=DB::pdo();$row=[];
+$now=date('h:i A');
+if($page==='customers.html'){
+  $id=uuid();$name=trim($f['name']??'New Customer');$phone=trim($f['phone']??'');$type=strtoupper(str_replace(' ','_',trim($f['type']??'REGULAR')));
+  $p->prepare("INSERT INTO customers(id,tenant_id,site_id,full_name,phone,customer_type,status) VALUES(?,?,?,?,?,?,'ACTIVE')")->execute([$id,tenant_id(),site_id(),$name,$phone?:null,$type]);
+  $row=[$name,$phone?:'—',0,'PKR 0',0,'—',ucfirst(strtolower($type))];
+}elseif($page==='suppliers.html'){
+  $id=uuid();$name=trim($f['name']??'New Supplier');$phone=trim($f['phone']??'');$email=trim($f['email']??'');
+  $p->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,phone,email,status) VALUES(?,?,?,?,?,?,'ACTIVE')")->execute([$id,tenant_id(),site_id(),$name,$phone?:null,$email?:null]);
+  $row=[$name,$phone?:'—',0,'PKR 0','PKR 0','Today'];
+}elseif($page==='reservations.html'){
+  $id=uuid();$name=trim($f['name']??'Guest');$phone=trim($f['phone']??'');$dt=!empty($f['datetime'])?date('Y-m-d H:i:s',strtotime($f['datetime'])):date('Y-m-d H:i:s',strtotime('+1 hour'));$g=max(1,(int)($f['guests']??1));$no='RSV-'.date('His').random_int(10,99);
+  $p->prepare("INSERT INTO reservations(id,tenant_id,site_id,reservation_no,guest_name,guest_phone,reservation_at,guest_count,status) VALUES(?,?,?,?,?,?,?,?, 'CONFIRMED')")->execute([$id,tenant_id(),site_id(),$no,$name,$phone?:null,$dt,$g]);
+  $row=[date('h:i A',strtotime($dt)),$name,$g,'—','PKR 0','Confirmed'];
+}elseif($page==='rider_management.html'){
+  $id=uuid();$name=trim($f['name']??'New Rider');$phone=trim($f['phone']??'');$vehicle=trim($f['vehicle']??'');
+  $p->prepare("INSERT INTO riders(id,tenant_id,site_id,name,phone,vehicle_no,status,cash_held) VALUES(?,?,?,?,?,?, 'AVAILABLE',0)")->execute([$id,tenant_id(),site_id(),$name,$phone?:null,$vehicle?:null]);
+  $row=[$name,$phone?:'—','—','PKR 0','AVAILABLE'];
+}elseif($page==='tables_floors.html'){
+  $floorName=trim($f['area']??'Ground Floor');$q=$p->prepare("SELECT id FROM floors WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$floorName]);$floor=$q->fetchColumn();if(!$floor){$floor=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,99,1)")->execute([$floor,tenant_id(),site_id(),$floorName]);}
+  $name=trim($f['name']??('Table '.random_int(31,99)));$code='T'.preg_replace('/\D/','',$name).random_int(10,99);$seats=max(1,(int)($f['seats']??2));
+  $p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,status,is_active) VALUES(?,?,?,?,?,?,?,'AVAILABLE',1)")->execute([uuid(),tenant_id(),site_id(),$floor,$code,$name,$seats]);
+  $row=[$name,$floorName,$seats,'AVAILABLE','—','—'];
+}elseif($page==='expenses.html'){
+  $cat=trim($f['category']??'General');$q=$p->prepare("SELECT id FROM expense_categories WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$cat]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)")->execute([$cid,tenant_id(),$cat]);}
+  $ref=trim($f['reference']??('EXP-'.date('His')));$amount=(float)($f['amount']??0);
+  $p->prepare("INSERT INTO expenses(id,tenant_id,site_id,expense_no,expense_date,category_id,amount,payment_method,description,status,created_by_user_id,created_at) VALUES(?,?,?,?,CURDATE(),?,?, 'CASH',?,'APPROVED',?,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$ref,$cid,$amount,$f['description']??null,current_user()['id']]);
+  $row=[$ref,$cat,'PKR '.number_format($amount,0),current_user()['full_name']??'Current User','APPROVED'];
+}elseif($page==='discounts_promotions.html'){
+  $name=trim($f['name']??'Promotion');$type=strtoupper(str_replace(' ','_',trim($f['type']??'PERCENT')));$code=trim($f['code']??'');
+  $p->prepare("INSERT INTO promotions(id,tenant_id,site_id,name,promotion_type,code,rules_json,is_active,created_at) VALUES(?,?,?,?,?,?,?,1,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$name,$type,$code?:null,json_encode(['source'=>'approved-ui'])]);
+  $row=[$name,$f['type']??'Percent','All','Current','0','Active'];
+}elseif($page==='printer_devices.html'){
+  $name=trim($f['name']??'Printer');$type=strtoupper(trim($f['type']??'KITCHEN'));$address=trim($f['address']??'');
+  if(in_array($type,['POS','KDS'],true)){$p->prepare("INSERT INTO devices(id,tenant_id,site_id,device_code,device_name,device_type,status,created_at) VALUES(?,?,?,?,?,?, 'ACTIVE',NOW(6))")->execute([uuid(),tenant_id(),site_id(),'DEV-'.date('His').random_int(10,99),$name,$type]);}
+  else{$p->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,connection_type,ip_address,is_active,created_at) VALUES(?,?,?,?,?,'NETWORK',?,1,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$name,$type?:'KITCHEN',$address?:null]);}
+  $row=[$name,$type.' / —',$address?:'—','Current Branch','Online'];
+}elseif($page==='staff_roles.html'){
+  $name=trim($f['name']??'Staff Member');$role=trim($f['role']??'Staff');$p->prepare("INSERT INTO employee_profiles(id,tenant_id,site_id,full_name,job_title,employment_status,created_at) VALUES(?,?,?,?,?,'ACTIVE',NOW(6))")->execute([uuid(),tenant_id(),site_id(),$name,$role]);$row=[$name,$role,$f['shift']??'—','Active','Standard'];
+}elseif($page==='shift_management.html'){
+  $ref=trim($f['reference']??('S-'.date('His')));$amount=(float)($f['amount']??0);$q=$p->prepare("SELECT COUNT(*) FROM cashier_shifts WHERE site_id=? AND status='OPEN'");$q->execute([site_id()]);if(!(int)$q->fetchColumn())$p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,opened_at,opening_cash,status,created_at) VALUES(?,?,?,?,CURDATE(),?,NOW(6),?,'OPEN',NOW(6))")->execute([uuid(),tenant_id(),site_id(),$ref,current_user()['id'],$amount]);$row=['Cash','PKR 0','PKR '.number_format($amount,0),'PKR 0'];
+}elseif($page==='stock_count.html'){
+  $ref=trim($f['reference']??('COUNT-'.date('His')));$p->prepare("INSERT INTO stock_count_sessions(id,tenant_id,site_id,count_no,started_at,status,started_by_user_id) VALUES(?,?,?,?,NOW(6),'OPEN',?)")->execute([uuid(),tenant_id(),site_id(),$ref,current_user()['id']]);$row=[$f['location']??'Stock Location',0,0,0,'PKR 0','New Count'];
+}elseif($page==='wastage_adjustment.html'){
+  $ref='ADJ-'.date('His').random_int(10,99);$aid=uuid();$p->prepare("INSERT INTO stock_adjustments(id,tenant_id,site_id,adjustment_no,reason_code,status,requested_by_user_id,requested_at,note) VALUES(?,?,?,?,?,'PENDING',?,NOW(6),?)")->execute([$aid,tenant_id(),site_id(),$ref,'WASTAGE',current_user()['id'],$f['reason']??null]);$row=[$f['item']??'Inventory Item',$f['qty']??0,$f['reason']??'Wastage',current_user()['full_name']??'Current User','Pending'];
+}elseif($page==='whatsapp_notifications.html'){
+  $event=trim($f['event']??'Notification');$channel=strtoupper(trim($f['channel']??'WHATSAPP'));$recipient=trim($f['audience']??'Customer');$p->prepare("INSERT INTO notification_queue(id,tenant_id,site_id,channel,recipient,template_key,status,attempts,available_at) VALUES(?,?,?,?,?,?, 'PENDING',0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$channel,$recipient,$event]);$row=[$event,$channel==='WHATSAPP'?'Enabled':'—',$channel==='PUSH'?'Enabled':'—',$channel==='SMS'?'Enabled':'—',$recipient];
+}elseif($page==='multi_branch.html'){
+  $name=trim($f['name']??'New Branch');$code=strtoupper(preg_replace('/[^A-Z0-9]+/','-',trim($f['code']??$name)));$q=$p->prepare("SELECT organization_id,timezone,currency FROM sites WHERE id=?");$q->execute([site_id()]);$s=$q->fetch();$p->prepare("INSERT INTO sites(id,tenant_id,organization_id,code,name,site_type,timezone,currency,status,created_at) VALUES(?,?,?,?,?,'BRANCH',?,?, 'ACTIVE',NOW(6))")->execute([uuid(),tenant_id(),$s['organization_id'],$code.'-'.random_int(10,99),$name,$s['timezone'],$s['currency']]);$row=[$name,'PKR 0',0,'PKR 0','Closed','Active'];
+}elseif($page==='accounting.html'){
+  $ref=trim($f['reference']??('JV-'.date('His')));$p->prepare("INSERT INTO journal_entries(id,tenant_id,site_id,journal_no,journal_date,narration,status,created_by_user_id,created_at) VALUES(?,?,?,?,CURDATE(),?,'POSTED',?,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$ref,$f['notes']??null,current_user()['id']]);$row=[$now,'Manual',$ref,'PKR '.number_format((float)($f['debit']??0),0),'PKR '.number_format((float)($f['credit']??0),0),'—'];
+}else{
+  $p->prepare("INSERT INTO audit_logs(id,tenant_id,site_id,user_id,action_code,entity_type,new_values_json,created_at) VALUES(?,?,?,?, 'UI_DEMO_CREATE',?,?,NOW(6))")->execute([uuid(),tenant_id(),site_id(),current_user()['id'],$page,json_encode($f)]);
+  $row=array_values($f);
+}
+ok(['row'=>$row]);
+case 'sync-ping':ok(['role'=>cfg('app.role'),'time'=>date('c')]);
+case 'sync-push':syncToken();$d=body();$n=Sync::applyRows((string)($d['table']??''),$d['rows']??[]);ok(['applied'=>$n]);
+case 'sync-pull':syncToken();$d=body();$t=(string)($d['table']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+case 'sync-run':needLogin();ok(Sync::run());
+case 'sync-status':needLogin();ok(['status'=>Sync::status()]);
+case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
+case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
+case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');DB::pdo()->prepare("UPDATE ui_records SET deleted=1,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$id,tenant_id()]);ok();
+case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??'')))fail('Invalid platform credentials',401);$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
+case 'sa-logout':Platform::superLogout();ok();
+case 'sa-me':$u=Platform::superUser();ok(['user'=>$u?['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]:null]);
+case 'sa-plans':needSuper();ok(['plans'=>DB::pdo()->query("SELECT id,name,price,billing_cycle FROM subscription_plans WHERE is_active=1 ORDER BY price")->fetchAll()]);
+case 'sa-business-list':needSuper();ok(['businesses'=>Platform::listBusinesses()]);
+case 'sa-business-create':needSuper();$d=body();$r=Platform::provisionBusiness($d);ok(['business'=>$r]);
+default:fail('Unknown API action',404);}
+}catch(Throwable $e){fail(cfg('app.debug')?$e->getMessage():'Operation failed.',500);}

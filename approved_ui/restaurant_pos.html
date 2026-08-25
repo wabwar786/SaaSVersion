@@ -1,0 +1,6388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Urban Spoon POS</title>
+<style>
+:root{--g:#10a36b;--gd:#0a8555;--gs:#eaf8f1;--bg:#f5f8f6;--p:#fff;--l:#e5ebe7;--t:#18211c;--m:#77837b;--o:#f59a3e;--pu:#7657d6;--b:#3d86df;--r:#e35e67}
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}body{font-family:"Segoe UI Variable Text","Segoe UI",Inter,Roboto,Arial,sans-serif;background:var(--bg);color:var(--t);font-size:13px;-webkit-font-smoothing:antialiased}button,input,select,textarea{font:inherit}button{cursor:pointer}svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.app{height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 430px;background:#fff}.work{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--l)}
+.drawer{position:fixed;inset:0 auto 0 0;width:210px;background:#0f1b16;color:#eaf2ee;z-index:90;transform:translateX(-100%);transition:.2s;box-shadow:22px 0 55px #0f1b1638;display:flex;flex-direction:column}.drawer.open{transform:none}.back{position:fixed;inset:0;background:#121d1838;backdrop-filter:blur(2px);z-index:80;display:none}.back.show{display:block}.brand{height:64px;display:flex;align-items:center;gap:10px;padding:0 15px;border-bottom:1px solid #ffffff12}.mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#1abc7e,#0d8c59);display:grid;place-items:center;font-weight:900}.brand strong{display:block;font-size:12px}.brand small{display:block;color:#9bb0a6;font-size:8px}.nav{padding:11px;display:grid;gap:5px}.nav button{height:40px;border:0;border-radius:9px;background:transparent;color:#aebcb5;text-align:left;padding:0 11px;font-size:9px}.nav button:hover,.nav button.active{background:#172820;color:#fff}.nav button.active{box-shadow:inset 3px 0 0 var(--g)}.drawer-foot{margin-top:auto;padding:11px}.status{padding:10px;border:1px solid #ffffff10;border-radius:10px;background:#13251d;font-size:8px}.status small{display:block;color:#90a69a;margin-top:2px}
+.top{height:62px;display:flex;align-items:center;gap:9px;padding:8px 11px;border-bottom:1px solid var(--l);background:linear-gradient(90deg,#fff,#fbfefc)}.menub,.ib{width:40px;height:40px;border:1px solid var(--l);border-radius:10px;background:#fff;display:grid;place-items:center;color:#425149}.search{height:40px;max-width:650px;flex:1;display:flex;align-items:center;gap:8px;border:1px solid var(--l);border-radius:10px;padding:0 10px}.search input{border:0;outline:0;flex:1;min-width:0;font-size:10px}.kbd{font-size:7px;border:1px solid var(--l);padding:3px 6px;border-radius:6px;color:#89948d}.fill{flex:1}.chip,.user{height:40px;border:1px solid var(--l);border-radius:10px;background:#fff;padding:0 9px;display:flex;align-items:center;gap:7px;font-size:8px;color:#526057}.user .av{width:27px;height:27px;border-radius:50%;background:var(--gs);color:var(--gd);display:grid;place-items:center;font-weight:900;font-size:7px}.user strong{font-size:8px;display:block}.user small{font-size:6.5px;color:#8c978f;display:block}.chip select{border:0;background:transparent;outline:0;font-size:8px;font-weight:800}
+.inf{height:32px;display:flex;align-items:center;gap:14px;padding:0 11px;border-bottom:1px solid #edf1ef;background:#fcfefd;font-size:7px;color:#65736b}.ok{color:var(--gd);font-weight:900}.warn{color:#b27719;font-weight:900}
+.cats{padding:7px 11px;border-bottom:1px solid #edf1ef}.chead{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}.chead b{font-size:10px}.chead small{font-size:6.5px;color:#8b968f}.cgrid{display:grid;grid-template-columns:repeat(8,minmax(60px,1fr));gap:5px}.cat{min-height:49px;border:1px solid var(--l);border-radius:9px;background:#fff;font-size:7px;font-weight:900;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}.cat svg{width:15px;height:15px}.cat:nth-child(1){background:#eef9f3;color:#0e8355}.cat:nth-child(2){background:#fff3e9;color:#aa6829}.cat:nth-child(3){background:#fff0f4;color:#b44d70}.cat:nth-child(4){background:#fff0f1;color:#b84d57}.cat:nth-child(5){background:#eef6ff;color:#3472b6}.cat:nth-child(6){background:#f3efff;color:#6450b0}.cat:nth-child(7){background:#eefafa;color:#287f84}.cat:nth-child(8){background:#fff9e8;color:#96751d}.cat.active{box-shadow:inset 0 0 0 1.3px currentColor}
+.products{flex:1;min-height:0;overflow:auto;background:#fbfcfb;padding:8px 11px 11px}.phead{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}.phead h2{font-size:12px;margin:0}.tools{display:flex;gap:5px}.tiny{height:28px;border:1px solid var(--l);border-radius:7px;background:#fff;font-size:7px;padding:0 7px;color:#536058}.pgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.prod{border:1px solid var(--l);border-radius:11px;background:#fff;padding:6px;min-width:0;box-shadow:0 5px 12px #1f392e08;transition:.15s}.prod:hover{transform:translateY(-2px);border-color:#cce4d8;box-shadow:0 10px 22px #1d392d10}.thumb{height:70px;border-radius:8px;padding:5px;display:flex;align-items:flex-end;position:relative;background:linear-gradient(135deg,#ffe7d2,#f6d4b5)}.thumb.t2{background:linear-gradient(135deg,#ffe3e7,#f0c9ce)}.thumb.t3{background:linear-gradient(135deg,#efe3ff,#d9c8f5)}.thumb.t4{background:linear-gradient(135deg,#e5f3ff,#cce3f7)}.thumb.t5{background:linear-gradient(135deg,#e8f7ec,#cce8d4)}.fm{font-size:7px;font-weight:900;background:#ffffffcc;padding:3px 5px;border-radius:6px}.badge{position:absolute;top:5px;right:5px;font-size:5.8px;background:#fff;border:1px solid var(--l);padding:2px 5px;border-radius:999px;font-weight:900}.badge.w{background:var(--pu);color:#fff;border-color:var(--pu)}.prod h4{font-size:8px;margin:6px 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prod p{font-size:6px;color:#839087;margin:0;height:15px;overflow:hidden}.pf{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:5px}.price{font-size:7px;font-weight:900}.add{height:24px;min-width:52px;border:1px solid #b9dfcc;border-radius:7px;background:#f5fbf8;color:var(--gd);font-size:6.4px;font-weight:900}.add:hover{background:var(--g);color:#fff}
+.order{height:100vh;display:flex;flex-direction:column;background:#fff;box-shadow:-10px 0 30px #233f320a}.ohead{height:54px;padding:8px 11px;border-bottom:1px solid var(--l);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,#fbfefc,#fff)}.ohead strong{font-size:10px;color:#173c2a}.ohead small{display:block;font-size:6px;color:#8b968f}.cust{padding:7px 11px;border-bottom:1px solid var(--l)}.crow{display:grid;grid-template-columns:28px 1fr auto;gap:7px;align-items:center}.av{width:28px;height:28px;border-radius:50%;background:var(--gs);color:var(--gd);display:grid;place-items:center;font-size:6.5px;font-weight:900}.crow strong{font-size:7.8px;display:block}.crow small{font-size:6px;color:#88948c}.edit{height:25px;border:1px solid var(--l);border-radius:7px;background:#fff;font-size:6px;font-weight:900}.ctx{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px}.ctx select{height:27px;border:1px solid var(--l);border-radius:7px;background:#fff;font-size:6.3px;font-weight:800;color:#49574f;padding:0 5px}.olist{flex:1;min-height:0;overflow:auto;padding:3px 8px}.line{display:grid;grid-template-columns:31px minmax(0,1fr) 63px;gap:6px;align-items:center;padding:4px 2px;border-bottom:1px solid #edf1ef}.qbox{height:29px;border:1px solid #d8ede2;border-radius:7px;background:#f0faf5;color:#087b4e;display:grid;place-items:center;font-size:7px;font-weight:900}.qbox small{font-size:5px;margin-top:-3px;color:#60776b}.line strong{font-size:7.3px;display:block;line-height:1.1}.line small{font-size:5.7px;color:#859089;display:block}.amount{text-align:right;font-size:7px;font-weight:900}.note{grid-column:2/4;margin-top:-1px;padding:2px 5px;background:#f5faf7;border-radius:5px;color:#327555;font-size:5.5px;font-style:italic}.mctrl{grid-column:2/4;display:flex;gap:4px;align-items:center}.step{display:inline-flex;border:1px solid var(--l);border-radius:6px;overflow:hidden}.step button{width:20px;height:18px;border:0;background:#fff;font-size:6px}.step span{min-width:21px;line-height:18px;text-align:center;font-size:6px;font-weight:900}.calc{height:19px;border:1px solid #d8e8df;border-radius:6px;background:#eff8f3;color:#0c8154;font-size:5.5px;font-weight:900}.sumw{padding:4px 11px;border-top:1px solid var(--l);background:#fcfefd}.sum{display:flex;justify-content:space-between;padding:1px 0;font-size:6.3px;color:#59675f}.grand{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--l);padding-top:4px;margin-top:3px}.grand span{font-size:7.3px;font-weight:900}.grand b{font-size:13px;color:#087c4e}.controls{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:5px 11px;border-top:1px solid var(--l)}.field label{display:block;font-size:5.3px;color:#8b968f;font-weight:900;text-transform:uppercase;margin-bottom:2px}.field select{width:100%;height:28px;border:1px solid var(--l);border-radius:7px;padding:0 6px;font-size:6.2px;font-weight:800}.field .pay{background:#f0faf5;color:#087c4e;border-color:#cfe8dc}.field .act{background:#f4f2ff;color:#5d4eae;border-color:#dfdcf7}.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 11px 5px}.quick button{height:25px;border:1px solid var(--l);border-radius:7px;font-size:5.8px;font-weight:900;background:#fff}.quick .k{background:#fff4e9;color:#b36a21}.quick .t{background:#eef6ff;color:#3572b0}.quick .h{background:#f3efff;color:#6651b0}.chargew{padding:0 11px 8px}.charge{width:100%;height:38px;border:0;border-radius:9px;background:linear-gradient(135deg,#12aa70,#0b8d5b);color:#fff;font-size:8.8px;font-weight:950;display:flex;align-items:center;justify-content:space-between;padding:0 12px;box-shadow:0 10px 18px #11a36b24}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:15px;background:#121d183d;backdrop-filter:blur(4px);z-index:150}.modal.show{display:flex}.dialog{width:min(620px,100%);max-height:90vh;overflow:auto;background:#fff;border:1px solid var(--l);border-radius:14px;box-shadow:0 22px 60px #12251c28}.dialog.wide{width:min(820px,100%)}.dh{padding:12px 13px;border-bottom:1px solid var(--l);display:flex;justify-content:space-between;gap:10px}.dh h3{font-size:11px;margin:0}.dh p{font-size:6.5px;color:#849087;margin:2px 0 0}.close{width:29px;height:29px;border:1px solid var(--l);border-radius:7px;background:#fff}.db{padding:12px 13px}.df{padding:9px 13px;border-top:1px solid var(--l);display:flex;justify-content:flex-end;gap:5px;background:#fbfcfb}.btn{height:29px;border:1px solid var(--l);border-radius:7px;background:#fff;padding:0 9px;font-size:6.5px;font-weight:900}.btn.pri{background:var(--g);color:#fff;border-color:var(--g)}.calcdisp{border:1px solid var(--l);border-radius:10px;background:#f7faf8;padding:10px;text-align:right}.calcdisp small{font-size:6px;color:#839087;display:block}.calcdisp b{font-size:24px}.qv{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.qv button{height:25px;border:1px solid var(--l);border-radius:6px;background:#fff;font-size:6.5px;font-weight:900}.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:7px}.pad button{height:37px;border:1px solid var(--l);border-radius:8px;background:#fff;font-size:10px;font-weight:900}.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.opt{border:1px solid var(--l);border-radius:9px;background:#fff;padding:8px;text-align:left}.opt.active{background:var(--gs);border-color:#9ed8bc}.opt strong{font-size:7.5px;display:block}.opt small{font-size:5.8px;color:#849087;display:block}.opt b{font-size:8.5px;color:#0e8053;display:block;margin-top:4px}.checks{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px}.checks label{border:1px solid var(--l);border-radius:7px;padding:6px;font-size:6.5px;color:#536159}textarea{width:100%;min-height:66px;border:1px solid var(--l);border-radius:8px;padding:7px;font-size:7px;resize:vertical}.slip{font-family:Arial,sans-serif}.slip h2{text-align:center;font-size:14px;margin:0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:6px 0;margin-top:6px;font-size:6.5px}.sitem{display:grid;grid-template-columns:40px 1fr auto;gap:5px;padding:4px 0;border-bottom:1px dashed #ddd;font-size:6.5px}.toast{position:fixed;right:442px;bottom:12px;background:#15221c;color:#fff;padding:8px 10px;border-radius:8px;font-size:6.5px;opacity:0;transform:translateY(5px);transition:.2s;z-index:200}.toast.show{opacity:1;transform:none}
+@media(max-width:1380px){.pgrid{grid-template-columns:repeat(4,1fr)}.cgrid{grid-template-columns:repeat(7,1fr)}.cgrid .cat:last-child{display:none}}@media(max-width:1120px){.app{grid-template-columns:minmax(0,1fr) 390px}.pgrid{grid-template-columns:repeat(3,1fr)}.chip{display:none}.toast{right:20px}}
+</style>
+
+<style id="pos-v2">
+/* === POS Stage 1 V2: readable, compact billing table, responsive === */
+body{
+  font-size:15px!important;
+  font-family:"Segoe UI Variable Text","Segoe UI",Roboto,Arial,sans-serif!important;
+  line-height:1.42!important;
+  text-rendering:optimizeLegibility;
+}
+.app{grid-template-columns:minmax(0,1fr) 500px!important}
+.order{min-width:0!important}
+
+/* readable fonts */
+.search input{font-size:12px!important}
+.kbd{font-size:8px!important}
+.chip,.chip select{font-size:9px!important}
+.user strong{font-size:10px!important}
+.user small{font-size:8px!important}
+.inf{font-size:9px!important;height:37px!important}
+.chead b{font-size:13px!important}
+.chead small{font-size:9px!important}
+.cat{font-size:9px!important;min-height:57px!important}
+.cat svg{width:18px!important;height:18px!important}
+.phead h2{font-size:15px!important}
+.tiny{font-size:9px!important;height:32px!important}
+.prod h4{font-size:10.5px!important}
+.prod p{font-size:8.5px!important;height:22px!important}
+.price{font-size:9px!important}
+.add{font-size:8.5px!important;height:28px!important;min-width:62px!important}
+.ohead strong{font-size:12px!important}
+.ohead small{font-size:8px!important}
+.crow strong{font-size:10px!important}
+.crow small{font-size:8px!important}
+.edit{font-size:8px!important}
+.ctx select{font-size:8px!important;height:30px!important}
+.sum{font-size:8px!important}
+.grand span{font-size:10px!important}
+.grand b{font-size:16px!important}
+.field label{font-size:7px!important}
+.field select{font-size:8.5px!important;height:31px!important}
+.quick button{font-size:7.8px!important;height:29px!important}
+.charge{font-size:11px!important;height:43px!important}
+.dh h3{font-size:14px!important}
+.dh p{font-size:9px!important}
+.btn{font-size:8.5px!important;height:33px!important}
+.opts .opt strong,.opt strong{font-size:10px!important}
+.checks label{font-size:8.5px!important}
+textarea{font-size:9.5px!important}
+
+/* top utility actions */
+.pos-util{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.util-btn{
+  height:34px;
+  padding:0 10px;
+  border:1px solid var(--l);
+  border-radius:9px;
+  background:#fff;
+  color:#4d5c53;
+  font-size:8.5px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.util-btn.hold{background:#f3efff;color:#624eae;border-color:#e1daf7}
+.util-btn.new{background:#edf9f3;color:#0a8152;border-color:#d2e8dc}
+.util-btn:hover{filter:brightness(.985)}
+
+/* right order header/customer compact so more items fit */
+.ohead{height:54px!important;padding:7px 11px!important}
+.cust{padding:7px 11px!important}
+.ctx{margin-top:5px!important}
+
+/* cart table */
+.cartwrap{
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  background:#fff;
+  border-bottom:1px solid var(--l);
+}
+.carttable{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+.carttable thead{
+  position:sticky;
+  top:0;
+  z-index:5;
+}
+.carttable th{
+  background:#f2f8f5;
+  border-bottom:1px solid #d8e5de;
+  padding:7px 5px;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+  color:#526159;
+  font-size:8px;
+  font-weight:950;
+  text-align:left;
+}
+.carttable th.q{width:70px;text-align:center}
+.carttable th.r{width:74px;text-align:right}
+.carttable th.t{width:82px;text-align:right}
+.carttable th.x{width:34px;text-align:center}
+.carttable td{
+  padding:6px 5px;
+  border-bottom:1px solid #edf1ef;
+  vertical-align:middle;
+  font-size:9px;
+}
+.carttable tbody tr:hover{background:#fbfefc}
+.qtycell{text-align:center}
+.qtymain{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  white-space:nowrap;
+  color:#087b4e;
+  font-weight:950;
+  font-size:9.5px;
+}
+.qtymain .xmark{color:#7d8982;font-size:8px}
+.qtymain .unit{color:#708078;font-size:7px}
+.qtybuttons{
+  display:flex;
+  justify-content:center;
+  gap:3px;
+  margin-top:3px;
+}
+.qbtn{
+  width:21px;height:20px;
+  border:1px solid var(--l);
+  border-radius:6px;
+  background:#fff;
+  color:#536159;
+  font-size:8px;
+  font-weight:950;
+}
+.qbtn.calc{
+  width:auto;
+  padding:0 5px;
+  background:#edf8f2;
+  color:#087d50;
+  border-color:#d5e8de;
+  font-size:6.8px;
+}
+.desccell strong{
+  display:block;
+  font-size:9.5px;
+  line-height:1.22;
+  color:#24342b;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.desccell small{
+  display:block;
+  font-size:7.2px;
+  line-height:1.18;
+  margin-top:2px;
+  color:#7c8981;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ratecell,.totalcell{text-align:right;font-weight:850;white-space:nowrap}
+.delbtn{
+  width:25px;height:25px;
+  border:1px solid #f0d5d8;
+  border-radius:7px;
+  background:#fff4f5;
+  color:#c64c57;
+  font-size:13px;
+  font-weight:900;
+  display:grid;
+  place-items:center;
+}
+.delbtn:hover{background:#df5964;color:#fff;border-color:#df5964}
+
+/* compact totals/actions to preserve list height */
+.sumw{padding:4px 11px!important}
+.controls{padding:5px 11px!important}
+.quick{padding:0 11px 5px!important}
+.chargew{padding:0 11px 8px!important}
+
+/* hold bills */
+.holdlist{display:grid;gap:8px}
+.holdcard{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid var(--l);
+  border-radius:11px;
+  padding:10px;
+  background:#fff;
+}
+.holdcard strong{display:block;font-size:10px}
+.holdcard small{display:block;font-size:8px;color:#7e8a82;margin-top:2px}
+.holdmeta{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.htag{
+  padding:4px 7px;
+  border:1px solid #e5ebe7;
+  border-radius:999px;
+  background:#f5f8f6;
+  color:#59675f;
+  font-size:7px;
+  font-weight:800;
+}
+.resume{
+  height:31px;
+  border:1px solid #cfe7da;
+  border-radius:8px;
+  background:#eef9f3;
+  color:#087c4f;
+  font-size:8px;
+  font-weight:900;
+  padding:0 10px;
+}
+
+/* new item */
+.itemform{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.itemform .full{grid-column:1/-1}
+.itemform label span{
+  display:block;
+  font-size:8px;
+  font-weight:900;
+  color:#617067;
+  margin-bottom:4px;
+}
+.itemform input,.itemform select{
+  width:100%;
+  height:37px;
+  border:1px solid var(--l);
+  border-radius:9px;
+  padding:0 9px;
+  outline:none;
+  background:#fff;
+  color:#33443a;
+  font-size:9px;
+}
+.itemform input:focus,.itemform select:focus{
+  border-color:#a6d8bf;
+  box-shadow:0 0 0 3px rgba(16,163,107,.06);
+}
+
+/* responsiveness */
+@media(min-width:1550px){
+  .pgrid{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+}
+@media(max-width:1360px){
+  .app{grid-template-columns:minmax(0,1fr) 465px!important}
+  .pgrid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .top .chip{display:none!important}
+}
+@media(max-width:1080px){
+  html,body{overflow:auto!important}
+  .app{
+    height:auto!important;
+    min-height:100vh!important;
+    grid-template-columns:1fr!important;
+  }
+  .work{min-height:780px!important}
+  .products{min-height:480px!important;overflow:visible!important}
+  .order{
+    height:auto!important;
+    min-height:780px!important;
+    grid-column:1!important;
+    border-top:1px solid var(--l);
+    box-shadow:none!important;
+  }
+  .cartwrap{min-height:470px!important;max-height:620px!important}
+  .fill{display:none!important}
+}
+@media(max-width:760px){
+  .top{
+    height:auto!important;
+    min-height:62px;
+    flex-wrap:wrap;
+  }
+  .search{
+    order:3;
+    flex-basis:100%;
+    max-width:none!important;
+  }
+  .user,.ib{display:none!important}
+  .pos-util{
+    margin-left:auto;
+  }
+  .cgrid{grid-template-columns:repeat(4,1fr)!important}
+  .pgrid{grid-template-columns:repeat(2,1fr)!important}
+  .ctx{grid-template-columns:1fr 1fr!important}
+  .ctx select:last-child{grid-column:1/-1}
+  .controls{grid-template-columns:1fr!important}
+  .itemform{grid-template-columns:1fr!important}
+  .itemform .full{grid-column:auto}
+}
+@media(max-width:500px){
+  body{font-size:14px!important}
+  .cgrid{grid-template-columns:repeat(3,1fr)!important}
+  .pgrid{grid-template-columns:1fr!important}
+  .pos-util{width:100%;order:4}
+  .util-btn{flex:1}
+  .carttable th.q{width:60px}
+  .carttable th.r{width:64px}
+  .carttable th.t{width:70px}
+  .carttable th,.carttable td{padding-left:3px;padding-right:3px}
+}
+</style>
+
+<style id="pos-v3">
+/* ===== Stage 1 POS V3 ===== */
+body{font-size:15.6px!important}
+.search input{font-size:12.3px!important}
+.user strong{font-size:10.2px!important}
+.user small{font-size:8.2px!important}
+.util-btn{font-size:8.7px!important}
+.chead b{font-size:13.3px!important}
+.chead small{font-size:9.2px!important}
+
+/* category font + ~5% */
+.cat{font-size:10px!important;min-height:54px!important}
+.cat svg{width:18px!important;height:18px!important}
+.cats{padding-top:6px!important;padding-bottom:6px!important}
+.compact-chead{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;margin-bottom:5px!important}
+.compact-chead>div:first-child{display:flex;align-items:baseline;gap:8px}
+.sales-filter{display:flex;align-items:center;gap:5px}
+.sales-filter span{font-size:7.5px;color:#7a8780;font-weight:800}
+.sales-filter select{height:29px;border:1px solid var(--l);border-radius:8px;background:#fff;color:#3f5047;font-size:8px;font-weight:850;padding:0 7px}
+
+/* Remove the old Popular Menu toolbar spacing entirely */
+.products{padding-top:5px!important}
+.pgrid{margin-top:0!important}
+.prod h4{font-size:10.7px!important}
+.prod p{font-size:8.7px!important}
+.price{font-size:9.2px!important}
+.add{font-size:8.7px!important}
+
+/* system top button */
+.util-btn.system{background:#eef7ff;color:#3472b2;border-color:#d9e7f5}
+
+/* fixed on-screen quantity calculator */
+.fixedcalc{
+  min-height:39px;
+  flex:0 0 39px;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:4px 7px;
+  border-bottom:1px solid #dce7e1;
+  background:linear-gradient(90deg,#f9fdfb,#fff);
+  overflow:hidden;
+}
+.fc-target{min-width:75px;line-height:1.1}
+.fc-target span{display:block;font-size:6.5px;color:#829087;font-weight:850}
+.fc-target b{display:block;font-size:7.5px;color:#314139;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-display{
+  width:47px;height:29px;border:1px solid #cee5d9;border-radius:8px;background:#edf9f3;
+  display:grid;place-items:center;color:#087c4f;font-size:10px;font-weight:950;flex:0 0 auto
+}
+.fc-keys{display:flex;align-items:center;gap:2px;min-width:0}
+.fc-keys button{
+  width:22px;height:25px;border:1px solid var(--l);border-radius:6px;background:#fff;
+  color:#4c5b53;font-size:7.5px;font-weight:950;padding:0
+}
+.fc-next,.fc-ok{
+  height:27px;border-radius:7px;font-size:6.8px;font-weight:950;padding:0 6px;white-space:nowrap
+}
+.fc-next{border:1px solid #e1daf5;background:#f4f0ff;color:#6550af}
+.fc-next.active{background:#7258c5;color:#fff;border-color:#7258c5}
+.fc-ok{border:1px solid #cde5d9;background:#0e9b65;color:#fff}
+
+/* no +/- on bill rows; whole row is the quantity edit trigger */
+.carttable tbody tr{cursor:pointer}
+.carttable tbody tr.selected-row{background:#f1faf5!important;box-shadow:inset 3px 0 0 #11a36b}
+.qtybuttons{display:none!important}
+.qtycell{font-size:9.2px!important}
+.desccell strong{font-size:9.7px!important}
+.desccell small{font-size:7.5px!important}
+.ratecell,.totalcell{font-size:8.9px!important}
+
+/* pre-add quantity directly on item cards */
+.prod-qty{
+  height:27px;border:1px solid #e0e5e2;border-radius:7px;background:#fff;color:#59675f;
+  font-size:7px;font-weight:900;padding:0 6px
+}
+.prod-qty b{color:#087c4f}
+.pf{gap:4px}
+
+/* bill adjustments */
+.sum.adjustable{color:#34453b!important}
+.sum-edit{
+  border:0;background:#eef7f2;color:#087c4f;border-radius:5px;padding:2px 5px;margin-left:4px;
+  font-size:6.3px;font-weight:900
+}
+.adjust-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.adjust-grid label span{display:block;font-size:8px;font-weight:900;color:#617067;margin-bottom:4px}
+.adjust-grid input,.adjust-grid select{width:100%;height:37px;border:1px solid var(--l);border-radius:9px;padding:0 8px;font-size:9px;background:#fff}
+
+/* system modal */
+.system-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.system-grid div{border:1px solid var(--l);border-radius:9px;background:#fbfdfc;padding:9px}
+.system-grid span{display:block;font-size:7px;color:#7f8b84}
+.system-grid b{display:block;font-size:10px;margin-top:2px}
+.sys-ok{color:#0c8455}.sys-warn{color:#b27717}
+
+/* hold bill readability */
+.holdcard{padding:12px!important}
+.holdcard strong{font-size:11px!important}
+.holdcard small{font-size:9px!important}
+.htag{font-size:8px!important;padding:5px 8px!important}
+.resume{font-size:9px!important;height:34px!important}
+
+/* configurable item builder */
+.config-builder{display:none;border:1px solid #ded9f5;border-radius:10px;background:#faf8ff;padding:10px}
+.config-builder.show{display:block}
+.builder-title{font-size:10px;font-weight:950;color:#5b49a6;margin-bottom:8px}
+.builder-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.builder-grid .full{grid-column:1/-1}
+.builder-check{font-size:8.5px;color:#536159}
+.builder-example{margin-top:8px;padding:7px 8px;border-radius:8px;background:#fff;border:1px solid #ebe7f7;color:#6f658f;font-size:7.5px}
+.config-label{font-size:8px;font-weight:950;color:#536159;margin:9px 0 5px}
+
+/* Responsive */
+@media(max-width:1380px){
+  .fixedcalc{gap:3px}
+  .fc-target{min-width:64px}
+  .fc-keys button{width:20px}
+  .fc-next{display:none}
+}
+@media(max-width:1080px){
+  .fixedcalc{position:sticky;top:0;z-index:7}
+}
+@media(max-width:760px){
+  .compact-chead{align-items:flex-start!important;flex-direction:column!important}
+  .sales-filter{width:100%;justify-content:space-between}
+  .fixedcalc{flex-wrap:wrap;min-height:73px}
+  .fc-target{min-width:100px}
+  .fc-keys{order:3;flex-basis:100%;justify-content:center}
+  .fc-next{display:inline-block}
+  .builder-grid,.adjust-grid,.system-grid{grid-template-columns:1fr}
+  .builder-grid .full{grid-column:auto}
+}
+.sales-badge{position:absolute;left:6px;top:6px;background:rgba(255,255,255,.9);border:1px solid #e1e7e3;border-radius:999px;padding:3px 5px;font-size:5.8px;font-weight:900;color:#267453}
+</style>
+
+<style id="pos-v4">
+/* ===== Stage 1 POS V4 ===== */
+
+/* Product area must scroll on desktop */
+.work{height:100vh!important;min-height:0!important;overflow:hidden!important}
+.products{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#b8c9c0 #f2f6f4;
+}
+.products::-webkit-scrollbar{width:9px}
+.products::-webkit-scrollbar-track{background:#f2f6f4;border-radius:999px}
+.products::-webkit-scrollbar-thumb{background:#b8c9c0;border-radius:999px;border:2px solid #f2f6f4}
+.pgrid{padding-bottom:36px}
+
+/* Bigger product overlay labels */
+.fm{
+  font-size:9.4px!important;
+  padding:4px 7px!important;
+  line-height:1.1!important;
+}
+.sales-badge{
+  font-size:8.2px!important;
+  padding:4px 7px!important;
+  line-height:1.1!important;
+  box-shadow:0 2px 8px rgba(32,63,49,.07);
+}
+.badge{font-size:7.5px!important;padding:3px 6px!important}
+
+/* Product card qty control: + 1 - */
+.preqty{
+  height:28px;
+  display:inline-flex;
+  align-items:center;
+  overflow:hidden;
+  border:1px solid #d9e5df;
+  border-radius:8px;
+  background:#fff;
+  flex:0 0 auto;
+}
+.preqty button{
+  width:24px;height:26px;
+  border:0;background:#fff;
+  color:#0b8052;
+  font-size:11px;
+  line-height:1;
+  font-weight:950;
+  padding:0;
+}
+.preqty button:hover{background:#edf8f2}
+.preqty .preqty-value{
+  min-width:28px;
+  height:26px;
+  border-left:1px solid #e5ebe8;
+  border-right:1px solid #e5ebe8;
+  display:grid;place-items:center;
+  color:#26362d;
+  font-size:8.7px;
+  font-weight:950;
+  cursor:pointer;
+  user-select:none;
+}
+.pf{gap:5px!important}
+.add{flex:0 0 auto}
+
+/* Fixed Qty Pad redesign */
+.fixedcalc{
+  flex:0 0 auto!important;
+  min-height:70px!important;
+  display:grid!important;
+  grid-template-columns:82px 54px minmax(0,1fr) 56px 42px!important;
+  align-items:center!important;
+  gap:6px!important;
+  padding:6px 8px!important;
+  background:linear-gradient(90deg,#f5fbf8,#ffffff)!important;
+  border-bottom:1px solid #d9e7e0!important;
+}
+.fc-target{
+  min-width:0!important;
+  padding-right:3px;
+}
+.fc-target span{font-size:7.5px!important}
+.fc-target b{
+  font-size:8.3px!important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.fc-display{
+  width:54px!important;
+  height:48px!important;
+  border-radius:10px!important;
+  font-size:14px!important;
+  background:#fff!important;
+  border:2px solid #bcdcca!important;
+  color:#087a4d!important;
+}
+.fc-display:empty:before{
+  content:"Qty";
+  color:#a3afa8;
+  font-size:9px;
+}
+.fc-keys{
+  display:grid!important;
+  grid-template-columns:repeat(6,1fr)!important;
+  gap:3px!important;
+  min-width:0!important;
+}
+.fc-keys button{
+  width:auto!important;
+  min-width:0!important;
+  height:27px!important;
+  border-radius:7px!important;
+  font-size:9.2px!important;
+  font-weight:950!important;
+  background:#fff!important;
+  border:1px solid #dce5e0!important;
+  color:#394a40!important;
+}
+.fc-keys button:hover{background:#eaf8f1!important;color:#087c4f!important;border-color:#c8e2d5!important}
+.fc-next,.fc-ok{
+  height:48px!important;
+  border-radius:10px!important;
+  padding:0 6px!important;
+  font-size:7.6px!important;
+  line-height:1.15!important;
+  white-space:normal!important;
+}
+.fc-ok{font-size:9px!important}
+
+/* Popup calculator: clear, bigger, cleaner */
+.calcdisp{
+  min-height:78px!important;
+  padding:13px 15px!important;
+  border:2px solid #cfe4d9!important;
+  background:linear-gradient(180deg,#fbfefc,#f3faf6)!important;
+}
+.calcdisp small{font-size:8.5px!important}
+.calcdisp b{
+  min-height:38px;
+  font-size:28px!important;
+  line-height:38px;
+  color:#087c4f;
+}
+.calcdisp b:empty:before{
+  content:"Enter Qty";
+  font-size:14px;
+  color:#a0ada6;
+}
+.qv{
+  gap:6px!important;
+  margin-top:10px!important;
+}
+.qv button{
+  height:31px!important;
+  padding:0 10px!important;
+  font-size:8.5px!important;
+  border-radius:8px!important;
+  background:#eff9f4!important;
+  color:#087c4f!important;
+  border-color:#cfe5da!important;
+}
+.pad{gap:7px!important;margin-top:10px!important}
+.pad button{
+  height:47px!important;
+  font-size:12px!important;
+  border-radius:10px!important;
+}
+.pad button:hover{background:#eef8f3!important;color:#087c4f!important}
+
+/* Bill totals bigger (~3%+ and more readable) */
+.sumw{padding:7px 12px!important}
+.sum{
+  padding:2.5px 0!important;
+  font-size:9.3px!important;
+  line-height:1.35!important;
+}
+.sum b{font-size:9.4px!important}
+.sum-edit{
+  font-size:7.5px!important;
+  padding:3px 6px!important;
+}
+.grand{padding-top:7px!important;margin-top:5px!important}
+.grand span{font-size:10.6px!important}
+.grand b{font-size:18px!important}
+
+/* KOT / checkout bottom */
+.checkout-bar{
+  display:grid;
+  grid-template-columns:150px minmax(0,1fr);
+  gap:7px;
+  padding:7px 11px 10px;
+  border-top:1px solid var(--l);
+  background:#fff;
+}
+.send-kot-btn{
+  height:43px;
+  border:1px solid #efd8b9;
+  border-radius:10px;
+  background:#fff4e5;
+  color:#a96519;
+  font-size:8px;
+  font-weight:950;
+}
+.send-kot-btn:hover{background:#f5a13e;color:#fff;border-color:#f5a13e}
+.checkout-bar .charge{
+  height:43px!important;
+  margin:0!important;
+  font-size:10.8px!important;
+}
+
+/* Checkout popup becomes the action center */
+.checkout-dialog{width:min(690px,100%)!important}
+.checkout-total-card{
+  padding:14px 15px;
+  border-radius:12px;
+  border:1px solid #cae4d7;
+  background:linear-gradient(135deg,#eefaf4,#ffffff);
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:3px 10px;
+  align-items:end;
+}
+.checkout-total-card span{font-size:8px;color:#6f7d75;font-weight:850}
+.checkout-total-card b{font-size:24px;color:#087b4e}
+.checkout-total-card small{grid-column:1/-1;font-size:8px;color:#5f7067}
+.checkout-payment{margin-top:10px}
+.checkout-payment label{display:block;font-size:8px;font-weight:950;color:#56655d;margin-bottom:4px}
+.checkout-payment select{
+  width:100%;height:40px;border:1px solid #cde4d8;border-radius:10px;
+  background:#f4fbf7;color:#087b4e;font-size:10px;font-weight:850;padding:0 10px;outline:none
+}
+.checkout-breakdown{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px
+}
+.cb{
+  border:1px solid #e5ebe8;border-radius:9px;padding:8px;background:#fff
+}
+.cb span{display:block;font-size:7px;color:#7e8a83}
+.cb b{display:block;font-size:9px;margin-top:2px;color:#34443b}
+.checkout-actions{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:11px
+}
+.ca{
+  min-height:58px;border:1px solid var(--l);border-radius:11px;background:#fff;text-align:left;padding:10px
+}
+.ca strong{display:block;font-size:9.5px}
+.ca small{display:block;font-size:7.5px;margin-top:3px;color:#77837c}
+.ca.primary{background:#0e9963;color:#fff;border-color:#0e9963}
+.ca.primary small{color:#dff5ea}
+.ca.green{background:#eef9f3;color:#087c4f;border-color:#cee5d9}
+.ca.violet{background:#f4f0ff;color:#614cb0;border-color:#e2dbf7}
+.ca.blue{background:#eef6ff;color:#3573b5;border-color:#d8e7f6}
+.ca.orange{background:#fff4e8;color:#ae681e;border-color:#f0ddc7}
+.ca.whatsapp{background:#edf9f6;color:#117b6f;border-color:#d2e9e4}
+
+/* KOT formatting */
+.kot-sheet{font-family:"Segoe UI",Arial,sans-serif}
+.kot-title{text-align:center;margin-bottom:8px}
+.kot-title h2{font-size:16px;margin:0}
+.kot-title small{display:block;font-size:8px;margin-top:2px}
+.kot-meta{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:5px;
+  border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;
+  padding:8px 0;margin-bottom:7px;font-size:8px
+}
+.kot-items{display:grid;gap:0}
+.kot-item{
+  display:grid;
+  grid-template-columns:55px minmax(0,1fr);
+  gap:9px;
+  padding:8px 0;
+  border-bottom:1px dashed #d6d6d6;
+  align-items:start;
+}
+.kot-qty{
+  font-size:14px;
+  font-weight:950;
+  color:#111;
+  text-align:center;
+  border:1px solid #bbb;
+  border-radius:7px;
+  padding:6px 3px;
+}
+.kot-desc strong{
+  display:block;
+  font-size:11px;
+  line-height:1.25;
+}
+.kot-desc span{
+  display:block;
+  font-size:9px;
+  line-height:1.4;
+  margin-top:4px;
+  color:#3e3e3e;
+  font-weight:650;
+  padding-left:1px;
+}
+.kot-empty{
+  padding:24px;text-align:center;border:1px dashed #ccd4cf;border-radius:10px;
+  color:#6f7c74;font-size:10px
+}
+.kitchen-state{
+  display:inline-block;
+  margin-top:3px;
+  font-size:6.8px!important;
+  color:#2c7958!important;
+  font-weight:850;
+}
+
+/* Search match / no results */
+.no-products{
+  grid-column:1/-1;padding:35px;text-align:center;border:1px dashed #d6e0da;border-radius:12px;
+  background:#fff;color:#76837b;font-size:10px
+}
+
+/* Held bill readability further improved */
+.holdcard strong{font-size:11.3px!important}
+.holdcard small{font-size:9.2px!important}
+.htag{font-size:8.2px!important}
+.resume{font-size:9.2px!important}
+
+/* Responsive */
+@media(max-width:1380px){
+  .fixedcalc{
+    grid-template-columns:70px 50px minmax(0,1fr) 42px!important;
+  }
+  .fc-next{display:none!important}
+  .fc-keys button{font-size:8.7px!important}
+}
+@media(max-width:1080px){
+  .work{height:auto!important;min-height:780px!important;overflow:visible!important}
+  .products{overflow:visible!important}
+  .checkout-bar{position:sticky;bottom:0;z-index:8}
+}
+@media(max-width:760px){
+  .fixedcalc{
+    grid-template-columns:1fr 60px 50px!important;
+    grid-template-areas:
+      "target display ok"
+      "keys keys keys"!important;
+    min-height:110px!important;
+  }
+  .fc-target{grid-area:target}
+  .fc-display{grid-area:display}
+  .fc-keys{grid-area:keys}
+  .fc-ok{grid-area:ok}
+  .fc-next{display:none!important}
+  .checkout-bar{grid-template-columns:110px 1fr}
+  .checkout-actions{grid-template-columns:1fr}
+  .checkout-breakdown{grid-template-columns:1fr 1fr}
+}
+</style>
+
+<style id="pos-v5">
+/* ===== POS V5 — attached design refinement ===== */
+
+/* requested +2px readability */
+body{font-size:17px!important}
+.search input{font-size:14px!important}
+.kbd{font-size:10px!important}
+.user strong{font-size:12px!important}
+.user small{font-size:10px!important}
+.util-btn{font-size:10.5px!important}
+.chead b{font-size:15px!important}
+.cat{font-size:12px!important}
+.cat svg{width:20px!important;height:20px!important}
+.prod h4{font-size:12.5px!important}
+.prod p{font-size:10.5px!important;height:28px!important}
+.price{font-size:11px!important}
+.add{font-size:10.5px!important;height:32px!important}
+.preqty .preqty-value{font-size:11px!important}
+.carttable th{font-size:10px!important}
+.carttable td{font-size:11px!important}
+.desccell strong{font-size:12px!important}
+.desccell small{font-size:9.5px!important}
+.ratecell,.totalcell{font-size:11px!important}
+.kitchen-state{font-size:9px!important}
+.sum{font-size:11.5px!important}
+.sum b{font-size:11.5px!important}
+.sum-edit{font-size:9.5px!important}
+.grand span{font-size:13px!important}
+.grand b{font-size:20px!important}
+.send-kot-btn{font-size:10px!important}
+.checkout-bar .charge{font-size:13px!important}
+
+/* Best Selling now lives at top before System */
+.top-best-selling{
+  height:36px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 7px 0 10px;
+  border:1px solid #dce6e1;
+  border-radius:9px;
+  background:#fff;
+  white-space:nowrap;
+}
+.top-best-selling span{
+  font-size:8.5px;
+  color:#46554d;
+  font-weight:900;
+}
+.top-best-selling select{
+  height:28px;
+  border:0;
+  outline:0;
+  background:#f7faf8;
+  border-radius:7px;
+  padding:0 7px;
+  color:#26372e;
+  font-size:9.5px;
+  font-weight:900;
+}
+
+/* Category header kept minimal */
+.compact-chead{
+  margin-bottom:5px!important;
+}
+.cats{padding-top:6px!important}
+
+/* Product cards now use high-resolution images */
+.product-photo{
+  height:130px!important;
+  padding:0!important;
+  overflow:hidden!important;
+  position:relative!important;
+  background:#edf2ef!important;
+}
+.product-photo img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  transition:transform .18s ease;
+}
+.prod:hover .product-photo img{transform:scale(1.025)}
+.product-photo:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 48%,rgba(0,0,0,.18) 100%);
+  pointer-events:none;
+}
+.product-photo .fm{
+  position:absolute!important;
+  left:7px!important;
+  bottom:7px!important;
+  z-index:3!important;
+  padding:5px 8px!important;
+  border-radius:7px!important;
+  background:rgba(255,255,255,.94)!important;
+  color:#23332a!important;
+  font-size:11px!important;
+  font-weight:950!important;
+  box-shadow:0 2px 8px rgba(31,60,46,.08);
+}
+.product-photo .sales-badge{
+  position:absolute!important;
+  left:7px!important;
+  top:7px!important;
+  z-index:3!important;
+  font-size:10px!important;
+  padding:5px 8px!important;
+  background:rgba(255,255,255,.95)!important;
+  color:#12764e!important;
+}
+.product-photo .badge{
+  z-index:3!important;
+  font-size:9px!important;
+  padding:4px 7px!important;
+}
+
+/* Order header: colorful modes */
+.ohead{
+  min-height:62px!important;
+  height:auto!important;
+  padding:8px 10px!important;
+  gap:8px!important;
+}
+.order-title{min-width:100px}
+.order-title strong{font-size:14px!important}
+.order-title small{font-size:9px!important}
+.order-mode-buttons{
+  margin-left:auto;
+  display:flex;
+  gap:5px;
+  align-items:center;
+}
+.mode-btn{
+  height:34px;
+  min-width:72px;
+  padding:0 9px;
+  border-radius:8px;
+  font-size:10px;
+  font-weight:950;
+  border:1px solid transparent;
+  transition:.15s ease;
+}
+.mode-btn.dine{background:#eaf8f1;color:#087d50;border-color:#cbe7d9}
+.mode-btn.takeaway{background:#fff2e5;color:#a76520;border-color:#efdbc3}
+.mode-btn.delivery{background:#edf5ff;color:#336fb0;border-color:#d8e6f7}
+.mode-btn.dine.active{background:#0f9e66;color:#fff;border-color:#0f9e66}
+.mode-btn.takeaway.active{background:#ef9636;color:#fff;border-color:#ef9636}
+.mode-btn.delivery.active{background:#3e81d3;color:#fff;border-color:#3e81d3}
+.mode-btn.active{box-shadow:0 5px 12px rgba(35,67,52,.09);transform:translateY(-1px)}
+
+/* Customer area like attached design */
+.cust{padding:8px 10px!important}
+.crow{
+  display:grid!important;
+  grid-template-columns:30px minmax(112px,auto) minmax(120px,1fr) 92px 40px!important;
+  align-items:center!important;
+  gap:8px!important;
+}
+.crow .av{width:30px!important;height:30px!important}
+.customer-primary strong{font-size:12px!important;display:block}
+.customer-primary small{font-size:9.5px!important;display:block;margin-top:1px}
+.customer-address{
+  min-width:0;
+  font-size:10.5px;
+  font-weight:750;
+  color:#4d5c53;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.table-select-wrap select{
+  width:92px;
+  height:32px;
+  border:1px solid #d8e4de;
+  border-radius:8px;
+  background:#fff;
+  color:#2f4037;
+  padding:0 6px;
+  font-size:9.5px;
+  font-weight:900;
+  outline:none;
+}
+.table-select-wrap.hidden{display:none}
+.edit{font-size:9px!important}
+
+/* Fit design and product density */
+.products{padding-top:6px!important}
+.pgrid{gap:9px!important}
+.prod{padding:7px!important}
+.search{max-width:520px!important}
+
+/* Responsive */
+@media(max-width:1480px){
+  .chip{display:none!important}
+  .mode-btn{min-width:66px;padding:0 7px}
+  .crow{grid-template-columns:30px 100px minmax(90px,1fr) 86px 38px!important}
+}
+@media(max-width:1280px){
+  .top-best-selling span{display:none}
+  .top-best-selling{padding:0 4px}
+  .util-btn.system{display:none}
+  .customer-address{display:none}
+  .crow{grid-template-columns:30px 1fr 92px 38px!important}
+}
+@media(max-width:1080px){
+  .order-mode-buttons{flex:1;justify-content:flex-end}
+  .mode-btn{min-width:75px}
+}
+@media(max-width:760px){
+  .top-best-selling{order:4}
+  .pos-util{width:100%;order:4}
+  .order-mode-buttons{width:100%;order:3;margin:4px 0 0}
+  .mode-btn{flex:1}
+  .crow{grid-template-columns:30px 1fr 38px!important}
+  .table-select-wrap{grid-column:2/3}
+  .product-photo{height:165px!important}
+}
+</style>
+
+<style id="pos-v6">
+/* ===== POS V6 ===== */
+
+/* Remove unused fixed calculator rules from layout */
+.fixedcalc{display:none!important}
+
+/* Bold is intentionally minimized across the working screen */
+body,
+button,
+input,
+select,
+textarea{font-weight:400!important}
+
+strong,b{font-weight:500!important}
+.chead b,
+.prod h4,
+.carttable th,
+.customer-name-line,
+.order-title strong,
+.checkout-header h3,
+.dh h3{font-weight:500!important}
+
+/* only Grand Total remains strongly emphasized */
+.grand span,
+.grand b{
+  font-weight:800!important;
+}
+
+/* Category and top utility can remain medium for usability, not heavy */
+.cat,
+.util-btn,
+.mode-btn,
+.customer-btn,
+.new-table-btn,
+.add,
+.preqty button,
+.sum-edit,
+.send-kot-btn{
+  font-weight:500!important;
+}
+
+/* Customer zone */
+.cust{
+  padding:8px 10px!important;
+  background:#fff;
+}
+.customer-shell{
+  display:grid;
+  grid-template-columns:34px minmax(120px,auto) minmax(100px,1fr) auto auto;
+  gap:9px;
+  align-items:center;
+}
+.customer-avatar{
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#eaf8f1;
+  color:#087d50;
+  font-size:10px;
+  font-weight:600!important;
+}
+.customer-info-block{min-width:0}
+.customer-name-line{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  font-size:12px;
+}
+.customer-name-line>span:first-child{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.customer-type-pill{
+  padding:2px 6px;
+  border-radius:999px;
+  background:#f3f6f4;
+  border:1px solid #e4e9e6;
+  color:#77847c;
+  font-size:7.5px;
+  flex:0 0 auto;
+}
+.customer-phone{
+  margin-top:2px;
+  color:#7a8780;
+  font-size:9.5px;
+}
+.delivery-address{
+  margin-top:4px;
+  display:flex;
+  gap:5px;
+  align-items:flex-start;
+  color:#466056;
+  font-size:9.5px;
+  line-height:1.3;
+}
+.delivery-address.hidden{display:none}
+.address-label{
+  color:#3571b1;
+  font-size:8px;
+  flex:0 0 auto;
+}
+.customer-actions{
+  display:flex;
+  gap:5px;
+}
+.customer-btn{
+  height:32px;
+  border-radius:8px;
+  padding:0 8px;
+  font-size:9px;
+  white-space:nowrap;
+}
+.customer-btn.select{
+  border:1px solid #d8e5df;
+  background:#f8fbf9;
+  color:#405148;
+}
+.customer-btn.create{
+  border:1px solid #cfe8dc;
+  background:#edf9f3;
+  color:#087c4f;
+}
+
+.table-zone{
+  display:flex;
+  gap:5px;
+  align-items:center;
+}
+.table-zone.hidden{display:none}
+.table-zone select{
+  width:102px;
+  height:32px;
+  border:1px solid #d8e4de;
+  border-radius:8px;
+  background:#fff;
+  color:#304139;
+  padding:0 7px;
+  font-size:9.5px;
+}
+.new-table-btn{
+  height:32px;
+  border:1px solid #d8e2f4;
+  border-radius:8px;
+  background:#f2f5ff;
+  color:#5267aa;
+  padding:0 7px;
+  font-size:8.5px;
+}
+
+.held-table-alert{
+  margin-top:7px;
+  min-height:32px;
+  border:1px solid #efd9bc;
+  border-radius:8px;
+  background:#fff7eb;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  padding:5px 7px;
+  font-size:8.5px;
+  color:#81551d;
+}
+.held-table-alert.hidden{display:none}
+.held-table-alert>div{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.held-dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#ef9636;
+}
+.held-table-alert button{
+  height:24px;
+  border:1px solid #edcfaa;
+  border-radius:6px;
+  background:#fff;
+  color:#9b5f17;
+  font-size:8px;
+}
+
+/* Customer modals */
+.customer-dialog{width:min(660px,100%)!important}
+.customer-search{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:7px;
+  margin-bottom:10px;
+}
+.customer-search input{
+  height:39px;
+  border:1px solid var(--l);
+  border-radius:9px;
+  padding:0 10px;
+  font-size:10px;
+  outline:none;
+}
+.customer-search button{
+  height:39px;
+  border:1px solid #cfe6db;
+  border-radius:9px;
+  background:#edf9f3;
+  color:#087c4f;
+  padding:0 12px;
+  font-size:9px;
+}
+.customer-list{display:grid;gap:7px}
+.customer-option{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  border:1px solid #e3e9e5;
+  border-radius:10px;
+  background:#fff;
+  padding:9px;
+  cursor:pointer;
+}
+.customer-option:hover{
+  background:#f8fcfa;
+  border-color:#cfe6da;
+}
+.customer-option .co-avatar{
+  width:34px;height:34px;border-radius:50%;
+  display:grid;place-items:center;
+  background:#eef7f3;color:#087c4f;
+  font-size:9px;
+}
+.customer-option .co-name{font-size:10.5px;color:#26372e}
+.customer-option .co-phone{font-size:8.5px;color:#7d8981;margin-top:2px}
+.customer-option .co-address{font-size:8px;color:#5e7468;margin-top:3px}
+.customer-option .co-select{
+  color:#087c4f;
+  font-size:8.5px;
+}
+
+.customer-form{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.customer-form .full{grid-column:1/-1}
+.customer-form label span{
+  display:block;
+  font-size:8.5px;
+  color:#5f6e65;
+  margin-bottom:4px;
+}
+.customer-form input,
+.customer-form select{
+  width:100%;
+  height:38px;
+  border:1px solid var(--l);
+  border-radius:9px;
+  padding:0 9px;
+  font-size:9.5px;
+  background:#fff;
+  outline:none;
+}
+
+/* Remove category badge overlay from image completely */
+.product-photo .fm{display:none!important}
+
+/* Product price: normal weight but prominent color */
+.price{
+  font-weight:400!important;
+  color:#7a4fd0!important;
+  font-size:11.5px!important;
+  letter-spacing:.01em;
+}
+
+/* Cart: normal item/rate/total, no "click to change quantity" line */
+.desccell strong{
+  font-weight:400!important;
+  color:#24362c!important;
+}
+.desccell small{
+  font-weight:400!important;
+}
+.ratecell,
+.totalcell{
+  font-weight:400!important;
+  color:#42564b!important;
+}
+.kitchen-state{
+  font-weight:400!important;
+}
+
+/* Make table header less heavy */
+.carttable th{
+  font-weight:500!important;
+  color:#53665c!important;
+}
+
+/* Summary less heavy; Grand Total stays bold */
+.sum,
+.sum b{
+  font-weight:400!important;
+}
+.sum-edit{font-weight:400!important}
+
+/* Professional checkout popup */
+.pro-checkout{
+  width:min(920px,96vw)!important;
+  max-height:94vh!important;
+  overflow:hidden!important;
+}
+.checkout-header{
+  align-items:center!important;
+}
+.checkout-order-ref{
+  margin-left:auto;
+  margin-right:8px;
+  text-align:right;
+}
+.checkout-order-ref span{
+  display:block;
+  font-size:7.5px;
+  color:#859188;
+}
+.checkout-order-ref b{
+  display:block;
+  font-size:10px;
+  color:#35483d;
+}
+.checkout-body{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 230px;
+  gap:12px;
+  overflow:auto;
+}
+.checkout-left{min-width:0}
+.payment-hero{
+  border:1px solid #dde7e1;
+  border-radius:13px;
+  background:#fbfdfc;
+  padding:12px;
+}
+.amount-due{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:2px 10px;
+  align-items:end;
+  padding-bottom:10px;
+  border-bottom:1px solid #e6ece8;
+}
+.amount-due span{
+  font-size:9px;
+  color:#6d7c73;
+}
+.amount-due b{
+  font-size:24px;
+  color:#087c4f;
+  font-weight:600!important;
+}
+.amount-due small{
+  grid-column:1/-1;
+  font-size:8px;
+  color:#7d8982;
+}
+
+.tender-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  margin-top:10px;
+}
+.checkout-field>span{
+  display:block;
+  font-size:8px;
+  color:#647169;
+  margin-bottom:4px;
+}
+.checkout-field select{
+  width:100%;
+  height:42px;
+  border:1px solid #d4e4dc;
+  border-radius:10px;
+  background:#fff;
+  color:#2e4237;
+  padding:0 10px;
+  font-size:10px;
+  outline:none;
+}
+.money-input{
+  height:42px;
+  border:1px solid #cfe3d8;
+  border-radius:10px;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+.money-input>span{
+  height:100%;
+  display:grid;
+  place-items:center;
+  padding:0 9px;
+  background:#f1f8f4;
+  color:#6c7b72;
+  font-size:8.5px;
+  border-right:1px solid #e0e9e4;
+}
+.money-input input{
+  flex:1;
+  min-width:0;
+  height:100%;
+  border:0;
+  outline:0;
+  padding:0 9px;
+  font-size:13px;
+  color:#21362b;
+}
+
+.cash-result{
+  margin-top:9px;
+  border:1px solid #dbe6e0;
+  border-radius:10px;
+  background:#fff;
+  padding:9px 10px;
+}
+.cash-result>div{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+.cash-result span{
+  font-size:9px;
+  color:#58685f;
+}
+.cash-result b{
+  font-size:16px;
+  color:#087c4f;
+}
+.cash-result small{
+  display:block;
+  margin-top:3px;
+  font-size:7.5px;
+  color:#839087;
+}
+.cash-result.due{
+  background:#fff6f6;
+  border-color:#efd8da;
+}
+.cash-result.due b{color:#c44b55}
+.cash-result.complete{
+  background:#eef9f3;
+  border-color:#cee6da;
+}
+
+.quick-tender{
+  margin-top:9px;
+}
+.quick-tender>span{
+  display:block;
+  margin-bottom:4px;
+  font-size:7.5px;
+  color:#6e7b73;
+}
+.quick-tender>div{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+}
+.quick-tender button{
+  height:29px;
+  border:1px solid #dce5e0;
+  border-radius:8px;
+  background:#fff;
+  color:#46584e;
+  padding:0 9px;
+  font-size:8px;
+}
+.quick-tender button:hover{
+  background:#eef8f3;
+  color:#087c4f;
+  border-color:#cfe3d8;
+}
+
+.checkout-breakdown{
+  grid-template-columns:repeat(4,1fr)!important;
+  margin-top:10px!important;
+}
+.cb{
+  background:#fff!important;
+}
+.cb span{font-weight:400!important}
+.cb b{font-weight:400!important}
+
+.pro-actions{
+  margin-top:10px!important;
+}
+.pro-actions .ca{
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+  padding:9px!important;
+  min-height:62px!important;
+}
+.ca-icon{
+  width:30px;height:30px;border-radius:9px;
+  display:grid;place-items:center;
+  background:rgba(255,255,255,.7);
+  font-size:10px;
+}
+.pro-actions .ca strong{
+  font-size:10px!important;
+  font-weight:500!important;
+}
+.pro-actions .ca small{
+  font-size:8px!important;
+}
+.pro-actions .ca kbd{
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:6px;
+  padding:3px 6px;
+  background:rgba(255,255,255,.45);
+  font-size:7px;
+}
+
+.checkout-side{
+  display:grid;
+  gap:9px;
+  align-content:start;
+}
+.checkout-side-card{
+  border:1px solid #e0e8e3;
+  border-radius:11px;
+  background:#fff;
+  padding:10px;
+}
+.muted-card{background:#f8faf9}
+.side-title{
+  font-size:8px;
+  color:#728077;
+  margin-bottom:7px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.side-row{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  padding:4px 0;
+  font-size:8.5px;
+  border-bottom:1px solid #f0f3f1;
+}
+.side-row:last-child{border-bottom:0}
+.side-row b{font-weight:400!important;color:#30423a}
+.shortcut-row{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:4px 0;
+}
+.shortcut-row span{
+  min-width:42px;
+  border:1px solid #dce4df;
+  border-radius:6px;
+  background:#fff;
+  padding:3px 5px;
+  text-align:center;
+  font-size:7px;
+}
+.shortcut-row small{
+  font-size:7.5px;
+  color:#758179;
+}
+.checkout-status{
+  min-height:48px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  border:1px solid #d8e5de;
+  border-radius:10px;
+  background:#f7fbf9;
+  padding:8px;
+}
+.checkout-status .status-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:#13a66d;
+  flex:0 0 auto;
+}
+.checkout-status b{
+  display:block;
+  font-size:8.5px;
+  font-weight:500!important;
+}
+.checkout-status small{
+  display:block;
+  font-size:7px;
+  color:#7d8982;
+  margin-top:2px;
+}
+.checkout-status.success{
+  background:#edf9f3;
+  border-color:#cbe5d8;
+}
+.checkout-status.success .status-dot{background:#0f9d65}
+
+/* Responsive */
+@media(max-width:1380px){
+  .customer-shell{
+    grid-template-columns:34px minmax(105px,1fr) auto auto;
+  }
+  .customer-info-block{min-width:0}
+  .customer-actions .select{display:none}
+}
+@media(max-width:1100px){
+  .checkout-body{
+    grid-template-columns:1fr;
+  }
+  .checkout-side{
+    grid-template-columns:1fr 1fr 1fr;
+  }
+}
+@media(max-width:760px){
+  .customer-shell{
+    grid-template-columns:34px 1fr auto;
+  }
+  .customer-actions{
+    grid-column:2/4;
+  }
+  .table-zone{
+    grid-column:2/4;
+  }
+  .tender-grid,
+  .checkout-actions,
+  .checkout-side{
+    grid-template-columns:1fr!important;
+  }
+  .checkout-breakdown{
+    grid-template-columns:1fr 1fr!important;
+  }
+  .customer-form{
+    grid-template-columns:1fr;
+  }
+  .customer-form .full{grid-column:auto}
+}
+</style>
+
+<style id="pos-v6-weight-final">
+/* Typography rule requested: keep the whole POS regular-weight; only Grand Total is bold. */
+body *{font-weight:400!important}
+.grand span,.grand b{font-weight:800!important}
+
+/* Preview/receipt totals may use emphasis for print readability only. */
+.slip .grand-line,
+.kot-qty{font-weight:600!important}
+
+/* Secondary preview modals must open above Payment & Bill Center without closing it. */
+#slip.show,#wa.show{z-index:260!important}
+#checkoutModal.show{z-index:220!important}
+</style>
+
+<style id="pos-v7">
+/* ===== POS Stage 1 V7 ===== */
+
+/* Flat product cards and images: radius = 0 */
+.prod{
+  border-radius:0!important;
+}
+.product-photo{
+  border-radius:0!important;
+}
+.product-photo img{
+  border-radius:0!important;
+}
+.thumb{
+  border-radius:0!important;
+}
+.product-photo .sales-badge,
+.sales-badge,
+.product-photo .fm,
+.fm{
+  display:none!important;
+}
+
+/* Product image keeps only operational badges like Weighted / Options */
+.product-photo .badge{
+  border-radius:0!important;
+}
+
+/* NEW BILL top button */
+.new-bill-btn{
+  height:36px;
+  min-width:106px;
+  border:1px solid #bfe1d0;
+  background:#eaf8f1;
+  color:#087d50;
+  font-size:10px;
+  padding:0 12px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.new-bill-btn:hover{
+  background:#0f9e66;
+  color:#fff;
+  border-color:#0f9e66;
+}
+
+/* Bill context */
+.bill-context{
+  padding:7px 10px;
+  border-bottom:1px solid var(--l);
+  background:#fff;
+}
+.context-summary{
+  display:flex;
+  gap:5px;
+  margin-bottom:6px;
+}
+.context-pill{
+  height:24px;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  padding:0 7px;
+  border:1px solid #e0e7e3;
+  background:#f8faf9;
+  font-size:8px;
+  color:#53635a;
+}
+.context-pill.mode{
+  background:#edf8f3;
+  color:#087d50;
+  border-color:#cfe7da;
+}
+.dine-context{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.dine-context.hidden,
+.delivery-context.hidden{
+  display:none!important;
+}
+.dine-context select{
+  flex:1;
+  height:32px;
+  border:1px solid #d8e4de;
+  background:#fff;
+  padding:0 8px;
+  font-size:9px;
+}
+.dine-context button{
+  height:32px;
+  border:1px solid #dae2f1;
+  background:#f4f6ff;
+  color:#5064a5;
+  padding:0 8px;
+  font-size:8.5px;
+}
+.delivery-context{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+}
+.delivery-customer{
+  display:grid;
+  grid-template-columns:32px 1fr;
+  gap:8px;
+  align-items:center;
+}
+.delivery-customer-copy span{
+  display:block;
+  font-size:10.5px;
+}
+.delivery-customer-copy small{
+  display:block;
+  margin-top:2px;
+  font-size:8px;
+  color:#7b8880;
+}
+.delivery-address{
+  display:block!important;
+  margin-top:4px;
+  font-size:8.5px;
+  color:#396d58;
+}
+.delivery-address.hidden{
+  display:none!important;
+}
+.customer-actions{
+  display:flex;
+  gap:5px;
+}
+.customer-btn{
+  height:30px;
+  border-radius:6px!important;
+  font-size:8px;
+}
+.held-table-alert{
+  margin-top:6px;
+}
+
+/* Full-screen NEW BILL */
+.new-bill-screen{
+  position:fixed;
+  inset:0;
+  z-index:500;
+  background:
+    radial-gradient(circle at 10% 0%,rgba(17,163,107,.08),transparent 32%),
+    #f6f9f7;
+  display:none;
+  overflow:auto;
+}
+.new-bill-screen.show{
+  display:block;
+}
+.new-bill-shell{
+  width:min(980px,92vw);
+  min-height:100vh;
+  margin:0 auto;
+  padding:34px 0 42px;
+  display:flex;
+  flex-direction:column;
+}
+.new-bill-top{
+  display:flex;
+  justify-content:space-between;
+  gap:20px;
+  align-items:flex-start;
+}
+.nb-kicker{
+  display:block;
+  color:#0d8556;
+  font-size:9px;
+  margin-bottom:6px;
+}
+.new-bill-top h2{
+  margin:0;
+  font-size:28px;
+  color:#1c2c23;
+}
+.new-bill-top p{
+  margin:7px 0 0;
+  font-size:11px;
+  color:#6d7971;
+}
+.nb-close{
+  width:42px;height:42px;
+  border:1px solid #dde5e0;
+  background:#fff;
+  font-size:22px;
+  color:#5e6b64;
+}
+
+.new-bill-types{
+  margin-top:28px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+}
+.new-type{
+  min-height:126px;
+  border:1px solid #dde5e1;
+  background:#fff;
+  display:grid;
+  grid-template-columns:48px 1fr;
+  gap:12px;
+  align-items:center;
+  padding:18px;
+  text-align:left;
+}
+.new-type .type-icon{
+  width:48px;height:48px;
+  display:grid;
+  place-items:center;
+  background:#f4f7f5;
+  font-size:17px;
+  color:#4e5e55;
+}
+.new-type b{
+  display:block;
+  font-size:15px;
+  color:#283931;
+}
+.new-type small{
+  display:block;
+  margin-top:4px;
+  font-size:9px;
+  color:#7e8a82;
+}
+.new-type.dine.selected{
+  border-color:#0f9d65;
+  box-shadow:inset 0 0 0 1px #0f9d65;
+  background:#f2fbf6;
+}
+.new-type.takeaway.selected{
+  border-color:#e99132;
+  box-shadow:inset 0 0 0 1px #e99132;
+  background:#fff7ed;
+}
+.new-type.delivery.selected{
+  border-color:#3e81d3;
+  box-shadow:inset 0 0 0 1px #3e81d3;
+  background:#f3f8ff;
+}
+
+.new-bill-detail{
+  margin-top:18px;
+}
+.nb-panel{
+  border:1px solid #dde5e1;
+  background:#fff;
+  padding:18px;
+}
+.nb-panel.hidden{
+  display:none;
+}
+.nb-panel-head span{
+  display:block;
+  font-size:13px;
+  color:#283a30;
+}
+.nb-panel-head small{
+  display:block;
+  margin-top:4px;
+  color:#7b8780;
+  font-size:9px;
+}
+.nb-row{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+}
+.nb-row select{
+  height:42px;
+  border:1px solid #d7e3dd;
+  padding:0 10px;
+  background:#fff;
+  font-size:10px;
+}
+.nb-row button{
+  height:42px;
+  border:1px solid #d6e0f0;
+  background:#f4f6ff;
+  color:#4e64a8;
+  padding:0 13px;
+  font-size:9px;
+}
+.nb-held{
+  margin-top:10px;
+  min-height:42px;
+  border:1px solid #eed4af;
+  background:#fff7e9;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  font-size:9px;
+  color:#7e541e;
+}
+.nb-held.hidden{display:none}
+.nb-held button{
+  height:30px;
+  border:1px solid #e8c996;
+  background:#fff;
+  color:#915b14;
+}
+.nb-customer-card{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:12px;
+  border:1px solid #e3e9e5;
+  background:#fbfdfc;
+  padding:13px;
+}
+.nb-customer-card b{
+  display:block;
+  font-size:12px;
+}
+.nb-customer-card small{
+  display:block;
+  margin-top:3px;
+  font-size:8.5px;
+  color:#7c8881;
+}
+.nb-customer-card p{
+  margin:7px 0 0;
+  font-size:9px;
+  color:#396c57;
+}
+.nb-customer-card>div:last-child{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+.nb-customer-card button{
+  height:34px;
+  border:1px solid #d6e5dd;
+  background:#fff;
+  padding:0 10px;
+  font-size:8.5px;
+}
+.takeaway-note{
+  margin-top:12px;
+  padding:18px;
+  background:#fafcfb;
+  color:#647169;
+  font-size:10px;
+  border:1px dashed #dce4df;
+}
+.new-bill-footer{
+  margin-top:auto;
+  padding-top:28px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+}
+.new-bill-footer span{
+  display:block;
+  font-size:8px;
+  color:#78847d;
+}
+.new-bill-footer b{
+  display:block;
+  margin-top:4px;
+  font-size:20px;
+  color:#24372d;
+}
+.start-bill-btn{
+  min-width:190px;
+  height:48px;
+  border:0;
+  background:#0f9e66;
+  color:#fff;
+  font-size:11px;
+}
+
+/* Minimal payment popup */
+.minimal-checkout{
+  width:min(650px,94vw)!important;
+}
+.minimal-payment-body{
+  padding:16px!important;
+}
+.payment-total{
+  padding-bottom:14px;
+  border-bottom:1px solid #e5ebe7;
+}
+.payment-total>span{
+  display:block;
+  font-size:9px;
+  color:#718077;
+}
+.payment-total>b{
+  display:block;
+  margin-top:4px;
+  font-size:34px!important;
+  color:#087c4f;
+}
+.payment-total small{
+  display:block;
+  margin-top:4px;
+  font-size:8px;
+  color:#7b8880;
+}
+
+.payment-line{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:13px;
+}
+.payment-line label>span,
+.payment-method-line>span{
+  display:block;
+  margin-bottom:4px;
+  font-size:8px;
+  color:#617068;
+}
+.money-input{
+  height:44px;
+}
+.money-input input{
+  font-size:14px!important;
+}
+.change-box{
+  min-height:68px;
+  border:1px solid #dce5e0;
+  background:#f9fbfa;
+  padding:9px 10px;
+}
+.change-box>span{
+  display:block;
+  font-size:8px;
+  color:#6a7770;
+}
+.change-box>b{
+  display:block;
+  margin-top:2px;
+  font-size:18px;
+  color:#087c4f;
+}
+.change-box small{
+  display:block;
+  margin-top:3px;
+  font-size:7px;
+  color:#7c8981;
+}
+.change-box.due{
+  background:#fff5f5;
+  border-color:#efd7d8;
+}
+.change-box.due b{
+  color:#c34c55;
+}
+.change-box.complete{
+  background:#eef9f3;
+  border-color:#cce5d8;
+}
+.payment-method-line{
+  display:block;
+  margin-top:12px;
+}
+.payment-method-line select{
+  width:100%;
+  height:42px;
+  border:1px solid #d6e3dc;
+  background:#fff;
+  padding:0 9px;
+  font-size:10px;
+}
+.payment-method-line small{
+  display:block;
+  margin-top:4px;
+  font-size:7.5px;
+  color:#7c8881;
+}
+
+.invoice-notice{
+  margin-top:12px;
+  padding:10px;
+  border:1px solid #dedaf3;
+  background:#f8f6ff;
+}
+.invoice-notice b{
+  display:block;
+  color:#5d4ca5;
+  font-size:10px;
+}
+.invoice-notice span{
+  display:block;
+  margin-top:4px;
+  color:#6b657d;
+  font-size:8px;
+  line-height:1.4;
+}
+
+.minimal-actions{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.minimal-actions button{
+  min-height:42px;
+  border:1px solid #dce5e0;
+  background:#fff;
+  color:#405149;
+  font-size:9px;
+}
+.minimal-actions .pay-final{
+  background:#0f9e66;
+  color:#fff;
+  border-color:#0f9e66;
+}
+.minimal-actions .pay-final.wa{
+  background:#138f7d;
+  border-color:#138f7d;
+}
+.final-note{
+  margin-top:10px;
+  text-align:center;
+  font-size:7.5px;
+  color:#7b8780;
+}
+
+/* Only Grand Total is bold in main POS; payment total is intentionally large, not heavy */
+body *{font-weight:400!important}
+.grand span,.grand b{font-weight:800!important}
+.payment-total>b{font-weight:500!important}
+
+/* Responsive */
+@media(max-width:760px){
+  .new-bill-shell{
+    width:min(94vw,980px);
+    padding-top:20px;
+  }
+  .new-bill-types{
+    grid-template-columns:1fr;
+  }
+  .new-bill-footer{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .start-bill-btn{
+    width:100%;
+  }
+  .nb-customer-card{
+    grid-template-columns:1fr;
+  }
+  .nb-customer-card>div:last-child{
+    justify-content:flex-start;
+  }
+  .payment-line,
+  .minimal-actions{
+    grid-template-columns:1fr;
+  }
+  .delivery-context{
+    grid-template-columns:1fr;
+  }
+}
+</style>
+
+<style id="pos-v8">
+/* ===== POS Stage 1 V8 refinements ===== */
+
+/* Remove left-side / page shade completely */
+html,body{
+  background:#ffffff!important;
+  background-image:none!important;
+}
+.app,
+.work,
+.workspace,
+.products{
+  box-shadow:none!important;
+}
+.app:before,
+.app:after,
+.work:before,
+.work:after{
+  display:none!important;
+}
+
+/* NEW BILL sits on the far right of order header */
+.ohead{
+  display:flex!important;
+  align-items:center!important;
+}
+.ohead .order-title{
+  min-width:0;
+}
+.new-bill-btn{
+  margin-left:auto!important;
+  flex:0 0 auto;
+}
+
+/* Full-screen New Bill stays below its own child dialogs */
+.new-bill-screen{
+  z-index:500!important;
+}
+
+/* Customer / Create Customer / New Table opened from New Bill must stay ABOVE it */
+#customerSelectModal.show,
+#customerCreateModal.show,
+#newTableModal.show{
+  z-index:620!important;
+  background:rgba(19,31,25,.34)!important;
+  backdrop-filter:blur(3px);
+}
+
+/* Make child popup visibly part of New Bill flow */
+#customerSelectModal .dialog,
+#customerCreateModal .dialog,
+#newTableModal .dialog{
+  box-shadow:0 24px 70px rgba(20,43,32,.22)!important;
+}
+
+/* Payment popup is intentionally narrow and vertical */
+#checkoutModal.show{
+  z-index:650!important;
+}
+.compact-pay-dialog{
+  width:min(390px,94vw)!important;
+  max-height:92vh!important;
+  overflow:auto!important;
+  border-radius:12px!important;
+  box-shadow:0 22px 70px rgba(24,47,37,.22)!important;
+}
+.compact-pay-head{
+  min-height:60px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:11px 12px;
+  border-bottom:1px solid #e3e9e6;
+  background:#fff;
+}
+.compact-pay-head>div>span{
+  display:block;
+  font-size:7.5px;
+  color:#7b8881;
+  letter-spacing:.08em;
+}
+.compact-pay-head h3{
+  margin:3px 0 0;
+  font-size:13px;
+  color:#25372d;
+  font-weight:400!important;
+}
+.compact-pay-head h3 b{
+  font-weight:400!important;
+  color:#087d50;
+}
+.compact-close{
+  width:32px!important;
+  height:32px!important;
+  flex:0 0 auto;
+}
+.compact-pay-body{
+  padding:12px;
+  background:#fbfcfb;
+}
+.compact-total{
+  text-align:center;
+  padding:12px 8px 14px;
+  background:#fff;
+  border:1px solid #dfe8e3;
+}
+.compact-total>span{
+  display:block;
+  font-size:8px;
+  color:#718078;
+}
+.compact-total>b{
+  display:block;
+  margin-top:4px;
+  font-size:30px!important;
+  line-height:1.1;
+  color:#087d50;
+  font-weight:500!important;
+}
+.compact-total>small{
+  display:block;
+  margin-top:5px;
+  font-size:8px;
+  color:#77857d;
+}
+
+.compact-field{
+  display:block;
+  margin-top:9px;
+}
+.compact-field>span{
+  display:block;
+  margin-bottom:4px;
+  font-size:8px;
+  color:#65736b;
+}
+.compact-field>small{
+  display:block;
+  margin-top:4px;
+  font-size:7px;
+  color:#849087;
+}
+.compact-field select{
+  width:100%;
+  height:40px;
+  border:1px solid #d8e4de;
+  background:#fff;
+  border-radius:7px;
+  padding:0 9px;
+  color:#31433a;
+  font-size:9.5px;
+  outline:none;
+}
+.compact-money-input{
+  height:42px;
+  display:flex;
+  align-items:center;
+  border:1px solid #d0e3d9;
+  background:#fff;
+  border-radius:7px;
+  overflow:hidden;
+}
+.compact-money-input>span{
+  height:100%;
+  display:grid;
+  place-items:center;
+  padding:0 9px;
+  border-right:1px solid #e1e9e5;
+  background:#f2f8f5;
+  color:#66756c;
+  font-size:8px;
+}
+.compact-money-input input{
+  flex:1;
+  min-width:0;
+  height:100%;
+  border:0;
+  outline:0;
+  padding:0 9px;
+  color:#24372d;
+  font-size:13px;
+}
+
+.compact-change{
+  margin-top:8px;
+  padding:8px 9px;
+  border:1px solid #dce6e0;
+  background:#fff;
+  border-radius:7px;
+}
+.compact-change>div{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+}
+.compact-change span{
+  font-size:8.5px;
+  color:#65736b;
+}
+.compact-change b{
+  font-size:15px;
+  color:#087d50;
+  font-weight:400!important;
+}
+.compact-change small{
+  display:block;
+  margin-top:3px;
+  font-size:7px;
+  color:#839087;
+}
+.compact-change.due{
+  background:#fff5f5;
+  border-color:#eed6d8;
+}
+.compact-change.due b{
+  color:#c44e57;
+}
+.compact-change.complete{
+  background:#eff9f4;
+  border-color:#cfe6da;
+}
+
+.preinvoice-note{
+  margin-top:10px;
+  padding:8px 9px;
+  border:1px solid #dfdaf3;
+  background:#f8f6ff;
+}
+.preinvoice-note b{
+  display:block;
+  font-size:8.5px;
+  color:#5d4ca6;
+  font-weight:500!important;
+}
+.preinvoice-note span{
+  display:block;
+  margin-top:2px;
+  font-size:7.5px;
+  color:#6f687d;
+}
+
+.vertical-pay-actions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:6px;
+  margin-top:10px;
+}
+.vpa{
+  width:100%;
+  min-height:46px;
+  border:1px solid #dde5e1;
+  background:#fff;
+  padding:7px 10px;
+  text-align:left;
+  border-radius:7px;
+}
+.vpa span{
+  display:block;
+  font-size:9.5px;
+  color:#33453b;
+}
+.vpa small{
+  display:block;
+  margin-top:2px;
+  font-size:7.2px;
+  color:#7c8881;
+}
+.vpa.pre{
+  border-color:#ddd8f0;
+  background:#faf8ff;
+}
+.vpa.pre-wa{
+  border-color:#d6e7e3;
+  background:#f4fbf9;
+}
+.vpa.final{
+  border-color:#0f9d65;
+  background:#0f9d65;
+}
+.vpa.final span,
+.vpa.final small{
+  color:#fff;
+}
+.vpa.final-wa{
+  border-color:#138f7d;
+  background:#138f7d;
+}
+.vpa.final-wa span,
+.vpa.final-wa small{
+  color:#fff;
+}
+
+/* Main checkout breakdown removed in V8 */
+.checkout-breakdown{
+  display:none!important;
+}
+
+/* Keep secondary document preview above payment popup */
+#slip.show,
+#wa.show{
+  z-index:720!important;
+}
+
+/* No old extra shadow strip on the left edge */
+.drawer{
+  box-shadow:none!important;
+}
+
+@media(max-width:520px){
+  .compact-pay-dialog{
+    width:min(96vw,390px)!important;
+  }
+}
+</style>
+
+<style id="pos-v9">
+/* ===== POS Stage 1 V9 ===== */
+
+/* Compact vertical payment popup */
+#checkoutModal.show{z-index:650!important}
+.v9-pay-dialog{
+  width:min(372px,94vw)!important;
+  max-height:94vh!important;
+  overflow:visible!important;
+  border-radius:8px!important;
+  box-shadow:0 18px 55px rgba(20,42,32,.22)!important;
+}
+.v9-pay-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  min-height:54px;
+  padding:9px 11px;
+  border-bottom:1px solid #e1e8e4;
+  background:#fff;
+}
+.v9-pay-head>div>span{
+  display:block;
+  font-size:7px;
+  color:#7d8982;
+  letter-spacing:.08em;
+}
+.v9-pay-head h3{
+  margin:2px 0 0;
+  font-size:12px;
+  font-weight:400!important;
+  color:#2d4036;
+}
+.v9-pay-head h3 b{
+  color:#087d50;
+  font-weight:400!important;
+}
+.v9-pay-close{
+  width:31px!important;
+  height:31px!important;
+}
+.v9-pay-body{
+  padding:10px;
+  background:#fbfcfb;
+}
+
+/* Total larger */
+.v9-total{
+  border:1px solid #dce6e1;
+  background:#fff;
+  padding:11px 10px;
+  text-align:center;
+}
+.v9-total>span{
+  display:block;
+  font-size:7.5px;
+  color:#718077;
+}
+.v9-total>b{
+  display:block;
+  margin-top:3px;
+  font-size:29px!important;
+  line-height:1.12;
+  color:#087d50;
+  font-weight:500!important;
+}
+.v9-total>small{
+  display:block;
+  margin-top:4px;
+  font-size:7px;
+  color:#7b8780;
+}
+
+.v9-field{
+  display:block;
+  margin-top:8px;
+}
+.v9-field>span{
+  display:block;
+  margin-bottom:3px;
+  font-size:7.5px;
+  color:#69766e;
+}
+.v9-field>small{
+  display:block;
+  margin-top:3px;
+  font-size:6.8px;
+  color:#839088;
+}
+
+/* Received amount right aligned as requested */
+.v9-money-input{
+  height:41px;
+  display:flex;
+  align-items:center;
+  border:1px solid #d3e2da;
+  background:#fff;
+  overflow:hidden;
+}
+.v9-money-input>span{
+  height:100%;
+  display:grid;
+  place-items:center;
+  padding:0 9px;
+  background:#f2f8f5;
+  border-right:1px solid #e0e8e4;
+  color:#6a7770;
+  font-size:7.5px;
+}
+.v9-money-input input{
+  flex:1;
+  min-width:0;
+  height:100%;
+  border:0;
+  outline:0;
+  padding:0 10px;
+  text-align:right!important;
+  font-size:13px;
+  color:#24372d;
+}
+
+.v9-change{
+  margin-top:7px;
+  padding:8px 9px;
+  border:1px solid #dce5e0;
+  background:#fff;
+}
+.v9-change>div{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+.v9-change span{
+  font-size:8px;
+  color:#65736b;
+}
+.v9-change b{
+  font-size:15px;
+  color:#087d50;
+  font-weight:400!important;
+}
+.v9-change small{
+  display:block;
+  margin-top:2px;
+  font-size:6.7px;
+  color:#839087;
+}
+.v9-change.due{
+  background:#fff5f5;
+  border-color:#efd6d8;
+}
+.v9-change.due b{color:#c54c55}
+.v9-change.complete{
+  background:#eef9f3;
+  border-color:#cce5d8;
+}
+
+.v9-field select{
+  width:100%;
+  height:39px;
+  border:1px solid #d6e2dc;
+  background:#fff;
+  padding:0 9px;
+  font-size:9px;
+  color:#304138;
+  outline:none;
+}
+.v9-fbr-note{
+  margin-top:8px;
+  padding:7px 8px;
+  background:#f7f6ff;
+  border:1px solid #e1ddf4;
+  color:#6c6486;
+  font-size:6.8px;
+  text-align:center;
+}
+
+/* Drop-UP close-bill control */
+.close-bill-wrap{
+  position:relative;
+  margin-top:9px;
+}
+.close-bill-control{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 42px;
+  border:2px solid #0f9d65;
+  background:#fff;
+}
+.close-bill-main{
+  min-height:45px;
+  border:0;
+  background:#0f9d65;
+  color:#fff;
+  text-align:left;
+  padding:7px 10px;
+}
+.close-bill-main span{
+  display:block;
+}
+.close-bill-main b{
+  display:block;
+  font-size:9.5px;
+  font-weight:500!important;
+}
+.close-bill-main small{
+  display:block;
+  margin-top:2px;
+  font-size:6.8px;
+  color:#dff5e9;
+}
+.close-bill-toggle{
+  border:0;
+  border-left:2px solid #0f9d65;
+  background:#fff;
+  color:#0f9d65;
+  font-size:18px;
+}
+.close-bill-toggle.open{
+  background:#edf9f3;
+}
+.close-bill-menu{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:calc(100% + 5px);
+  z-index:20;
+  display:none;
+  border:1px solid #d7e1db;
+  background:#fff;
+  box-shadow:0 12px 32px rgba(22,46,35,.16);
+}
+.close-bill-menu.show{
+  display:grid;
+}
+.close-bill-menu button{
+  min-height:45px;
+  border:0;
+  border-bottom:1px solid #e7ece9;
+  background:#fff;
+  padding:7px 9px;
+  text-align:left;
+}
+.close-bill-menu button:last-child{
+  border-bottom:0;
+}
+.close-bill-menu button:hover,
+.close-bill-menu button.selected{
+  background:#f1faf5;
+}
+.close-bill-menu button span{
+  display:block;
+  font-size:8.8px;
+  color:#2f4137;
+}
+.close-bill-menu button small{
+  display:block;
+  margin-top:2px;
+  font-size:6.5px;
+  color:#7d8982;
+}
+
+/* Receipt preview should resemble 80mm thermal paper */
+#slip .dialog{
+  width:min(390px,94vw)!important;
+}
+#sbody{
+  background:#f0f0f0;
+  padding:12px!important;
+}
+.thermal-receipt{
+  width:80mm;
+  max-width:100%;
+  margin:0 auto;
+  background:#fff;
+  color:#000;
+  font-family:Arial,Helvetica,sans-serif;
+  padding:4mm;
+  box-shadow:0 2px 12px rgba(0,0,0,.08);
+}
+.thermal-center{text-align:center}
+.thermal-restaurant-name{
+  font-size:17px;
+  line-height:1.1;
+  font-weight:700!important;
+}
+.thermal-small{
+  font-size:10px;
+  line-height:1.35;
+}
+.thermal-rule{
+  border-top:1px dashed #000;
+  margin:6px 0;
+}
+.thermal-meta{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:3px 8px;
+  font-size:10px;
+  line-height:1.35;
+}
+.thermal-customer{
+  font-size:10px;
+  line-height:1.35;
+}
+.thermal-items{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  font-size:10px;
+}
+.thermal-items th{
+  text-align:left;
+  border-bottom:1px solid #000;
+  padding:3px 1px;
+  font-weight:700!important;
+}
+.thermal-items td{
+  padding:4px 1px;
+  vertical-align:top;
+  border-bottom:1px dotted #aaa;
+}
+.thermal-items .q{width:12%}
+.thermal-items .d{width:46%}
+.thermal-items .r{width:20%;text-align:right}
+.thermal-items .a{width:22%;text-align:right}
+.thermal-item-note{
+  display:block;
+  margin-top:2px;
+  font-size:8px;
+  line-height:1.25;
+}
+.thermal-totals{
+  margin-top:4px;
+  font-size:10px;
+}
+.thermal-total-row{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:2px 0;
+}
+.thermal-total-row.grand{
+  margin-top:4px;
+  padding-top:5px;
+  border-top:1px solid #000;
+  font-size:13px;
+  font-weight:700!important;
+}
+.thermal-fbr{
+  margin-top:7px;
+  padding-top:6px;
+  border-top:1px dashed #000;
+  text-align:center;
+}
+.thermal-fbr img{
+  width:33mm;
+  height:33mm;
+  object-fit:contain;
+  image-rendering:pixelated;
+}
+.thermal-fbr-no{
+  margin-top:3px;
+  font-size:10px;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+.thermal-footer{
+  margin-top:8px;
+  padding-top:6px;
+  border-top:1px dashed #000;
+  text-align:center;
+  font-size:9px;
+}
+
+/* Ensure receipt/WhatsApp previews stay above payment */
+#slip.show,#wa.show{z-index:720!important}
+
+@media(max-width:480px){
+  .v9-pay-dialog{width:96vw!important}
+}
+</style>
+
+<style id="pos-v10">
+/* ===== POS Stage 1 V10 ===== */
+
+.bill-top-actions{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.duplicate-bill-btn{
+  height:36px;
+  border:1px solid #d9e2ef;
+  background:#f5f7ff;
+  color:#5366a2;
+  padding:0 10px;
+  border-radius:7px;
+  font-size:9px;
+}
+.duplicate-bill-btn:hover{
+  background:#e9edff;
+}
+
+/* Drop-up text significantly larger */
+.close-bill-menu button{
+  min-height:58px!important;
+  padding:10px 11px!important;
+}
+.close-bill-menu button span{
+  font-size:14px!important;
+  line-height:1.2!important;
+}
+.close-bill-menu button small{
+  margin-top:4px!important;
+  font-size:11px!important;
+  line-height:1.25!important;
+}
+.close-bill-main{
+  min-height:51px!important;
+}
+.close-bill-main b{
+  font-size:12px!important;
+}
+.close-bill-main small{
+  font-size:9px!important;
+}
+
+/* Product images fixed and clickable */
+.product-photo{
+  cursor:pointer!important;
+}
+.product-photo img{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+}
+.product-photo:hover:after{
+  content:"Add";
+  position:absolute;
+  inset:auto 7px 7px auto;
+  z-index:5;
+  background:rgba(15,157,101,.92);
+  color:#fff;
+  padding:5px 8px;
+  font-size:8px;
+}
+
+/* Duplicate Bill */
+.duplicate-dialog{
+  width:min(650px,94vw)!important;
+}
+.duplicate-toolbar{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:center;
+  margin-bottom:9px;
+}
+.duplicate-toolbar input{
+  height:38px;
+  border:1px solid #dce5e0;
+  background:#fff;
+  padding:0 9px;
+  font-size:9px;
+  outline:none;
+}
+.duplicate-toolbar span{
+  font-size:8px;
+  color:#748078;
+}
+.duplicate-list{
+  display:grid;
+  gap:6px;
+  max-height:430px;
+  overflow:auto;
+}
+.duplicate-row{
+  display:grid;
+  grid-template-columns:75px minmax(0,1fr) 90px auto;
+  gap:9px;
+  align-items:center;
+  border:1px solid #e1e8e4;
+  background:#fff;
+  padding:9px;
+}
+.duplicate-row .bill-no{
+  color:#087d50;
+  font-size:10px;
+}
+.duplicate-row .bill-info span{
+  display:block;
+  font-size:9px;
+  color:#34463c;
+}
+.duplicate-row .bill-info small{
+  display:block;
+  margin-top:2px;
+  font-size:7.5px;
+  color:#7d8982;
+}
+.duplicate-row .bill-amount{
+  text-align:right;
+  font-size:9px;
+  color:#3f5147;
+}
+.duplicate-row button{
+  height:31px;
+  border:1px solid #cfe5da;
+  background:#eef9f3;
+  color:#087c4f;
+  padding:0 9px;
+  font-size:8px;
+}
+.duplicate-empty{
+  padding:25px;
+  text-align:center;
+  border:1px dashed #d9e2dd;
+  color:#7b8880;
+  font-size:9px;
+}
+
+/* Item Management */
+.item-management-dialog{
+  width:min(760px,95vw)!important;
+}
+.item-manage-tabs{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  border-bottom:1px solid #e2e8e4;
+  background:#f8faf9;
+}
+.im-tab{
+  height:42px;
+  border:0;
+  border-right:1px solid #e1e7e4;
+  background:#f8faf9;
+  color:#627067;
+  font-size:9px;
+}
+.im-tab:last-child{border-right:0}
+.im-tab.active{
+  background:#fff;
+  color:#087c4f;
+  box-shadow:inset 0 -2px 0 #0f9d65;
+}
+.im-panel.hidden{display:none}
+.category-select-line{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:5px;
+}
+.category-select-line select{
+  min-width:0;
+}
+.category-select-line button{
+  height:37px;
+  border:1px solid #d6e4dd;
+  background:#eff9f4;
+  color:#087c4f;
+  padding:0 8px;
+  font-size:8px;
+}
+.manage-simple-form{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.manage-simple-form .full{grid-column:1/-1}
+.manage-simple-form label span{
+  display:block;
+  margin-bottom:4px;
+  font-size:8px;
+  color:#627068;
+}
+.manage-simple-form input,
+.manage-simple-form select{
+  width:100%;
+  height:38px;
+  border:1px solid #dbe4df;
+  background:#fff;
+  padding:0 9px;
+  font-size:9px;
+  outline:none;
+}
+.existing-categories{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:12px;
+}
+.existing-cat-chip{
+  border:1px solid #e0e6e2;
+  background:#f8faf9;
+  padding:5px 8px;
+  font-size:7.5px;
+  color:#55635b;
+}
+.rate-warning{
+  margin-top:10px;
+  padding:8px;
+  border:1px solid #eadfc5;
+  background:#fff9ec;
+  color:#7d632a;
+  font-size:7.5px;
+}
+
+@media(max-width:650px){
+  .duplicate-row{
+    grid-template-columns:65px 1fr auto;
+  }
+  .duplicate-row .bill-amount{
+    display:none;
+  }
+  .manage-simple-form{
+    grid-template-columns:1fr;
+  }
+  .manage-simple-form .full{
+    grid-column:auto;
+  }
+}
+</style>
+
+<style id="pos-v11">
+/* ===== POS V11 — final POS screen reset ===== */
+
+html,body{
+  font-family:"Segoe UI Variable Text","Segoe UI",Inter,Roboto,Arial,sans-serif!important;
+  font-size:16px!important;
+  color:#26362e!important;
+}
+
+/* Main UI readable font reset */
+.top input{font-size:13px!important}
+.cat{font-size:12px!important}
+.prod h4{font-size:13px!important}
+.prod p{font-size:11px!important;line-height:1.35!important}
+.price{font-size:12px!important}
+.add{font-size:11px!important}
+.preqty .preqty-value{font-size:11px!important}
+.carttable th{font-size:11px!important}
+.carttable td{font-size:11.5px!important}
+.desccell strong{font-size:12px!important}
+.desccell small{font-size:10px!important}
+.ratecell,.totalcell{font-size:11.5px!important}
+.sum{font-size:11.5px!important}
+.grand span{font-size:13px!important}
+.grand b{font-size:20px!important}
+.send-kot-btn{font-size:10.5px!important}
+.charge{font-size:12px!important}
+
+/* White professional drawer */
+.drawer{
+  width:248px!important;
+  background:#fff!important;
+  color:#293a31!important;
+  border-right:1px solid #dfe7e2!important;
+  box-shadow:12px 0 34px rgba(28,55,42,.08)!important;
+}
+.brand{
+  min-height:72px!important;
+  padding:0 14px!important;
+  border-bottom:1px solid #e6ece8!important;
+  color:#293a31!important;
+}
+.mark{
+  width:38px!important;
+  height:38px!important;
+  border-radius:9px!important;
+  color:#fff!important;
+  font-size:15px!important;
+}
+.brand-copy{min-width:0}
+.brand strong{
+  font-size:15px!important;
+  color:#203129!important;
+  font-weight:600!important;
+}
+.brand small{
+  margin-top:2px!important;
+  color:#7c8981!important;
+  font-size:10px!important;
+}
+.drawer-close{
+  margin-left:auto;
+  width:31px;height:31px;
+  border:1px solid #e1e8e4;
+  background:#fff;
+  color:#66756d;
+  border-radius:7px;
+  font-size:18px;
+}
+.drawer-context{
+  margin:10px 12px 4px;
+  padding:10px;
+  background:#f6faf8;
+  border:1px solid #e0e9e4;
+}
+.drawer-context span{
+  display:block;
+  font-size:9px;
+  color:#859188;
+}
+.drawer-context b{
+  display:block;
+  margin-top:2px;
+  font-size:12px;
+  color:#2e4036;
+  font-weight:500!important;
+}
+.drawer-context small{
+  display:block;
+  margin-top:3px;
+  font-size:9.5px;
+  color:#728078;
+}
+
+.nav{
+  padding:8px 10px 12px!important;
+  display:block!important;
+  overflow:auto;
+}
+.nav-label{
+  padding:12px 9px 5px;
+  color:#98a29c;
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.nav button{
+  width:100%;
+  min-height:43px!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  border:1px solid transparent!important;
+  border-radius:7px!important;
+  background:#fff!important;
+  color:#536159!important;
+  padding:0 10px!important;
+  font-size:13px!important;
+  text-align:left!important;
+  margin-bottom:3px;
+}
+.nav button svg{
+  width:18px!important;
+  height:18px!important;
+  color:#748179;
+  flex:0 0 auto;
+}
+.nav button:hover{
+  background:#f4f9f6!important;
+  color:#087d50!important;
+}
+.nav button.active{
+  background:#eaf8f1!important;
+  color:#087d50!important;
+  border-color:#cfe7da!important;
+  box-shadow:none!important;
+}
+.nav button.active svg{color:#087d50!important}
+.drawer-foot{
+  padding:10px 12px 12px!important;
+  border-top:1px solid #e5ebe7;
+  background:#fff;
+}
+.drawer-user{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:7px 0 9px;
+}
+.drawer-user-avatar{
+  width:34px;height:34px;border-radius:50%;
+  display:grid;place-items:center;
+  background:#eaf8f1;color:#087d50;
+  font-size:10px;
+}
+.drawer-user span{
+  display:block;font-size:9px;color:#87928b
+}
+.drawer-user b{
+  display:block;margin-top:1px;font-size:11px;color:#304139;font-weight:500!important
+}
+.status{
+  display:flex!important;
+  align-items:flex-start;
+  gap:7px;
+  background:#f5faf7!important;
+  border:1px solid #dce8e2!important;
+  color:#3a4d42!important;
+  border-radius:8px!important;
+  font-size:10px!important;
+}
+.status b{
+  font-size:10.5px!important;
+  color:#2f4237!important;
+  font-weight:500!important;
+}
+.status small{
+  font-size:8.5px!important;
+  color:#7b8880!important;
+}
+.back{
+  background:rgba(24,39,31,.18)!important;
+}
+
+/* New Bill F1 key */
+.new-bill-btn{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font-size:10px!important;
+}
+.new-bill-btn kbd{
+  min-width:25px;
+  height:21px;
+  display:grid;
+  place-items:center;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(8,125,80,.18);
+  color:#087d50;
+  font-size:8px;
+}
+
+/* Duplicate bill popup: significantly larger/readable */
+.duplicate-dialog{
+  width:min(720px,95vw)!important;
+}
+.duplicate-dialog .dh h3{
+  font-size:16px!important;
+}
+.duplicate-dialog .dh p{
+  font-size:11px!important;
+}
+.duplicate-toolbar input{
+  height:42px!important;
+  font-size:12px!important;
+}
+.duplicate-toolbar span{
+  font-size:11px!important;
+}
+.duplicate-row{
+  min-height:60px!important;
+  padding:11px!important;
+}
+.duplicate-row .bill-no{
+  font-size:13px!important;
+}
+.duplicate-row .bill-info span{
+  font-size:12px!important;
+}
+.duplicate-row .bill-info small{
+  font-size:10px!important;
+}
+.duplicate-row .bill-amount{
+  font-size:12px!important;
+}
+.duplicate-row button{
+  height:35px!important;
+  font-size:10.5px!important;
+}
+
+/* Quantity calculator: readable and keyboard-first */
+#weight .dialog{
+  width:min(480px,94vw)!important;
+}
+#weight .dh h3{
+  font-size:17px!important;
+}
+#weight .dh p{
+  font-size:11px!important;
+}
+.calcdisp small{
+  font-size:10px!important;
+}
+.calcdisp b{
+  font-size:34px!important;
+}
+.qv button{
+  font-size:10px!important;
+  height:35px!important;
+}
+.pad button{
+  font-size:15px!important;
+  height:52px!important;
+}
+#weight .df .btn{
+  font-size:11px!important;
+  height:38px!important;
+}
+
+/* Sent-item delete approval */
+.delete-approval-dialog{
+  width:min(560px,94vw)!important;
+}
+.delete-item-summary{
+  padding:10px;
+  border:1px solid #eadbca;
+  background:#fff9f0;
+}
+.delete-item-summary span{
+  display:block;
+  font-size:9px;
+  color:#846f58;
+}
+.delete-item-summary b{
+  display:block;
+  margin-top:3px;
+  font-size:14px;
+  color:#3d3328;
+  font-weight:500!important;
+}
+.delete-item-summary small{
+  display:block;
+  margin-top:3px;
+  font-size:10px;
+  color:#8a765e;
+}
+.delete-form{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.delete-form .full{grid-column:1/-1}
+.delete-form label span{
+  display:block;
+  margin-bottom:4px;
+  font-size:10px;
+  color:#5f6d65;
+}
+.delete-form input,
+.delete-form select,
+.delete-form textarea{
+  width:100%;
+  border:1px solid #dce4df;
+  background:#fff;
+  font-size:11px;
+  outline:none;
+}
+.delete-form input,.delete-form select{
+  height:40px;
+  padding:0 9px;
+}
+.delete-form textarea{
+  min-height:78px;
+  padding:8px;
+}
+.delete-form label small{
+  display:block;
+  margin-top:3px;
+  font-size:8px;
+  color:#8d9891;
+}
+.delete-audit-note{
+  margin-top:9px;
+  padding:8px;
+  border:1px solid #dce5e0;
+  background:#f7faf8;
+  color:#6d7971;
+  font-size:9px;
+}
+.danger-action{
+  border-color:#d9535d!important;
+  background:#d9535d!important;
+  color:#fff!important;
+  font-size:10.5px!important;
+}
+
+/* Void logs */
+.void-log-dialog .dh h3{font-size:16px!important}
+.void-log-dialog .dh p{font-size:11px!important}
+.void-log-list{display:grid;gap:7px;max-height:480px;overflow:auto}
+.void-log-row{
+  border:1px solid #e1e8e4;
+  background:#fff;
+  padding:10px;
+}
+.void-log-top{
+  display:grid;
+  grid-template-columns:90px minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+}
+.void-log-top .vbill{font-size:11px;color:#087d50}
+.void-log-top .vitem{font-size:12px;color:#304139}
+.void-log-top .vtime{font-size:9px;color:#7f8b84}
+.void-log-detail{
+  margin-top:6px;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  color:#65736b;
+  font-size:9.5px;
+}
+.void-log-reason{
+  margin-top:6px;
+  padding:7px;
+  background:#faf7f5;
+  border-left:3px solid #d45b64;
+  color:#65494c;
+  font-size:9.5px;
+}
+
+/* Slightly larger modal text across POS */
+.dh h3{font-size:15px!important}
+.dh p{font-size:10px!important}
+.btn{font-size:10px!important}
+.item-management-dialog{font-size:11px!important}
+.im-tab{font-size:11px!important}
+
+/* main right table row spacing */
+.carttable td{padding-top:7px!important;padding-bottom:7px!important}
+
+@media(max-width:760px){
+  .drawer{width:min(86vw,300px)!important}
+  .delete-form{grid-template-columns:1fr}
+  .delete-form .full{grid-column:auto}
+}
+</style>
+
+<style id="v4-pos-power">
+html,body{background:#f5f7f6!important}.workspace{background:#f7f9f8!important}.products{background:#f7f9f8!important}
+.top{background:#fff!important;border-bottom:1px solid #dce6e0!important;box-shadow:0 4px 18px rgba(35,60,47,.045)!important}.searchbox{background:#f8fbf9!important;border-color:#dbe6e0!important}.toolbtn{border-radius:7px!important}.toolbtn:nth-of-type(1){background:#fff6e8!important;border-color:#efd9b7!important;color:#a9661c!important}.toolbtn:nth-of-type(2){background:#eef5ff!important;border-color:#d5e4f4!important;color:#356ca7!important}.toolbtn:nth-of-type(3){background:#f3efff!important;border-color:#ddd5f4!important;color:#6c53b1!important}
+.cats{background:#fff!important;border-bottom:1px solid #e0e7e3!important}.cat{background:#fff!important;border:1px solid #dfe7e2!important;border-radius:7px!important}.cat:nth-child(3n+1){background:#f0faf5!important}.cat:nth-child(3n+2){background:#fff7ec!important}.cat:nth-child(3n+3){background:#f1f6ff!important}.cat.active{background:#18372a!important;color:#fff!important;border-color:#18372a!important}
+.prod{background:#fff!important;border:1px solid #dce5e0!important;box-shadow:0 5px 16px rgba(38,61,49,.055)!important;transition:.15s}.prod:hover{transform:translateY(-2px);box-shadow:0 9px 23px rgba(38,61,49,.09)!important;border-color:#bcdcca!important}.thumb{height:136px!important;background:#edf2ef!important;overflow:hidden!important}.thumb img,.product-photo img{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important;opacity:1!important;visibility:visible!important}.price{color:#6d50bc!important}.add{background:#eaf8f1!important;border-color:#c5e2d2!important;color:#087d50!important;border-radius:6px!important}.add:hover{background:#0f9d65!important;color:#fff!important}
+.order{background:#fff!important;border-left:1px solid #dce5e0!important;box-shadow:-5px 0 20px rgba(35,60,47,.04)!important}.ordertop{background:linear-gradient(135deg,#fff,#f3faf6)!important}.grand{background:#f2faf6!important;border:1px solid #d5eade!important;padding:9px!important}.send-kot-btn{background:linear-gradient(135deg,#ef9535,#df7f1c)!important;box-shadow:0 4px 10px rgba(223,127,28,.16)!important}.charge{background:linear-gradient(135deg,#0f9d65,#087d50)!important;box-shadow:0 5px 13px rgba(15,157,101,.18)!important}.new-bill-btn{box-shadow:0 4px 12px rgba(15,157,101,.15)!important}.duplicate-bill-btn{background:#f4f0ff!important;border-color:#ded6f4!important;color:#6d53b4!important}
+@media(max-width:900px){.thumb{height:120px!important}}
+</style>
+
+<style id="pos-v5-visual">
+.product-photo,.thumb{background:#edf3ef!important;min-height:118px!important;position:relative!important;overflow:hidden!important}
+.product-photo img,.thumb img{display:block!important;width:100%!important;height:118px!important;object-fit:cover!important;opacity:1!important;visibility:visible!important}
+.prod{border:1px solid #dce5e0!important;background:#fff!important;box-shadow:0 2px 9px rgba(35,67,51,.05)!important;transition:.15s!important}
+.prod:hover{transform:translateY(-2px)!important;box-shadow:0 8px 20px rgba(35,67,51,.10)!important;border-color:#b7dbc8!important}
+.cgrid .cat:nth-child(5n+1){border-left:3px solid #15a46c!important}.cgrid .cat:nth-child(5n+2){border-left:3px solid #4c86d9!important}.cgrid .cat:nth-child(5n+3){border-left:3px solid #e89535!important}.cgrid .cat:nth-child(5n+4){border-left:3px solid #7a5dd0!important}.cgrid .cat:nth-child(5n){border-left:3px solid #dc5a64!important}
+.charge{background:linear-gradient(135deg,#0f9d65,#087d50)!important;box-shadow:0 8px 18px rgba(15,157,101,.20)!important}
+.send-kot-btn{background:linear-gradient(135deg,#ef9b38,#de7e1e)!important;box-shadow:0 6px 14px rgba(225,135,42,.18)!important}
+</style><script>document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('.product-photo img,.thumb img').forEach((img,i)=>img.addEventListener('error',()=>{img.onerror=null;img.src='assets/menu_'+String((i%15)+1).padStart(2,'0')+'.jpg'})));</script>
+</head>
+<body>
+<div class="drawer" id="drawer">
+  <div class="brand">
+    <div class="mark">U</div>
+    <div class="brand-copy">
+      <strong>Urban Spoon</strong>
+      <small>Restaurant Operating System</small>
+    </div>
+    <button class="drawer-close" id="drawerClose" aria-label="Close menu">×</button>
+  </div>
+
+  <div class="drawer-context">
+    <span>Current Branch</span>
+    <b>Islamabad — F10</b>
+    <small>POS-02 · Shift #S-2048</small>
+  </div>
+
+  <div class="nav">
+    <div class="nav-label">Operations</div>
+
+    <button class="active">
+      <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+      <span>Point of Sale</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M5 3h14v18H5zM8 7h8M8 11h8M8 15h5"/></svg>
+      <span>Orders</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 5v14M16 5v14M4 12h16"/></svg>
+      <span>Tables & Floors</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M4 18h16M7 18v-5a5 5 0 0 1 10 0v5M9 5h6"/></svg>
+      <span>Kitchen / KDS</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>Bills & Shift</span>
+    </button>
+
+    <div class="nav-label">Management</div>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 8h5M19.5 5.5v5"/></svg>
+      <span>Customers</span>
+    </button>
+
+    <button id="menuManageNav">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16M8 4v4M15 10v4M11 16v4"/></svg>
+      <span>Menu & Categories</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM7 4h10v3M8 11h8M8 15h5"/></svg>
+      <span>Inventory</span>
+    </button>
+
+    <button>
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      <span>Reports</span>
+    </button>
+
+    <button id="voidLogsBtn">
+      <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg>
+      <span>Void / Delete Logs</span>
+    </button>
+
+    <button onclick="window.open('restaurant_order_taker_tablet_v1.html','_blank')">
+      <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 5h6M11 19h2"/></svg>
+      <span>Order Taker Tablet</span>
+    </button>
+
+    <div class="nav-label">System</div>
+
+    <button>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7m10 10 2.1 2.1M2 12h3m14 0h3"/></svg>
+      <span>Settings</span>
+    </button>
+  </div>
+
+  <div class="drawer-foot">
+    <div class="drawer-user">
+      <div class="drawer-user-avatar">AR</div>
+      <div>
+        <span>Cashier</span>
+        <b>Ali Raza</b>
+      </div>
+    </div>
+    <div class="status">
+      <span class="dot"></span>
+      <div>
+        <b>System Operational</b>
+        <small>Kitchen, local server & fiscal ready</small>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="back" id="back"></div>
+<div class="app">
+<section class="work">
+<header class="top"><button class="menub" id="menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="menuSearch" placeholder="Search menu, item code, barcode..."><span class="kbd">Ctrl K</span></div><div class="fill"></div><div class="chip">Branch <select><option>Islamabad — F10</option><option>Lahore — Gulberg</option></select></div><div class="chip"><span class="dot"></span>Shift #S-2048</div><div class="pos-util"><div class="top-best-selling">
+  <span>Best Selling</span>
+  <select id="salesPeriod">
+    <option value="today">Today</option>
+    <option value="yesterday">Yesterday</option>
+    <option value="7days">Last 7 Days</option>
+  </select>
+</div><button class="util-btn system" id="systemBtn">System</button><button class="util-btn hold" id="holdBillsBtn">Hold Bills (3)</button><button class="util-btn new" id="newItemBtn">+ New Item</button></div><div class="user"><div class="av">AR</div><div><small>Cashier</small><strong>Ali Raza</strong></div></div><button class="ib"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button></header>
+<section class="cats">
+      <div class="chead compact-chead"><div><b>Categories</b></div></div>
+      <div class="cgrid">
+<button class="cat active" data-cat="All"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>All Items</button><button class="cat" data-cat="Pakistani">🍲 Pakistani</button><button class="cat" data-cat="Pizza">◯ Pizza</button><button class="cat" data-cat="BBQ">♨ BBQ</button><button class="cat" data-cat="Fast Food">▰ Burgers</button><button class="cat" data-cat="Drinks">◫ Drinks</button><button class="cat" data-cat="Desserts">◒ Desserts</button><button class="cat" data-cat="Sides">▥ Sides</button>
+</div></section>
+<section class="products"><div class="pgrid" id="pgrid"></div></section>
+</section>
+<aside class="order"><div class="ohead">
+  <div class="order-title"><strong>Order #ORD-00874</strong><small>Dine In · Running 18 minutes</small></div>
+  <div class="bill-top-actions">
+  <button class="duplicate-bill-btn" id="duplicateBillBtn">Duplicate Bill</button>
+  <button class="new-bill-btn" id="newBillBtn"><span>+ NEW BILL</span><kbd>F1</kbd></button>
+</div>
+</div><div class="bill-context">
+  <div class="context-summary">
+    <div class="context-pill mode" id="mainModePill">Dine In</div>
+    <div class="context-pill bill">Bill <span id="mainBillNo">#0001</span></div>
+  </div>
+
+  <div class="dine-context" id="dineContext">
+    <select id="tableSelect" aria-label="Select table">
+      <option value="">Select Table</option>
+      <option>Table 1</option><option>Table 2</option><option>Table 3</option>
+      <option>Table 4</option><option>Table 5</option><option>Table 6</option>
+      <option>Table 7</option><option>Table 8</option><option>Table 9</option>
+      <option>Table 10</option><option>Table 11</option><option>Table 12</option>
+    </select>
+    <button id="newTableBtn">+ Table</button>
+  </div>
+
+  <div class="delivery-context hidden" id="deliveryContext">
+    <div class="delivery-customer">
+      <div class="customer-avatar" id="customerAvatar">WC</div>
+      <div class="delivery-customer-copy">
+        <span id="customerName">Select Customer</span>
+        <small id="customerPhone">Home delivery requires a customer</small>
+        <div class="delivery-address hidden" id="deliveryAddress">
+          <span id="customerAddress">No saved address</span>
+        </div>
+      </div>
+    </div>
+    <div class="customer-actions">
+      <button class="customer-btn select" id="selectCustomerBtn">Select</button>
+      <button class="customer-btn create" id="createCustomerBtn">+ Customer</button>
+    </div>
+  </div>
+
+  <div class="held-table-alert hidden" id="heldTableAlert">
+    <div><span class="held-dot"></span><span id="heldTableText">Held bill found</span></div>
+    <button id="resumeTableHold">Resume Bill</button>
+  </div>
+</div><div class="cartwrap"><table class="carttable"><thead><tr><th class="q">Qty</th><th>Description</th><th class="r">Rate</th><th class="t">Total</th><th class="x"></th></tr></thead><tbody id="olist"></tbody></table></div><div class="sumw">
+  <div class="sum"><span>Subtotal</span><b id="subtotal"></b></div>
+  <div class="sum adjustable"><span>Discount <button class="sum-edit" id="discountEdit">Edit</button></span><b id="discount"></b></div>
+  <div class="sum adjustable"><span>Service Charge <button class="sum-edit" id="serviceEdit">Edit</button></span><b id="service"></b></div>
+  <div class="sum"><span id="taxLabel">Sales Tax</span><b id="tax"></b></div>
+  <div class="grand"><span>Grand Total</span><b id="grand"></b></div>
+</div><div class="checkout-bar">
+  <button class="send-kot-btn" id="qkot">Send to Kitchen / KOT</button>
+  <button class="charge" id="charge"><span>Charge / Actions</span><b id="chargeamt"></b><span>→</span></button>
+</div></aside>
+</div>
+
+<!-- SENT ITEM DELETE APPROVAL -->
+<div class="modal" id="deleteApprovalModal">
+  <div class="dialog delete-approval-dialog">
+    <div class="dh">
+      <div>
+        <h3>Manager Approval Required</h3>
+        <p>This item has already been sent to kitchen. Password and deletion reason are required.</p>
+      </div>
+      <button class="close" data-close="deleteApprovalModal">×</button>
+    </div>
+
+    <div class="db">
+      <div class="delete-item-summary">
+        <span>Item</span>
+        <b id="deleteItemName">—</b>
+        <small id="deleteItemKitchenState">—</small>
+      </div>
+
+      <div class="delete-form">
+        <label>
+          <span>Manager Password</span>
+          <input type="password" id="deleteManagerPassword" placeholder="Enter manager password">
+          <small>Demo password: 1234</small>
+        </label>
+
+        <label>
+          <span>Reason</span>
+          <select id="deleteReason">
+            <option value="">Select reason</option>
+            <option>Customer Cancelled</option>
+            <option>Wrong Item Punched</option>
+            <option>Kitchen Cannot Prepare</option>
+            <option>Duplicate Entry</option>
+            <option>Manager Complimentary / Adjustment</option>
+            <option>Other</option>
+          </select>
+        </label>
+
+        <label class="full">
+          <span>Reason Detail / Note</span>
+          <textarea id="deleteReasonNote" placeholder="Why is this kitchen-sent item being deleted?"></textarea>
+        </label>
+      </div>
+
+      <div class="delete-audit-note">
+        The deletion is logged with bill number, cashier, item, quantity, kitchen-sent quantity, timestamp and reason.
+      </div>
+    </div>
+
+    <div class="df">
+      <button class="btn" data-close="deleteApprovalModal">Cancel</button>
+      <button class="btn danger-action" id="approveDeleteBtn">Approve & Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- VOID / DELETE LOGS -->
+<div class="modal" id="voidLogsModal">
+  <div class="dialog wide void-log-dialog">
+    <div class="dh">
+      <div>
+        <h3>Void / Delete Audit Log</h3>
+        <p>Kitchen-sent item deletion history for audit review.</p>
+      </div>
+      <button class="close" data-close="voidLogsModal">×</button>
+    </div>
+    <div class="db">
+      <div class="void-log-list" id="voidLogList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="weight"><div class="dialog"><div class="dh"><div><h3>Quantity Calculator</h3><p id="weightTarget">Change item quantity — decimal values like 2.5 are supported.</p></div><button class="close" data-close="weight">×</button></div><div class="db"><div class="calcdisp"><small>Quantity</small><b id="calcval">1</b></div><div class="qv"><button data-set="0.10">0.10</button><button data-set="0.25">0.25</button><button data-set="0.50">0.50</button><button data-set="0.75">0.75</button><button data-set="1.00">1.00</button><button data-set="1.50">1.50</button></div><div class="pad"><button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button><button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button><button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button><button data-digit=".">.</button><button data-digit="0">0</button><button data-clear>Clear</button></div></div><div class="df"><button class="btn" data-close="weight">Cancel</button><button class="btn pri" id="applyw">Apply / Enter</button></div></div></div>
+<div class="modal" id="pizza"><div class="dialog wide"><div class="dh"><div><h3 id="pizzatitle">Fajita Pizza</h3><p>Select size, extras and kitchen comments.</p></div><button class="close" data-close="pizza">×</button></div><div class="db"><div class="config-label" id="variantGroupLabel">Select Variant</div>
+    <div class="opts" id="variantOptions"></div>
+    <div class="config-label" id="modifierGroupLabel">Modifiers</div>
+    <div class="checks" id="modifierOptions"></div>
+    <div class="config-label">Kitchen Comments</div><textarea id="pnote" placeholder="No olives, extra cheese, cut into 8 slices..."></textarea></div><div class="df"><button class="btn" data-close="pizza">Cancel</button><button class="btn pri" id="addpizza">Add to Order · Qty 1</button></div></div></div>
+<div class="modal" id="slip"><div class="dialog"><div class="dh"><div><h3 id="shead">Preview</h3><p>Kitchen / customer document preview.</p></div><button class="close" data-close="slip">×</button></div><div class="db" id="sbody"></div><div class="df">
+  <button class="btn" data-close="slip">Close</button>
+  <button class="btn" id="slipWhatsAppBtn" style="display:none">WhatsApp PDF</button>
+  <button class="btn pri" id="slipPrintBtn">Print</button>
+</div></div></div>
+<div class="modal" id="wa"><div class="dialog"><div class="dh"><div><h3>Send Bill PDF on WhatsApp</h3><p>Quick-send pre-invoice or final invoice.</p></div><button class="close" data-close="wa">×</button></div><div class="db"><input value="+92 300 1234567" style="width:100%;height:36px;border:1px solid var(--l);border-radius:8px;padding:0 7px;font-size:7px"><div class="checks"><label><input type="radio" name="w" checked> Pre-Invoice PDF</label><label><input type="radio" name="w"> Final Invoice PDF</label></div></div><div class="df"><button class="btn" data-close="wa">Cancel</button><button class="btn pri" id="sendwa">Generate PDF & Send</button></div></div></div>
+<div class="modal" id="holds"><div class="dialog wide"><div class="dh"><div><h3>Held Bills</h3><p>View and resume held restaurant orders.</p></div><button class="close" data-close="holds">×</button></div><div class="db"><div class="holdlist">
+<div class="holdcard"><div><strong>HOLD-003 · Table 7</strong><small>Walk-in Customer · Held 8 minutes ago</small><div class="holdmeta"><span class="htag">5 Items</span><span class="htag">PKR 4,850</span><span class="htag">Dine In</span></div></div><button class="resume" data-resume="HOLD-003">Resume</button></div>
+<div class="holdcard"><div><strong>HOLD-002 · Takeaway</strong><small>Hamza Malik · Held 16 minutes ago</small><div class="holdmeta"><span class="htag">3 Items</span><span class="htag">PKR 2,140</span><span class="htag">Takeaway</span></div></div><button class="resume" data-resume="HOLD-002">Resume</button></div>
+<div class="holdcard"><div><strong>HOLD-001 · Table 4</strong><small>Ahmed Khan · Held 23 minutes ago</small><div class="holdmeta"><span class="htag">7 Items</span><span class="htag">PKR 6,920</span><span class="htag">Dine In</span></div></div><button class="resume" data-resume="HOLD-001">Resume</button></div>
+</div></div></div></div>
+
+<div class="modal" id="newitem">
+  <div class="dialog wide item-management-dialog">
+    <div class="dh">
+      <div>
+        <h3>Item Management</h3>
+        <p>Create menu items, add categories, or change an existing item rate.</p>
+      </div>
+      <button class="close" data-close="newitem">×</button>
+    </div>
+
+    <div class="item-manage-tabs">
+      <button class="im-tab active" data-imtab="item">Create Item</button>
+      <button class="im-tab" data-imtab="category">Create Category</button>
+      <button class="im-tab" data-imtab="rate">Change Item Rate</button>
+    </div>
+
+    <div class="db">
+      <section class="im-panel" id="imPanelItem">
+        <div class="itemform">
+          <label><span>Item Name</span><input id="niName" placeholder="e.g. Fajita Pizza"></label>
+          <label><span>Category</span>
+            <div class="category-select-line">
+              <select id="niCat"></select>
+              <button id="quickCategoryBtn" type="button">+ Category</button>
+            </div>
+          </label>
+          <label><span>Base / Default Price (PKR)</span><input id="niPrice" type="number" value="500"></label>
+          <label><span>Item Structure</span>
+            <select id="niType">
+              <option value="standard">Standard Quantity</option>
+              <option value="weighted">Weighted / KG</option>
+              <option value="configurable">Item → Sub Item / Variant</option>
+            </select>
+          </label>
+          <label class="full"><span>Description</span><input id="niDesc" placeholder="Short menu description"></label>
+
+          <div class="full config-builder" id="configBuilder">
+            <div class="builder-title">Sub Item / Variant Setup</div>
+            <div class="builder-grid">
+              <label><span>Sub Item Group</span><input id="niGroup" value="Size" placeholder="e.g. Size, Portion, Flavor"></label>
+              <label><span>Sub Items + Prices</span><input id="niOptions" value="Small=1050, Medium=1550, Large=1890"></label>
+              <label><span>Modifier Group</span><input id="niModGroup" value="Extras"></label>
+              <label><span>Modifiers + Extra Price</span><input id="niModifiers" value="Extra Cheese=220, Extra Chicken=260, Olives=120"></label>
+              <label class="full builder-check"><input type="checkbox" id="niAllowNotes" checked> Allow kitchen comments / instructions</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="im-panel hidden" id="imPanelCategory">
+        <div class="manage-simple-form">
+          <label>
+            <span>Category Name</span>
+            <input id="newCategoryName" placeholder="e.g. Chinese, Breakfast, Seafood">
+          </label>
+          <label>
+            <span>Display Label / Icon (optional)</span>
+            <input id="newCategoryIcon" placeholder="e.g. 🍜">
+          </label>          <label class="full">
+            <span>Kitchen Printer / Station</span>
+            <select id="newCategoryPrinter">
+              <option value="main">Main Kitchen Printer</option>
+              <option value="bbq">BBQ Printer</option>
+              <option value="pizza">Pizza Printer</option>
+              <option value="drinks">Drinks Printer</option>
+              <option value="dessert">Dessert Printer</option>
+            </select>
+          </label>
+          <div class="full mini-note" style="font-size:10px">Kitchen/KOT routes this category to the selected printer. Only new/increased quantity is printed.</div>
+        </div>
+        <div class="existing-categories" id="existingCategories"></div>
+      </section>
+
+      <section class="im-panel hidden" id="imPanelRate">
+        <div class="manage-simple-form">
+          <label class="full">
+            <span>Select Existing Item</span>
+            <select id="rateItemSelect"></select>
+          </label>
+          <label>
+            <span>Current Rate</span>
+            <input id="currentItemRate" readonly>
+          </label>
+          <label>
+            <span>New Rate (PKR)</span>
+            <input id="newItemRate" type="number" min="0" placeholder="Enter new rate">
+          </label>
+        </div>
+        <div class="rate-warning">Rate change updates the menu immediately. Existing completed bills are not changed.</div>
+      </section>
+    </div>
+
+    <div class="df">
+      <button class="btn" data-close="newitem">Cancel</button>
+      <button class="btn pri" id="saveManagementAction">Create Item</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="systemModal"><div class="dialog"><div class="dh"><div><h3>POS / System Status</h3><p>Status information moved here to maximize menu space.</p></div><button class="close" data-close="systemModal">×</button></div><div class="db">
+  <div class="system-grid">
+    <div><span>Counter</span><b>POS-02</b></div><div><span>Mode</span><b>Restaurant</b></div>
+    <div><span>Local Server</span><b class="sys-ok">Connected</b></div><div><span>Kitchen</span><b class="sys-ok">Online</b></div>
+    <div><span>Fiscal</span><b class="sys-ok">Ready</b></div><div><span>Held Orders</span><b class="sys-warn">3</b></div>
+  </div>
+</div></div></div>
+
+<div class="modal" id="discountModal"><div class="dialog"><div class="dh"><div><h3>Bill Discount</h3><p>Add fixed or percentage discount to the current bill.</p></div><button class="close" data-close="discountModal">×</button></div><div class="db"><div class="adjust-grid">
+  <label><span>Discount Type</span><select id="discountType"><option value="fixed">Fixed PKR</option><option value="percent">Percentage %</option></select></label>
+  <label><span>Value</span><input id="discountValue" type="number" value="0" min="0"></label>
+</div></div><div class="df"><button class="btn" data-close="discountModal">Cancel</button><button class="btn pri" id="applyDiscount">Apply Discount</button></div></div></div>
+
+<div class="modal" id="serviceModal"><div class="dialog"><div class="dh"><div><h3>Service Charge</h3><p>Enable, disable, or change the service charge for this bill.</p></div><button class="close" data-close="serviceModal">×</button></div><div class="db"><div class="adjust-grid">
+  <label><span>Charge Type</span><select id="serviceType"><option value="percent">Percentage %</option><option value="fixed">Fixed PKR</option><option value="none">No Service Charge</option></select></label>
+  <label><span>Value</span><input id="serviceValue" type="number" value="5" min="0"></label>
+</div></div><div class="df"><button class="btn" data-close="serviceModal">Cancel</button><button class="btn pri" id="applyService">Apply Service Charge</button></div></div></div>
+
+
+<!-- CUSTOMER SELECT -->
+
+
+<!-- DUPLICATE BILL -->
+<div class="modal" id="duplicateBillModal">
+  <div class="dialog duplicate-dialog">
+    <div class="dh">
+      <div>
+        <h3>Duplicate Bill</h3>
+        <p>Reprint any completed bill from the current running shift.</p>
+      </div>
+      <button class="close" data-close="duplicateBillModal">×</button>
+    </div>
+    <div class="db">
+      <div class="duplicate-toolbar">
+        <input id="duplicateSearch" placeholder="Search bill no, mode, table or customer...">
+        <span id="shiftBillCount">0 Bills</span>
+      </div>
+      <div class="duplicate-list" id="duplicateBillList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW BILL FULL SCREEN -->
+<div class="new-bill-screen" id="newBillScreen">
+  <div class="new-bill-shell">
+    <div class="new-bill-top">
+      <div>
+        <span class="nb-kicker">START ORDER</span>
+        <h2>New Bill</h2>
+        <p>Select order type. Bill numbering resets every day and starts from 1.</p>
+      </div>
+      <button class="nb-close" id="closeNewBill">×</button>
+    </div>
+
+    <div class="new-bill-types">
+      <button class="new-type dine selected" data-newtype="Dine In">
+        <span class="type-icon">D</span>
+        <span><b>Dine In</b><small>Table service</small></span>
+      </button>
+      <button class="new-type takeaway" data-newtype="Takeaway">
+        <span class="type-icon">T</span>
+        <span><b>Takeaway</b><small>Counter pickup</small></span>
+      </button>
+      <button class="new-type delivery" data-newtype="Home Delivery">
+        <span class="type-icon">H</span>
+        <span><b>Home Delivery</b><small>Customer + address required</small></span>
+      </button>
+    </div>
+
+    <div class="new-bill-detail">
+      <div class="nb-panel" id="newDinePanel">
+        <div class="nb-panel-head"><span>Dine In Details</span><small>Select a table before starting the bill.</small></div>
+        <div class="nb-row">
+          <select id="newBillTable">
+            <option value="">Select Table</option>
+            <option>Table 1</option><option>Table 2</option><option>Table 3</option>
+            <option>Table 4</option><option>Table 5</option><option>Table 6</option>
+            <option>Table 7</option><option>Table 8</option><option>Table 9</option>
+            <option>Table 10</option><option>Table 11</option><option>Table 12</option>
+          </select>
+          <button id="newBillCreateTable">+ Create Table</button>
+        </div>
+        <div class="nb-held hidden" id="newBillHeld">
+          <span id="newBillHeldText">Held bill found on this table.</span>
+          <button id="newBillResumeHeld">Resume Existing Bill</button>
+        </div>
+      </div>
+
+      <div class="nb-panel hidden" id="newDeliveryPanel">
+        <div class="nb-panel-head"><span>Home Delivery Customer</span><small>Select an existing customer or create a new one.</small></div>
+        <div class="nb-customer-card">
+          <div>
+            <b id="nbCustomerName">No customer selected</b>
+            <small id="nbCustomerPhone">Customer and saved address are required for delivery.</small>
+            <p id="nbCustomerAddress">No saved address</p>
+          </div>
+          <div>
+            <button id="nbSelectCustomer">Select Customer</button>
+            <button id="nbCreateCustomer">+ Customer</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="nb-panel hidden" id="newTakeawayPanel">
+        <div class="nb-panel-head"><span>Takeaway</span><small>No customer or table is required.</small></div>
+        <div class="takeaway-note">A new takeaway bill will be opened at the current counter.</div>
+      </div>
+    </div>
+
+    <div class="new-bill-footer">
+      <div>
+        <span>Next Bill Number</span>
+        <b id="nextBillPreview">#0001</b>
+      </div>
+      <button class="start-bill-btn" id="startNewBill">Start New Bill</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="customerSelectModal">
+  <div class="dialog customer-dialog">
+    <div class="dh">
+      <div>
+        <h3>Select Customer</h3>
+        <p>Search by name or phone. Saved address is used only for Home Delivery.</p>
+      </div>
+      <button class="close" data-close="customerSelectModal">×</button>
+    </div>
+    <div class="db">
+      <div class="customer-search">
+        <input id="customerSearchInput" placeholder="Search customer name or phone..." autocomplete="off">
+        <button id="openCreateFromSelect">+ New Customer</button>
+      </div>
+      <div class="customer-list" id="customerList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOMER CREATE -->
+<div class="modal" id="customerCreateModal">
+  <div class="dialog customer-dialog">
+    <div class="dh">
+      <div>
+        <h3>Create Customer</h3>
+        <p>Create once and reuse for delivery, order history, loyalty and WhatsApp bills.</p>
+      </div>
+      <button class="close" data-close="customerCreateModal">×</button>
+    </div>
+    <div class="db">
+      <div class="customer-form">
+        <label><span>Customer Name</span><input id="ccName" placeholder="e.g. Ahmed Khan"></label>
+        <label><span>Mobile Number</span><input id="ccPhone" placeholder="+92 300 1234567"></label>
+        <label class="full"><span>Saved Address</span><input id="ccAddress" placeholder="House / street / sector / city"></label>
+        <label><span>Area</span><input id="ccArea" placeholder="e.g. F-10"></label>
+        <label><span>Customer Type</span><select id="ccType"><option>Regular</option><option>VIP</option><option>Corporate</option></select></label>
+      </div>
+    </div>
+    <div class="df">
+      <button class="btn" data-close="customerCreateModal">Cancel</button>
+      <button class="btn pri" id="saveCustomerBtn">Save & Select Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW TABLE -->
+<div class="modal" id="newTableModal">
+  <div class="dialog">
+    <div class="dh">
+      <div>
+        <h3>Create New Table</h3>
+        <p>Add a table instantly to the current restaurant floor.</p>
+      </div>
+      <button class="close" data-close="newTableModal">×</button>
+    </div>
+    <div class="db">
+      <div class="customer-form">
+        <label><span>Table Name / Number</span><input id="ntName" placeholder="e.g. Table 13"></label>
+        <label><span>Seats</span><input id="ntSeats" type="number" value="4" min="1"></label>
+        <label><span>Floor / Area</span><select id="ntArea"><option>Ground Floor</option><option>First Floor</option><option>Outdoor</option><option>VIP</option></select></label>
+        <label><span>Status</span><select><option>Available</option></select></label>
+      </div>
+    </div>
+    <div class="df">
+      <button class="btn" data-close="newTableModal">Cancel</button>
+      <button class="btn pri" id="saveTableBtn">Create & Select</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="checkoutModal">
+  <div class="dialog checkout-dialog v9-pay-dialog">
+    <div class="v9-pay-head">
+      <div>
+        <span>PAYMENT</span>
+        <h3>Bill <b id="checkoutBillNo">#0001</b></h3>
+      </div>
+      <button class="close v9-pay-close" data-close="checkoutModal">×</button>
+    </div>
+
+    <div class="v9-pay-body">
+      <div class="v9-total">
+        <span>Total Amount</span>
+        <b id="checkoutTotal">PKR 0.00</b>
+        <small id="checkoutTaxText">Cash · Tax 16%</small>
+      </div>
+
+      <label class="v9-field">
+        <span>Received Amount</span>
+        <div class="v9-money-input">
+          <span>PKR</span>
+          <input id="receivedAmount" type="number" inputmode="decimal" placeholder="0.00" min="0" step="0.01">
+        </div>
+      </label>
+
+      <div class="v9-change" id="cashResult">
+        <div>
+          <span id="returnLabel">Change</span>
+          <b id="returnAmount">PKR 0.00</b>
+        </div>
+        <small id="cashResultHint">Enter received amount.</small>
+      </div>
+
+      <label class="v9-field">
+        <span>Payment Method</span>
+        <select id="checkoutPay">
+          <option>Cash</option>
+          <option>Card</option>
+          <option>Raast</option>
+          <option>Easypaisa</option>
+          <option>JazzCash</option>
+          <option>Bank Transfer</option>
+          <option>Split Payment</option>
+        </select>
+        <small>Tax recalculates automatically according to payment method.</small>
+      </label>
+
+      <div class="v9-fbr-note">
+        Final FBR invoice is issued only after successful payment.
+      </div>
+
+      <div class="close-bill-wrap" id="closeBillWrap">
+        <div class="close-bill-menu" id="closeBillMenu">
+          <button data-close-action="pre">
+            <span>Pre-Invoice Bill</span>
+            <small>Preview / print; WhatsApp available in preview</small>
+          </button>
+          <button data-close-action="print" class="selected">
+            <span>Close Bill & Print</span>
+            <small>Default · press Enter</small>
+          </button>
+          <button data-close-action="whatsapp">
+            <span>Close & Send on WhatsApp</span>
+            <small>Complete payment and send final FBR PDF</small>
+          </button>
+        </div>
+
+        <div class="close-bill-control">
+          <button class="close-bill-main" id="executeCloseBill">
+            <span>
+              <b id="closeBillLabel">Close Bill & Print</b>
+              <small id="closeBillHint">Press Enter</small>
+            </span>
+          </button>
+          <button class="close-bill-toggle" id="toggleCloseBill" aria-label="Choose close bill action">⌃</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script><script src="live_store.js"></script>
+<script>
+const P=[
+{id:'bir',name:'Chicken Biryani',cat:'Pakistani',price:750,weighted:true,unit:'KG',th:'t1',desc:'Basmati rice with tender chicken',today:84,yesterday:72,days7:518},
+{id:'faj',name:'Fajita Pizza',cat:'Pizza',price:1050,pizza:true,th:'t2',desc:'Fajita chicken, capsicum & mozzarella',today:112,yesterday:93,days7:711},
+{id:'seekh',name:'Chicken Seekh Kabab',cat:'BBQ',price:650,th:'t3',desc:'6 pieces with mint raita',today:66,yesterday:61,days7:430},
+{id:'zing',name:'Zinger Burger',cat:'Fast Food',price:560,th:'t4',desc:'Crispy fillet, cheese & mayo',today:105,yesterday:88,days7:674},
+{id:'kar',name:'Chicken Karahi',cat:'Pakistani',price:1250,weighted:true,unit:'KG',th:'t5',desc:'Traditional karahi with fresh spices',today:54,yesterday:49,days7:346},
+{id:'tikka',name:'Chicken Tikka Boneless',cat:'BBQ',price:950,th:'t1',desc:'Boneless chicken cubes with special spices',today:49,yesterday:57,days7:362},
+{id:'fries',name:'French Fries',cat:'Sides',price:320,th:'t2',desc:'Crispy golden fries with ketchup',today:126,yesterday:119,days7:801},
+{id:'mint',name:'Mint Margarita',cat:'Drinks',price:280,th:'t3',desc:'Mint, lime and soda',today:138,yesterday:121,days7:866},
+{id:'lava',name:'Chocolate Lava Cake',cat:'Desserts',price:650,th:'t4',desc:'Warm cake with ice cream',today:38,yesterday:43,days7:282},
+{id:'coffee',name:'Cold Coffee',cat:'Drinks',price:350,th:'t5',desc:'Chilled coffee with ice cream',today:47,yesterday:42,days7:312},
+{id:'lassi',name:'Sweet Lassi',cat:'Drinks',price:220,th:'t1',desc:'Traditional creamy lassi',today:31,yesterday:35,days7:241},
+{id:'naan',name:'Garlic Naan',cat:'Pakistani',price:120,th:'t2',desc:'Soft naan with garlic & herbs',today:151,yesterday:139,days7:948},
+{id:'handi',name:'Chicken Handi',cat:'Pakistani',price:1680,th:'t3',desc:'Creamy handi, family favorite',today:29,yesterday:33,days7:206},
+{id:'wings',name:'BBQ Wings',cat:'BBQ',price:790,th:'t4',desc:'Smoky wings with house sauce',today:44,yesterday:39,days7:275},
+{id:'deal',name:'Family Pizza Deal',cat:'Pizza',price:2890,pizza:true,th:'t5',desc:'Large pizza + drinks + fries',today:24,yesterday:22,days7:169}
+];
+
+const menuImages=[
+'assets/menu_01.jpg','assets/menu_02.jpg','assets/menu_03.jpg','assets/menu_04.jpg','assets/menu_05.jpg',
+'assets/menu_06.jpg','assets/menu_07.jpg','assets/menu_08.jpg','assets/menu_09.jpg','assets/menu_10.jpg',
+'assets/menu_11.jpg','assets/menu_12.jpg','assets/menu_13.jpg','assets/menu_14.jpg','assets/menu_15.jpg'
+];
+
+P.forEach((item,index)=>item.img=menuImages[index%menuImages.length]);
+P.push(
+  {id:'coke-tin',name:'Coke Tin',cat:'Drinks',price:180,th:'t5',img:'assets/menu_10.jpg',desc:'Chilled 330ml can',today:41,yesterday:38,days7:240},
+  {id:'water-500',name:'Mineral Water',cat:'Drinks',price:100,th:'t5',img:'assets/menu_08.jpg',desc:'500ml chilled bottle',today:34,yesterday:31,days7:205}
+);
+
+const kitchenPrinters={
+  main:{name:'Main Kitchen Printer',station:'Main Kitchen'},
+  bbq:{name:'BBQ Printer',station:'BBQ'},
+  pizza:{name:'Pizza Printer',station:'Pizza'},
+  drinks:{name:'Drinks Printer',station:'Drinks'},
+  dessert:{name:'Dessert Printer',station:'Desserts'}
+};
+let menuCategories=[
+  {name:'Pakistani',icon:'🍲',printer:'main'},
+  {name:'Pizza',icon:'◯',printer:'pizza'},
+  {name:'BBQ',icon:'♨',printer:'bbq'},
+  {name:'Fast Food',icon:'▰',printer:'main'},
+  {name:'Drinks',icon:'◫',printer:'drinks'},
+  {name:'Desserts',icon:'◒',printer:'dessert'},
+  {name:'Sides',icon:'▥',printer:'main'}
+];
+
+let shiftBills=[
+  {
+    id:'shift-18',billNo:18,time:'12:08 PM',mode:'Dine In',table:'Table 5',
+    customer:'Walk-in',amount:4860,payment:'Cash',fbrNo:'FBR-20260824-0018'
+  },
+  {
+    id:'shift-17',billNo:17,time:'11:42 AM',mode:'Takeaway',table:'—',
+    customer:'Walk-in',amount:2380,payment:'Card',fbrNo:'FBR-20260824-0017'
+  },
+  {
+    id:'shift-16',billNo:16,time:'11:15 AM',mode:'Home Delivery',table:'—',
+    customer:'Ahmed Khan',amount:6150,payment:'Cash',fbrNo:'FBR-20260824-0016'
+  },
+  {
+    id:'shift-15',billNo:15,time:'10:37 AM',mode:'Dine In',table:'Table 3',
+    customer:'Walk-in',amount:3290,payment:'Raast',fbrNo:'FBR-20260824-0015'
+  }
+];
+
+
+let cat='All';
+let searchQuery='';
+let salesPeriod='today';
+let currentProduct=null;
+let editIndex=null;
+let preEditProductId=null;
+let selectedRowIndex=null;
+let lastAddedIndex=null;
+let nextGlobalQty=1;
+let paymentMethod='Cash';
+let discountCfg={type:'fixed',value:0};
+let serviceCfg={type:'percent',value:5};
+let activeSlipType='';
+let lastKotPending=[];
+
+const RECEIPT_SETTINGS={
+  restaurantName:'Urban Spoon',
+  address:'F-10 Markaz, Islamabad',
+  phone:'051-0000000',
+  softwareCompany:'Tech Geni Ltd',
+  fbrQrData:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASgAAAEoAQAAAADDfFG0AAAB50lEQVR4nO1a0W7DQAizp/z/L3sPGO7SrVKfckyDTU3aWJplAWfoKHwQX5+ABjWon6FMMMW9UNd6oq7sn0ddsC7MF1GUuBRjX/Zn9ILFIQSAoggRVD5py/4oigAJioLAVaineXVFCYg6JACIbMKrFeoCqrEL0bgAQiGbTvHqitrPx58/CenK/nkUV5eqfKJAH5DHeHVFQUK5LgmovBKUDye/Ki6UPL6kB0uTMX7iBRXWgeFYQYVEgkCC4PjVFxStEvOeKR2cd53ZP4uiEC6ey98j7sff/46iW7ulExlvU6ypxy3ST2SKlUulADrl2rI/6Ce0FjoC8hLvx0/cUYrpJ9Ta61CeJluzfxSVZQctq0/lb37clf0Rv+p1BFYnC5m4Njpd2R/r906mfWy0rxCotuyP1aP3XtthiVJr9LqjdqnoNYXAGCUpTP+6o+RByKUpxhyUlTnz4x4XoiZVueVsC+cKYPJrj+jn4DY/Qtn/Mfuc19j3qypnUcbLE1FX9uf8Vzh7Ob28NmSa2K7sz6BUm2h4P2jZ/EFv9s+i7t9vl7GncuGqmYfeoGL1BcXX3PS6gpr8eoMSFdWocq/+T52/wP5BlNuXpyIP3LU2nPza4kIdkMxjMVoZ5Y3r5NcWm/966C8O6j+hvgH+4hgOpF6e7QAAAABJRU5ErkJggg=='
+};
+
+const taxRates={
+  'Cash':16,
+  'Card':5,
+  'Raast':5,
+  'Easypaisa':5,
+  'JazzCash':5,
+  'Bank Transfer':5,
+  'Split Payment':16
+};
+
+const customers=[
+  {id:'walkin',name:'Walk-in Customer',phone:'',address:'',area:'',type:'Walk-in'},
+  {id:'c101',name:'Ahmed Khan',phone:'+92 300 1234567',address:'House 22, Street 14, F-10/2, Islamabad',area:'F-10',type:'Regular'},
+  {id:'c102',name:'Sarah Malik',phone:'+92 321 4455667',address:'Flat 8B, Beverly Centre, Blue Area, Islamabad',area:'Blue Area',type:'VIP'},
+  {id:'c103',name:'Usman Ali',phone:'+92 333 9988776',address:'Office 4, I-8 Markaz, Islamabad',area:'I-8',type:'Corporate'},
+  {id:'c104',name:'Hina Shah',phone:'+92 305 7772211',address:'',area:'G-11',type:'Regular'}
+];
+let selectedCustomer=customers[0];
+
+const tableHolds={
+  'Table 4':{
+    id:'HOLD-001',billNo:14,customer:'Ahmed Khan',items:7,amount:6920,minutes:23,
+    lines:[
+      {id:'faj',name:'Fajita Pizza Large',qty:1,unit:'',unitPrice:1890,note:'Extra cheese',sentQty:1},
+      {id:'seekh',name:'Chicken Seekh Kabab',qty:2,unit:'',unitPrice:650,note:'',sentQty:2},
+      {id:'mint',name:'Mint Margarita',qty:3,unit:'',unitPrice:280,note:'',sentQty:3},
+      {id:'naan',name:'Garlic Naan',qty:8,unit:'',unitPrice:120,note:'',sentQty:8}
+    ]
+  },
+  'Table 7':{
+    id:'HOLD-003',billNo:17,customer:'Walk-in Customer',items:5,amount:4850,minutes:8,
+    lines:[
+      {id:'kar',name:'Chicken Karahi',qty:1,unit:'KG',unitPrice:1250,note:'Medium spicy',sentQty:1},
+      {id:'naan',name:'Garlic Naan',qty:10,unit:'',unitPrice:120,note:'Fresh / hot',sentQty:10},
+      {id:'lassi',name:'Sweet Lassi',qty:2,unit:'',unitPrice:220,note:'',sentQty:2}
+    ]
+  }
+};
+let selectedTable='';
+
+let activeBillNo=1;
+let newBillType='Dine In';
+let newBillSelectedTable='';
+let newBillSelectedCustomer=null;
+
+function localDateKey(){
+  const d=new Date();
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function peekNextBillNo(){
+  const key='restaurant_bill_counter';
+  const saved=JSON.parse(localStorage.getItem(key)||'{}');
+  const today=localDateKey();
+  return saved.date===today ? Number(saved.last||0)+1 : 1;
+}
+function nextDailyBillNo(){
+  const key='restaurant_bill_counter';
+  const today=localDateKey();
+  const saved=JSON.parse(localStorage.getItem(key)||'{}');
+  const next=saved.date===today ? Number(saved.last||0)+1 : 1;
+  localStorage.setItem(key,JSON.stringify({date:today,last:next}));
+  return next;
+}
+function formatBillNo(n){
+  return '#'+String(n).padStart(4,'0');
+}
+
+
+const preQty={};
+
+/*
+ sentQty tracks the quantity already sent to kitchen.
+ Example requested:
+ Garlic Naan total = 13, sentQty = 10 -> next KOT prints only 3.
+*/
+const C=[
+{id:'bir',name:'Chicken Biryani',qty:.25,unit:'KG',unitPrice:750,note:'Extra raita',sentQty:.25},
+{id:'faj',name:'Fajita Pizza Large',qty:1,unit:'',unitPrice:1890,note:'No olives · Extra cheese',sentQty:1},
+{id:'mint',name:'Mint Margarita',qty:2,unit:'',unitPrice:280,note:'',sentQty:2},
+{id:'naan',name:'Garlic Naan',qty:13,unit:'',unitPrice:120,note:'Fresh / hot',sentQty:10},
+{id:'seekh',name:'Chicken Seekh Kabab',qty:1,unit:'',unitPrice:650,note:'Mint raita',sentQty:1},
+{id:'fries',name:'French Fries',qty:1,unit:'',unitPrice:320,note:'Less salt',sentQty:1},
+{id:'coffee',name:'Cold Coffee',qty:1,unit:'',unitPrice:350,note:'No extra sugar',sentQty:1},
+{id:'lassi',name:'Sweet Lassi',qty:1,unit:'',unitPrice:220,note:'Chilled',sentQty:1},
+{id:'lava',name:'Chocolate Lava Cake',qty:1,unit:'',unitPrice:650,note:'After main course',sentQty:1},
+{id:'zing',name:'Zinger Burger',qty:1,unit:'',unitPrice:560,note:'No mayo',sentQty:1},
+{id:'tikka',name:'Chicken Tikka Boneless',qty:1,unit:'',unitPrice:950,note:'Medium spicy',sentQty:0}
+];
+lastAddedIndex=C.length-1;
+
+const $=sel=>document.querySelector(sel);
+const $$=sel=>[...document.querySelectorAll(sel)];
+const money=n=>'PKR '+Number(n).toLocaleString('en-PK',{minimumFractionDigits:2,maximumFractionDigits:2});
+const roundQty=n=>Number(Number(n).toFixed(3));
+
+function toast(m){
+  const t=$('#toast');
+  t.textContent=m;
+  t.classList.add('show');
+  clearTimeout(window.__toast);
+  window.__toast=setTimeout(()=>t.classList.remove('show'),1800);
+}
+function om(id){$('#'+id)?.classList.add('show')}
+function cm(id){$('#'+id)?.classList.remove('show')}
+
+function metricFor(p){
+  if(salesPeriod==='yesterday')return p.yesterday||0;
+  if(salesPeriod==='7days')return p.days7||0;
+  return p.today||0;
+}
+function renderCategoryNavigation(){
+  const grid=document.querySelector('.cgrid');
+  if(!grid)return;
+
+  grid.innerHTML=`
+    <button class="cat ${cat==='All'?'active':''}" data-cat="All">
+      <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+      All Items
+    </button>
+    ${menuCategories.map(c=>`
+      <button class="cat ${cat===c.name?'active':''}" data-cat="${c.name}">
+        ${c.icon||'•'} ${c.name}
+      </button>`).join('')}
+  `;
+}
+
+function populateCategorySelects(){
+  const select=$('#niCat');
+  if(select){
+    select.innerHTML=menuCategories.map(c=>`<option>${c.name}</option>`).join('');
+  }
+
+  const chips=$('#existingCategories');
+  if(chips){
+    chips.innerHTML=menuCategories.map(c=>`<span class="existing-cat-chip">${c.icon||'•'} ${c.name} · ${(kitchenPrinters[c.printer]?.name||'No Printer')}</span>`).join('');
+  }
+}
+
+function populateRateItems(){
+  const select=$('#rateItemSelect');
+  if(!select)return;
+  select.innerHTML=P.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  refreshRateSelection();
+}
+
+function refreshRateSelection(){
+  const id=$('#rateItemSelect')?.value;
+  const item=P.find(p=>p.id===id);
+  if(!item)return;
+  $('#currentItemRate').value=money(item.price);
+  $('#newItemRate').value=item.price;
+}
+
+function visibleProducts(){
+  let list=cat==='All'?P.slice():P.filter(p=>p.cat===cat);
+  const q=searchQuery.trim().toLowerCase();
+  if(q){
+    list=list.filter(p=>
+      p.name.toLowerCase().includes(q) ||
+      p.cat.toLowerCase().includes(q) ||
+      (p.desc||'').toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    );
+  }
+  list.sort((a,b)=>metricFor(b)-metricFor(a));
+  return list;
+}
+function rp(){
+  const list=visibleProducts();
+  if(!list.length){
+    $('#pgrid').innerHTML='<div class="no-products">No matching item found. Try another item name or category.</div>';
+    return;
+  }
+  $('#pgrid').innerHTML=list.map(p=>{
+    const q=preQty[p.id] ?? 1;
+    return `<div class="prod">
+      <div class="thumb product-photo" data-image-add="${p.id}" title="Click image to add item">
+        <img src="${p.img||'assets/menu_01.jpg'}" alt="${p.name}">
+        ${p.weighted?'<span class="badge w">Weighted</span>':''}
+        ${(p.pizza||p.config)?'<span class="badge">Options</span>':''}
+      </div>
+      <h4>${p.name}</h4>
+      <p>${p.desc}</p>
+      <div class="pf">
+        <span class="price">${p.weighted?money(p.price)+' / KG':(p.pizza||p.config)?'From '+money(p.price):money(p.price)}</span>
+        <div class="preqty">
+          <button data-pqinc="${p.id}" title="Increase before adding">+</button>
+          <span class="preqty-value" data-pqcalc="${p.id}" title="Set quantity">${q}</span>
+          <button data-pqdec="${p.id}" title="Decrease before adding">−</button>
+        </div>
+        <button class="add" data-add="${p.id}">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function discountAmount(subtotal){
+  return discountCfg.type==='percent'?subtotal*(discountCfg.value/100):discountCfg.value;
+}
+function serviceAmount(base){
+  if(serviceCfg.type==='none')return 0;
+  return serviceCfg.type==='fixed'?serviceCfg.value:base*(serviceCfg.value/100);
+}
+function taxRate(){return taxRates[paymentMethod] ?? 0}
+function tots(){
+  const sub=C.reduce((sum,i)=>sum+(i.qty*i.unitPrice),0);
+  const d=Math.min(sub,Math.max(0,discountAmount(sub)));
+  const sc=Math.max(0,serviceAmount(sub-d));
+  const rate=taxRate();
+  const tx=(sub-d+sc)*(rate/100);
+  return {sub,d,sc,rate,tx,total:sub-d+sc+tx};
+}
+function pendingQty(i){return Math.max(0,roundQty(i.qty-(i.sentQty||0)))}
+
+function rc(){
+  $('#olist').innerHTML=C.map((i,n)=>{
+    const pending=pendingQty(i);
+    const sent=i.sentQty||0;
+    let state='';
+    if(sent>0 || pending>0){
+      state=`<span class="kitchen-state">${sent>0?'Kitchen sent: '+sent:''}${sent>0&&pending>0?' · ':''}${pending>0?'Pending: '+pending:''}</span>`;
+    }
+    return `<tr data-row="${n}" class="${n===selectedRowIndex?'selected-row':''}">
+      <td class="qtycell"><div class="qtymain"><span>${i.qty}</span><span class="xmark">x</span>${i.unit?`<span class="unit">${i.unit}</span>`:''}</div></td>
+      <td><div class="desccell"><strong>${i.name}</strong>${i.note?`<small>${i.note}</small>`:''}${state}</div></td>
+      <td class="ratecell">${money(i.unitPrice)}</td>
+      <td class="totalcell">${money(i.qty*i.unitPrice)}</td>
+      <td><button class="delbtn" data-del="${n}" title="Delete item">×</button></td>
+    </tr>`;
+  }).join('');
+
+  const t=tots();
+  $('#subtotal').textContent=money(t.sub);
+  $('#discount').textContent='- '+money(t.d);
+  $('#service').textContent=money(t.sc);
+  $('#tax').textContent=money(t.tx);
+  $('#taxLabel').textContent=`Sales Tax (${t.rate}% · ${paymentMethod})`;
+  $('#grand').textContent=money(t.total);
+  $('#chargeamt').textContent=money(t.total);
+  refreshCheckout();
+}
+
+function defaultConfig(){
+  return {
+    groupName:'Size',
+    options:[{name:'Small',price:1050},{name:'Medium',price:1550},{name:'Large',price:1890}],
+    modifierGroup:'Extras',
+    modifiers:[
+      {name:'Extra Cheese',price:220},
+      {name:'Extra Chicken',price:260},
+      {name:'Jalapeno',price:90},
+      {name:'Olives',price:120}
+    ],
+    allowNotes:true
+  };
+}
+function openConfig(p){
+  currentProduct=p;
+  const cfg=p.config||defaultConfig();
+  $('#pizzatitle').textContent=p.name;
+  $('#variantGroupLabel').textContent=cfg.groupName||'Options';
+  $('#modifierGroupLabel').textContent=cfg.modifierGroup||'Modifiers';
+  $('#variantOptions').innerHTML=(cfg.options||[]).map((o,i)=>
+    `<button class="opt size ${i===0?'active':''}" data-size="${o.name}" data-price="${o.price}">
+      <strong>${o.name}</strong><small>${cfg.groupName||'Option'}</small><b>${money(o.price)}</b>
+    </button>`
+  ).join('');
+  $('#modifierOptions').innerHTML=(cfg.modifiers||[]).map(o=>
+    `<label><input class="extra" type="checkbox" value="${o.name}" data-price="${o.price}"> ${o.name} +${o.price}</label>`
+  ).join('');
+  $('#pnote').value='';
+  om('pizza');
+}
+
+function mergeOrAdd(item){
+  const same=C.findIndex(x=>
+    x.id===item.id &&
+    x.name===item.name &&
+    x.unit===item.unit &&
+    x.unitPrice===item.unitPrice &&
+    (x.note||'')===(item.note||'')
+  );
+  if(same>=0){
+    C[same].qty=roundQty(C[same].qty+item.qty);
+    lastAddedIndex=same;
+    selectedRowIndex=same;
+  }else{
+    item.sentQty=item.sentQty||0;
+    C.push(item);
+    lastAddedIndex=C.length-1;
+    selectedRowIndex=lastAddedIndex;
+  }
+}
+
+function add(id){
+  const p=P.find(x=>x.id===id);
+  if(!p)return;
+  const desired=Number(preQty[id] ?? nextGlobalQty ?? 1)||1;
+
+  if(p.weighted){
+    currentProduct=p;
+    editIndex=null;
+    preEditProductId=null;
+    $('#calcval').textContent='1';
+    calculatorFresh=true;
+    $('#weightTarget').textContent=`Add ${p.name} — enter weight / quantity`;
+    om('weight');
+    return;
+  }
+  if(p.pizza||p.config){
+    preQty[p.id]=desired;
+    openConfig(p);
+    return;
+  }
+
+  mergeOrAdd({id:p.id,name:p.name,qty:desired,unit:'',unitPrice:p.price,note:'',sentQty:0});
+  preQty[p.id]=1;
+  nextGlobalQty=1;
+  rc();
+  rp();
+  toast(`${p.name} added · Qty ${desired}`);
+}
+
+function openRowQty(index){
+  if(!C[index])return;
+  selectedRowIndex=index;
+  editIndex=index;
+  preEditProductId=null;
+  currentProduct=P.find(p=>p.id===C[index].id)||null;
+  $('#calcval').textContent='1';
+  calculatorFresh=true;
+  $('#weightTarget').textContent=`Set new quantity · ${C[index].name}`;
+  rc();
+  om('weight');
+}
+
+function openPreQty(p){
+  currentProduct=p;
+  editIndex=null;
+  preEditProductId=p.id;
+  $('#calcval').textContent='1';
+  calculatorFresh=true;
+  $('#weightTarget').textContent=`Set quantity before Add · ${p.name}`;
+  om('weight');
+}
+
+function applyQuantityPopup(){
+  const q=parseFloat($('#calcval').textContent);
+  if(!q||q<=0){toast('Enter a valid quantity');return}
+
+  if(preEditProductId){
+    preQty[preEditProductId]=roundQty(q);
+    preEditProductId=null;
+    rp();
+    cm('weight');
+    toast('Pre-add quantity updated');
+    return;
+  }
+  if(editIndex!==null){
+    C[editIndex].qty=roundQty(q);
+    lastAddedIndex=editIndex;
+    selectedRowIndex=editIndex;
+    editIndex=null;
+    rc();
+    cm('weight');
+    toast('Item quantity updated');
+    return;
+  }
+  if(currentProduct){
+    mergeOrAdd({
+      id:currentProduct.id,
+      name:currentProduct.name,
+      qty:roundQty(q),
+      unit:currentProduct.unit||'KG',
+      unitPrice:currentProduct.price,
+      note:'',
+      sentQty:0
+    });
+    preQty[currentProduct.id]=1;
+    rc();
+    rp();
+    cm('weight');
+    toast(`${currentProduct.name} added · Qty ${q}`);
+  }
+}
+
+function addConfigured(){
+  if(!currentProduct)return;
+  const selected=$('.size.active');
+  if(!selected){toast('Select an option');return}
+  const optionName=selected.dataset.size;
+  const base=Number(selected.dataset.price||currentProduct.price);
+  const extras=$$('.extra:checked');
+  const extrasTotal=extras.reduce((sum,x)=>sum+Number(x.dataset.price||0),0);
+  const note=[
+    extras.map(x=>x.value).join(', '),
+    $('#pnote').value.trim()
+  ].filter(Boolean).join(' · ');
+  const q=Number(preQty[currentProduct.id] ?? nextGlobalQty ?? 1)||1;
+
+  mergeOrAdd({
+    id:currentProduct.id,
+    name:`${currentProduct.name} ${optionName}`,
+    qty:q,
+    unit:'',
+    unitPrice:base+extrasTotal,
+    note,
+    sentQty:0
+  });
+  preQty[currentProduct.id]=1;
+  nextGlobalQty=1;
+  rc();
+  rp();
+  cm('pizza');
+  toast(`${currentProduct.name} ${optionName} added · Qty ${q}`);
+}
+
+/* ---------- KOT: only unsent quantity ---------- */
+function getPendingKOT(){
+  return C.map((item,index)=>({
+    index,
+    item,
+    pending:pendingQty(item)
+  })).filter(x=>x.pending>0);
+}
+
+function categoryPrinter(catName){
+  const c=menuCategories.find(x=>x.name===catName);
+  return c?.printer||'main';
+}
+function buildKitchenSlip(){
+  activeSlipType='kot';
+  $('#slipWhatsAppBtn').style.display='none';
+  lastKotPending=getPendingKOT();
+  $('#shead').textContent='Kitchen Printer Routing — Pending Items Only';
+  if(!lastKotPending.length){
+    $('#sbody').innerHTML='<div class="kot-empty">All current quantities have already been sent to the kitchen.<br>Add a new item or increase a quantity to create the next KOT.</div>';
+    $('#slipPrintBtn').textContent='Nothing Pending';$('#slipPrintBtn').disabled=true;om('slip');return;
+  }
+  const grouped={};
+  lastKotPending.forEach(x=>{const product=P.find(p=>p.id===x.item.id);const catName=product?.cat||'Pakistani';const printerId=categoryPrinter(catName);if(!grouped[printerId])grouped[printerId]=[];grouped[printerId].push({...x,catName});});
+  const ids=Object.keys(grouped);$('#slipPrintBtn').disabled=false;$('#slipPrintBtn').textContent=`Route to ${ids.length} Printer${ids.length===1?'':'s'}`;
+  $('#sbody').innerHTML=`<div style="margin-bottom:9px;padding:8px;border:1px solid #dbe5df;background:#f6faf8;font-size:10px"><b>Automatic routing:</b> ${ids.map(id=>kitchenPrinters[id]?.name||id).join(' · ')}</div>`+ids.map(id=>{const pr=kitchenPrinters[id]||{name:id,station:'Kitchen'};return `<div class="kot-sheet" style="margin-bottom:12px;border:1px solid #d9e2dd"><div class="kot-title"><h2>${pr.name}</h2><small>${pr.station} · Only new / increased quantities</small></div><div class="kot-meta"><div><b>Bill:</b> ${formatBillNo(activeBillNo)}</div><div><b>Table:</b> ${orderMode==='Dine In'?(selectedTable||'Not selected'):'—'}</div><div><b>Waiter:</b> Saad Ali</div><div><b>Mode:</b> ${orderMode}</div></div><div class="kot-items">${grouped[id].map(x=>`<div class="kot-item"><div class="kot-qty">${x.pending}${x.item.unit?' '+x.item.unit:'x'}</div><div class="kot-desc"><strong>${x.item.name}</strong><span>${x.catName}</span>${x.item.note?`<span>${x.item.note}</span>`:''}</div></div>`).join('')}</div></div>`}).join('');
+  om('slip');
+}
+function markPendingAsSent(){
+  lastKotPending.forEach(x=>{
+    if(C[x.index]) C[x.index].sentQty=C[x.index].qty;
+  });
+  rc();
+  cm('slip');
+  toast('Pending quantities sent to kitchen');
+}
+
+/* ---------- Customer documents ---------- */
+function receiptContext(){
+  const now=new Date();
+  return {
+    date:now.toLocaleDateString('en-GB'),
+    time:now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+    table:orderMode==='Dine In'?(selectedTable||'Not selected'):'—'
+  };
+}
+
+function buildCustomerSlip(type){
+  activeSlipType='pre';
+  const t=tots();
+  const ctx=receiptContext();
+
+  $('#shead').textContent='Pre-Invoice';
+  $('#slipPrintBtn').disabled=false;
+  $('#slipPrintBtn').textContent='Print 80mm';
+  $('#slipWhatsAppBtn').style.display='inline-flex';
+
+  $('#sbody').innerHTML=`
+    <div class="thermal-receipt">
+      <div class="thermal-center">
+        <div class="thermal-restaurant-name">${RECEIPT_SETTINGS.restaurantName}</div>
+        <div class="thermal-small">${RECEIPT_SETTINGS.address}</div>
+        <div class="thermal-small">Phone: ${RECEIPT_SETTINGS.phone}</div>
+      </div>
+
+      <div class="thermal-rule"></div>
+      <div class="thermal-center thermal-small">
+        <b>PRE-INVOICE</b><br>
+        NOT PAID · NOT FINAL FBR TAX INVOICE
+      </div>
+      <div class="thermal-rule"></div>
+
+      <div class="thermal-meta">
+        <div>Bill: ${formatBillNo(activeBillNo)}</div>
+        <div>Date: ${ctx.date}</div>
+        <div>Mode: ${orderMode}</div>
+        <div>Time: ${ctx.time}</div>
+        ${orderMode==='Dine In'?`<div>Table: ${ctx.table}</div><div></div>`:''}
+      </div>
+
+      ${orderMode==='Home Delivery'?`
+        <div class="thermal-rule"></div>
+        <div class="thermal-customer">
+          Customer: ${selectedCustomer.name}<br>
+          Customer No: ${selectedCustomer.id}<br>
+          Phone: ${selectedCustomer.phone||'—'}<br>
+          Address: ${selectedCustomer.address||'—'}
+        </div>`:''}
+
+      <div class="thermal-rule"></div>
+      <table class="thermal-items">
+        <thead>
+          <tr><th class="q">Qty</th><th class="d">Description</th><th class="r">Rate</th><th class="a">Amount</th></tr>
+        </thead>
+        <tbody>
+          ${C.map(i=>`
+            <tr>
+              <td>${i.qty}${i.unit?' '+i.unit:''}</td>
+              <td>${i.name}${i.note?`<span class="thermal-item-note">${i.note}</span>`:''}</td>
+              <td class="r">${Number(i.unitPrice).toFixed(2)}</td>
+              <td class="a">${Number(i.qty*i.unitPrice).toFixed(2)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="thermal-totals">
+        <div class="thermal-total-row"><span>Subtotal</span><span>${money(t.sub)}</span></div>
+        ${t.d>0?`<div class="thermal-total-row"><span>Discount</span><span>- ${money(t.d)}</span></div>`:''}
+        <div class="thermal-total-row"><span>Service Charges</span><span>${money(t.sc)}</span></div>
+        <div class="thermal-total-row"><span>Tax</span><span>${money(t.tx)}</span></div>
+        <div class="thermal-total-row grand"><span>Total Amount</span><span>${money(t.total)}</span></div>
+      </div>
+
+      <div class="thermal-rule"></div>
+      <div class="thermal-center thermal-small">
+        PRE-INVOICE ONLY<br>
+        Final FBR invoice will be issued after payment.
+      </div>
+
+      <div class="thermal-footer">Software by ${RECEIPT_SETTINGS.softwareCompany}</div>
+    </div>`;
+  om('slip');
+}
+
+/* ---------- Checkout / Action Center ---------- */
+function refreshCheckout(){
+  const t=tots();
+  if(!$('#checkoutTotal'))return;
+
+  $('#checkoutBillNo').textContent=formatBillNo(activeBillNo);
+  $('#checkoutTotal').textContent=money(t.total);
+  $('#checkoutTaxText').textContent=`${paymentMethod} · Tax ${t.rate}%`;
+
+  $('#checkoutPay').value=paymentMethod;
+
+  updateCashReturn();
+}
+
+function updateCashReturn(){
+  const t=tots();
+  const received=Number($('#receivedAmount')?.value||0);
+  const result=$('#cashResult');
+  const label=$('#returnLabel');
+  const amount=$('#returnAmount');
+  const hint=$('#cashResultHint');
+
+  if(!result)return;
+
+  result.classList.remove('due','complete');
+
+  if(paymentMethod!=='Cash'){
+    $('#receivedAmount').value=t.total.toFixed(2);
+    label.textContent='Payment Status';
+    amount.textContent='Amount Matched';
+    hint.textContent=`${paymentMethod} payment uses the exact invoice amount.`;
+    result.classList.add('complete');
+    return;
+  }
+
+  if(!received){
+    label.textContent='Change';
+    amount.textContent=money(0);
+    hint.textContent='Enter received amount.';
+    return;
+  }
+
+  const difference=received-t.total;
+  if(difference>=0){
+    label.textContent='Change';
+    amount.textContent=money(difference);
+    hint.textContent=difference===0?'Exact amount received.':'Cash change to return before completing payment.';
+    result.classList.add('complete');
+  }else{
+    label.textContent='Remaining Due';
+    amount.textContent=money(Math.abs(difference));
+    hint.textContent='Received amount is less than the bill total.';
+    result.classList.add('due');
+  }
+}
+
+
+function validateTender(){
+  const t=tots();
+  if(paymentMethod!=='Cash')return true;
+  const received=Number($('#receivedAmount').value||0);
+  if(received<t.total){
+    updateCashReturn();
+    $('#receivedAmount').focus();
+    return false;
+  }
+  return true;
+}
+
+function generateFbrInvoiceNumber(){
+  const d=localDateKey().replaceAll('-','');
+  return `FBR-${d}-${String(activeBillNo).padStart(4,'0')}`;
+}
+
+function buildFinalFbrInvoice(autoPrint=false, sendWhatsApp=false){
+  const t=tots();
+  const ctx=receiptContext();
+  const fbrNo=generateFbrInvoiceNumber();
+  const received=paymentMethod==='Cash'
+    ? Number($('#receivedAmount').value||0)
+    : t.total;
+  const change=Math.max(0,received-t.total);
+
+  activeSlipType='invoice';
+
+  $('#shead').textContent='Final FBR Invoice';
+  $('#slipPrintBtn').disabled=false;
+  $('#slipPrintBtn').textContent='Print 80mm';
+  $('#slipWhatsAppBtn').style.display='inline-flex';
+
+  $('#sbody').innerHTML=`
+    <div class="thermal-receipt">
+      <div class="thermal-center">
+        <div class="thermal-restaurant-name">${RECEIPT_SETTINGS.restaurantName}</div>
+        <div class="thermal-small">${RECEIPT_SETTINGS.address}</div>
+        <div class="thermal-small">Phone: ${RECEIPT_SETTINGS.phone}</div>
+      </div>
+
+      <div class="thermal-rule"></div>
+      <div class="thermal-center thermal-small">
+        <b>FINAL FBR TAX INVOICE</b>
+      </div>
+      <div class="thermal-rule"></div>
+
+      <div class="thermal-meta">
+        <div>Bill: ${formatBillNo(activeBillNo)}</div>
+        <div>Date: ${ctx.date}</div>
+        <div>Mode: ${orderMode}</div>
+        <div>Time: ${ctx.time}</div>
+        ${orderMode==='Dine In'?`<div>Table: ${ctx.table}</div><div>Cashier: Ali Raza</div>`:`<div>Cashier: Ali Raza</div><div></div>`}
+      </div>
+
+      ${orderMode==='Home Delivery'?`
+        <div class="thermal-rule"></div>
+        <div class="thermal-customer">
+          Customer: ${selectedCustomer.name}<br>
+          Customer No: ${selectedCustomer.id}<br>
+          Phone: ${selectedCustomer.phone||'—'}<br>
+          Address: ${selectedCustomer.address||'—'}
+        </div>`:''}
+
+      <div class="thermal-rule"></div>
+      <table class="thermal-items">
+        <thead>
+          <tr><th class="q">Qty</th><th class="d">Description</th><th class="r">Rate</th><th class="a">Amount</th></tr>
+        </thead>
+        <tbody>
+          ${C.map(i=>`
+            <tr>
+              <td>${i.qty}${i.unit?' '+i.unit:''}</td>
+              <td>${i.name}${i.note?`<span class="thermal-item-note">${i.note}</span>`:''}</td>
+              <td class="r">${Number(i.unitPrice).toFixed(2)}</td>
+              <td class="a">${Number(i.qty*i.unitPrice).toFixed(2)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="thermal-totals">
+        <div class="thermal-total-row"><span>Subtotal</span><span>${money(t.sub)}</span></div>
+        ${t.d>0?`<div class="thermal-total-row"><span>Discount</span><span>- ${money(t.d)}</span></div>`:''}
+        <div class="thermal-total-row"><span>Service Charges</span><span>${money(t.sc)}</span></div>
+        <div class="thermal-total-row"><span>Tax (${t.rate}% · ${paymentMethod})</span><span>${money(t.tx)}</span></div>
+        <div class="thermal-total-row grand"><span>Total Amount</span><span>${money(t.total)}</span></div>
+        <div class="thermal-total-row"><span>Received Amount</span><span>${money(received)}</span></div>
+        ${paymentMethod==='Cash'?`<div class="thermal-total-row"><span>Change</span><span>${money(change)}</span></div>`:''}
+      </div>
+
+      <div class="thermal-fbr">
+        <div class="thermal-small">FBR Invoice Number</div>
+        <div class="thermal-fbr-no">${fbrNo}</div>
+        <img src="${RECEIPT_SETTINGS.fbrQrData}" alt="FBR QR Code">
+        <div class="thermal-small">Scan QR to verify invoice</div>
+      </div>
+
+      <div class="thermal-footer">
+        Thank you for your order<br>
+        Software by ${RECEIPT_SETTINGS.softwareCompany}
+      </div>
+    </div>`;
+
+  om('slip');
+
+  if(autoPrint){
+    setTimeout(()=>printCurrentSlip(),100);
+  }
+  if(sendWhatsApp){
+    setTimeout(()=>toast('Final FBR invoice PDF queued for WhatsApp — UI demo'),120);
+  }
+}
+
+function saveBillToShift(){
+  const existing=shiftBills.find(b=>b.billNo===activeBillNo);
+  if(existing)return;
+
+  const now=new Date();
+  shiftBills.unshift({
+    id:'shift-'+activeBillNo,
+    billNo:activeBillNo,
+    time:now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+    mode:orderMode,
+    table:orderMode==='Dine In'?(selectedTable||'—'):'—',
+    customer:orderMode==='Home Delivery'?selectedCustomer.name:'Walk-in',
+    amount:tots().total,
+    payment:paymentMethod,
+    fbrNo:generateFbrInvoiceNumber()
+  });
+}
+
+function completeCharge(action='print'){
+  if(!validateTender())return false;
+  const t=tots();
+
+  saveBillToShift();
+  if(window.RestaurantLive) RestaurantLive.postSale(t.total,orderMode,paymentMethod);
+  const inventoryPost=RestaurantStore.consumeCart(
+    C.map(i=>({name:i.name,qty:i.qty})),
+    `POS ${formatBillNo(activeBillNo)}`
+  );
+  toast(`Payment completed · ${money(t.total)} · Inventory ${inventoryPost.movements.length} stock movement${inventoryPost.movements.length===1?'':'s'}`);
+
+  if(action==='print') buildFinalFbrInvoice(true,false);
+  if(action==='whatsapp') buildFinalFbrInvoice(false,true);
+  return true;
+}
+
+function openCheckout(){
+  refreshCheckout();
+  om('checkoutModal');
+  setTimeout(()=>{
+    if(paymentMethod==='Cash'){
+      $('#receivedAmount').value='';
+      $('#receivedAmount').focus();
+    }else{
+      $('#receivedAmount').value=tots().total.toFixed(2);
+    }
+    updateCashReturn();
+  },30);
+}
+
+/* ---------- Item builder ---------- */
+function parsePairs(text){
+  return text.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{
+    const [namePart,pricePart]=x.split('=');
+    return {name:(namePart||'').trim(),price:Number(pricePart||0)};
+  }).filter(x=>x.name);
+}
+
+
+/* ---------- Customer / Delivery / Table ---------- */
+function initials(name){
+  return (name||'WC').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
+}
+
+function renderSelectedCustomer(){
+  $('#customerAvatar').textContent=initials(selectedCustomer.name);
+  $('#customerName').textContent=selectedCustomer.name;
+  $('#customerPhone').textContent=selectedCustomer.phone||'No phone saved';
+
+  if(orderMode==='Home Delivery'){
+    $('#deliveryAddress').classList.remove('hidden');
+    $('#customerAddress').textContent=selectedCustomer.address||'No saved address';
+  }else{
+    $('#deliveryAddress').classList.add('hidden');
+  }
+
+  if($('#nbCustomerName')){
+    const c=newBillSelectedCustomer||selectedCustomer;
+    $('#nbCustomerName').textContent=c?.name||'No customer selected';
+    $('#nbCustomerPhone').textContent=c?.phone||'Customer and saved address are required for delivery.';
+    $('#nbCustomerAddress').textContent=c?.address||'No saved address';
+  }
+  refreshCheckout();
+}
+
+function renderCustomerList(filter=''){
+  const q=filter.toLowerCase().trim();
+  const list=customers.filter(c=>
+    !q ||
+    c.name.toLowerCase().includes(q) ||
+    (c.phone||'').toLowerCase().includes(q) ||
+    (c.address||'').toLowerCase().includes(q)
+  );
+
+  $('#customerList').innerHTML=list.map(c=>`
+    <div class="customer-option" data-customer="${c.id}">
+      <div class="co-avatar">${initials(c.name)}</div>
+      <div>
+        <div class="co-name">${c.name}</div>
+        <div class="co-phone">${c.phone||'No phone'}</div>
+        ${c.address?`<div class="co-address">${c.address}</div>`:''}
+      </div>
+      <div class="co-select">Select →</div>
+    </div>
+  `).join('') || '<div class="kot-empty">No matching customer found.</div>';
+}
+
+function selectCustomer(id){
+  const c=customers.find(x=>x.id===id);
+  if(!c)return;
+
+  if($('#newBillScreen').classList.contains('show') && newBillType==='Home Delivery'){
+    newBillSelectedCustomer=c;
+  }else{
+    selectedCustomer=c;
+  }
+
+  renderSelectedCustomer();
+  cm('customerSelectModal');
+  toast(`${c.name} selected`);
+}
+
+function checkTableHold(){
+  const alert=$('#heldTableAlert');
+  const hold=tableHolds[selectedTable];
+
+  if(orderMode==='Dine In' && selectedTable && hold){
+    $('#heldTableText').textContent=`${hold.id} found on ${selectedTable} · ${hold.items} items · ${money(hold.amount)} · held ${hold.minutes} min`;
+    alert.classList.remove('hidden');
+    $('#resumeTableHold').dataset.hold=hold.id;
+  }else{
+    alert.classList.add('hidden');
+    delete $('#resumeTableHold').dataset.hold;
+  }
+  refreshCheckout();
+}
+
+/* ---------- Drawer ---------- */
+$('#menu').onclick=()=>{$('#drawer').classList.add('open');$('#back').classList.add('show')};
+$('#drawerClose').onclick=()=>{$('#drawer').classList.remove('open');$('#back').classList.remove('show')};
+$('#menuManageNav').onclick=()=>{
+  populateCategorySelects();
+  populateRateItems();
+  setItemManagementMode('item');
+  om('newitem');
+  $('#drawer').classList.remove('open');
+  $('#back').classList.remove('show');
+};
+$('#voidLogsBtn').onclick=()=>{
+  renderVoidLogs();
+  om('voidLogsModal');
+  $('#drawer').classList.remove('open');
+  $('#back').classList.remove('show');
+};
+$('#approveDeleteBtn').onclick=approveKitchenSentDelete;
+
+$('#back').onclick=()=>{$('#drawer').classList.remove('open');$('#back').classList.remove('show')};
+
+let orderMode='Dine In';
+function applyMainBillContext(){
+  $('#mainModePill').textContent=orderMode;
+  $('#mainBillNo').textContent=formatBillNo(activeBillNo);
+  $('.order-title strong').textContent=`Bill ${formatBillNo(activeBillNo)}`;
+  $('.order-title small').textContent=`${orderMode} · Running 0 minutes`;
+
+  if(orderMode==='Dine In'){
+    $('#dineContext').classList.remove('hidden');
+    $('#deliveryContext').classList.add('hidden');
+    $('#tableSelect').value=selectedTable||'';
+    checkTableHold();
+  }else if(orderMode==='Home Delivery'){
+    $('#dineContext').classList.add('hidden');
+    $('#heldTableAlert').classList.add('hidden');
+    $('#deliveryContext').classList.remove('hidden');
+    renderSelectedCustomer();
+  }else{
+    $('#dineContext').classList.add('hidden');
+    $('#deliveryContext').classList.add('hidden');
+    $('#heldTableAlert').classList.add('hidden');
+  }
+  refreshCheckout();
+}
+
+
+
+
+/* ---------- Sent-item delete approval / audit ---------- */
+function getDeleteLogs(){
+  try{
+    return JSON.parse(localStorage.getItem('restaurant_item_delete_logs')||'[]');
+  }catch{
+    return [];
+  }
+}
+
+function saveDeleteLog(log){
+  const logs=getDeleteLogs();
+  logs.unshift(log);
+  localStorage.setItem('restaurant_item_delete_logs',JSON.stringify(logs.slice(0,300)));
+}
+
+function openDeleteApproval(index){
+  const item=C[index];
+  if(!item)return;
+
+  pendingDeleteIndex=index;
+  $('#deleteItemName').textContent=item.name;
+  $('#deleteItemKitchenState').textContent=`Bill ${formatBillNo(activeBillNo)} · Qty ${item.qty} · Kitchen sent ${item.sentQty||0}`;
+  $('#deleteManagerPassword').value='';
+  $('#deleteReason').value='';
+  $('#deleteReasonNote').value='';
+  om('deleteApprovalModal');
+
+  setTimeout(()=>$('#deleteManagerPassword').focus(),40);
+}
+
+function renderVoidLogs(){
+  const logs=getDeleteLogs();
+  $('#voidLogList').innerHTML=logs.length
+    ? logs.map(log=>`
+      <div class="void-log-row">
+        <div class="void-log-top">
+          <div class="vbill">${log.billNo}</div>
+          <div class="vitem">${log.itemName}</div>
+          <div class="vtime">${log.timestamp}</div>
+        </div>
+        <div class="void-log-detail">
+          <span>Qty: ${log.qty}</span>
+          <span>Kitchen Sent: ${log.sentQty}</span>
+          <span>Mode: ${log.mode}</span>
+          <span>${log.table?`Table: ${log.table}`:''}</span>
+          <span>Cashier: ${log.cashier}</span>
+        </div>
+        <div class="void-log-reason">
+          ${log.reason}${log.note?` — ${log.note}`:''}
+        </div>
+      </div>`).join('')
+    : '<div class="duplicate-empty">No kitchen-sent item deletions recorded in this browser demo.</div>';
+}
+
+function approveKitchenSentDelete(){
+  if(pendingDeleteIndex===null || !C[pendingDeleteIndex])return;
+
+  const item=C[pendingDeleteIndex];
+  const password=$('#deleteManagerPassword').value;
+  const reason=$('#deleteReason').value;
+  const note=$('#deleteReasonNote').value.trim();
+
+  if(password!=='1234'){
+    toast('Invalid manager password');
+    $('#deleteManagerPassword').focus();
+    return;
+  }
+  if(!reason){
+    toast('Deletion reason is required');
+    $('#deleteReason').focus();
+    return;
+  }
+  if(reason==='Other' && !note){
+    toast('Write deletion reason detail');
+    $('#deleteReasonNote').focus();
+    return;
+  }
+
+  const log={
+    billNo:formatBillNo(activeBillNo),
+    billNoNumeric:activeBillNo,
+    itemId:item.id,
+    itemName:item.name,
+    qty:item.qty,
+    sentQty:item.sentQty||0,
+    rate:item.unitPrice,
+    mode:orderMode,
+    table:orderMode==='Dine In'?(selectedTable||''):'',
+    reason,
+    note,
+    cashier:'Ali Raza',
+    timestamp:new Date().toLocaleString()
+  };
+
+  saveDeleteLog(log);
+
+  const removed=item.name;
+  C.splice(pendingDeleteIndex,1);
+  lastAddedIndex=Math.min(lastAddedIndex??0,C.length-1);
+  selectedRowIndex=null;
+  pendingDeleteIndex=null;
+
+  rc();
+  cm('deleteApprovalModal');
+  toast(`${removed} deleted with manager approval`);
+}
+
+/* ---------- Global clicks ---------- */
+document.addEventListener('click',e=>{
+  const del=e.target.closest('[data-del]');
+  if(del){
+    e.stopPropagation();
+    const index=+del.dataset.del;
+    const item=C[index];
+    if(!item)return;
+
+    if((item.sentQty||0)>0){
+      openDeleteApproval(index);
+      return;
+    }
+
+    const removed=item.name;
+    C.splice(index,1);
+    lastAddedIndex=Math.min(lastAddedIndex??0,C.length-1);
+    selectedRowIndex=null;
+    rc();
+    toast(`${removed||'Item'} deleted`);
+    return;
+  }
+
+  const row=e.target.closest('[data-row]');
+  if(row){openRowQty(+row.dataset.row);return}
+
+  const imageAdd=e.target.closest('[data-image-add]');
+  if(imageAdd){add(imageAdd.dataset.imageAdd);return}
+
+  const addBtn=e.target.closest('[data-add]');
+  if(addBtn){add(addBtn.dataset.add);return}
+
+  const inc=e.target.closest('[data-pqinc]');
+  if(inc){
+    e.stopPropagation();
+    const id=inc.dataset.pqinc;
+    preQty[id]=roundQty(Number(preQty[id]??1)+1);
+    rp();return;
+  }
+  const dec=e.target.closest('[data-pqdec]');
+  if(dec){
+    e.stopPropagation();
+    const id=dec.dataset.pqdec;
+    preQty[id]=Math.max(0.01,roundQty(Number(preQty[id]??1)-1));
+    rp();return;
+  }
+  const pq=e.target.closest('[data-pqcalc]');
+  if(pq){
+    e.stopPropagation();
+    const p=P.find(x=>x.id===pq.dataset.pqcalc);
+    if(p)openPreQty(p);
+    return;
+  }
+
+  const category=e.target.closest('[data-cat]');
+  if(category){
+    $$('[data-cat]').forEach(x=>x.classList.remove('active'));
+    category.classList.add('active');
+    cat=category.dataset.cat;
+    rp();return;
+  }
+
+  const quick=e.target.closest('[data-set]');
+  if(quick){
+    $('#calcval').textContent=quick.dataset.set;
+    calculatorFresh=false;
+    return;
+  }
+
+  const digit=e.target.closest('[data-digit]');
+  if(digit){
+    let v=calculatorFresh?'':($('#calcval').textContent||'');
+    calculatorFresh=false;
+    if(digit.dataset.digit==='.'&&v.includes('.'))return;
+    if(v.length>=7)return;
+    $('#calcval').textContent=v+digit.dataset.digit;
+    return;
+  }
+  if(e.target.closest('[data-clear]')){
+    $('#calcval').textContent='';
+    calculatorFresh=false;
+    return;
+  }
+
+  const size=e.target.closest('.size');
+  if(size){
+    $$('.size').forEach(x=>x.classList.remove('active'));
+    size.classList.add('active');
+    return;
+  }
+
+  const resume=e.target.closest('[data-resume]');
+  if(resume){cm('holds');toast(`${resume.dataset.resume} resumed`);return}
+
+  const customerOption=e.target.closest('[data-customer]');
+  if(customerOption){selectCustomer(customerOption.dataset.customer);return}
+
+
+  const close=e.target.closest('[data-close]');
+  if(close){cm(close.dataset.close);return}
+  if(e.target.classList.contains('modal'))e.target.classList.remove('show');
+});
+
+
+/* ---------- POS keyboard shortcuts ---------- */
+document.addEventListener('keydown',e=>{
+  /* F1 = New Bill, default Dine In */
+  if(e.key==='F1'){
+    e.preventDefault();
+    if(!$('#newBillScreen').classList.contains('show')){
+      showNewBillScreen();
+    }
+    return;
+  }
+
+  /* Quantity Calculator keyboard-first entry */
+  if($('#weight').classList.contains('show')){
+    const key=e.key;
+
+    if(/^[0-9]$/.test(key) || key==='.'){
+      e.preventDefault();
+      let current=calculatorFresh?'':($('#calcval').textContent||'');
+      calculatorFresh=false;
+
+      if(key==='.' && current.includes('.'))return;
+      if(current.length>=7)return;
+
+      $('#calcval').textContent=current+key;
+      return;
+    }
+
+    if(key==='Backspace'){
+      e.preventDefault();
+      calculatorFresh=false;
+      const current=$('#calcval').textContent||'';
+      $('#calcval').textContent=current.slice(0,-1);
+      return;
+    }
+
+    if(key==='Enter'){
+      e.preventDefault();
+      applyQuantityPopup();
+      return;
+    }
+
+    if(key==='Escape'){
+      e.preventDefault();
+      cm('weight');
+      return;
+    }
+  }
+});
+
+/* Search instantly filters while typing */
+$('#menuSearch').addEventListener('input',e=>{
+  searchQuery=e.target.value||'';
+  rp();
+});
+
+/* Sales ranking */
+$('#salesPeriod').onchange=e=>{
+  salesPeriod=e.target.value;
+  rp();
+};
+
+/* Quantity popup */
+$('#applyw').onclick=applyQuantityPopup;
+$('#addpizza').onclick=addConfigured;
+
+
+/* ---------- Duplicate Bill ---------- */
+function renderDuplicateBills(filter=''){
+  const q=(filter||'').trim().toLowerCase();
+  const rows=shiftBills.filter(b=>
+    !q ||
+    String(b.billNo).includes(q) ||
+    b.mode.toLowerCase().includes(q) ||
+    b.table.toLowerCase().includes(q) ||
+    b.customer.toLowerCase().includes(q)
+  );
+
+  $('#shiftBillCount').textContent=`${rows.length} Bill${rows.length===1?'':'s'}`;
+
+  $('#duplicateBillList').innerHTML=rows.length
+    ? rows.map(b=>`
+      <div class="duplicate-row">
+        <div class="bill-no">#${String(b.billNo).padStart(4,'0')}</div>
+        <div class="bill-info">
+          <span>${b.mode}${b.table!=='—'?' · '+b.table:''}</span>
+          <small>${b.time} · ${b.customer} · ${b.payment}</small>
+        </div>
+        <div class="bill-amount">${money(b.amount)}</div>
+        <button data-duplicate-print="${b.id}">Print Again</button>
+      </div>`).join('')
+    : '<div class="duplicate-empty">No bill found in the current shift.</div>';
+}
+
+function buildDuplicateReceipt(bill){
+  return `
+    <div class="thermal-receipt">
+      <div class="thermal-center">
+        <div class="thermal-restaurant-name">${RECEIPT_SETTINGS.restaurantName}</div>
+        <div class="thermal-small">${RECEIPT_SETTINGS.address}</div>
+        <div class="thermal-small">Phone: ${RECEIPT_SETTINGS.phone}</div>
+      </div>
+
+      <div class="thermal-rule"></div>
+      <div class="thermal-center thermal-small">
+        <b>DUPLICATE COPY</b><br>
+        FINAL FBR TAX INVOICE
+      </div>
+      <div class="thermal-rule"></div>
+
+      <div class="thermal-meta">
+        <div>Bill: #${String(bill.billNo).padStart(4,'0')}</div>
+        <div>Time: ${bill.time}</div>
+        <div>Mode: ${bill.mode}</div>
+        <div>Payment: ${bill.payment}</div>
+        ${bill.table!=='—'?`<div>Table: ${bill.table}</div><div></div>`:''}
+      </div>
+
+      <div class="thermal-rule"></div>
+      <div class="thermal-small" style="text-align:center">
+        Duplicate receipt generated from current running shift.
+      </div>
+
+      <div class="thermal-totals">
+        <div class="thermal-total-row grand">
+          <span>Total Amount</span>
+          <span>${money(bill.amount)}</span>
+        </div>
+      </div>
+
+      <div class="thermal-fbr">
+        <div class="thermal-small">FBR Invoice Number</div>
+        <div class="thermal-fbr-no">${bill.fbrNo}</div>
+        <img src="${RECEIPT_SETTINGS.fbrQrData}" alt="FBR QR Code">
+      </div>
+
+      <div class="thermal-footer">
+        DUPLICATE COPY<br>
+        Software by ${RECEIPT_SETTINGS.softwareCompany}
+      </div>
+    </div>`;
+}
+
+function printDuplicateBill(id){
+  const bill=shiftBills.find(b=>b.id===id);
+  if(!bill)return;
+
+  $('#sbody').innerHTML=buildDuplicateReceipt(bill);
+  $('#shead').textContent='Duplicate Bill';
+  activeSlipType='invoice';
+  printCurrentSlip();
+  toast(`Bill #${String(bill.billNo).padStart(4,'0')} sent to thermal printer`);
+}
+
+$('#duplicateBillBtn').onclick=()=>{
+  $('#duplicateSearch').value='';
+  renderDuplicateBills('');
+  om('duplicateBillModal');
+};
+
+$('#duplicateSearch').addEventListener('input',e=>renderDuplicateBills(e.target.value));
+
+document.addEventListener('click',e=>{
+  const dup=e.target.closest('[data-duplicate-print]');
+  if(dup){
+    e.stopPropagation();
+    printDuplicateBill(dup.dataset.duplicatePrint);
+    return;
+  }
+});
+
+
+/* ---------- New Bill ---------- */
+function showNewBillScreen(){
+  newBillType='Dine In';
+  newBillSelectedTable='';
+  newBillSelectedCustomer=null;
+  $('#nextBillPreview').textContent=formatBillNo(peekNextBillNo());
+  $$('.new-type').forEach(b=>b.classList.toggle('selected',b.dataset.newtype==='Dine In'));
+  $('#newDinePanel').classList.remove('hidden');
+  $('#newTakeawayPanel').classList.add('hidden');
+  $('#newDeliveryPanel').classList.add('hidden');
+  $('#newBillHeld').classList.add('hidden');
+  $('#newBillTable').value='';
+  renderSelectedCustomer();
+  $('#newBillScreen').classList.add('show');
+}
+
+function setNewBillType(type){
+  newBillType=type;
+  $$('.new-type').forEach(b=>b.classList.toggle('selected',b.dataset.newtype===type));
+  $('#newDinePanel').classList.toggle('hidden',type!=='Dine In');
+  $('#newTakeawayPanel').classList.toggle('hidden',type!=='Takeaway');
+  $('#newDeliveryPanel').classList.toggle('hidden',type!=='Home Delivery');
+
+  if(type!=='Dine In'){
+    newBillSelectedTable='';
+    $('#newBillHeld').classList.add('hidden');
+  }
+  renderSelectedCustomer();
+}
+
+function updateNewBillHeld(){
+  newBillSelectedTable=$('#newBillTable').value;
+  const hold=tableHolds[newBillSelectedTable];
+  if(hold){
+    $('#newBillHeldText').textContent=`${hold.id} exists on ${newBillSelectedTable} · ${hold.items} items · ${money(hold.amount)}`;
+    $('#newBillHeld').classList.remove('hidden');
+    $('#newBillResumeHeld').dataset.hold=hold.id;
+  }else{
+    $('#newBillHeld').classList.add('hidden');
+    delete $('#newBillResumeHeld').dataset.hold;
+  }
+}
+
+function resetBillCart(){
+  C.splice(0,C.length);
+  lastAddedIndex=null;
+  selectedRowIndex=null;
+  rc();
+}
+
+function startNewBill(){
+  if(newBillType==='Dine In'){
+    if(!newBillSelectedTable){
+      toast('Select a table for Dine In');
+      $('#newBillTable').focus();
+      return;
+    }
+  }
+
+  if(newBillType==='Home Delivery'){
+    const c=newBillSelectedCustomer;
+    if(!c){
+      toast('Select or create a customer for Home Delivery');
+      return;
+    }
+    if(!c.address){
+      toast('Home Delivery customer must have a saved address');
+      return;
+    }
+  }
+
+  activeBillNo=nextDailyBillNo();
+  sessionStorage.setItem('restaurant_active_bill_'+localDateKey(),String(activeBillNo));
+  orderMode=newBillType;
+  selectedTable=newBillType==='Dine In'?newBillSelectedTable:'';
+  if(newBillType==='Home Delivery'){
+    selectedCustomer=newBillSelectedCustomer;
+  }else{
+    selectedCustomer=customers[0];
+  }
+
+  resetBillCart();
+  applyMainBillContext();
+  $('#newBillScreen').classList.remove('show');
+  toast(`New ${orderMode} bill ${formatBillNo(activeBillNo)} started`);
+}
+
+$('#newBillBtn').onclick=showNewBillScreen;
+$('#closeNewBill').onclick=()=>$('#newBillScreen').classList.remove('show');
+$$('.new-type').forEach(btn=>btn.addEventListener('click',()=>setNewBillType(btn.dataset.newtype)));
+
+$('#newBillTable').onchange=updateNewBillHeld;
+$('#newBillCreateTable').onclick=()=>om('newTableModal');
+
+$('#nbSelectCustomer').onclick=()=>{
+  renderCustomerList('');
+  $('#customerSearchInput').value='';
+  om('customerSelectModal');
+};
+$('#nbCreateCustomer').onclick=()=>om('customerCreateModal');
+
+$('#newBillResumeHeld').onclick=()=>{
+  const hold=tableHolds[newBillSelectedTable];
+  if(!hold)return;
+
+  activeBillNo=hold.billNo||activeBillNo;
+  sessionStorage.setItem('restaurant_active_bill_'+localDateKey(),String(activeBillNo));
+  orderMode='Dine In';
+  selectedTable=newBillSelectedTable;
+  selectedCustomer=customers.find(c=>c.name===hold.customer)||customers[0];
+
+  C.splice(0,C.length,...hold.lines.map(line=>({...line})));
+  lastAddedIndex=C.length-1;
+  selectedRowIndex=null;
+  rc();
+  applyMainBillContext();
+  $('#newBillScreen').classList.remove('show');
+  toast(`${hold.id} resumed on ${selectedTable}`);
+};
+
+$('#startNewBill').onclick=startNewBill;
+
+
+/* Customer / table */
+$('#selectCustomerBtn').onclick=()=>{
+  renderCustomerList('');
+  $('#customerSearchInput').value='';
+  om('customerSelectModal');
+};
+$('#createCustomerBtn').onclick=()=>om('customerCreateModal');
+$('#openCreateFromSelect').onclick=()=>{
+  cm('customerSelectModal');
+  om('customerCreateModal');
+};
+$('#customerSearchInput').addEventListener('input',e=>renderCustomerList(e.target.value));
+
+$('#saveCustomerBtn').onclick=()=>{
+  const name=$('#ccName').value.trim();
+  const phone=$('#ccPhone').value.trim();
+  const address=$('#ccAddress').value.trim();
+  const area=$('#ccArea').value.trim();
+  const type=$('#ccType').value;
+
+  if(!name){toast('Customer name is required');$('#ccName').focus();return}
+
+  const customer={
+    id:'c'+Date.now(),
+    name,
+    phone,
+    address,
+    area,
+    type
+  };
+  customers.push(customer);
+  if($('#newBillScreen').classList.contains('show') && newBillType==='Home Delivery'){
+    newBillSelectedCustomer=customer;
+  }else{
+    selectedCustomer=customer;
+  }
+  renderSelectedCustomer();
+  cm('customerCreateModal');
+  toast(`${name} created and selected`);
+
+  $('#ccName').value='';
+  $('#ccPhone').value='';
+  $('#ccAddress').value='';
+  $('#ccArea').value='';
+};
+
+$('#newTableBtn').onclick=()=>om('newTableModal');
+$('#saveTableBtn').onclick=()=>{
+  const name=$('#ntName').value.trim();
+  if(!name){toast('Enter table name / number');return}
+
+  ['tableSelect','newBillTable'].forEach(id=>{
+    const select=$('#'+id);
+    if(select && ![...select.options].some(o=>o.value===name)){
+      const option=document.createElement('option');
+      option.textContent=name;
+      option.value=name;
+      select.appendChild(option);
+    }
+  });
+
+  if($('#newBillScreen').classList.contains('show')){
+    $('#newBillTable').value=name;
+    newBillSelectedTable=name;
+    updateNewBillHeld();
+  }else{
+    $('#tableSelect').value=name;
+    selectedTable=name;
+    checkTableHold();
+  }
+
+  cm('newTableModal');
+  toast(`${name} created`);
+  $('#ntName').value='';
+};
+
+$('#tableSelect').onchange=e=>{
+  selectedTable=e.target.value;
+  checkTableHold();
+};
+
+$('#resumeTableHold').onclick=()=>{
+  const id=$('#resumeTableHold').dataset.hold;
+  const hold=tableHolds[selectedTable];
+  if(!id||!hold)return;
+
+  C.splice(0,C.length,...hold.lines.map(line=>({...line})));
+  lastAddedIndex=C.length-1;
+  selectedRowIndex=null;
+  $('#heldTableAlert').classList.add('hidden');
+  rc();
+  toast(`${id} resumed on ${selectedTable}`);
+};
+
+renderCustomerList('');
+renderSelectedCustomer();
+
+/* System / hold / item */
+$('#systemBtn').onclick=()=>om('systemModal');
+$('#holdBillsBtn').onclick=()=>om('holds');
+$('#newItemBtn').onclick=()=>{
+  populateCategorySelects();
+  populateRateItems();
+  setItemManagementMode('item');
+  om('newitem');
+};
+
+/* Configurable item builder */
+let itemManagementMode='item';
+
+function setItemManagementMode(mode){
+  itemManagementMode=mode;
+
+  $$('.im-tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.imtab===mode));
+  $('#imPanelItem').classList.toggle('hidden',mode!=='item');
+  $('#imPanelCategory').classList.toggle('hidden',mode!=='category');
+  $('#imPanelRate').classList.toggle('hidden',mode!=='rate');
+
+  const labels={
+    item:'Create Item',
+    category:'Create Category',
+    rate:'Update Rate'
+  };
+  $('#saveManagementAction').textContent=labels[mode];
+
+  if(mode==='category'){
+    populateCategorySelects();
+  }
+  if(mode==='rate'){
+    populateRateItems();
+  }
+}
+
+$$('.im-tab').forEach(btn=>btn.addEventListener('click',()=>setItemManagementMode(btn.dataset.imtab)));
+
+$('#quickCategoryBtn').onclick=()=>setItemManagementMode('category');
+
+$('#niType').onchange=()=>{
+  $('#configBuilder').classList.toggle('show',$('#niType').value==='configurable');
+};
+
+$('#rateItemSelect').addEventListener('change',refreshRateSelection);
+
+function createMenuCategory(){
+  const name=$('#newCategoryName').value.trim();
+  const icon=$('#newCategoryIcon').value.trim()||'•';
+
+  if(!name){
+    toast('Enter category name');
+    $('#newCategoryName').focus();
+    return false;
+  }
+
+  if(menuCategories.some(c=>c.name.toLowerCase()===name.toLowerCase())){
+    toast('Category already exists');
+    return false;
+  }
+
+  const printer=$('#newCategoryPrinter').value;
+  menuCategories.push({name,icon,printer});
+  renderCategoryNavigation();
+  populateCategorySelects();
+
+  $('#newCategoryName').value='';
+  $('#newCategoryIcon').value='';
+
+  toast(`${name} category created · ${kitchenPrinters[printer]?.name||'Printer'} assigned`);
+  return true;
+}
+
+function createMenuItem(){
+  const name=$('#niName').value.trim();
+  const price=Number($('#niPrice').value||0);
+  const category=$('#niCat').value;
+  const type=$('#niType').value;
+  const desc=$('#niDesc').value.trim()||'New menu item';
+
+  if(!name||price<=0){
+    toast('Enter item name and valid price');
+    return false;
+  }
+
+  const item={
+    id:'new-'+Date.now(),
+    name,
+    cat:category,
+    price,
+    th:'t5',
+    img:'assets/menu_01.jpg',
+    desc,
+    today:0,
+    yesterday:0,
+    days7:0
+  };
+
+  if(type==='weighted'){
+    item.weighted=true;
+    item.unit='KG';
+  }
+
+  if(type==='configurable'){
+    item.config={
+      groupName:$('#niGroup').value.trim()||'Option',
+      options:parsePairs($('#niOptions').value),
+      modifierGroup:$('#niModGroup').value.trim()||'Modifiers',
+      modifiers:parsePairs($('#niModifiers').value),
+      allowNotes:$('#niAllowNotes').checked
+    };
+
+    if(!item.config.options.length){
+      toast('Add at least one sub item / variant');
+      return false;
+    }
+    item.price=item.config.options[0].price||price;
+  }
+
+  P.unshift(item);
+  cat='All';
+  renderCategoryNavigation();
+  rp();
+  populateRateItems();
+
+  $('#niName').value='';
+  $('#niPrice').value='500';
+  $('#niDesc').value='';
+
+  toast(`${name} created`);
+  return true;
+}
+
+function updateExistingRate(){
+  const id=$('#rateItemSelect').value;
+  const item=P.find(p=>p.id===id);
+  const newRate=Number($('#newItemRate').value||0);
+
+  if(!item){
+    toast('Select an item');
+    return false;
+  }
+  if(newRate<=0){
+    toast('Enter a valid new rate');
+    return false;
+  }
+
+  const oldRate=item.price;
+  item.price=newRate;
+
+  /* If item has variants, this changes the base/default price only.
+     Variant prices remain independently configured. */
+  rp();
+  $('#currentItemRate').value=money(newRate);
+
+  toast(`${item.name}: ${money(oldRate)} → ${money(newRate)}`);
+  return true;
+}
+
+$('#saveManagementAction').onclick=()=>{
+  let success=false;
+
+  if(itemManagementMode==='item') success=createMenuItem();
+  if(itemManagementMode==='category') success=createMenuCategory();
+  if(itemManagementMode==='rate') success=updateExistingRate();
+
+  if(success && itemManagementMode==='category'){
+    setItemManagementMode('item');
+  }
+};
+
+/* Discount */
+$('#discountEdit').onclick=()=>{
+  $('#discountType').value=discountCfg.type;
+  $('#discountValue').value=discountCfg.value;
+  om('discountModal');
+};
+$('#applyDiscount').onclick=()=>{
+  discountCfg={type:$('#discountType').value,value:Number($('#discountValue').value||0)};
+  cm('discountModal');rc();toast('Discount updated');
+};
+
+/* Service */
+$('#serviceEdit').onclick=()=>{
+  $('#serviceType').value=serviceCfg.type;
+  $('#serviceValue').value=serviceCfg.value;
+  om('serviceModal');
+};
+$('#applyService').onclick=()=>{
+  serviceCfg={type:$('#serviceType').value,value:Number($('#serviceValue').value||0)};
+  cm('serviceModal');rc();toast('Service charge updated');
+};
+
+/* Kitchen */
+$('#qkot').onclick=buildKitchenSlip;
+
+function printCurrentSlip(){
+  const content=$('#sbody').innerHTML;
+  const w=window.open('','','width=390,height=760');
+  if(!w){
+    toast('Popup blocked — allow print window');
+    return;
+  }
+
+  w.document.write(`<!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <title>${$('#shead').textContent}</title>
+    <style>
+      @page{
+        size:80mm auto;
+        margin:0;
+      }
+      html,body{
+        width:80mm;
+        margin:0;
+        padding:0;
+        background:#fff;
+      }
+      body{
+        font-family:Arial,Helvetica,sans-serif;
+        color:#000;
+        font-size:10px;
+        -webkit-print-color-adjust:exact;
+        print-color-adjust:exact;
+      }
+      .thermal-receipt{
+        box-sizing:border-box;
+        width:76mm;
+        margin:0 auto;
+        padding:3mm 2mm 4mm;
+        background:#fff;
+        color:#000;
+      }
+      .thermal-center{text-align:center}
+      .thermal-restaurant-name{
+        font-size:18px;
+        line-height:1.1;
+        font-weight:700;
+      }
+      .thermal-small{font-size:10px;line-height:1.35}
+      .thermal-rule{border-top:1px dashed #000;margin:5px 0}
+      .thermal-meta{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:2px 7px;
+        font-size:10px;
+        line-height:1.35;
+      }
+      .thermal-customer{font-size:10px;line-height:1.35}
+      .thermal-items{
+        width:100%;
+        border-collapse:collapse;
+        table-layout:fixed;
+        font-size:10px;
+      }
+      .thermal-items th{
+        text-align:left;
+        border-bottom:1px solid #000;
+        padding:3px 1px;
+        font-weight:700;
+      }
+      .thermal-items td{
+        padding:4px 1px;
+        vertical-align:top;
+        border-bottom:1px dotted #999;
+      }
+      .thermal-items .q{width:12%}
+      .thermal-items .d{width:46%}
+      .thermal-items .r{width:20%;text-align:right}
+      .thermal-items .a{width:22%;text-align:right}
+      .thermal-item-note{
+        display:block;
+        margin-top:2px;
+        font-size:8px;
+        line-height:1.25;
+      }
+      .thermal-totals{margin-top:4px;font-size:10px}
+      .thermal-total-row{
+        display:flex;
+        justify-content:space-between;
+        gap:8px;
+        padding:2px 0;
+      }
+      .thermal-total-row.grand{
+        margin-top:4px;
+        padding-top:5px;
+        border-top:1px solid #000;
+        font-size:13px;
+        font-weight:700;
+      }
+      .thermal-fbr{
+        margin-top:6px;
+        padding-top:6px;
+        border-top:1px dashed #000;
+        text-align:center;
+      }
+      .thermal-fbr img{
+        width:31mm;
+        height:31mm;
+        object-fit:contain;
+        image-rendering:pixelated;
+      }
+      .thermal-fbr-no{
+        margin-top:2px;
+        font-size:10px;
+        line-height:1.3;
+        overflow-wrap:anywhere;
+      }
+      .thermal-footer{
+        margin-top:7px;
+        padding-top:6px;
+        border-top:1px dashed #000;
+        text-align:center;
+        font-size:9px;
+      }
+
+      /* Kitchen ticket print support */
+      .kot-sheet{width:76mm;margin:0 auto;padding:3mm 2mm}
+      .kot-title{text-align:center;margin-bottom:7px}
+      .kot-title h2{font-size:16px;margin:0}
+      .kot-title small{font-size:9px}
+      .kot-meta{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:3px;
+        border-top:1px dashed #000;
+        border-bottom:1px dashed #000;
+        padding:5px 0;
+        font-size:9px;
+      }
+      .kot-item{
+        display:grid;
+        grid-template-columns:45px 1fr;
+        gap:6px;
+        padding:6px 0;
+        border-bottom:1px dashed #aaa;
+      }
+      .kot-qty{
+        font-size:14px;
+        font-weight:700;
+        text-align:center;
+      }
+      .kot-desc strong{display:block;font-size:12px}
+      .kot-desc span{display:block;font-size:9px;margin-top:2px}
+
+      @media print{
+        html,body{width:80mm!important}
+        .thermal-receipt,.kot-sheet{box-shadow:none!important}
+      }
+    </style>
+  </head>
+  <body>${content}<a href="index.html" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#fff;border:1px solid #dfe6e2;padding:6px 8px;font:10px Segoe UI;color:#087d50;text-decoration:none">UI Suite</a></body>
+  </html>`);
+
+  w.document.close();
+  w.focus();
+  setTimeout(()=>w.print(),80);
+}
+
+$('#slipWhatsAppBtn').onclick=()=>{
+  if(activeSlipType==='pre'){
+    toast('Pre-invoice PDF queued for WhatsApp — UI demo');
+  }else{
+    toast('Final FBR invoice PDF queued for WhatsApp — UI demo');
+  }
+};
+
+/* Slip print behavior */
+$('#slipPrintBtn').onclick=()=>{
+  printCurrentSlip();
+  if(activeSlipType==='kot'){
+    const groups=new Set(lastKotPending.map(x=>{const product=P.find(p=>p.id===x.item.id);return categoryPrinter(product?.cat||'Pakistani');}));
+    toast(`Kitchen order routed to ${groups.size} configured printer${groups.size===1?'':'s'}`);
+    markPendingAsSent();
+  }else{
+    toast('Print requested');
+  }
+};
+
+/* Charge opens payment popup */
+let closeBillAction='print';
+let pendingDeleteIndex=null;
+let calculatorFresh=true;
+
+const closeActionLabels={
+  pre:{label:'Pre-Invoice Bill',hint:'Preview / print before payment'},
+  print:{label:'Close Bill & Print',hint:'Default · press Enter'},
+  whatsapp:{label:'Close & Send on WhatsApp',hint:'Complete payment + final FBR PDF'}
+};
+
+function setCloseBillAction(action){
+  closeBillAction=action;
+  const cfg=closeActionLabels[action];
+  $('#closeBillLabel').textContent=cfg.label;
+  $('#closeBillHint').textContent=cfg.hint;
+  $$('[data-close-action]').forEach(btn=>btn.classList.toggle('selected',btn.dataset.closeAction===action));
+  $('#closeBillMenu').classList.remove('show');
+  $('#toggleCloseBill').classList.remove('open');
+}
+
+function executeCloseBillAction(){
+  if(closeBillAction==='pre'){
+    buildCustomerSlip('pre');
+    return;
+  }
+  if(closeBillAction==='print'){
+    completeCharge('print');
+    return;
+  }
+  if(closeBillAction==='whatsapp'){
+    completeCharge('whatsapp');
+  }
+}
+
+$('#charge').onclick=()=>{
+  closeBillAction='print';
+  setCloseBillAction('print');
+  openCheckout();
+};
+
+$('#checkoutPay').onchange=e=>{
+  paymentMethod=e.target.value;
+
+  if(paymentMethod!=='Cash'){
+    $('#receivedAmount').value=tots().total.toFixed(2);
+  }else{
+    $('#receivedAmount').value='';
+  }
+
+  rc();
+  refreshCheckout();
+  updateCashReturn();
+};
+
+$('#receivedAmount').addEventListener('input',updateCashReturn);
+
+$('#toggleCloseBill').onclick=e=>{
+  e.stopPropagation();
+  $('#closeBillMenu').classList.toggle('show');
+  $('#toggleCloseBill').classList.toggle('open');
+};
+
+$$('[data-close-action]').forEach(btn=>btn.addEventListener('click',e=>{
+  e.stopPropagation();
+  const action=btn.dataset.closeAction;
+  setCloseBillAction(action);
+  executeCloseBillAction();
+}));
+
+$('#executeCloseBill').onclick=executeCloseBillAction;
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#closeBillWrap')){
+    $('#closeBillMenu')?.classList.remove('show');
+    $('#toggleCloseBill')?.classList.remove('open');
+  }
+});
+
+/* Enter runs the selected action; default is Close Bill & Print */
+document.addEventListener('keydown',e=>{
+  if(!$('#checkoutModal').classList.contains('show'))return;
+
+  const childOpen=$('#slip').classList.contains('show') || $('#wa').classList.contains('show');
+  if(childOpen)return;
+
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault();
+    executeCloseBillAction();
+  }
+
+  if(e.key==='Escape'){
+    e.preventDefault();
+    if($('#closeBillMenu').classList.contains('show')){
+      $('#closeBillMenu').classList.remove('show');
+      $('#toggleCloseBill').classList.remove('open');
+    }else{
+      cm('checkoutModal');
+    }
+  }
+});
+
+/* WhatsApp */
+$('#sendwa').onclick=()=>{cm('wa');toast('PDF bill queued for WhatsApp — UI demo')};
+
+/* Initialize first bill for the day in this browser session */
+(function initializeBill(){
+  const sessionKey='restaurant_active_bill_'+localDateKey();
+  const existing=Number(sessionStorage.getItem(sessionKey)||0);
+  if(existing){
+    activeBillNo=existing;
+  }else{
+    activeBillNo=nextDailyBillNo();
+    sessionStorage.setItem(sessionKey,String(activeBillNo));
+  }
+  applyMainBillContext();
+})();
+
+renderCategoryNavigation();
+populateCategorySelects();
+populateRateItems();
+rp();
+rc();
+function ensureProductImagesV4(){
+  document.querySelectorAll('.product-photo img,.thumb img').forEach((img,i)=>{
+    if(!img.getAttribute('src')) img.src=`assets/menu_${String((i%15)+1).padStart(2,'0')}.jpg`;
+    img.onerror=()=>{img.onerror=null;img.src=`assets/menu_${String((i%15)+1).padStart(2,'0')}.jpg`;};
+  });
+}
+setTimeout(ensureProductImagesV4,50);
+const _v4Observer=new MutationObserver(()=>ensureProductImagesV4());
+_v4Observer.observe(document.body,{childList:true,subtree:true});
+</script>\n</body></html>
