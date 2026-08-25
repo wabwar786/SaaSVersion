@@ -64,3 +64,49 @@ quick-item (new/existing inventory, variants, dupe guard) ✓ wastage 500g stock
 decrement + delete-refusal ✓ expenses→dashboard ✓ shift close reconciliation
 (variance ✓) ✓ suppliers/customers bridge ✓ riders ui_records fallback ✓
 sync-status ✓ db_boot sirf authed pages par ✓
+
+---
+
+# V16 — Cloud Login Fix + Platform Enhanced
+
+## Login fix (Railway wala "Invalid login or account not approved")
+Root cause (sandbox mein cloud-mode reproduce karke): `?b=slug` ke baghair
+login par cloud tenant resolve nahi hota tha — direct `login.html` kholne
+par hamesha invalid.
+- **Email/username se tenant auto-resolve**: exactly EK active match ho to
+  wahi tenant; ek se zyada businesses same email par hon to slug lazmi
+  (security — ambiguity par guess nahi hota).
+- Error redirects ab `?b=slug` preserve karte hain.
+
+## Subscription enforcement (ab expiry ka matlab hai)
+- Login par: SUSPENDED business → "This business is suspended…", expired →
+  "Subscription expired on <date>. Please renew…" — dono clear message ke
+  saath block (login.html par show hota hai). Single enforcement point
+  (`Auth::subscriptionBlock`), api-login + form-login dono par.
+
+## Super Admin — enhanced
+- Har business par actions: **Copy link · Detail · Renew · Reset Pass ·
+  Suspend/Open**.
+- Detail: subscriptions + payments history, users/branches count, sync token,
+  client link.
+- **Renew**: nayi expiry + payment record (subscription_payments).
+- **Reset Pass**: business admin ka naya one-time password.
+- **Change Password** (super admin) — current verify + min 8.
+- **DB Health chip** + `sa-diagnostics`: missing tables/columns turant
+  dikhata hai (Railway ki purani DB ka "Operation failed" ab pinpoint hoga).
+- sa-* errors ab `storage/logs/api-error.log` mein bhi jaate hain, aur super
+  admin ko asli error message milta hai (generic "Operation failed" sirf
+  anonymous users ke liye).
+
+## Railway deploy note
+Redeploy karte hi entrypoint fixed `install_schema.php` chalayega — purani
+DB ke missing 14 tables khud ban jayenge. Deploy ke baad super_admin.html
+kholein: "DB healthy" chip aana chahiye.
+
+## Tested (cloud-mode sim: AIO_CONFIG=cloud, fresh DB, entrypoint sequence)
+Business create+list ✓ client-link login ✓ **slug-less login (email resolve)** ✓
+ambiguous email → slug required ✓ suspend → blocked message ✓ activate ✓
+expired → renew message ✓ renew+payment ✓ detail (2 payments) ✓ reset admin
+password + login with new ✓ super password change (wrong-current rejected) ✓
+diagnostics healthy ✓ LOCAL mode regression: form login + pos-boot +
+dashboard + store + shift sab ✓

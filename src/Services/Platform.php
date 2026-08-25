@@ -171,7 +171,7 @@ final class Platform
     /** Resolve a slug to a tenant id (for client-link login scoping). */
     public static function tenantIdBySlug(string $slug): ?string
     {
-        $q = DB::pdo()->prepare("SELECT id FROM tenants WHERE slug=? AND status='ACTIVE' LIMIT 1");
+        $q = DB::pdo()->prepare("SELECT id FROM tenants WHERE slug=? LIMIT 1"); // status yahan filter NAHI hota — suspension login ke baad clear message ke saath enforce hoti hai
         $q->execute([\trim($slug)]);
         return $q->fetchColumn() ?: null;
     }

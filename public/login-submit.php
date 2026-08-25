@@ -18,9 +18,22 @@ if ($email === '' || $password === '') {
     exit;
 }
 
+$bq = '';
+if (!empty($_SESSION['login_tenant_slug'])) {
+    $bq = '&b=' . rawurlencode((string)$_SESSION['login_tenant_slug']);
+}
+
 try {
     if (!Auth::login($email, $password)) {
-        header('Location: /login.html?login_error=invalid&build=v14');
+        header('Location: /login.html?login_error=invalid&build=v14'.$bq);
+        exit;
+    }
+
+    // Subscription enforcement (cloud): expired / suspended -> block with reason.
+    $tid = (string)($_SESSION['user']['tenant_id'] ?? '');
+    if ($tid !== '' && ($msg = Auth::subscriptionBlock($tid)) !== null) {
+        Auth::logout();
+        header('Location: /login.html?login_error=blocked&reason='.rawurlencode($msg).'&build=v14'.$bq);
         exit;
     }
 

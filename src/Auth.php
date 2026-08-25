@@ -1,14 +1,64 @@
 <?php
 namespace Aio;
 
+use PDO;
+
 final class Auth {
     public static function user(): ?array {
         return $_SESSION['user'] ?? null;
     }
 
+    /**
+     * Cloud par agar client link (?b=slug) ke baghair login aaye to tenant
+     * email/username se resolve hota hai: exactly EK active tenant match ho
+     * to wahi use hota hai; ek se zyada hon to slug lazmi hai (ambiguity).
+     */
+    private static function resolveCloudTenant(PDO $pdo, string $login): void {
+        if (cfg('app.role') !== 'cloud') return;
+        if (!empty($_SESSION['login_tenant_id']) || !empty($_SESSION['user']['tenant_id'])) return;
+        $q = $pdo->prepare(
+            "SELECT DISTINCT u.tenant_id
+               FROM users u
+               JOIN tenants t ON t.id=u.tenant_id
+              WHERE u.status='ACTIVE' AND u.deleted_at IS NULL
+                AND (LOWER(u.email)=LOWER(?) OR LOWER(u.username)=LOWER(?))
+              LIMIT 2"
+        );
+        $q->execute([$login, $login]);
+        $ids = array_column($q->fetchAll(), 'tenant_id');
+        if (count($ids) === 1) $_SESSION['login_tenant_id'] = $ids[0];
+    }
+
+    /**
+     * Subscription enforcement (cloud): EXPIRED ya SUSPENDED business ka
+     * login block hota hai — clear message ke saath.
+     * Return: null = OK, warna block message.
+     */
+    public static function subscriptionBlock(string $tenantId): ?string {
+        if (cfg('app.role') !== 'cloud') return null;
+        $pdo = DB::pdo();
+        try {
+            $t = $pdo->prepare("SELECT status FROM tenants WHERE id=? LIMIT 1");
+            $t->execute([$tenantId]);
+            $ts = (string)$t->fetchColumn();
+            if ($ts === 'SUSPENDED') return 'This business is suspended. Please contact your provider.';
+            $q = $pdo->prepare("SELECT status,expiry_date FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+            $q->execute([$tenantId]);
+            $s = $q->fetch();
+            if ($s) {
+                if ($s['status'] === 'SUSPENDED') return 'This business is suspended. Please contact your provider.';
+                if (!empty($s['expiry_date']) && $s['expiry_date'] < date('Y-m-d')) {
+                    return 'Subscription expired on '.$s['expiry_date'].'. Please renew to continue.';
+                }
+            }
+        } catch (\Throwable $e) { /* enforcement best-effort; login kabhi crash na ho */ }
+        return null;
+    }
+
     public static function login(string $login, string $password): bool {
         $pdo = DB::pdo();
         $login = trim($login);
+        self::resolveCloudTenant($pdo, $login);
 
         $q = $pdo->prepare(
             "SELECT *

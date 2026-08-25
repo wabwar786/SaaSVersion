@@ -29,6 +29,10 @@
   th{color:var(--ink2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
   .tag{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
   .tag.ok{background:rgba(40,199,111,.15);color:var(--ok)}.tag.warn{background:rgba(255,159,67,.15);color:var(--warn)}
+  .tag.bad{background:rgba(226,55,68,.18);color:#ff8f98}
+  .mini{padding:6px 10px;font-size:12px}
+  .detail-row td{background:#0d1424}
+  .subtable th,.subtable td{font-size:12px;padding:6px 8px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .muted{color:var(--ink2);font-size:12px}
   .linkbox{background:#0d1424;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13px;word-break:break-all}
@@ -57,8 +61,27 @@
   <!-- DASHBOARD -->
   <div id="dashView" class="hide">
     <div class="head-row">
-      <div class="muted">Signed in as <b id="saWho"></b></div>
-      <button class="btn sec" id="saLogout">Logout</button>
+      <div class="muted">Signed in as <b id="saWho"></b> <span id="healthChip"></span></div>
+      <div class="row">
+        <button class="btn sec" id="pwBtn">Change Password</button>
+        <button class="btn sec" id="saLogout">Logout</button>
+      </div>
+    </div>
+
+    <div id="pwCard" class="card hide">
+      <h2>Change Super Admin Password</h2>
+      <div class="grid">
+        <div><label>Current Password</label><input id="pw_cur" type="password"></div>
+        <div><label>New Password (min 8)</label><input id="pw_new" type="password"></div>
+        <div><label>Confirm New Password</label><input id="pw_new2" type="password"></div>
+      </div>
+      <div class="row" style="margin-top:14px"><button class="btn" id="pwSave">Update Password</button></div>
+    </div>
+
+    <div id="healthCard" class="card hide" style="border-color:rgba(255,159,67,.5)">
+      <h2>⚠ Database Health</h2>
+      <div id="healthBody" class="muted" style="font-size:13px"></div>
+      <p class="muted" style="margin-top:10px">Fix: service redeploy/restart karein — boot par migrations khud missing tables/columns bana dengi (V15+).</p>
     </div>
 
     <div class="card">
@@ -98,7 +121,7 @@
     <div class="card">
       <div class="head-row"><h2 style="margin:0">Businesses</h2><button class="btn sec" id="refreshBtn">Refresh</button></div>
       <div style="overflow:auto"><table>
-        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th>Client Link</th></tr></thead>
+        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th style="min-width:330px">Actions</th></tr></thead>
         <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table></div>
     </div>
@@ -127,20 +150,85 @@ function enterDash(u){show('dash');$('saWho').textContent=u.name+' ('+u.email+')
   // default dates
   const t=new Date();const iso=d=>d.toISOString().slice(0,10);
   $('f_start_date').value=iso(t);const nm=new Date(t);nm.setMonth(nm.getMonth()+1);$('f_expiry_date').value=iso(nm);
-  loadPlans();loadBiz();
+  loadPlans();loadBiz();checkHealth();
 }
 async function loadPlans(){const r=await api('sa-plans');const sel=$('f_plan');sel.innerHTML='';
   (r.plans||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.price>0?(' · PKR '+Number(p.price).toLocaleString()):'');sel.appendChild(o)});}
+function bizTag(b){
+  if(String(b.status).toUpperCase()==='SUSPENDED')return '<span class="tag bad">Suspended</span>';
+  if(b.expired)return '<span class="tag warn">Expired</span>';
+  return '<span class="tag ok">Active</span>';
+}
 async function loadBiz(){const r=await api('sa-business-list');const tb=$('bizRows');
   if(!r.ok){tb.innerHTML='<tr><td colspan=6 class=muted>'+(r.message||'Failed')+'</td></tr>';return}
-  const rows=r.businesses||[];
-  tb.innerHTML=rows.length?rows.map(b=>`<tr>
+  const rows=r.businesses||[];window.__bizRows=rows;
+  tb.innerHTML=rows.length?rows.map(b=>{
+    const suspended=String(b.status).toUpperCase()==='SUSPENDED';
+    return `<tr id="biz-${b.id}">
     <td><b>${b.name||''}</b><br><span class="muted">${b.owner_email||''}</span></td>
     <td>${b.slug||''}</td><td>${b.branches||1}</td>
     <td>${b.expiry_date||'—'}</td>
-    <td><span class="tag ${b.expired?'warn':'ok'}">${b.expired?'Expired':(b.status||'Active')}</span></td>
-    <td><button class="btn sec" style="padding:6px 10px" onclick="copyText('${b.client_link}')">Copy link</button></td>
-  </tr>`).join(''):'<tr><td colspan=6 class=muted>No businesses yet. Create one above.</td></tr>';
+    <td>${bizTag(b)}</td>
+    <td><div class="row">
+      <button class="btn sec mini" onclick="copyText('${b.client_link}')">Copy link</button>
+      <button class="btn sec mini" onclick="bizDetail('${b.id}')">Detail</button>
+      <button class="btn sec mini" onclick="bizRenew('${b.id}')">Renew</button>
+      <button class="btn sec mini" onclick="bizResetAdmin('${b.id}')">Reset Pass</button>
+      <button class="btn sec mini" onclick="bizToggle('${b.id}',${suspended?1:0})">${suspended?'Open':'Suspend'}</button>
+    </div></td>
+  </tr>`}).join(''):'<tr><td colspan=6 class=muted>No businesses yet. Create one above.</td></tr>';
+}
+async function bizToggle(id,reopen){
+  if(!reopen && !confirm('Suspend this business? Client login block ho jayega.'))return;
+  const r=await api(reopen?'sa-business-activate':'sa-business-suspend',{tenant_id:id});
+  toast(r.ok?(r.message||'Done'):(r.message||'Failed'));if(r.ok)loadBiz();
+}
+async function bizRenew(id){
+  const exp=prompt('New expiry date (YYYY-MM-DD):');if(!exp)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(exp.trim())){toast('Date format: YYYY-MM-DD');return}
+  const amtRaw=prompt('Payment amount (PKR, 0 = no payment record):','10000');if(amtRaw===null)return;
+  const r=await api('sa-business-renew',{tenant_id:id,expiry_date:exp.trim(),amount:Number(amtRaw||0),payment_method:'CASH'});
+  toast(r.ok?(r.message||'Renewed'):(r.message||'Failed'));if(r.ok)loadBiz();
+}
+async function bizResetAdmin(id){
+  if(!confirm('Business admin ka password reset karein? Purana password kaam nahi karega.'))return;
+  const r=await api('sa-business-reset-admin',{tenant_id:id});
+  if(!r.ok){toast(r.message||'Failed');return}
+  prompt('New one-time password for '+r.admin_email+' (copy now):',r.admin_password);
+}
+async function bizDetail(id){
+  const tr=document.getElementById('biz-'+id);if(!tr)return;
+  const exist=document.getElementById('det-'+id);
+  if(exist){exist.remove();return}
+  const r=await api('sa-business-detail&tenant_id='+id);
+  if(!r.ok){toast(r.message||'Failed');return}
+  const b=r.business;
+  const pays=(r.payments||[]).map(p=>`<tr><td>${(p.paid_at||'').slice(0,16).replace('T',' ')}</td><td>PKR ${Number(p.amount).toLocaleString()}</td><td>${p.method||''}</td><td>${p.reference||'—'}</td><td>${p.note||''}</td></tr>`).join('')||'<tr><td colspan=5 class=muted>No payments</td></tr>';
+  const subs=(r.subscriptions||[]).map(x=>`<tr><td>${x.plan}</td><td>${x.start_date}</td><td>${x.expiry_date}</td><td>${x.status}</td><td>PKR ${Number(x.amount).toLocaleString()}</td></tr>`).join('');
+  const det=document.createElement('tr');det.className='detail-row';det.id='det-'+id;
+  det.innerHTML=`<td colspan="6">
+    <div class="kv"><span>Client Link</span><b><a href="${b.client_link}" target="_blank">${b.client_link}</a></b></div>
+    <div class="kv"><span>Users / Branches</span><b>${r.users} users · ${r.branches} branch(es)</b></div>
+    <div class="kv"><span>Sync Token (offline package)</span><b style="font-size:11px">${b.sync_token||'—'}</b></div>
+    <div style="margin-top:10px"><b style="font-size:12px">Subscriptions</b>
+      <table class="subtable"><thead><tr><th>Plan</th><th>Start</th><th>Expiry</th><th>Status</th><th>Amount</th></tr></thead><tbody>${subs}</tbody></table></div>
+    <div style="margin-top:10px"><b style="font-size:12px">Payments</b>
+      <table class="subtable"><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Ref</th><th>Note</th></tr></thead><tbody>${pays}</tbody></table></div>
+  </td>`;
+  tr.after(det);
+}
+async function checkHealth(){
+  const r=await api('sa-diagnostics');
+  const chip=$('healthChip');if(!chip)return;
+  if(!r.ok){chip.innerHTML='';return}
+  if(r.healthy){chip.innerHTML=' · <span class="tag ok">DB healthy</span>';$('healthCard').classList.add('hide');}
+  else{
+    chip.innerHTML=' · <span class="tag warn">DB issues</span>';
+    $('healthCard').classList.remove('hide');
+    $('healthBody').innerHTML=
+      (r.missing_tables.length?('<b>Missing tables:</b> '+r.missing_tables.join(', ')+'<br>'):'')+
+      (r.missing_columns.length?('<b>Missing columns:</b> '+r.missing_columns.join(', ')):'');
+  }
 }
 function copyText(t){navigator.clipboard?.writeText(t);toast('Copied')}
 
@@ -178,6 +266,17 @@ $('createBtn').onclick=async function(){
   loadBiz();toast('Business created');
 };
 $('copyLink').onclick=()=>copyText(window.__lastBiz?.client_link||'');
+$('pwBtn').onclick=()=>$('pwCard').classList.toggle('hide');
+$('pwSave').onclick=async function(){
+  const cur=$('pw_cur').value,n1=$('pw_new').value,n2=$('pw_new2').value;
+  if(n1.length<8){toast('New password min 8 characters');return}
+  if(n1!==n2){toast('New passwords do not match');return}
+  this.disabled=true;
+  const r=await api('sa-password-change',{current:cur,new:n1});
+  this.disabled=false;
+  toast(r.ok?(r.message||'Password changed'):(r.message||'Failed'));
+  if(r.ok){$('pw_cur').value=$('pw_new').value=$('pw_new2').value='';$('pwCard').classList.add('hide');}
+};
 $('copyCreds').onclick=()=>{const b=window.__lastBiz;if(b)copyText(`Login: ${b.client_link}\nEmail: ${b.admin_email}\nPassword: ${b.admin_password}`)};
 
 boot();

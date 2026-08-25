@@ -67,6 +67,7 @@
     if(err==='invalid') showError('Invalid login or account not approved.');
     else if(err==='required') showError('Email / Login and password are required.');
     else if(err==='server') showError('Login service error. Please restart Restaurant Software and try again.');
+    else if(err==='blocked') showError(params.get('reason')||'This business is suspended or expired.');
   });
 
   // Capture Enter before the original approved bubble-phase keydown handler.
