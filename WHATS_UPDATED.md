@@ -198,3 +198,45 @@ mein item ✓ POS quick-item ✓ shift open 5000 → 2 bills (cash 1300 + card
 650) → cash expense 700 → preview expected 5600 ✓ close actual 5590 ⇒
 variance −10 ✓ per-method breakdown ✓ last-report reprint ✓ close ke baad
 gate wapis ✓. Local node regression full ✓. PHP lint 68 files clean ✓.
+
+---
+
+# V19 — Menu Management + Order Taker LIVE (ek hi DB source)
+
+## Pehle deploy zaroor karein
+Aapke screenshots V16 ke hain — V17/V18 live nahi the (empty POS, demo
+categories, koi shift gate nahi = wohi puraana build). V19 mein sab shamil
+hai; deploy hote hi boot-migrations purane businesses ko bhi theek kar
+dengi.
+
+## Menu & Categories page ab REAL hai (ModuleBridge: 'menu')
+- List: asli menu_items — price, category, **food cost auto** (recipe ho to
+  recipe se, direct-inventory link ho to qty×avg cost), margin, status.
+- "+ Add item": DB mein banta hai, nayi category apne aap; edit se price/
+  category/status update; delete = soft delete.
+- **Ek source, teen screens:** Menu page par item banao/price badlo →
+  POS *aur* Order Taker Tablet dono par foran (sab `pos-boot` se parhte
+  hain). Inactive karo → dono se ghayab.
+
+## Order Taker Tablet ab LIVE hai (`public/order_taker_db.js`)
+- Dummy PRODUCTS/CATS khatam — menu, categories, TABLES sab DB se.
+- "Send Pending Items to Kitchen" = **asli KOT** (`pos-kot`): order banta
+  hai, kitchen_tickets mein jata hai, KDS/kitchen isi se milega. DB fail
+  ho to sent mark NahI hota.
+- Table select DB ki dining_tables se; table change/new order par naya
+  server bill; waiter naam session user ka.
+- Waiter-only login ke liye `tablet` module bhi pos-boot/pos-kot par
+  allowed.
+
+## POS polish
+- Categories ab hamesha DB se replace (0 hon to bhi) — demo categories ka
+  dhoka khatam; sirf "All Items" + Create-First-Item card.
+- Header par asli cashier ka naam/initials/role (static "Ali Raza" gaya).
+
+## Tested (royal-grill)
+Menu page se "Chicken Shawarma" create (450) → price edit 499 → pos-boot
+mein dono items real price ke saath ✓ tablet page par bridge inject ✓
+tablet-style KOT Table 3 → order + kitchen_ticket DB mein ✓ Inactive
+toggle → POS list se ghayab, Active par wapis ✓ cashier naam real ✓
+local-node regression (login/pos-boot/menu-list/store/dashboard) ✓ PHP
+lint clean ✓

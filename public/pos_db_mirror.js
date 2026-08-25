@@ -52,10 +52,23 @@
       });
     }
 
-    // categories (let menuCategories)
-    if(typeof menuCategories!=='undefined'&&Array.isArray(b.categories)&&b.categories.length){
+    // categories — HAMESHA replace (0 par bhi), warna demo categories user ko
+    // dhoka deti hain ke menu maujood hai.
+    if(typeof menuCategories!=='undefined'&&Array.isArray(b.categories)){
       menuCategories.length=0;
       b.categories.forEach(function(c){menuCategories.push({name:c.name,icon:c.icon||'•',printer:c.printer||'main'})});
+    }
+
+    // header: asli cashier (static demo naam ki jagah)
+    if(b.cashier){
+      var us=document.querySelector('header .user');
+      if(us){
+        var av=us.querySelector('.av'),nm=us.querySelector('strong'),rl=us.querySelector('small');
+        var initials=(b.cashier.name||'U').split(/\s+/).map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();
+        if(av)av.textContent=initials;
+        if(nm)nm.textContent=b.cashier.name;
+        if(rl)rl.textContent=b.cashier.role;
+      }
     }
 
     // kitchen printers (const kitchenPrinters -> replace keys in place)

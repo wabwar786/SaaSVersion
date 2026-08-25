@@ -16,7 +16,7 @@ use PDO;
  */
 final class ModuleBridge
 {
-    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage'];
+    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu'];
 
     public static function handles(string $module): bool
     {
@@ -32,6 +32,7 @@ final class ModuleBridge
             'suppliers' => self::listSuppliers(),
             'expenses'  => self::listExpenses(),
             'wastage'   => self::listWastage(),
+            'menu'      => self::listMenu(),
             default     => [],
         };
     }
@@ -46,6 +47,7 @@ final class ModuleBridge
             'suppliers' => self::saveSupplier($id, $d),
             'expenses'  => self::saveExpense($id, $d),
             'wastage'   => self::saveWastage($id, $d),
+            'menu'      => self::saveMenu($id, $d),
             default     => throw new \RuntimeException('Unbridged module: '.$module),
         };
     }
@@ -68,10 +70,72 @@ final class ModuleBridge
                 $p->prepare("UPDATE expenses SET status='REJECTED' WHERE id=? AND tenant_id=?")
                   ->execute([$id, tenant_id()]);
                 break;
+            case 'menu':
+                $p->prepare("UPDATE menu_items SET deleted_at=NOW(6), is_active=0 WHERE id=? AND tenant_id=?")
+                  ->execute([$id, tenant_id()]);
+                break;
             case 'wastage':
                 // Stock already moved — deletion is not allowed; adjustments are audit records.
                 throw new \RuntimeException('Wastage entries cannot be deleted (stock already adjusted). Post a correcting entry instead.');
         }
+    }
+
+
+    /* ------------------------- menu ------------------------- */
+
+    private static function listMenu(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT mi.id, mi.name, mi.base_price price, mi.is_active,
+                    COALESCE(mc.name,'General') category,
+                    COALESCE(r.food_cost_amount,
+                             mi.direct_inventory_qty * ii.avg_cost_per_stock_unit, 0) cost
+               FROM menu_items mi
+               LEFT JOIN menu_categories mc ON mc.id = mi.category_id
+               LEFT JOIN recipes r ON r.menu_item_id = mi.id AND r.is_current = 1 AND r.variant_id IS NULL
+               LEFT JOIN inventory_items ii ON ii.id = mi.direct_inventory_item_id
+              WHERE mi.tenant_id=? AND mi.site_id=? AND mi.deleted_at IS NULL
+              ORDER BY mi.created_at DESC"
+        );
+        $q->execute([tenant_id(), site_id()]);
+        return array_map(fn($x) => [
+            'id' => $x['id'], 'name' => $x['name'], 'category' => $x['category'],
+            'price' => (float)$x['price'], 'cost' => round((float)$x['cost'], 2),
+            'status' => ((int)$x['is_active']) ? 'Active' : 'Inactive',
+        ], $q->fetchAll());
+    }
+
+    /** Menu & Categories page ka save — POS grid mein foran reflect hota hai. */
+    private static function saveMenu(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name  = trim((string)($d['name'] ?? ''));
+        $price = (float)($d['price'] ?? 0);
+        if ($name === '' || $price <= 0) throw new \RuntimeException('Item name and valid price required');
+        $active = (strtolower((string)($d['status'] ?? 'Active')) !== 'inactive') ? 1 : 0;
+
+        $catName = trim((string)($d['category'] ?? 'General')) ?: 'General';
+        $cq = $p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");
+        $cq->execute([site_id(), $catName]);
+        $cid = $cq->fetchColumn();
+        if (!$cid) {
+            $cid = uuid();
+            $p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,'•',99,1)")
+              ->execute([$cid, tenant_id(), site_id(), $catName]);
+        }
+
+        if ($id !== '') {
+            $p->prepare("UPDATE menu_items SET name=?, category_id=?, base_price=?, is_active=?, updated_at=NOW(6) WHERE id=? AND tenant_id=? AND site_id=?")
+              ->execute([$name, $cid, $price, $active, $id, tenant_id(), site_id()]);
+            return $id;
+        }
+        $dupe = $p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");
+        $dupe->execute([site_id(), $name]);
+        if ($dupe->fetchColumn()) throw new \RuntimeException('A menu item with this name already exists');
+        $id = uuid();
+        $p->prepare("INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,item_type,consumption_type,base_price,is_active,is_online,is_pos) VALUES(?,?,?,?,?,'STANDARD','NONE',?,?,1,1)")
+          ->execute([$id, tenant_id(), site_id(), $cid, $name, $price, $active]);
+        return $id;
     }
 
     /* ------------------------- customers ------------------------- */
