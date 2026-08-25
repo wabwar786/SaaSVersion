@@ -370,3 +370,51 @@ All 4, Fast Food 3, Desserts 1 · products: 4 ✓
 Cart add → PKR 650 ✓ search "gulab" → filter ✓ category filter ✓
 Diagnostics modal (13 rows) ✓ Item Management 3 tabs + inventory fields ✓
 naya item create → grid mein foran ✓ Charge modal 6 payment methods ✓
+
+---
+
+# V21 — Legacy layout + poora legacy feature set, DB par
+
+## Analysis
+**Legacy page ka faida:** dense layout, zyada options, achha space use,
+Quantity Calculator, variants+kitchen comments, slip preview/print,
+customer/table modals, void approval, drawer nav, proper QTY/DESCRIPTION/
+RATE/TOTAL bill table. **Nuqsan:** poora demo data, aur uski JS bhi router
+injection se tooti hui thi.
+**v20 ka faida:** sab kuch DB se, shift gate, diagnostics, item+inventory
+create. **Nuqsan:** features kam, cards bare, space zaya.
+**V21 = dono ka merge.**
+
+## Layout / space
+- Right panel 420px se **372px** — items ko ab **75% screen (7 columns)**.
+- Compact cards (146px min): naam 2-line clamp, CATEGORY label, bara green
+  price (`/ KG` ya `onwards` suffix ke saath), qty stepper + Add.
+- Sticky category row with per-category item counts.
+- Bill panel mein legacy wali **QTY | DESCRIPTION | RATE | TOTAL** table.
+
+## Legacy features jo wapis aaye (sab DB-driven)
+- **Quantity Calculator**: numpad + quick chips (0.10/0.25/0.50/0.75/1.00/
+  1.50), keyboard support, Backspace/Enter. Card ke qty par ya cart ke qty
+  par click karke khulta hai. Weighted items par khud khulta hai.
+- **Variants + Kitchen Comments** modal (variants ab posBoot se aate hain).
+- **Slip Preview**: KOT aur Bill dono ka thermal-style preview, **Print**
+  (DOM API se — router-injection safe) aur **WhatsApp** send.
+- **Void Approval**: kitchen-sent item remove karne par manager password +
+  reason zaroori; record **Void Logs** mein (naya modal).
+- **New Customer** aur **New Table** modals — dono DB mein save
+  (`pos-table-create` naya endpoint), list foran refresh.
+- **Duplicate Bill**: aaj ke closed bills, search + reprint.
+- **Drawer navigation** (14 links), **System** modal (branch/cashier/shift/
+  printers/tables), sales-period selector.
+- Payment modal: 6 methods + **quick cash chips** (500/1000/2000/5000) +
+  live change.
+- Discount quick chips (5/10/15/20/25%).
+- Shortcuts: Ctrl+K search, F1 new bill, F2 KOT, F4 charge.
+- Plus v20 ka sab: shift gate/close/report, diagnostics, item+inventory
+  create, server-side holds.
+
+## Browser-tested (headless Chromium, asli render)
+0 page errors ✓ item area 75%/7 cols ✓ 5 products with proper name+price ✓
+calculator 2.5 apply ✓ bill table 4 columns ✓ discount 10% chip ✓ slip
+preview + Print/WhatsApp ✓ customer create ✓ table create ✓ drawer 14 links
+✓ system modal ✓ void logs ✓ payment 6 methods + cash chips + change ✓
