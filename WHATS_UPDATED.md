@@ -156,3 +156,45 @@ Regressions: sa-business-list ✓ diagnostics healthy ✓ local node full ✓
 PHP lint clean ✓.
 
 <!-- build: V17.1 build 2026-08-25 -->
+
+---
+
+# V18 — Backfill Defaults + Shift Gate + Cashier Closing Report
+
+## "Item save hua phir gayab" — asal wajah aur fix
+Railway par V17 deploy nahi hui thi, is liye purane businesses EMPTY SHELL
+the (0 payment methods, 0 stock locations, 0 units). Inventory/item create
+server par fail hota tha, sirf browser localStorage mein dikhta tha, aur
+agla page-load DB-first hydration se use "gayab" kar deta tha.
+- `scripts/migrate_site_defaults.php`: **PURANE businesses ka backfill** —
+  har existing site par missing defaults ensure (idempotent; entrypoint +
+  Windows bootstrap hooked ⇒ deploy karte hi sab businesses theek).
+- `Platform::ensureSiteDefaults()`: har component ab individually
+  idempotent (naye + purane dono ke liye ek hi code path).
+- **Silent failures khatam**: db_mirror_bridge ab har failed DB save par
+  wazeh toast/alert deta hai — "screen par hai, DB mein nahi" wala dhoka
+  dobara nahi hoga.
+
+## Shift Gate (aapka manga hua flow)
+- POS kholne par agar shift OPEN nahi ⇒ **blocking overlay**: opening cash
+  enter karo, "Open Shift & Start Billing". Iske baghair KOT/finalize dono
+  block (client + clear message).
+- Header chip ab LIVE shift number dikhata hai + **Close** button.
+- Close par: server-computed preview (opening, orders + bill range, gross,
+  per-method sales, cash expenses, expected cash) → cashier ACTUAL counted
+  cash enter karta hai → close → **Shift Report** (variance green/red) →
+  🖨 Print → report band hote hi agli opening ka gate.
+- API: `shift-preview`, richer `shift-close`, `shift-last-report` (reprint).
+
+## Concept (ek line mein yaad rakhein)
+**Inventory = kachha maal (stock), Menu = bikne wali cheez.** POS menu items
+bechta hai; inventory tab ghat-ti hai jab menu item recipe se juda ho ya
+"Deduct existing inventory" link ho. Data ka rasta: UI → API → MySQL; browser
+sirf cache hai — har page-load DB ka sach dikhata hai.
+
+## Tested (royal-grill — wohi business jo empty shell tha)
+Backfill ✓ inventory create (pehle 'No units configured' fail) ✓ store-state
+mein item ✓ POS quick-item ✓ shift open 5000 → 2 bills (cash 1300 + card
+650) → cash expense 700 → preview expected 5600 ✓ close actual 5590 ⇒
+variance −10 ✓ per-method breakdown ✓ last-report reprint ✓ close ke baad
+gate wapis ✓. Local node regression full ✓. PHP lint 68 files clean ✓.

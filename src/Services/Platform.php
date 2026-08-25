@@ -150,42 +150,88 @@ final class Platform
      */
     public static function seedSiteDefaults(PDO $pdo, string $tenantId, string $siteId): void
     {
-        // Units (GLOBAL table) — sirf missing codes insert hote hain.
+        self::ensureSiteDefaults($pdo, $tenantId, $siteId);
+    }
+
+    /**
+     * IDEMPOTENT: har component apni maujoodgi khud check karta hai, is liye
+     * yeh naye business ke liye bhi chalta hai aur PURANE (pre-V17) empty-shell
+     * businesses ke backfill ke liye bhi (scripts/migrate_site_defaults.php).
+     */
+    public static function ensureSiteDefaults(PDO $pdo, string $tenantId, string $siteId): array
+    {
+        $added = [];
+
+        // Units (GLOBAL) — missing codes hi insert hote hain.
         $units = [['PCS','Piece','COUNT',0],['G','Gram','WEIGHT',3],['KG','Kilogram','WEIGHT',3],['ML','Millilitre','VOLUME',3],['L','Litre','VOLUME',3]];
         $uq = $pdo->prepare("SELECT COUNT(*) FROM units WHERE code=?");
         $ui = $pdo->prepare("INSERT INTO units(id,code,name,unit_type,decimal_places) VALUES(?,?,?,?,?)");
-        foreach ($units as $u) { $uq->execute([$u[0]]); if (!(int)$uq->fetchColumn()) $ui->execute([\uuid(),$u[0],$u[1],$u[2],$u[3]]); }
+        foreach ($units as $u) { $uq->execute([$u[0]]); if (!(int)$uq->fetchColumn()) { $ui->execute([\uuid(),$u[0],$u[1],$u[2],$u[3]]); $added[]='unit:'.$u[0]; } }
 
-        // Payment methods — POS finalize inhi par depend karta hai.
-        $pm = $pdo->prepare("INSERT INTO payment_methods(id,tenant_id,site_id,code,name,method_type) VALUES(?,?,?,?,?,?)");
-        foreach ([['CASH','Cash','CASH'],['CARD','Card','CARD'],['RAAST','Raast','BANK'],['EASYPAISA','Easypaisa','WALLET'],['JAZZCASH','JazzCash','WALLET'],['BANK','Bank Transfer','BANK'],['COD','Cash on Delivery','COD']] as $m) {
-            $pm->execute([\uuid(),$tenantId,$siteId,$m[0],$m[1],$m[2]]);
+        $count = function(string $sql) use ($pdo,$tenantId,$siteId): int {
+            $q=$pdo->prepare($sql); $q->execute([$tenantId,$siteId]); return (int)$q->fetchColumn();
+        };
+
+        // Payment methods — inke baghair POS bill ban hi nahi sakta.
+        if (!$count("SELECT COUNT(*) FROM payment_methods WHERE tenant_id=? AND site_id=?")) {
+            $pm = $pdo->prepare("INSERT INTO payment_methods(id,tenant_id,site_id,code,name,method_type) VALUES(?,?,?,?,?,?)");
+            foreach ([['CASH','Cash','CASH'],['CARD','Card','CARD'],['RAAST','Raast','BANK'],['EASYPAISA','Easypaisa','WALLET'],['JAZZCASH','JazzCash','WALLET'],['BANK','Bank Transfer','BANK'],['COD','Cash on Delivery','COD']] as $m) {
+                $pm->execute([\uuid(),$tenantId,$siteId,$m[0],$m[1],$m[2]]);
+            }
+            $added[]='payment_methods';
         }
 
         // Stock locations — inventory/recipe posting ke liye lazmi.
-        $sl = $pdo->prepare("INSERT INTO stock_locations(id,tenant_id,site_id,code,name,location_type,is_active) VALUES(?,?,?,?,?,?,1)");
-        $sl->execute([\uuid(),$tenantId,$siteId,'STORE','Main Store','STORE']);
-        $sl->execute([\uuid(),$tenantId,$siteId,'KITCHEN','Kitchen','KITCHEN']);
+        if (!$count("SELECT COUNT(*) FROM stock_locations WHERE tenant_id=? AND site_id=?")) {
+            $sl = $pdo->prepare("INSERT INTO stock_locations(id,tenant_id,site_id,code,name,location_type,is_active) VALUES(?,?,?,?,?,?,1)");
+            $sl->execute([\uuid(),$tenantId,$siteId,'STORE','Main Store','STORE']);
+            $sl->execute([\uuid(),$tenantId,$siteId,'KITCHEN','Kitchen','KITCHEN']);
+            $added[]='stock_locations';
+        }
 
-        // Default kitchen printer + starter menu categories (routes ke saath).
-        $printerId = \uuid();
-        $pdo->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,station_code,connection_type,is_active,is_default) VALUES(?,?,?,?,?,?,?,1,1)")
-            ->execute([$printerId,$tenantId,$siteId,'Main Kitchen','KITCHEN','main','WINDOWS']);
-        $cats = ['Pakistani','Fast Food','BBQ','Beverages'];
-        $ci = $pdo->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,?,1)");
-        $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,is_active) VALUES(?,?,?,?,?,1,1,1)");
-        foreach ($cats as $i => $c) { $cid=\uuid(); $ci->execute([$cid,$tenantId,$siteId,$c,'•',$i+1]); $ri->execute([\uuid(),$tenantId,$siteId,$cid,$printerId]); }
+        // Kitchen printer (+ default).
+        $printerId = null;
+        if (!$count("SELECT COUNT(*) FROM printers WHERE tenant_id=? AND site_id=?")) {
+            $printerId = \uuid();
+            $pdo->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,station_code,connection_type,is_active,is_default) VALUES(?,?,?,?,?,?,?,1,1)")
+                ->execute([$printerId,$tenantId,$siteId,'Main Kitchen','KITCHEN','main','WINDOWS']);
+            $added[]='printer';
+        } else {
+            $q=$pdo->prepare("SELECT id FROM printers WHERE tenant_id=? AND site_id=? AND is_active=1 ORDER BY is_default DESC LIMIT 1");
+            $q->execute([$tenantId,$siteId]); $printerId=$q->fetchColumn()?:null;
+        }
 
-        // Floor + 8 tables — dine-in pehle din se.
-        $floorId = \uuid();
-        $pdo->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,1,1)")
-            ->execute([$floorId,$tenantId,$siteId,'Main Floor']);
-        $ti = $pdo->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,?,?,1)");
-        for ($i=1; $i<=8; $i++) { $ti->execute([\uuid(),$tenantId,$siteId,$floorId,'T-'.str_pad((string)$i,2,'0',STR_PAD_LEFT),'Table '.$i,4,'SQUARE','AVAILABLE']); }
+        // Starter menu categories + printer routes.
+        if (!$count("SELECT COUNT(*) FROM menu_categories WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL")) {
+            $ci = $pdo->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,?,1)");
+            $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,is_active) VALUES(?,?,?,?,?,1,1,1)");
+            foreach (['Pakistani','Fast Food','BBQ','Beverages'] as $i => $c) {
+                $cid=\uuid(); $ci->execute([$cid,$tenantId,$siteId,$c,'•',$i+1]);
+                if ($printerId) $ri->execute([\uuid(),$tenantId,$siteId,$cid,$printerId]);
+            }
+            $added[]='menu_categories';
+        }
 
-        // Expense categories.
-        $ec = $pdo->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)");
-        foreach (['Kitchen Supplies','Utilities','Staff','Fuel / Delivery','Cleaning','General'] as $c) { $ec->execute([\uuid(),$tenantId,$c]); }
+        // Floor + 8 tables.
+        if (!$count("SELECT COUNT(*) FROM dining_tables WHERE tenant_id=? AND site_id=?")) {
+            $floorId = \uuid();
+            $pdo->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,1,1)")
+                ->execute([$floorId,$tenantId,$siteId,'Main Floor']);
+            $ti = $pdo->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,?,?,1)");
+            for ($i=1; $i<=8; $i++) { $ti->execute([\uuid(),$tenantId,$siteId,$floorId,'T-'.str_pad((string)$i,2,'0',STR_PAD_LEFT),'Table '.$i,4,'SQUARE','AVAILABLE']); }
+            $added[]='floor_tables';
+        }
+
+        // Expense categories (tenant-level).
+        $q=$pdo->prepare("SELECT COUNT(*) FROM expense_categories WHERE tenant_id=?");
+        $q->execute([$tenantId]);
+        if (!(int)$q->fetchColumn()) {
+            $ec = $pdo->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)");
+            foreach (['Kitchen Supplies','Utilities','Staff','Fuel / Delivery','Cleaning','General'] as $c) { $ec->execute([\uuid(),$tenantId,$c]); }
+            $added[]='expense_categories';
+        }
+
+        return $added;
     }
 
     private static function genPassword(): string

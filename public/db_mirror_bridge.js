@@ -1,13 +1,25 @@
 
 (function(){
+  var __alerted={};
   function safeReq(action,payload){
+    var r;
     try{
-      if(!window.DBApi)return {ok:false,message:'DB API unavailable'};
-      return DBApi.req(action,payload);
+      if(!window.DBApi)r={ok:false,message:'DB API unavailable'};
+      else r=DBApi.req(action,payload);
     }catch(e){
       console.warn('DB mirror:',action,e);
-      return {ok:false,message:e.message||'DB mirror failed'};
+      r={ok:false,message:e.message||'DB mirror failed'};
     }
+    if(r&&!r.ok){
+      // LOUD failure: pehle sirf console.warn tha — user ko lagta tha save ho
+      // gaya, agla page-load DB se hydrate hokar data "gayab" kar deta tha.
+      console.warn('DB save failed',action,r.message);
+      try{
+        if(typeof toast==='function')toast('⚠ Database save failed: '+(r.message||action));
+        else if(!__alerted[action]){__alerted[action]=1;alert('Database save failed: '+(r.message||action));}
+      }catch(x){}
+    }
+    return r;
   }
 
   function installStoreMirror(){

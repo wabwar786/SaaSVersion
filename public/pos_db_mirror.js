@@ -133,13 +133,122 @@
 
   /* -------------------- SHIFT (server) -------------------- */
 
+  /* ================= SHIFT GATE + CLOSE + REPORT ================= */
+
+  function money(n){return 'PKR '+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0})}
+
   function ensureShift(){
     var r=req('shift-current');
-    if(r.ok&&r.shift&&r.shift.id){window.__AIO_SHIFT_ID=r.shift.id;window.__AIO_SHIFT_NO=r.shift.shift_no;return;}
-    // auto-open a shift with 0 opening cash so billing kabhi block na ho;
-    // opening cash Shift screen se set/adjust ho sakta hai.
-    var o=req('shift-open',{opening_cash:0});
-    if(o.ok){window.__AIO_SHIFT_ID=o.id;window.__AIO_SHIFT_NO=o.shift_no;}
+    if(r.ok&&r.shift&&r.shift.id){
+      window.__AIO_SHIFT_ID=r.shift.id;window.__AIO_SHIFT_NO=r.shift.shift_no;
+      updateShiftChip(r.shift.shift_no);
+      return;
+    }
+    showOpenGate();
+  }
+
+  function overlay(id){
+    var el=document.createElement('div');el.id=id;
+    el.style.cssText='position:fixed;inset:0;background:rgba(8,20,14,.62);backdrop-filter:blur(3px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    return el;
+  }
+  function card(){
+    var c=document.createElement('div');
+    c.style.cssText='background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);width:100%;max-width:430px;padding:26px;font-family:inherit;color:#15221b';
+    return c;
+  }
+
+  function showOpenGate(){
+    if(document.getElementById('aioShiftGate'))return;
+    var ov=overlay('aioShiftGate'),c=card();
+    c.innerHTML='<div style="font-size:26px;margin-bottom:6px">🔓</div>'
+      +'<div style="font-size:17px;font-weight:800;margin-bottom:4px">Shift Opening</div>'
+      +'<div style="font-size:12.5px;color:#5f6f66;margin-bottom:18px">POS billing shift open hone ke baad hi chalega. Drawer ka opening cash count karke enter karein.</div>'
+      +'<label style="display:block;font-size:11px;font-weight:700;color:#5f6f66;margin-bottom:5px">OPENING CASH (PKR)</label>'
+      +'<input id="aioOpenCash" type="number" min="0" step="1" value="0" style="width:100%;padding:12px;border:1px solid #d7e0da;border-radius:10px;font-size:16px;font-weight:700;margin-bottom:16px">'
+      +'<button id="aioOpenBtn" style="width:100%;padding:13px;border:0;border-radius:10px;background:#e23744;color:#fff;font-weight:800;font-size:14px;cursor:pointer">Open Shift & Start Billing</button>';
+    ov.appendChild(c);document.body.appendChild(ov);
+    setTimeout(function(){var i=document.getElementById('aioOpenCash');if(i){i.focus();i.select();}},50);
+    document.getElementById('aioOpenBtn').onclick=function(){
+      this.disabled=true;this.textContent='Opening…';
+      var r=req('shift-open',{opening_cash:Number(document.getElementById('aioOpenCash').value||0)});
+      if(!r.ok){this.disabled=false;this.textContent='Open Shift & Start Billing';if(typeof toast==='function')toast(r.message||'Failed');return;}
+      window.__AIO_SHIFT_ID=r.id;window.__AIO_SHIFT_NO=r.shift_no;
+      updateShiftChip(r.shift_no);
+      ov.remove();
+      if(typeof toast==='function')toast('Shift '+r.shift_no+' opened');
+    };
+  }
+
+  function updateShiftChip(no){
+    var chips=document.querySelectorAll('header .chip');
+    for(var i=0;i<chips.length;i++){
+      if(/Shift/i.test(chips[i].textContent)){
+        chips[i].innerHTML='<span class="dot"></span>Shift '+no+' <button id="aioCloseShift" style="margin-left:8px;padding:4px 10px;border:1px solid #e23744;background:transparent;color:#e23744;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">Close</button>';
+        var b=document.getElementById('aioCloseShift');
+        if(b)b.onclick=showCloseModal;
+        return;
+      }
+    }
+  }
+
+  function reportRows(rep){
+    var rows=''
+      +kv('Shift',rep.shift_no)+kv('Opened',rep.opened_at)
+      +(rep.closed_at?kv('Closed',rep.closed_at):'')
+      +kv('Opening Cash',money(rep.opening_cash))
+      +kv('Orders',rep.orders+(rep.first_bill?(' (Bill '+rep.first_bill+' – '+rep.last_bill+')'):''))
+      +kv('Gross Sales',money(rep.gross_sales));
+    var bm=rep.by_method||{};
+    Object.keys(bm).forEach(function(k){rows+=kv('&nbsp;&nbsp;'+k,money(bm[k].amount)+' ('+bm[k].count+')');});
+    rows+=kv('Cash Expenses','− '+money(rep.cash_expenses))
+      +kv('<b>Expected Cash</b>','<b>'+money(rep.expected_cash)+'</b>');
+    if(typeof rep.actual_cash!=='undefined')
+      rows+=kv('Actual Counted',money(rep.actual_cash))
+        +kv('<b>Variance</b>','<b style="color:'+(Math.abs(rep.variance)<1?'#28a745':'#e23744')+'">'+money(rep.variance)+'</b>');
+    return rows;
+    function kv(a,b){return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e4eae6;font-size:13px"><span style="color:#5f6f66">'+a+'</span><span>'+b+'</span></div>'}
+  }
+
+  function showCloseModal(){
+    var pr=req('shift-preview');
+    if(!pr.ok){if(typeof toast==='function')toast(pr.message||'Failed');return;}
+    var rep=pr.report;
+    var ov=overlay('aioShiftClose'),c=card();
+    c.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:12px">Shift Closing — '+rep.shift_no+'</div>'
+      +'<div style="max-height:44vh;overflow:auto;margin-bottom:14px">'+reportRows(rep)+'</div>'
+      +'<label style="display:block;font-size:11px;font-weight:700;color:#5f6f66;margin-bottom:5px">ACTUAL COUNTED CASH (PKR)</label>'
+      +'<input id="aioActualCash" type="number" min="0" step="1" value="'+Math.round(rep.expected_cash)+'" style="width:100%;padding:12px;border:1px solid #d7e0da;border-radius:10px;font-size:16px;font-weight:700;margin-bottom:14px">'
+      +'<div style="display:flex;gap:10px"><button id="aioCloseCancel" style="flex:1;padding:12px;border:1px solid #d7e0da;background:#fff;border-radius:10px;font-weight:700;cursor:pointer">Cancel</button>'
+      +'<button id="aioCloseConfirm" style="flex:2;padding:12px;border:0;border-radius:10px;background:#e23744;color:#fff;font-weight:800;cursor:pointer">Close Shift & Report</button></div>';
+    ov.appendChild(c);document.body.appendChild(ov);
+    document.getElementById('aioCloseCancel').onclick=function(){ov.remove()};
+    document.getElementById('aioCloseConfirm').onclick=function(){
+      this.disabled=true;this.textContent='Closing…';
+      var r=req('shift-close',{actual_cash:Number(document.getElementById('aioActualCash').value||0)});
+      if(!r.ok){this.disabled=false;this.textContent='Close Shift & Report';if(typeof toast==='function')toast(r.message||'Failed');return;}
+      ov.remove();window.__AIO_SHIFT_ID='';window.__AIO_SHIFT_NO='';
+      showReport(r.report,true);
+    };
+  }
+
+  function showReport(rep,thenGate){
+    var ov=overlay('aioShiftReport'),c=card();
+    c.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:2px">Shift Report</div>'
+      +'<div style="font-size:12px;color:#5f6f66;margin-bottom:12px">Cashier reconciliation summary</div>'
+      +'<div id="aioRepBody" style="max-height:52vh;overflow:auto;margin-bottom:16px">'+reportRows(rep)+'</div>'
+      +'<div style="display:flex;gap:10px"><button id="aioRepPrint" style="flex:1;padding:12px;border:1px solid #d7e0da;background:#fff;border-radius:10px;font-weight:700;cursor:pointer">🖨 Print</button>'
+      +'<button id="aioRepDone" style="flex:1;padding:12px;border:0;border-radius:10px;background:#15221b;color:#fff;font-weight:800;cursor:pointer">Done</button></div>';
+    ov.appendChild(c);document.body.appendChild(ov);
+    document.getElementById('aioRepPrint').onclick=function(){
+      var w=window.open('','_blank','width=420,height=640');
+      w.document.write('<html><head><title>Shift Report '+rep.shift_no+'</title></head><body style="font-family:monospace;font-size:12px;padding:14px"><h3 style="margin:0 0 10px">SHIFT REPORT — '+rep.shift_no+'</h3>'+document.getElementById('aioRepBody').innerHTML+'</body></html>');
+      w.document.close();w.print();
+    };
+    document.getElementById('aioRepDone').onclick=function(){
+      ov.remove();
+      if(thenGate)showOpenGate();
+    };
   }
 
   /* ---------------------- INSTALL ---------------------- */
@@ -161,6 +270,7 @@
     if(typeof window.markPendingAsSent==='function'){
       var originalKot=window.markPendingAsSent;
       window.markPendingAsSent=function(){
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open karein');return false;}
         var payload=buildPayload();
         var r=req('pos-kot',payload);
         if(!r.ok){
@@ -176,6 +286,7 @@
     if(typeof window.completeCharge==='function'){
       var originalCharge=window.completeCharge;
       window.completeCharge=function(action){
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open karein');return false;}
         if(typeof validateTender==='function'&&!validateTender())return false;
         var payload=buildPayload();
         var r=req('pos-finalize',payload);
