@@ -59,7 +59,7 @@ if(!in_array($name,$publicPages,true)){
   $tail.='<script src="/ui_action_modal.js?b=v14"></script>';
 }
 
-if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v17"></script>';
+// restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.
 if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v17"></script>';
 
 $html=str_replace('</body>',$tail.'</body>',$html);

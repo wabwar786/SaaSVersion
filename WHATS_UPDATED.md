@@ -265,3 +265,47 @@ lint clean ✓
 ## Tested
 pos-boot site/cashier/products/tables ✓ HTML no-store header ✓ local
 regression ✓ PHP lint clean ✓ JS syntax clean ✓
+
+---
+
+# V20 — POS PAGE FULLY REBUILT (DB-driven, redesigned)
+
+## "1 menu item hai magar POS par 0" — root cause mila aur fix
+Wo item `ui_records` (JSON blob) mein phansa hua tha — us build se jo
+ModuleBridge 'menu' se PEHLE ka tha. Menu page usay dikha raha tha,
+lekin POS `menu_items` table parhta hai, is liye 0.
+- `scripts/migrate_ui_menu.php`: **stranded menu rows ko asli menu_items
+  mein le aata hai** (idempotent; entrypoint + Windows bootstrap hooked).
+  Sandbox mein aapka exact "Burger PKR 500" case reproduce karke verify
+  kiya — backfill ke baad POS par foran aa gaya.
+
+## restaurant_pos.html — SCRATCH SE NAYA (POS v20)
+Purana page demo arrays par bana tha (static categories/products), is liye
+patch-layer se poori tarah control nahi aa raha tha. Ab poora page naya
+hai — **koi demo data nahi, har cheez API se**:
+- Categories: DB se, har category par live item count.
+- Product grid: DB se — image/emoji fallback, Weighted/Options badge,
+  price pill, per-card qty stepper (+/-), hover-lift cards.
+- Cart: qty +/-, remove (kitchen-sent par confirm), "Kitchen sent" tag.
+- Service mode (Dine In / Takeaway / Delivery), table select (DB tables),
+  customer select (DB customers).
+- Discount (flat/percent), Service Charge %, Sales Tax % — sab editable.
+- **Charge modal**: 6 payment methods, amount received, live change return.
+- **Send to Kitchen**: asli KOT; fail ho to sent mark nahi hota.
+- **Hold Bills**: ab SERVER par (`held_bills`) — doosre terminal se bhi
+  resume ho sakta hai, browser clear par bhi zinda.
+- **Item Management** (3 tabs): Create Item (weighted / variants /
+  inventory link: none|existing|new), Create Category (+printer station),
+  Change Rate — teeno DB par persist.
+- **Shift gate**: shift band ho to blocking overlay; close par preview →
+  actual cash → variance report → print.
+- Status strip: branch, shift, live item count, bill #, **POS v20** badge.
+- Purana `pos_db_mirror.js` POS se unhook (ab zaroorat nahi).
+- Legacy page `restaurant_pos_legacy.html` mein mehfooz.
+
+## Tested (royal-grill, cloud sim)
+Stranded "Burger" backfill → POS par visible ✓ KOT bill 0010 ✓ finalize
+with discount → netSales 950, next bill 11 ✓ rate change 500→550 ✓
+category "Desserts" create ✓ quick-item "Gulab Jamun" ✓ held_bills
+server-side save/list ✓ boot: 4 products, 5 categories, 8 tables ✓
+local node: POS v20 served, boot OK ✓ PHP lint clean ✓ POS JS syntax ✓
