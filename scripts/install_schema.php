@@ -13,6 +13,8 @@ $sql = file_get_contents($sqlFile);
 // strip CREATE DATABASE ... ; and USE ...;
 $sql = preg_replace('/CREATE\s+DATABASE[^;]*;/i', '', $sql);
 $sql = preg_replace('/USE\s+`?[a-z0-9_]+`?\s*;/i', '', $sql);
+// idempotent: don't fail on re-runs when tables already exist
+$sql = preg_replace('/CREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS)/i', 'CREATE TABLE IF NOT EXISTS ', $sql);
 
 $pdo = DB::pdo();
 $pdo->exec('SET FOREIGN_KEY_CHECKS=0');

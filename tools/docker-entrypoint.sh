@@ -21,7 +21,7 @@ exit(1);' || echo "[boot] WARNING: DB not reachable; migrations skipped this boo
 php scripts/install_schema.php   || echo "[boot] schema step skipped"
 php scripts/migrate_platform.php || echo "[boot] platform migrate skipped"
 php scripts/migrate_sync.php     || echo "[boot] sync migrate skipped"
-php scripts/seed_roles.php       || echo "[boot] roles/modules seed skipped"
+php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 echo "[boot] starting Apache"
