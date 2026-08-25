@@ -56,3 +56,4 @@ document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');i
 $('#receivePurchase').onclick=()=>{if(!lines.length){toast('Add at least one purchase item');return}const result=RestaurantStore.receivePurchase(lines,{supplier:$('#supplier').value,reference:$('#poReference').value.trim()||undefined});if(window.RestaurantLive) RestaurantLive.recordPurchase(result.amount);closeM('purchaseModal');render();toast('Purchase received · '+result.movements.length+' inventory items updated')};
 $('#purchaseSearch').oninput=render;render();
 </script><script src="access_store.js"></script><script src="shell.js" data-active="purchasing"></script><div class="scrim" id="scrim"></div></body></html>
+<!-- build: V17.1 build 2026-08-25 -->

@@ -19,3 +19,5 @@ if(Test-Path $sel){
 }
 Write-Host ""
 Read-Host "Press Enter to close"
+
+# build: V17.1 build 2026-08-25

@@ -8,3 +8,5 @@ It downloads/configures official Windows x64 PHP into runtime\php.
 
 Customer:
 Only double-click START_RESTAURANT.bat.
+
+<!-- build: V17.1 build 2026-08-25 -->

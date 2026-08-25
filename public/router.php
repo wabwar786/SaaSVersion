@@ -63,3 +63,5 @@ if($name==='restaurant_pos.html')$tail.='<script src="/pos_db_mirror.js?b=v15"><
 
 $html=str_replace('</body>',$tail.'</body>',$html);
 echo$html;
+
+// build: V17.1 build 2026-08-25

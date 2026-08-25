@@ -316,3 +316,5 @@ if(-not $found -or -not (Test-Path $SelectedTxt)) {
 Write-Host ""
 Write-Host "PHP_READY"
 Write-Host (Get-Content $SelectedTxt -Raw).Trim()
+
+# build: V17.1 build 2026-08-25

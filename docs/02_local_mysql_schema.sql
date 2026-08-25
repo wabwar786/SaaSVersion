@@ -1839,3 +1839,5 @@ INSERT INTO schema_migrations(version, description)
 VALUES ('V1', 'All-in-one platform core + Restaurant operational schema');
 
 -- Cloud-only commercial tables intentionally omitted from local DB.
+
+-- build: V17.1 build 2026-08-25

@@ -54,3 +54,4 @@ final class ExactPageData {
     if(!$rows&&!$stats)return null;return ['stats'=>$stats,'table'=>['rows'=>$rows]];
   }
 }
+// build: V17.1 build 2026-08-25

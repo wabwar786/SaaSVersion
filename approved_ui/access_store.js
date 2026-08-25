@@ -30,3 +30,5 @@
  function logout(){sessionStorage.removeItem('urban_spoon_current_user')}
  window.RestaurantAccess={KEY,MODULES,roleDefaults,get,save,signup,createUser,approveRequest,rejectRequest,updateUser,login,current,logout};
 })();
+
+/* build: V17.1 build 2026-08-25 */

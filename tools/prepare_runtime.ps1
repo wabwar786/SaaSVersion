@@ -98,3 +98,5 @@ if (-not $phpOk) {
 Write-Host ""
 Write-Host "PHP runtime is ready."
 Write-Host $PhpExe
+
+# build: V17.1 build 2026-08-25

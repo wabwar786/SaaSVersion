@@ -57,3 +57,5 @@ try {
     header('Location: /login.html?login_error=server&build=v14');
     exit;
 }
+
+// build: V17.1 build 2026-08-25

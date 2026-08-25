@@ -84,3 +84,5 @@ git push -u origin main
 - DB creds sirf server env mein, frontend/JS mein nahi.
 - Har request server-side tenant check karti hai; slug se authorization nahi milti.
 - Ek business ka user doosre ka data nahi dekh sakta (tenant_id har query mein).
+
+<!-- build: V17.1 build 2026-08-25 -->

@@ -87,3 +87,5 @@ if($have===0){
   foreach($plans as $p2){ $ins->execute([uuid(),$p2[0],$p2[2],$p2[1]]); }
 }
 echo "PLATFORM_MIGRATION_READY\n";
+
+// build: V17.1 build 2026-08-25

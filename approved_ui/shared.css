@@ -260,3 +260,5 @@ button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
 .tag.violet{background:var(--surface-2);color:var(--ink-2);border-color:var(--line-strong)}
 /* toolbars */
 .toolbar,.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* build: V17.1 build 2026-08-25 */

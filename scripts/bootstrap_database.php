@@ -94,3 +94,5 @@ if ((int)$tenantCount === 0) {
 }
 
 echo "DATABASE_READY\n";
+
+// build: V17.1 build 2026-08-25

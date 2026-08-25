@@ -98,3 +98,5 @@ if(!(int)$q->fetchColumn()){
 }
 
 echo "V13 full restaurant demo database ready.\n";
+
+// build: V17.1 build 2026-08-25

@@ -25,3 +25,5 @@ final class PurchaseService {
         if(!$nodeId)return;$key=uuid();$pdo->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$nodeId,$table,$id,$op,json_encode(['id'=>$id]),$key]);
     }
 }
+
+// build: V17.1 build 2026-08-25

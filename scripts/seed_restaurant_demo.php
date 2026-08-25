@@ -37,3 +37,5 @@ foreach($menu as $x){$existing=one($p,"SELECT id FROM menu_items WHERE site_id=?
 // pizza variants
 $fp=one($p,"SELECT id FROM menu_items WHERE site_id=? AND name='Fajita Pizza'",[site_id()]);if($fp && !(int)one($p,"SELECT COUNT(*) FROM menu_item_variants WHERE menu_item_id=?",[$fp]))foreach([['Small',1050,1],['Medium',1450,0],['Large',1890,0]] as $v)$p->prepare("INSERT INTO menu_item_variants(id,tenant_id,site_id,menu_item_id,name,price,is_default,is_active) VALUES(?,?,?,?,?,?,?,1)")->execute([uuid(),tenant_id(),site_id(),$fp,$v[0],$v[1],$v[2]]);
 echo "Restaurant approved UI demo master data ready.\n";
+
+// build: V17.1 build 2026-08-25

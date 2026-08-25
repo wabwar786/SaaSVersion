@@ -41,3 +41,5 @@ foreach ($rows as $r) {
 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
 echo "COLLATION_NORMALIZED target=$target converted=$done skipped=$skip pending_before=".count($rows)."\n";
+
+// build: V17.1 build 2026-08-25

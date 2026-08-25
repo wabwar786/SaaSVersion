@@ -38,3 +38,5 @@ $db = $GLOBALS['config']['db']['database'];
 $n = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='".$db."'")->fetchColumn();
 echo "SCHEMA_INSTALLED db=$db statements_ok=$ok failed=$fail tables=$n\n";
 foreach ($errs as $e) echo "  note: $e\n";
+
+// build: V17.1 build 2026-08-25

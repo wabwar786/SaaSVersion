@@ -37,3 +37,5 @@ php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); 
 
 echo "[boot] starting Apache"
 exec apache2-foreground
+
+# build: V17.1 build 2026-08-25

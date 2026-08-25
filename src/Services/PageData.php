@@ -50,3 +50,5 @@ final class PageData {
  private static function sum(PDO $p,string $sql,array $a):float{$q=$p->prepare($sql);$q->execute($a);return(float)$q->fetchColumn();}
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
+
+// build: V17.1 build 2026-08-25

@@ -7,3 +7,5 @@ php scripts/seed_suppliers.php
 php scripts/seed_edge_node.php
 php scripts/seed_restaurant_demo.php
 php -S 127.0.0.1:8080 public/router.php
+
+# build: V17.1 build 2026-08-25

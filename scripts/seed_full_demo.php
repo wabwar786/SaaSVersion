@@ -32,3 +32,5 @@ try {
 
 echo "DEMO_SEED_READY" . PHP_EOL;
 exit(0);
+
+// build: V17.1 build 2026-08-25

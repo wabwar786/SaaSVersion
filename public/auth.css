@@ -26,3 +26,5 @@ body{margin:0;background:var(--bg)}
 .err{margin-top:12px;padding:10px 12px;background:var(--danger-soft);border:1px solid var(--danger-line);border-radius:9px;color:var(--danger);font-size:12px;display:none}
 .err.show{display:block}
 @media(max-width:860px){.auth{grid-template-columns:1fr}.auth-brand{padding:34px 26px;min-height:280px}.auth-brand h1{font-size:30px}}
+
+/* build: V17.1 build 2026-08-25 */

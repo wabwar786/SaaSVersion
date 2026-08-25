@@ -14,3 +14,5 @@ No PHP PATH setup is required.
 Do not use MySQL Workbench for normal daily operation.
 
 The software uses the existing local aio_local MySQL database.
+
+<!-- build: V17.1 build 2026-08-25 -->

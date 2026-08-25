@@ -9,3 +9,5 @@ final class Csrf {
         if (!$token || !hash_equals($_SESSION['_csrf']??'', $token)) { http_response_code(419); exit('Invalid CSRF token.'); }
     }
 }
+
+// build: V17.1 build 2026-08-25

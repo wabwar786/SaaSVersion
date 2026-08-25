@@ -9,3 +9,5 @@ if(!colExists($pdo,'suppliers','city'))     $pdo->exec("ALTER TABLE suppliers AD
 if(!colExists($pdo,'suppliers','category')) $pdo->exec("ALTER TABLE suppliers ADD COLUMN category VARCHAR(120) NULL AFTER city");
 if(!colExists($pdo,'suppliers','deleted_at'))$pdo->exec("ALTER TABLE suppliers ADD COLUMN deleted_at DATETIME(6) NULL");
 echo "BRIDGE_MIGRATION_READY\n";
+
+// build: V17.1 build 2026-08-25

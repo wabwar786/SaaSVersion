@@ -102,3 +102,5 @@ wajah se fail ho jati thi (server chal raha hota tha phir bhi). Naya `tools/wind
 - fail hone par asli wajah dikhata hai.
 
 Agar phir bhi ruke: `STOP_OLD_RESTAURANT_SERVERS.bat` chala kar dobara `START_RESTAURANT.bat` karein.
+
+<!-- build: V17.1 build 2026-08-25 -->

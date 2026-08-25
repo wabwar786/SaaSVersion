@@ -50,3 +50,5 @@
   function categoryPrinter(cat){const s=getState();return s.menuCategories.find(x=>x.name===cat)?.printer||'main'}
   window.RestaurantStore={KEY,defaults,getState,saveState,formatStock,formatPurchaseCost,addInventoryCategory,addInventoryItem,receivePurchase,addRecipe,consumeCart,categoryPrinter};
 })();
+
+/* build: V17.1 build 2026-08-25 */

@@ -29,3 +29,5 @@ final class DB {
         catch (\Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
     }
 }
+
+// build: V17.1 build 2026-08-25

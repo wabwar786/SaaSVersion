@@ -7,3 +7,5 @@ final class View {
         include dirname(__DIR__).'/views/layout.php';
     }
 }
+
+// build: V17.1 build 2026-08-25

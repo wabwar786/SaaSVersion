@@ -32,3 +32,5 @@ try {
     http_response_code(500);
     echo json_encode(['ok'=>false,'error'=>$e->getMessage()], JSON_PRETTY_PRINT);
 }
+
+// build: V17.1 build 2026-08-25

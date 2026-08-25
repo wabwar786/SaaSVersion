@@ -86,3 +86,5 @@ final class PosService {
  private static function paymentCode(string $m):string{$x=strtoupper(str_replace([' ','/'],'_',trim($m)));return ['BANK_TRANSFER'=>'BANK','SPLIT_PAYMENT'=>'CASH'][$x]??$x;}
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
+
+// build: V17.1 build 2026-08-25

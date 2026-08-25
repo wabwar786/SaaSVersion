@@ -11,3 +11,5 @@
  function reset(){return save(clone(defaults))}
  window.RestaurantLive={KEY,get,save,postSale,postOnlineOrder,recordPurchase,reset};
 })();
+
+/* build: V17.1 build 2026-08-25 */

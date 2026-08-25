@@ -12,3 +12,5 @@ while (true) {
     catch (\Throwable $e) { fwrite(STDERR, '[sync-loop] ERROR '.$e->getMessage()."\n"); }
     sleep($mins * 60);
 }
+
+// build: V17.1 build 2026-08-25

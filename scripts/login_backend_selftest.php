@@ -42,3 +42,5 @@ try {
     fwrite(STDERR, "LOGIN_BACKEND_FAILED_V11\n".$e->getMessage()."\n");
     exit(1);
 }
+
+// build: V17.1 build 2026-08-25

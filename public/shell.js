@@ -103,3 +103,5 @@
   if(lo) lo.onclick=function(){ try{RestaurantAccess.logout();}catch(e){} location.href='login.html'; };
   window.addEventListener('resize',function(){ if(innerWidth>1000) close(); });
 })();
+
+/* build: V17.1 build 2026-08-25 */

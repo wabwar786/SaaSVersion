@@ -154,3 +154,5 @@ Create "Lahore Karahi House" → client login → pos-boot: 4 cats, 1 printer,
 tenant-isolated dashboard ✓. Collation: 1267 repro→normalize→join OK ✓.
 Regressions: sa-business-list ✓ diagnostics healthy ✓ local node full ✓
 PHP lint clean ✓.
+
+<!-- build: V17.1 build 2026-08-25 -->

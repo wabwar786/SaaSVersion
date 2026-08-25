@@ -7,3 +7,5 @@ use Aio\Services\Sync;
 $r = Sync::run();
 echo json_encode($r, JSON_UNESCAPED_SLASHES), "\n";
 exit($r['ok'] ? 0 : 1);
+
+// build: V17.1 build 2026-08-25

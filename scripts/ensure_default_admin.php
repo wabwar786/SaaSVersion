@@ -6,3 +6,5 @@ $role=$p->prepare("SELECT id FROM roles WHERE tenant_id=? AND name='Owner / Admi
 $mods=array_column($p->query("SELECT id FROM platform_modules WHERE is_active=1 ORDER BY sort_order")->fetchAll(),'id');
 UserService::create(['full_name'=>'System Administrator','email'=>'admin@urbanspoon.local','username'=>'admin','phone'=>'','password'=>'Admin@123','role_id'=>$roleId,'modules'=>$mods,'is_admin'=>1,'must_change'=>0]);
 echo "DEFAULT_ADMIN_CREATED\n";
+
+// build: V17.1 build 2026-08-25

@@ -35,3 +35,5 @@ echo ------------------------------------------------------------
 echo  Server band ho gaya. Upar koi error message ho to mujhe bhej dein.
 echo ------------------------------------------------------------
 pause
+
+rem build: V17.1 build 2026-08-25

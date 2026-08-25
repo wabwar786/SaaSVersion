@@ -12,3 +12,5 @@ foreach($modules as $key=>$name){
   $sort++;
 }
 echo "PLATFORM_MODULES_READY total=".count($modules)." added=$added\n";
+
+// build: V17.1 build 2026-08-25

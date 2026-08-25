@@ -11,3 +11,5 @@ echo json_encode([
     'session_name' => session_name(),
     'bootstrap_loaded' => true
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+// build: V17.1 build 2026-08-25

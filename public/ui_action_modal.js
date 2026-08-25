@@ -281,3 +281,5 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',restoreRows);
   else restoreRows();
 })();
+
+/* build: V17.1 build 2026-08-25 */

@@ -17,3 +17,4 @@
  Object.defineProperty(api,'roleDefaults',{get:roleDefaultsFromState});
  window.RestaurantAccess=api;
 })();
+/* build: V17.1 build 2026-08-25 */

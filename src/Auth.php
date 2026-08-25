@@ -226,3 +226,5 @@ final class Auth {
         return $r ? (bool)$r['v'] : self::canModule($module);
     }
 }
+
+// build: V17.1 build 2026-08-25

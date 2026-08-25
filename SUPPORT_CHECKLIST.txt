@@ -18,3 +18,5 @@ Local MySQL:
 Approved UI:
   original demo data + original modal workflows are preserved.
   PHP/MySQL integration mirrors actions without replacing the approved DOM tables.
+
+<!-- build: V17.1 build 2026-08-25 -->

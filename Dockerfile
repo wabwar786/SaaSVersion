@@ -29,3 +29,5 @@ ENV AIO_CONFIG=config/cloud.php
 COPY tools/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# build: V17.1 build 2026-08-25

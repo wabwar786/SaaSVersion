@@ -188,3 +188,5 @@ try {
     else{Start-Process $url}
 }
 catch { Show-Error "Restaurant Software Setup" $_.Exception.Message; exit 1 }
+
+# build: V17.1 build 2026-08-25

@@ -226,3 +226,5 @@ final class Platform
         return $q->fetchColumn() ?: null;
     }
 }
+
+// build: V17.1 build 2026-08-25

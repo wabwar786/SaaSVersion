@@ -17,3 +17,5 @@ echo json_encode([
     'user_email' => $u['email'] ?? null,
     'is_admin' => isset($u['is_tenant_admin']) ? (bool)$u['is_tenant_admin'] : false,
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+// build: V17.1 build 2026-08-25

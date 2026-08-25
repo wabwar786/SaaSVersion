@@ -200,3 +200,5 @@ default:fail('Unknown API action',404);}
   $showReal=cfg('app.debug')||\Aio\Services\Platform::superUser();
   fail($showReal?$e->getMessage():'Operation failed.',500);
 }
+
+// build: V17.1 build 2026-08-25

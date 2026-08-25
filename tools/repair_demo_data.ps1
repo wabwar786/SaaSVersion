@@ -18,3 +18,5 @@ Write-Host "Any optional problem was logged and will not block the software."
 Write-Host "Log: storage\logs\demo-seed.log"
 Write-Host ""
 Read-Host "Press Enter to close"
+
+# build: V17.1 build 2026-08-25

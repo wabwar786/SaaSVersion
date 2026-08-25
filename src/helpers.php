@@ -53,3 +53,5 @@ function current_user(): ?array { return Auth::user(); }
 function require_login(): void { Auth::requireLogin(); }
 function require_module(string $module): void { Auth::requireModule($module); }
 function json_response(array $data,int $status=200): never { http_response_code($status); header('Content-Type: application/json'); echo json_encode($data,JSON_UNESCAPED_UNICODE); exit; }
+
+// build: V17.1 build 2026-08-25
