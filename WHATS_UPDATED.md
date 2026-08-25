@@ -309,3 +309,31 @@ with discount → netSales 950, next bill 11 ✓ rate change 500→550 ✓
 category "Desserts" create ✓ quick-item "Gulab Jamun" ✓ held_bills
 server-side save/list ✓ boot: 4 products, 5 categories, 8 tables ✓
 local node: POS v20 served, boot OK ✓ PHP lint clean ✓ POS JS syntax ✓
+
+---
+
+# V20.1 — POS Diagnostics + Item-visibility Fixes
+
+## Ab aap KHUD verify kar sakte hain
+POS par 3 jagah **"Run Diagnostics"** button hai (status strip, error banner,
+khali-menu card). Ye seedhe DB se sach dikhata hai:
+branch naam · is branch ke menu items · POS-visible items · DOOSRI branch ke
+items · broken-category items · ui_records mein phansay items · categories /
+payment methods / stock locations / tables / units counts · posBoot kitne
+products return kar raha hai (ya uska asli SQL error) · recent 20 items with
+active/pos flags aur branch mismatch warning. Saath "Kya karein" tip aur
+**Copy Report** button.
+
+## Do asli bug fix
+1. **posBoot ka INNER JOIN**: agar item ki category delete/orphan ho jati thi
+   to item POS se chup-chaap GHAYAB ho jata tha. Ab LEFT JOIN + category
+   'General' fallback — item hamesha dikhega.
+2. **Errors chhup rahe the**: logged-in user ko sirf "Operation failed."
+   milta tha. Ab apne business ka asli error message milta hai, aur POS par
+   laal banner mein bhi dikhta hai (khali screen ke bajaye).
+
+## Tested (3 failure modes simulate karke)
+A) category orphan → item ab bhi POS par ('General') ✓ diag ne broken=1 pakra ✓
+B) is_pos=0 → diag ne this_site=4 vs pos_visible=3 ka farq dikhaya ✓
+C) table missing → user ko asli SQL error mila (generic nahi) ✓
+Normal state: 4 products, posBoot=4 ✓ local node ✓ PHP lint clean ✓ JS OK ✓

@@ -195,7 +195,7 @@ label.f{display:block;font-size:10.5px;font-weight:800;color:var(--ink2);text-tr
          menu-category-create / menu-item-rate / shift-* / records-*
    ========================================================= */
 'use strict';
-var VERSION='POS v20';
+var VERSION='POS v20.1';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -220,9 +220,26 @@ var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=0, orderSvc=0, disc={type:'flat',value:0};
 var HOLD_MODULE='held_bills', holds=[];
 
+function banner(html){
+  var b=document.getElementById('errBar');
+  if(!b){b=document.createElement('div');b.id='errBar';
+    b.style.cssText='grid-column:1/-1;padding:11px 16px;background:#fdecec;border-bottom:1px solid #f5c2c2;color:#8c1d24;font-size:12.5px;font-weight:600;display:flex;gap:12px;align-items:center;flex-wrap:wrap';
+    var st=document.getElementById('strip');st.parentNode.insertBefore(b,st.nextSibling);}
+  b.innerHTML=html;
+  var d=document.getElementById('diagBtn');
+  if(d)d.onclick=showDiagnostics;
+}
 function boot(){
-  var r=api('pos-boot');
-  if(!r.ok){toast('Menu load nahi hua: '+(r.message||'server error'));renderAll();return}
+  var r;
+  try{ r=api('pos-boot'); }
+  catch(e){ r={ok:false,message:'JS error: '+(e&&e.message)}; }
+  if(!r||!r.ok){
+    renderAll();
+    banner('<span>&#9888; Menu load nahi hua &mdash; server ne kaha: <b>'+esc((r&&r.message)||'no response')+'</b></span>'
+      +'<button class="tbtn" id="diagBtn" style="padding:5px 12px">Run Diagnostics</button>');
+    return;
+  }
+  var eb=document.getElementById('errBar'); if(eb)eb.remove();
   BOOT=r.boot;
   billNo=String(BOOT.nextBill||1).padStart(4,'0');
   shift=BOOT.shift||null;
@@ -242,6 +259,47 @@ function boot(){
 }
 function renderAll(){renderStrip();renderCats();renderGrid();renderCart()}
 
+function showDiagnostics(){
+  var r=api('pos-diagnostics');
+  if(!r.ok){toast(r.message||'Diagnostics failed');return}
+  var d=r.diag;
+  function row(k,v,bad){return '<div class="kv"><span>'+esc(k)+'</span><b style="'+(bad?'color:var(--brand)':'')+'">'+esc(v)+'</b></div>'}
+  var h='';
+  h+=row('Branch (site)',d.site_name,String(d.site_name).indexOf('missing')>=0);
+  h+=row('Menu items in THIS branch',d.menu_items_this_site,d.menu_items_this_site===0);
+  h+=row('POS-visible (active + is_pos)',d.menu_items_pos_visible,d.menu_items_pos_visible===0);
+  h+=row('Items in OTHER branches',d.menu_items_other_sites,d.menu_items_other_sites>0);
+  h+=row('Items with broken category',d.menu_items_no_category,d.menu_items_no_category>0);
+  h+=row('Stranded in ui_records',d.stranded_ui_records_menu,d.stranded_ui_records_menu>0);
+  h+=row('Categories',d.categories,d.categories===0);
+  h+=row('Payment methods',d.payment_methods,d.payment_methods===0);
+  h+=row('Stock locations',d.stock_locations,d.stock_locations===0);
+  h+=row('Tables',d.tables,d.tables===0);
+  h+=row('Units (global)',d.units_global,d.units_global===0);
+  h+=row('Branches in business',d.sites_in_tenant);
+  h+=row('posBoot returns',d.posBoot_products===null?'ERROR':d.posBoot_products+' products',!d.posBoot_products);
+  if(d.posBoot_error)h+=row('posBoot error',d.posBoot_error,true);
+  var items=(d.recent_items||[]).map(function(x){
+    return '<div style="font-size:11.5px;padding:6px 0;border-bottom:1px dashed var(--line)"><b>'+esc(x.name)+'</b> &mdash; PKR '+esc(x.base_price)
+      +' &middot; '+esc(x.cat)+' &middot; active:'+x.is_active+' pos:'+x.is_pos
+      +(x.site_id!==d.site_id?' <span style="color:var(--brand)">(doosri branch!)</span>':'')+'</div>';
+  }).join('')||'<div class="cempty">Is business mein koi menu item nahi</div>';
+  var tip='';
+  if(d.menu_items_pos_visible===0&&d.stranded_ui_records_menu>0)tip='Items purane format (ui_records) mein phansay hain — service redeploy/restart karein, boot migration inhe theek kar degi.';
+  else if(d.menu_items_pos_visible===0&&d.menu_items_other_sites>0)tip='Items doosri branch (site) mein bane hain. Isi branch se item banayein, ya branch switch karein.';
+  else if(d.menu_items_pos_visible===0)tip='Is branch mein koi POS-visible item nahi — "+ New Item" se banayein.';
+  modal('<div class="dh"><h3>POS Diagnostics</h3><p>Ye seedhe database se aa raha hai</p></div>'
+    +'<div class="db">'+h
+    +(tip?'<div class="box" style="border-color:#f0c98a;background:#fdf6e9"><b>Kya karein:</b> '+esc(tip)+'</div>':'')
+    +'<div class="box"><b style="font-size:11.5px">Recent menu items (poore business ke)</b><div style="margin-top:7px">'+items+'</div></div></div>'
+    +'<div class="df"><button class="sec" data-x>Close</button><button class="go" id="cpy">Copy Report</button></div>',true);
+  document.getElementById('cpy').onclick=function(){
+    var t=JSON.stringify(d,null,2);
+    if(navigator.clipboard)navigator.clipboard.writeText(t);
+    toast('Report copy ho gayi — support ko bhej dein');
+  };
+}
+
 function renderStrip(){
   var n=BOOT.products.length;
   $('#strip').innerHTML=
@@ -252,9 +310,11 @@ function renderStrip(){
     +'<span class="sb">&#127869; '+n+' menu item'+(n===1?'':'s')+'</span>'
     +'<span class="sb">&#129534; Bill #'+billNo+'</span>'
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali hai - "+ New Item" se pehla item banayein</span>':'')
+    +'<a href="#" id="sDiag" style="color:var(--ink2);margin-left:6px">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
   var b=$('#sClose'); if(b)b.onclick=function(e){e.preventDefault();closeShift()};
+  var dg=$('#sDiag'); if(dg)dg.onclick=function(e){e.preventDefault();showDiagnostics()};
 }
 
 function catCount(name){return BOOT.products.filter(function(p){return p.cat===name}).length}
@@ -282,8 +342,10 @@ function renderGrid(){
   if(!BOOT.products.length){
     g.innerHTML='<div class="empty"><div class="ic">&#127869;</div><h3>Menu abhi khali hai</h3>'
       +'<p>Apna pehla item banayein - POS grid, Order Taker aur Menu page teeno par foran aa jayega.</p>'
-      +'<button class="addb" style="max-width:240px;margin:0 auto;padding:11px" id="firstItem">+ Create First Item</button></div>';
+      +'<button class="addb" style="max-width:240px;margin:0 auto;padding:11px" id="firstItem">+ Create First Item</button>'
+      +'<div style="margin-top:13px"><button class="tbtn" id="diagBtn2" style="padding:7px 16px">Items banaye hain magar dikh nahi rahe? Run Diagnostics</button></div></div>';
     $('#firstItem').onclick=function(){openItemModal('item')};
+    $('#diagBtn2').onclick=showDiagnostics;
     return;
   }
   if(!list.length){g.innerHTML='<div class="empty"><div class="ic">&#128269;</div><h3>Koi item nahi mila</h3><p>Doosra naam ya category try karein.</p></div>';return}
