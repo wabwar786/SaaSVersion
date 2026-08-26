@@ -1442,3 +1442,78 @@ log: **transfers 108, rows received 1543**, last activity 9:24:57,
 har entry table + rows + direction + IP ke saath ✓ page errors 0 ✓
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V45 — Cloud Synchronization card: kis ko dikhe, kis ko nahi
+
+## Aap ka sawal: yeh sirf offline version mein hai ya online mein bhi?
+Dono mein — magar maqsad alag:
+
+**Offline (branch computer):** poora control —
+status pill (up to date / N waiting / cloud offline / sync off), last sync,
+waiting rows, cloud online, aur **Sync now · Check · View log** teeno.
+
+**Online portal:** monitoring window — pill par
+**"1 branch computer"** (kitne nodes sync kar rahe hain), last activity ka
+waqt, aur **View log** (24h summary + har transfer: table, rows,
+direction, branch IP). Sync/Check buttons chhupe hain kyunki cloud khud
+sync nahi chalata — branch computers isay data bhejte hain.
+
+## Behtari: khali card ab nahi dikhta
+Jis business ne offline version **istemal hi nahi kiya**, us ke online
+dashboard par ab yeh card **bilkul nahi aata** (pehle "cloud server" likha
+khali card aata tha — bekar shor). Faisla asli data par hota hai:
+`sync_activity` mein us tenant ki koi entry hai ya nahi. Pehli sync hote
+hi card khud zahir ho jata hai.
+
+## Tested (asli browser, do businesses)
+royal-grill (offline node maujood): card **visible**, pill
+"1 branch computer", "Last activity: 8/26/2026, 9:24:57 AM",
+button [View log] ✓
+grill-two (koi offline node nahi): card **hidden** ✓ · page errors 0
+
+PHP lint clean · 44 pages OK
+
+---
+
+# V46 — Cloud card: card wapis, aur header tile ab sach bolta hai
+
+## Meri pichli tabdeeli ghalat thi
+V45 mein maine card ko **chhupa** diya tha jab koi offline node na ho.
+Nateeja: aap ko lagta hai kuch toot gaya. Yeh sahi faisla nahi tha —
+card ab **hamesha dikhta hai**, magar saaf empty state ke saath:
+
+  pill : "no branch computer yet"
+  text : "No offline installation has connected yet. Install the offline
+          version on a branch computer and its activity will appear here
+          automatically."
+  boxes: Branch computers 0 · Last activity never ·
+         What to do: POS → System & Settings → Download Offline Version
+
+**View log** button bhi hamesha maujood; khali ho to amber box saaf batata
+hai ke log kab bharega.
+
+## Ek chhupa hua jhoot bhi pakra
+Dashboard ke header ka **"Cloud sync — Synced — Just now"** tile
+**hardcoded** tha. Chahe sync band ho, cloud reachable na ho, ya offline
+version istemal hi na kiya gaya ho — hamesha green "Synced" likha aata
+tha. Ab asli haalat dikhata hai:
+
+  Online portal : "1 branch" + last activity  /  "Not in use" (amber)
+  Branch PC     : "Synced" / "Pending N rows" / "Offline" / "Off"
+                  (green / amber / red)
+
+## Card par ab asli numbers (online portal)
+Branch computers · Last activity · Received (24h) rows · Transfers (24h) —
+`sync_activity` se seedhe.
+
+## Tested (asli browser, dono halat)
+Branch computer maujood: tile "1 branch / 9:24:57 AM", pill
+"1 branch computer", boxes [1 · 9:24:57 AM · 1543 rows · 108] ✓
+Koi branch computer nahi (aap ka mojooda halat): tile "Not in use /
+No branch computer", card **visible**, pill "no branch computer yet",
+boxes [0 · never · POS → System & Settings → Download Offline Version],
+View log khulta hai aur saaf batata hai ✓ page errors 0
+
+PHP lint clean · 44 pages OK

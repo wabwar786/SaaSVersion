@@ -95,7 +95,7 @@
         </div>
         <div class="hero-side">
           <div class="htile"><span>Local system</span><b style="color:var(--ok)">Online</b><small>Branch network healthy</small></div>
-          <div class="htile"><span>Cloud sync</span><b style="color:var(--ok)">Synced</b><small id="lastSync">Just now</small></div>
+          <div class="htile"><span>Cloud sync</span><b id="hCloudSync" style="color:var(--ok)">Checking</b><small id="lastSync">-</small></div>
           <div class="htile"><span>Kitchen printers</span><b>5 / 5</b><small>All responding</small></div>
           <div class="htile"><span>Signup requests</span><b id="heroReq">0</b><small>Awaiting approval</small></div>
         </div>
@@ -241,16 +241,60 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
     if(m<1)return 'just now'; if(m<60)return m+' min ago';
     var h=Math.floor(m/60); return h<24?(h+' hr ago'):(Math.floor(h/24)+' days ago');
   }
+  function fmtTime(ts){
+    if(!ts)return '-';
+    var d=new Date(String(ts).replace(' ','T'));
+    return isNaN(d.getTime())?String(ts).slice(0,19):d.toLocaleString();
+  }
+  function paintTile(){
+    /* Header ka "Cloud sync" tile pehle HAMESHA "Synced / Just now" likha
+       rehta tha - chahe sync band ho ya cloud reachable na ho. Ab asli
+       haalat dikhata hai. */
+    var b=document.getElementById('hCloudSync'), t=document.getElementById('lastSync');
+    if(!b||!state)return;
+    var green='#0f7a3d', amber='#b3541e', red='#c02a37';
+    if(state.role==='cloud'){
+      if(!state.has_offline_node){ b.textContent='Not in use'; b.style.color=amber;
+        t.textContent='No branch computer'; return; }
+      b.textContent=(state.nodes||1)+' branch'+((state.nodes||1)>1?'es':'');
+      b.style.color=green; t.textContent=state.last_run?fmtTime(state.last_run):'never'; return;
+    }
+    if(!state.enabled){ b.textContent='Off'; b.style.color=red; t.textContent=(state.reason||'not configured').slice(0,40); return; }
+    if(!state.cloud_online){ b.textContent='Offline'; b.style.color=red;
+      t.textContent=(state.pending||0)+' rows waiting'; return; }
+    if(state.pending>0){ b.textContent='Pending'; b.style.color=amber;
+      t.textContent=state.pending+' rows to upload'; return; }
+    b.textContent='Synced'; b.style.color=green;
+    t.textContent=state.last_run?fmtTime(state.last_run):'never';
+  }
+
   function paint(){
     if(!state)return;
+    paintTile();
     card.style.display='';   /* cloud aur branch dono par card nazar aata hai */
     var pill=$$('syncPill'), sub=$$('syncSub'), grid=$$('syncGrid');
     if(state.role==='cloud'){
-      pill.className='syncPill sp-ok'; pill.textContent='cloud server';
-      sub.textContent='This is the online server. Branch computers push their data here automatically.';
-      grid.innerHTML='';
       $$('syncGo').style.display='none'; $$('syncCheck').style.display='none';
-      $$('syncGrid').innerHTML='';
+      if(!state.has_offline_node){
+        /* Abhi kisi branch computer ne connect nahi kiya - saaf batao,
+           card chhupao mat (warna lagta hai kuch toot gaya). */
+        pill.className='syncPill sp-warn'; pill.textContent='no branch computer yet';
+        sub.textContent='No offline installation has connected yet. Install the offline version on a branch computer and its activity will appear here automatically.';
+        grid.innerHTML=
+          '<div class="syncBox"><small>Branch computers</small><b>0</b></div>'+
+          '<div class="syncBox"><small>Last activity</small><b>never</b></div>'+
+          '<div class="syncBox" style="grid-column:1/-1"><small>What to do</small>'+
+          '<b style="font-size:12px;font-weight:600">POS &rarr; System &amp; Settings &rarr; Download Offline Version</b></div>';
+        return;
+      }
+      pill.className='syncPill sp-ok';
+      pill.textContent=(state.nodes||1)+' branch computer'+((state.nodes||1)>1?'s':'');
+      sub.textContent='Branch computers upload their data here automatically.';
+      grid.innerHTML=
+        '<div class="syncBox"><small>Branch computers</small><b>'+(state.nodes||1)+'</b></div>'+
+        '<div class="syncBox"><small>Last activity</small><b style="font-size:13px">'+esc(fmtTime(state.last_run))+'</b></div>'+
+        '<div class="syncBox"><small>Received (24h)</small><b>'+(state.rows_24h||0)+' rows</b></div>'+
+        '<div class="syncBox"><small>Transfers (24h)</small><b>'+(state.transfers_24h||0)+'</b></div>';
       return;
     }
     if(busy){ pill.className='syncPill sp-warn'; pill.textContent='syncing...'; }
@@ -324,11 +368,6 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
   $$('syncCheck').onclick=showDiag;
 
   /* ---- Synchronization log: kab, kaun si tables, kitni rows ---- */
-  function fmtTime(ts){
-    if(!ts)return '-';
-    var d=new Date(String(ts).replace(' ','T'));
-    return isNaN(d.getTime())?String(ts).slice(0,19):d.toLocaleString();
-  }
   function showLog(){
     var box=$$('syncDiagBox'); box.style.display='';
     box.innerHTML='<div class="muted">Loading log...</div>';
@@ -351,7 +390,10 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
                 +(x.node_ip?(' &middot; from '+esc(x.node_ip)):'')
                 +(x.note?('<br><span style="color:#c02a37">'+esc(x.note)+'</span>'):'')+'</small></div></div>';
             }).join('')+'</div>')
-          : '<div class="muted" style="margin-top:12px">No branch computer has synced yet.</div>';
+          : '<div class="syncFix" style="background:#fdf4e9;border-color:#f0cfa4;margin-top:12px">'
+            +'<b>No sync activity yet</b><br>'
+            +'This log fills up automatically once an offline installation connects. '
+            +'Download it from POS &rarr; System &amp; Settings &rarr; Download Offline Version.</div>';
         box.innerHTML=h;
         return;
       }

@@ -711,7 +711,28 @@ case 'sync-state':needLogin();
  $role=cfg('app.role');
  $out=['role'=>$role,'enabled'=>false,'reason'=>'','pending'=>0,'last_run'=>null,
        'last_status'=>null,'last_error'=>null,'cloud_online'=>false,'cloud_url'=>''];
- if($role==='cloud'){ $out['reason']='cloud'; ok(['sync'=>$out]); }
+ if($role==='cloud'){
+   /* Cloud par yeh card sirf tab dikhana hai jab is business ka koi offline
+      node waqai mojood ho — warna khali card sirf shor hai. */
+   $out['reason']='cloud';
+   $has=false;$last=null;$nodes=0;
+   try{
+     $p=DB::pdo();
+     $q=$p->prepare("SELECT COUNT(*) c, MAX(created_at) last FROM sync_activity WHERE tenant_id=?");
+     $q->execute([tenant_id()]);
+     if($r=$q->fetch()){ $has=((int)$r['c'])>0; $last=$r['last']; }
+     $nq=$p->prepare("SELECT COUNT(DISTINCT node_ip) FROM sync_activity WHERE tenant_id=? AND node_ip IS NOT NULL");
+     $nq->execute([tenant_id()]);$nodes=(int)$nq->fetchColumn();
+     $dq=$p->prepare("SELECT COUNT(*) t, COALESCE(SUM(rows_count),0) r FROM sync_activity
+                        WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)");
+     $dq->execute([tenant_id()]);
+     if($d24=$dq->fetch()){ $out['transfers_24h']=(int)$d24['t']; $out['rows_24h']=(int)$d24['r']; }
+   }catch(Throwable $e){}
+   $out['has_offline_node']=$has;
+   $out['nodes']=$nodes;
+   $out['last_run']=$last;
+   ok(['sync'=>$out]);
+ }
  $out['enabled']=Sync::enabled();
  $out['reason']=Sync::statusReason();
  $out['cloud_url']=(string)(($GLOBALS['config']['sync']['cloud_api_url']??'')?:'');
