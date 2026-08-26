@@ -242,10 +242,10 @@ foreach([['public/assets','public/assets']] as $pair){
 foreach(glob($root.'/public/*.js') as $j)$zip->addFile($j,'public/'.basename($j));
 foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c));
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
-foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1'] as $ps){
+foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1'] as $ps){
   if(is_file($root.'/tools/'.$ps))$zip->addFile($root.'/tools/'.$ps,'tools/'.$ps);
 }
 $zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('storage/logs');
@@ -276,6 +276,9 @@ $zip->addFromString('OFFLINE_README.txt',
  ."UNINSTALL\n"
  ."  Simply delete this folder. No Windows services or registry\n"
  ."  entries are created.\n\n"
+ ."TROUBLESHOOTING\n"
+ ."  If the software does not open, run DIAGNOSE.bat and send the\n"
+ ."  output to support.\n\n"
  ."SUPPORT\n"
  ."  Website : https://wabwar.com\n  Email   : support@wabwar.com\n");
 $zip->close();

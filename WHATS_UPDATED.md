@@ -916,3 +916,40 @@ shipped scripts mein non-English strings 0 ✓
 sealed install: 93 tables + 11 steps sab pass ✓
 login 303 → POS v28 → pos-boot (4 cats, 8 tables) ✓
 openssl-missing simulation → saaf English message ✓ PHP lint clean ✓
+
+---
+
+# V33 — Launcher fix: "localhost refused to connect"
+
+## Masla
+Desktop shortcut chalane par browser khul jata tha magar server chal hi
+nahi raha hota tha. Wajah: launcher **blind** tha — PHP process
+`-WindowStyle Hidden` mein start hota tha, uski output kahin capture nahi
+hoti thi, aur browser 2 second baad khol diya jata tha chahe server up ho
+ya na ho. Agar PHP start hote hi mar jaye (extension, port, ya koi bhi
+error) to user ko sirf "refused to connect" milta tha, wajah kabhi nahi.
+
+## Fix (start_offline.ps1 poora naya)
+1. **Pre-flight check**: server start karne se PEHLE app ko boot karke
+   dekha jata hai (`SealedApp::boot` → APP_OK). Fail ho to asli PHP error
+   screen par, saath tip: "delete runtime\php and run INSTALL_OFFLINE.bat".
+2. **Free port properly**: ab `TcpListener` se test hota hai (pehle wala
+   tareeqa kuch cases mein busy port ko free samajh leta tha).
+3. **Server output logs mein**: `storage\logs\server.out.log` aur
+   `server.err.log` — ab kuch chhupta nahi.
+4. **Asli health check**: browser tabhi khulta hai jab server HTTP jawab
+   de (20 second tak poll). Na chale to error lines screen par aur window
+   khuli rehti hai (`Press Enter to close`) — foran band nahi hoti.
+5. Desktop shortcut ab **normal window** mein khulta hai (pehle minimized
+   tha, is liye errors nazar hi nahi aate the).
+6. Band karte waqt PHP aur database dono properly stop hote hain.
+
+## Naya: DIAGNOSE.bat
+Ek click support tool — folder, Windows/PowerShell version, sealed package,
+private PHP + version, **openssl/mbstring/pdo_mysql/zlib loaded ya nahi**,
+application boot OK/FAILED, database port 3307 status, aur server logs ki
+aakhri 10 lines. Yeh output support ko bhej dein to wajah foran mil jayegi.
+
+## Tested
+Package mein DIAGNOSE.bat + 6 tools ✓ pre-flight "APP_OK" ✓
+health-check: server ~0.7s mein HTTP 200 par detect ✓ PHP lint clean ✓
