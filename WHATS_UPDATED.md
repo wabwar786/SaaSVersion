@@ -1172,3 +1172,54 @@ chip "↻ 1 to sync" → sync → **"☁✓ Synced · just now"**, toast
 "Sync complete - 2 rows uploaded" ✓
 System > Cloud Sync: Mode "Offline node", Sync "Enabled", Cloud "Online",
 Last sync "just now" ✓ page errors 0 ✓ PHP lint clean ✓
+
+---
+
+# V39 — "Offline · 70 pending" ka sabab + click par poora diagnosis
+
+## Asli wajah (jo aap ke case mein sab se ziada mumkin hai)
+`cloudOnline()` sirf true/false deta tha aur asli error nigal jata tha.
+Backend jaanch se **teen** masle nikle:
+
+1. **HTTPS ke liye CA bundle hi nahi tha.** Windows par PHP ke saath koi
+   certificate bundle nahi aata. Railway `https://` par hai, is liye cURL
+   certificate verify na kar paata aur "Cloud unreachable" de deta —
+   chip par sirf "Offline" nazar aata.
+   **Fix:** package ke saath ab `runtime/cacert.pem` jata hai (224 KB),
+   `php.ini` mein `curl.cainfo` + `openssl.cafile` set hoti hain, aur
+   `httpPost()` khud bhi CAINFO lagata hai.
+
+2. **Har 30 second live network probe** POS ko block kar deta tha (PHP ka
+   built-in server single-threaded hai). **Fix:** probe ka natija ab
+   60 second cache hota hai, aur sync endpoints `session_write_close()`
+   kar dete hain taake baqi POS calls na rukein.
+
+3. **Sync calls synchronous XHR thin** — network slow ho to poora POS
+   freeze. **Fix:** ab async hain, cashier billing karta rahega.
+
+## Chip par click = poora diagnosis
+Chip ab `⚠ Offline · 38 pending — click to check` dikhata hai (tooltip
+mein asli error). Click par **step-by-step report**:
+Configuration · Cloud URL · Sync token · HTTP client · SSL certificates ·
+DNS lookup · Connection · Cloud response · Token accepted
+Har step par ✅/❌ aur asli detail, phir **"Kya karna hai"** box jo pehle
+fail hone wale step ke hisab se hal batata hai (firewall, DNS, SSL,
+token, package dobara download). Saath **Copy Report** (support ko bhejne
+ke liye) aur **Retry Sync**.
+
+## Ye bugs bhi mile aur theek hue
+- Chip ka click handler kabhi bind hi nahi hota tha (galat jagah lagi thi)
+  — ab `renderStrip()` mein har render par bind hota hai.
+- Probe cache kabhi hit nahi karta tha: `watermark` NOT NULL ki wajah se
+  insert fail, aur microsecond timestamp par `strtotime()` fail. Ab age
+  SQL (`TIMESTAMPDIFF`) se aati hai.
+- Diagnose mein do false alarms: IP address par "DNS fail", aur cURL na
+  hone par "FAIL" (jabke fallback chalta hai) — dono theek.
+
+## Tested
+Healthy: saare 8 steps ✅, cloudOnline TRUE
+Unreachable cloud: chip "⚠ Offline · 38 pending", click → modal **0.06s**
+mein khula (POS freeze nahi hua) → ❌ Connection par ruka aur firewall
+wala hal dikhaya ✓
+Wrong token: ❌ "Token accepted — Rejected: Invalid sync token" ✓
+Probe cache: call 1 live, call 2-3 cached ✓ PHP lint clean · 44 pages OK

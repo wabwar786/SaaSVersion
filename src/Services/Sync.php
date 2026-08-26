@@ -18,6 +18,101 @@ final class Sync
     /** Column existence cache per table. */
     private static array $colCache = [];
 
+    /** Aakhri connectivity error (diagnostics ke liye). */
+    public static string $lastError = '';
+
+    /** CA bundle: package ke saath aaya hua, warna system ka. */
+    public static function caBundle(): string
+    {
+        static $ca = null;
+        if ($ca !== null) return $ca;
+        $ca = '';
+        $root = \defined('APP_ROOT') ? APP_ROOT : \dirname(__DIR__, 2);
+        foreach ([$root . '/runtime/cacert.pem', $root . '/vendor/cacert.pem'] as $p) {
+            if (\is_file($p) && \filesize($p) > 1000) { $ca = $p; return $ca; }
+        }
+        $ini = (string) \ini_get('curl.cainfo');
+        if ($ini !== '' && \is_file($ini)) { $ca = $ini; return $ca; }
+        foreach (['/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt'] as $p) {
+            if (\is_file($p)) { $ca = $p; return $ca; }
+        }
+        return $ca;
+    }
+
+    /**
+     * Step-by-step connectivity check. Chip par "Offline" dikhe to yeh
+     * batata hai ke masla theek kahan hai.
+     * @return array<int,array{step:string,ok:bool,detail:string}>
+     */
+    public static function diagnose(): array
+    {
+        $out = [];
+        $add = function (string $step, bool $ok, string $detail) use (&$out) {
+            $out[] = ['step' => $step, 'ok' => $ok, 'detail' => $detail];
+        };
+        $c = self::cfg();
+
+        $add('Configuration', !empty($c['enabled']), !empty($c['enabled']) ? 'Sync is enabled' : 'Sync disabled in config');
+        $url = (string)($c['cloud_api_url'] ?? '');
+        $add('Cloud URL', $url !== '', $url !== '' ? $url : 'Not set - re-download the offline package');
+        $add('Sync token', !empty($c['token']), !empty($c['token']) ? 'Present (' . \strlen((string)$c['token']) . ' chars)' : 'Missing - re-download the package');
+        if ($url === '') return $out;
+
+        $parts  = \parse_url($url) ?: [];
+        $host   = (string)($parts['host'] ?? '');
+        $scheme = (string)($parts['scheme'] ?? 'http');
+        $port   = (int)($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+
+        // curl na ho to bhi stream fallback chalta hai - is liye yeh failure nahi
+        $add('HTTP client', true, \function_exists('curl_init')
+            ? ('cURL ' . (\curl_version()['version'] ?? ''))
+            : 'Built-in fallback (cURL not loaded)');
+
+        if ($scheme === 'https') {
+            $ca = self::caBundle();
+            $add('SSL certificates', $ca !== '', $ca !== '' ? $ca : 'No CA bundle found - HTTPS will fail on Windows');
+        }
+
+        if (\filter_var($host, FILTER_VALIDATE_IP)) {
+            $add('DNS lookup', true, "$host is a direct IP address (no lookup needed)");
+        } else {
+            $ip = $host !== '' ? \gethostbyname($host) : '';
+            $dnsOk = ($ip !== '' && $ip !== $host);
+            $add('DNS lookup', $dnsOk, $dnsOk ? "$host -> $ip"
+                : "Could not resolve $host - internet ya DNS ka masla hai");
+        }
+
+        $t0 = \microtime(true);
+        $sock = @\fsockopen(($scheme === 'https' ? 'ssl://' : '') . $host, $port, $en, $es, 6);
+        $ms = (int)((\microtime(true) - $t0) * 1000);
+        if ($sock) { \fclose($sock); $add('Connection', true, "Connected to $host:$port in {$ms}ms"); }
+        else { $add('Connection', false, "Cannot reach $host:$port - $es (errno $en). Firewall/antivirus ya proxy check karein."); return $out; }
+
+        try {
+            [$code, $res] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 6, 15);
+            $j = \json_decode((string)$res, true);
+            $add('Cloud response', $code === 200, $code === 200
+                ? ('HTTP 200 - server role: ' . (string)($j['role'] ?? '?'))
+                : ("HTTP $code - " . \substr(\strip_tags((string)$res), 0, 120)));
+        } catch (\Throwable $e) {
+            $add('Cloud response', false, $e->getMessage());
+            return $out;
+        }
+
+        try {
+            [$code2, $res2] = self::httpPost(self::endpoint('sync-push'),
+                ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? '')],
+                \json_encode(['table' => 'customers', 'rows' => []]), 6, 15);
+            $j2 = \json_decode((string)$res2, true);
+            $ok2 = ($code2 === 200 && !empty($j2['ok']));
+            $add('Token accepted', $ok2, $ok2 ? 'Cloud accepted this business token'
+                : ('Rejected: ' . (string)($j2['message'] ?? "HTTP $code2")));
+        } catch (\Throwable $e) {
+            $add('Token accepted', false, $e->getMessage());
+        }
+        return $out;
+    }
+
     private static function cfg(): array
     {
         $c = $GLOBALS['config']['sync'] ?? [];
@@ -182,20 +277,32 @@ final class Sync
     {
         if (\function_exists('curl_init')) {
             $ch = \curl_init($url);
-            \curl_setopt_array($ch, [
+            $opts = [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
                 CURLOPT_HTTPHEADER => $headers,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CONNECTTIMEOUT => $connectTimeout,
                 CURLOPT_TIMEOUT => $timeout,
-            ]);
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+            ];
+            // Windows par PHP ke saath koi CA bundle nahi aata, is liye
+            // https:// (Railway) ka certificate verify fail ho jata tha aur
+            // sync "Cloud unreachable" par ruk jati thi. Package ke saath
+            // bheja gaya cacert.pem yahan use hota hai.
+            $ca = self::caBundle();
+            if ($ca !== '') $opts[CURLOPT_CAINFO] = $ca;
+            \curl_setopt_array($ch, $opts);
             $res = \curl_exec($ch);
             $code = (int) \curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $errno = \curl_errno($ch);
             $errStr = \curl_error($ch);
             \curl_close($ch);
-            if ($errno) throw new \RuntimeException("Cloud unreachable: $errStr");
+            if ($errno) {
+                self::$lastError = "curl($errno): $errStr";
+                throw new \RuntimeException("Cloud unreachable: $errStr (curl $errno)");
+            }
             return [$code, (string) $res];
         }
         // stream fallback
@@ -207,7 +314,11 @@ final class Sync
             'ignore_errors' => true,
         ]]);
         $res = @\file_get_contents($url, false, $ctx);
-        if ($res === false) throw new \RuntimeException('Cloud unreachable');
+        if ($res === false) {
+            $e = \error_get_last();
+            self::$lastError = 'stream: ' . \substr((string)($e['message'] ?? 'unknown'), 0, 160);
+            throw new \RuntimeException('Cloud unreachable: ' . self::$lastError);
+        }
         $code = 200;
         if (isset($http_response_header[0]) && \preg_match('#\s(\d{3})\s#', $http_response_header[0], $m)) $code = (int) $m[1];
         return [$code, (string) $res];
@@ -242,14 +353,51 @@ final class Sync
     }
 
     /** Quick reachability probe (no throw). */
+    /**
+     * Cached online status — har 30 second par live probe karna POS ko
+     * block kar deta tha (PHP ka built-in server single-threaded hai).
+     * Ab natija 60 second cache hota hai.
+     */
+    public static function cloudOnlineCached(int $ttl = 60): array
+    {
+        try {
+            /* Age DB ke apne clock se — PHP aur MySQL ke timezone alag ho
+               sakte hain, aur microsecond wale timestamp par strtotime()
+               fail kar deta hai (isi wajah se cache kabhi hit nahi hota tha). */
+            $q = DB::pdo()->prepare(
+                "SELECT last_status,last_error,TIMESTAMPDIFF(SECOND,last_run_at,NOW()) age
+                   FROM sync_state WHERE scope='cloud_probe' LIMIT 1");
+            $q->execute();
+            if ($r = $q->fetch()) {
+                $age = (int)$r['age'];
+                if ($age >= 0 && $age < $ttl) {
+                    return ['online' => $r['last_status'] === 'OK', 'error' => (string)($r['last_error'] ?? ''), 'cached' => true, 'age' => $age];
+                }
+            }
+        } catch (\Throwable $e) {}
+        $on = self::cloudOnline();
+        try {
+            DB::pdo()->prepare(
+                "INSERT INTO sync_state (scope,watermark,last_run_at,last_status,last_error)
+                 VALUES ('cloud_probe','1970-01-01 00:00:00.000000',NOW(6),?,?)
+                 ON DUPLICATE KEY UPDATE last_run_at=NOW(6), last_status=VALUES(last_status), last_error=VALUES(last_error)"
+            )->execute([$on ? 'OK' : 'ERROR', $on ? null : \substr(self::$lastError, 0, 200)]);
+        } catch (\Throwable $e) {}
+        return ['online' => $on, 'error' => self::$lastError, 'cached' => false, 'age' => 0];
+    }
+
     public static function cloudOnline(): bool
     {
-        if (!self::enabled()) return false;
+        if (!self::enabled()) { self::$lastError = self::statusReason(); return false; }
         try {
-            $c = self::cfg();
-            [$code] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 4, 8);
-            return $code === 200;
-        } catch (\Throwable $e) { return false; }
+            [$code, $body] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 4, 10);
+            if ($code === 200) { self::$lastError = ''; return true; }
+            self::$lastError = "Cloud replied HTTP $code";
+            return false;
+        } catch (\Throwable $e) {
+            if (self::$lastError === '') self::$lastError = $e->getMessage();
+            return false;
+        }
     }
 
     /* ------------------------- PUSH / PULL ------------------------- */

@@ -287,7 +287,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v31';
+var VERSION='POS v32';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -325,6 +325,24 @@ var CAN={manage:false};
    Strip par chip: kab last sync hua, kitni rows baqi hain, cloud online
    hai ya nahi. Click par foran sync. Har 2 minute khud bhi chalti hai. */
 var SYNC={state:null,busy:false};
+
+/* Sync calls network par lambi ho sakti hain. Synchronous XHR poore POS ko
+   freeze kar deti thi (cashier billing na kar pata), is liye yeh async hai. */
+function apiAsync(action,payload,cb){
+  var x=new XMLHttpRequest();
+  x.open(payload?'POST':'GET','/api.php?action='+action,true);
+  x.setRequestHeader('Accept','application/json');
+  if(payload){x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-CSRF-Token',window.APP_CSRF||'')}
+  x.timeout=45000;
+  x.onload=function(){
+    var j={ok:false,message:'Server error'};
+    try{j=JSON.parse(x.responseText||'{}')}catch(e){}
+    cb(j);
+  };
+  x.onerror=function(){cb({ok:false,message:'Network error'})};
+  x.ontimeout=function(){cb({ok:false,message:'Request timed out'})};
+  try{x.send(payload?JSON.stringify(payload):null)}catch(e){cb({ok:false,message:'Request failed'})}
+}
 function agoText(ts){
   if(!ts)return 'never';
   var t=new Date(String(ts).replace(' ','T')).getTime();
@@ -342,13 +360,13 @@ function paintSync(){
   if(s.role==='cloud'){el.innerHTML='&#9729; Cloud server';el.style.background='';return}
   if(SYNC.busy){el.innerHTML='&#8635; Syncing...';el.style.background='#fdf4e9';return}
   if(!s.enabled){
-    el.innerHTML='&#9888; Sync off';el.style.background='#fdecec';
+    el.innerHTML='&#9888; Sync off &mdash; click to check';el.style.background='#fdecec';
     el.title=s.reason||'Sync disabled';return;
   }
   if(!s.cloud_online){
-    el.innerHTML='&#9729; Offline'+(s.pending?(' &middot; '+s.pending+' pending'):'');
-    el.style.background='#fdf4e9';
-    el.title='Cloud reachable nahi - net aate hi khud sync ho jayega';return;
+    el.innerHTML='&#9888; Offline'+(s.pending?(' &middot; '+s.pending+' pending'):'')+' &mdash; click to check';
+    el.style.background='#fdecec';
+    el.title=(s.last_error||'Cloud reachable nahi')+'\nClick karein: kya masla hai wo dikhaya jayega';return;
   }
   if(s.pending>0){
     el.innerHTML='&#8635; '+s.pending+' to sync';el.style.background='#fdf4e9';
@@ -358,9 +376,58 @@ function paintSync(){
   el.style.background='#eaf6ef';
   el.title='Last sync: '+(s.last_run||'-')+(s.cloud_url?('\ncloud: '+s.cloud_url):'');
 }
-function refreshSync(){
-  var r=api('sync-state');
-  if(r.ok&&r.sync){SYNC.state=r.sync;paintSync();}
+/* ---- Sync kyun nahi ho rahi: step-by-step check ---- */
+function syncDiagnose(){
+  var ov=modal('<div class="dh"><h3>Cloud Sync Check</h3><p>Har step check ho raha hai...</p></div>'
+    +'<div class="db" id="dgBody"><div class="cempty">Checking connection...</div></div>'
+    +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="dgCopy">Copy Report</button>'
+    +'<button class="go" id="dgRetry">Retry Sync</button></div>',true);
+  apiAsync('sync-diagnose',null,function(r){
+    var checks=(r.ok&&r.checks)?r.checks:[{step:'Request',ok:false,detail:(r.message||'Diagnose failed')}];
+    var firstFail=null;
+    var html=checks.map(function(c){
+      if(!c.ok&&!firstFail)firstFail=c;
+      return '<div class="lrow" style="align-items:flex-start">'
+        +'<div style="font-size:16px;width:24px;flex:none">'+(c.ok?'\u2705':'\u274C')+'</div>'
+        +'<div style="flex:1"><b>'+esc(c.step)+'</b><small style="word-break:break-word">'+esc(c.detail)+'</small></div></div>';
+    }).join('');
+    if(firstFail)html+='<div class="box" style="border-color:var(--brand)"><b style="font-size:11.5px;color:var(--brand)">Kya karna hai</b>'
+      +'<div style="font-size:11.5px;margin-top:5px;line-height:1.6">'+esc(fixHint(firstFail))+'</div></div>';
+    else html+='<div class="box" style="border-color:var(--ok)"><b style="font-size:11.5px;color:var(--ok)">Sab theek hai</b>'
+      +'<div style="font-size:11.5px;margin-top:5px">Connection kaam kar raha hai. "Retry Sync" dabayein.</div></div>';
+    var bd=ov.querySelector('#dgBody'); if(bd)bd.innerHTML=html;
+    window.__dgReport=checks.map(function(c){return (c.ok?'OK  ':'FAIL')+'  '+c.step+': '+c.detail}).join('\n');
+  });
+  ov.querySelector('#dgCopy').onclick=function(){
+    if(navigator.clipboard)navigator.clipboard.writeText(window.__dgReport||'');
+    toast('Report copy ho gayi');
+  };
+  ov.querySelector('#dgRetry').onclick=function(){ov.remove();syncNow(true)};
+}
+function fixHint(f){
+  var st=(f.step||'').toLowerCase(), d=(f.detail||'').toLowerCase();
+  if(st.indexOf('configuration')>=0)  return 'Sync configuration mein band hai. Portal se package dobara download karein.';
+  if(st.indexOf('cloud url')>=0||st.indexOf('token')>=0&&d.indexOf('missing')>=0)
+    return 'Is installation mein cloud ki settings nahi hain. Portal > POS > System > Download Offline Version se naya package le kar dobara install karein.';
+  if(st.indexOf('ssl')>=0)            return 'HTTPS certificates nahi mile. Package dobara download karein (naye package mein certificates shamil hain), ya INSTALL_OFFLINE.bat dobara chalayein.';
+  if(st.indexOf('dns')>=0)            return 'Internet chal raha hai magar server ka naam resolve nahi ho raha. WiFi/DNS check karein; mobile hotspot se try karein.';
+  if(st.indexOf('connection')>=0)     return 'Server tak connection nahi ban raha. Aksar Windows Firewall ya antivirus PHP ko rok deta hai - usme php.exe ko allow karein. Office proxy ho to wo bhi rok sakta hai.';
+  if(st.indexOf('curl')>=0)           return 'PHP ka curl extension nahi mila. runtime\\php folder delete kar ke INSTALL_OFFLINE.bat dobara chalayein.';
+  if(st.indexOf('cloud response')>=0){
+    if(d.indexOf('certificate')>=0||d.indexOf('ssl')>=0||d.indexOf('60')>=0)
+      return 'SSL certificate verify nahi ho saka. Naya package download karein - us mein certificates shamil hain.';
+    if(d.indexOf('403')>=0||d.indexOf('401')>=0) return 'Cloud ne request reject kar di. Business suspend to nahi? Portal par status check karein.';
+    return 'Cloud server ne jawab to diya magar galat. Thodi der baad try karein; masla rahe to yeh report support ko bhejein.';
+  }
+  if(st.indexOf('token accepted')>=0) return 'Cloud ne is package ka token qubool nahi kiya. Portal se package dobara download karein (token nayi ban jayegi).';
+  return 'Yeh report Copy kar ke support ko bhej dein.';
+}
+
+function refreshSync(cb){
+  apiAsync('sync-state',null,function(r){
+    if(r.ok&&r.sync){SYNC.state=r.sync;paintSync();}
+    if(cb)cb(r);
+  });
 }
 function syncNow(manual){
   var s=SYNC.state;
@@ -368,16 +435,17 @@ function syncNow(manual){
   if(s&&!s.enabled){if(manual)toast(s.reason||'Sync is off');return}
   if(SYNC.busy)return;
   SYNC.busy=true;paintSync();
-  var r=api('sync-run',{});
-  SYNC.busy=false;
-  if(!r.ok){
-    if(manual)toast(r.message||'Sync failed');
-    if(SYNC.state){SYNC.state.last_error=r.message||'failed';}
-  }else if(manual){
-    var pushed=0;for(var k in (r.pushed||{}))pushed+=r.pushed[k];
-    toast('Sync complete'+(pushed?(' - '+pushed+' rows uploaded'):''));
-  }
-  refreshSync();
+  apiAsync('sync-run',{},function(r){
+    SYNC.busy=false;
+    if(!r.ok){
+      if(manual)toast(r.message||'Sync failed');
+      if(SYNC.state)SYNC.state.last_error=r.message||'failed';
+    }else if(manual){
+      var pushed=0;for(var k in (r.pushed||{}))pushed+=r.pushed[k];
+      toast('Sync complete'+(pushed?(' - '+pushed+' rows uploaded'):' - already up to date'));
+    }
+    refreshSync();
+  });
 }
 var PRINT={size:80,qr:true,footer:'Thank you! Visit again.'};
 try{var _pt=localStorage.getItem('aio_print_tpl');if(_pt)PRINT=JSON.parse(_pt)}catch(e){}
@@ -541,6 +609,16 @@ function renderStrip(){
   var b=$('#sClose'); if(b)b.onclick=function(e){e.preventDefault();closeShift()};
   var d=$('#sDiag'); if(d)d.onclick=function(e){e.preventDefault();showDiagnostics()};
   var nb=$('#newBillBtn'); if(nb)nb.onclick=onNewBill;
+  /* Sync chip: offline/off ho to wajah dikhao, warna foran sync chalao */
+  var sc=$('#syncChip');
+  if(sc){
+    sc.onclick=function(){
+      var st=SYNC.state;
+      if(st&&st.role!=='cloud'&&(!st.enabled||!st.cloud_online))syncDiagnose();
+      else syncNow(true);
+    };
+    paintSync();
+  }
   renderCtx();
 }
 

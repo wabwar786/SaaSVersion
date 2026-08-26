@@ -292,6 +292,11 @@ $loaderSrc=str_replace("declare(strict_types=1);",
   $loaderSrc);
 $loader=$loaderSrc;
 $zip->addFromString('runtime/boot.php',$loader);
+/* CA bundle: Windows PHP ke saath koi CA bundle nahi aata, is liye HTTPS
+   (Railway) par sync fail ho jati thi. Server ka bundle sath bhej dete hain. */
+foreach(['/etc/ssl/certs/ca-certificates.crt','/etc/pki/tls/certs/ca-bundle.crt'] as $caf){
+  if(is_file($caf)){$zip->addFile($caf,'runtime/cacert.pem');break;}
+}
 $zip->addFromString('runtime/app.info',json_encode([
   'name'=>(string)$t['dn'],'branch'=>$siteName,
   'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
@@ -644,6 +649,10 @@ case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+case 'sync-diagnose':needLogin();
+ if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
+ if(cfg('app.role')==='cloud')ok(['checks'=>[['step'=>'Mode','ok'=>true,'detail'=>'This is the cloud server - offline nodes push data here.']]]);
+ ok(['checks'=>Sync::diagnose()]);
 case 'sync-state':needLogin();
  /* POS ke live indicator ke liye halka endpoint */
  $role=cfg('app.role');
@@ -672,10 +681,18 @@ case 'sync-state':needLogin();
    }
    $out['pending']=$pending;
  }catch(Throwable $e){}
- if($out['enabled'])$out['cloud_online']=Sync::cloudOnline();
+ if($out['enabled']){
+   /* Session lock chhoR do: warna yeh request baqi POS calls ko block karti hai */
+   if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
+   $probe=Sync::cloudOnlineCached((int)($_GET['ttl']??60));
+   $out['cloud_online']=$probe['online'];
+   $out['probe_cached']=$probe['cached'];
+   if(!$probe['online']&&$probe['error']!=='')$out['last_error']=substr($probe['error'],0,180);
+ }
  ok(['sync'=>$out]);
 
 case 'sync-run':needLogin();
+ if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
  if(cfg('app.role')==='cloud')fail('Yeh cloud server hai - sync offline node se chalti hai. Yahan sirf status dekha ja sakta hai.',400);
  $why=Sync::statusReason();
  if($why!=='')fail($why,400);
