@@ -499,3 +499,40 @@ bill+ctx+new-bill ✓ item names dikh rahe ✓ category badge ✓ picture modal
 print = TAKEAWAY / RUNNING ORDER / bill / time / items (restaurant naam
 nahi) ✓ manager password: ghalat reject, sahi accept + "by Ahmed Khan"
 void log ✓ page errors 0 ✓
+
+---
+
+# V24 — POS fixes (8 points)
+
+1. **Image auto-fetch fix**: `source.unsplash.com` band ho chuka hai, is
+   liye hata diya. Ab **loremflickr** (free, no API key) se item ke naam par
+   photo aati hai + **"Google Images"** button jo naam se search khol deta
+   hai (right-click > Copy image address > URL box mein paste). Upload aur
+   Remove pehle se hain.
+2. **KOT NEW vs RUNNING fix**: pehle flag items ko "sent" mark karne ke BAAD
+   compute hota tha, is liye har print RUNNING aata tha. Ab pehle check
+   hota hai — pehla print **NEW ORDER**, usi bill ka agla print
+   **RUNNING ORDER**.
+3. **Item name invisible tha** (aur isi wajah se "Walk-in Customer"/"Change"
+   chips bhi khali dikh rahe the) — text render ho raha tha magar white.
+   Ab in sab par **explicit color `#15221b` (`!important` + inline style)**,
+   CSS variables par bharosa nahi.
+4. **Shift / Change Table**: strip ke "Table: X ⇆" chip par click karke bill
+   ko doosre table par shift karein — bill wahi rehta hai, current table
+   highlight hota hai, aur wahin se + New Table bhi.
+5. Context chips ka text ab saaf dark (upar #3 ka hissa).
+6. **Cart alignment**: RATE chhoti aur halki (11px grey), **TOTAL bara aur
+   numayan** (14px bold), dono nowrap + vertically centered, description
+   alag column mein wrap hoti hai — text ab upar-neeche nahi hota.
+7. **Service Charge popup**: percent (3/5/8/10%) aur flat (50/100/200/300)
+   dono ke quick buttons; type flat/percent select ho sakta hai.
+8. **Sales Tax ab manually edit nahi hota** — uske Edit par **payment method
+   picker** khulta hai (har method par uska rate dikhta hai). Method chunte
+   hi tax rate khud lagta hai; rates System & Settings se aate hain.
+
+## Browser-tested
+item name visible rgb(21,34,27) ✓ ctx chips dark ✓ table shift Table 1 →
+Table 21 ✓ rate 11px grey / total 14px bold ✓ svc quick 3/5/8/10% +
+50/100/200/300 → PKR 100 ✓ tax edit → method picker → 5% Card ✓ KOT 1st
+"NEW ORDER", 2nd "RUNNING ORDER" ✓ auto image url loremflickr ✓ Google
+Images button ✓ page errors 0 ✓

@@ -40,7 +40,7 @@ button{cursor:pointer;border:0;background:none}
 
 /* ---------- strip ---------- */
 .strip{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:6px 13px;background:linear-gradient(90deg,#f6fbf8,#fff);border-bottom:1px solid var(--l);font-size:11.5px;overflow-x:auto;white-space:nowrap}
-.sb{display:inline-flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--l);border-radius:999px;padding:3px 10px;font-weight:700;flex:none}
+.sb{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #e1e9e4;border-radius:999px;padding:3px 10px;font-weight:700;flex:none;color:#15221b}
 .dot{width:6px;height:6px;border-radius:99px;display:inline-block}
 .dot.g{background:var(--ok)}.dot.r{background:var(--brand)}
 .strip a{color:var(--ok);font-weight:800;text-decoration:none;margin-left:3px}
@@ -61,7 +61,7 @@ button{cursor:pointer;border:0;background:none}
 .th img{width:100%;height:100%;object-fit:cover;display:block}
 .bdg{position:absolute;top:5px;right:5px;background:rgba(21,34,27,.84);color:#fff;font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:999px}
 .pb{padding:7px 8px 8px;display:flex;flex-direction:column;gap:5px;flex:1}
-.pn{font-size:13px;font-weight:800;line-height:1.3;min-height:34px;color:var(--ink);word-break:break-word}
+.prod .pb .pn{font-size:13px!important;font-weight:800!important;line-height:1.3;min-height:34px;color:#15221b!important;word-break:break-word;display:block!important;visibility:visible!important;opacity:1!important}
 .catbdg{position:absolute;left:5px;bottom:5px;background:rgba(255,255,255,.92);color:var(--ink2);font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
 .imgb{position:absolute;left:5px;top:5px;background:rgba(255,255,255,.92);border-radius:999px;width:22px;height:22px;font-size:11px;line-height:1;opacity:0;transition:.13s}
 .prod:hover .imgb{opacity:1}
@@ -98,12 +98,13 @@ button{cursor:pointer;border:0;background:none}
 .selrow .mini{padding:7px 9px;border:1px solid var(--l);border-radius:8px;font-weight:800;font-size:11px;flex:none}
 .selrow .mini:hover{border-color:var(--brand);color:var(--brand)}
 .ctx{display:inline-flex;gap:5px;align-items:center}
-.ctx span{background:var(--panel);border:1px solid var(--l);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
-.ctx span b{color:var(--ok)}
-.ctx .chg{cursor:pointer}
-.ctx .chg:hover{border-color:var(--brand);color:var(--brand)}
+.strip .ctx span{background:#fff!important;border:1px solid #e1e9e4;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;color:#15221b!important}
+.strip .ctx span b{color:#0f7a3d!important}
+.strip .ctx .chg{cursor:pointer;color:#15221b!important}
+.strip .ctx .chg:hover{border-color:#e23744;color:#e23744!important}
 .thead{display:grid;grid-template-columns:60px 1fr 68px 74px;gap:6px;padding:8px 12px;background:#fbfdfc;border-bottom:1px solid var(--l);font-size:9px;font-weight:800;color:var(--ink3);letter-spacing:.4px}
 .thead span:nth-child(3),.thead span:nth-child(4){text-align:right}
+.thead{color:#8b9a92}
 .items{flex:1;overflow:auto}
 .ci{display:grid;grid-template-columns:60px 1fr 68px 74px;gap:6px;padding:12px;border-bottom:1px solid var(--l);align-items:center;cursor:pointer;transition:.12s}
 .ci:hover{background:#f7fbf9}
@@ -111,9 +112,11 @@ button{cursor:pointer;border:0;background:none}
 .ciq button{width:18px;height:24px;font-weight:800;color:var(--ink2);font-size:12px}
 .ciq button:hover{background:var(--bg);color:var(--brand)}
 .ciq span{flex:1;text-align:center;font-weight:800;font-size:11px}
-.cid b{font-size:12.5px;font-weight:700;display:block;line-height:1.35}
+.cid{min-width:0}
+.cid b{font-size:12.5px;font-weight:700;display:block;line-height:1.35;color:#15221b;word-break:break-word}
 .cid small{font-size:9.5px;color:var(--ink2);display:block;margin-top:1px}
-.cir,.cit{text-align:right;font-size:12px;font-weight:700}
+.cir{text-align:right;font-size:11px;font-weight:600;color:#7b8a82;white-space:nowrap;align-self:center}
+.cit{text-align:right;font-size:14px;font-weight:800;color:#15221b;white-space:nowrap;align-self:center;display:flex;align-items:center;justify-content:flex-end;gap:4px}
 .cit{font-weight:800}
 .cix{color:var(--brand);font-size:16px;font-weight:800;margin-left:5px;line-height:1}
 .cix:hover{color:#a5121d}
@@ -194,6 +197,7 @@ textarea.inp{min-height:62px;resize:vertical}
 .tcard{padding:12px 8px;border:1px solid var(--l);border-radius:11px;background:var(--panel);text-align:center;transition:.13s}
 .tcard:hover{border-color:var(--ok);transform:translateY(-2px)}
 .tcard.busy{background:var(--warnbg);border-color:#f0cfa4}
+.tcard.cur{background:var(--okbg);border-color:var(--ok);box-shadow:0 0 0 2px rgba(15,122,61,.18)}
 .tcard b{display:block;font-size:12px}
 .tcard small{font-size:9.5px;color:var(--ink2)}
 .clab{font-size:9.5px;font-weight:800;color:var(--ink3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
@@ -274,7 +278,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v23';
+var VERSION='POS v24';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -304,7 +308,7 @@ function qfmt(q){return (Number(q)%1)?Number(q).toFixed(3).replace(/0+$/,'').rep
 
 var BOOT={products:[],categories:[],customers:[],tables:[],printers:{}};
 var cart=[], cat='All', search='', mode='Dine In', preQty={};
-var billNo='0001', shift=null, orderTax=16, orderSvc=0, disc={type:'flat',value:0}, billStarted=false;
+var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
 var HOLD='held_bills', holds=[], lastBill=null;
 var curTable='', curCustId='walkin', curCustName='Walk-in Customer', curCustPhone='';
 var SET={tax_cash:16,tax_card:8,service_charge:0};
@@ -337,7 +341,7 @@ function boot(){
     $('#whoRole').textContent=BOOT.cashier.role;
     $('#avIni').textContent=BOOT.cashier.name.split(/\s+/).map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();
   }
-  if(BOOT.settings){SET=BOOT.settings;orderSvc=Number(SET.service_charge)||0}
+  if(BOOT.settings){SET=BOOT.settings;svc={type:'percent',value:Number(SET.service_charge)||0}}
   orderTax=taxPct('Cash');
   loadHolds(); renderAll();
   if(!shift){openGate();return}
@@ -347,13 +351,13 @@ function fillTables(){}
 function fillCustomers(){}
 function renderCtx(){
   var h='<span>'+esc(mode)+(cart.length?(' &middot; '+cart.length+' line'+(cart.length===1?'':'s')):'')+'</span>';
-  if(mode==='Dine In')h+='<span class="chg" id="ctxTable">Table: <b>'+esc(curTable||'--')+'</b></span>';
+  if(mode==='Dine In')h+='<span class="chg" id="ctxTable" title="Table shift/change">&#127869; Table: <b>'+esc(curTable||'select')+'</b> &#8646;</span>';
   if(mode==='Home Delivery')h+='<span class="chg" id="ctxCust">'+esc(curCustName)+(curCustPhone?' &middot; '+esc(curCustPhone):'')+'</span>';
   if(mode==='Takeaway')h+='<span class="chg" id="ctxCust">'+esc(curCustName)+'</span>';
   h+='<span class="chg" id="ctxMode">Change</span>';
   var el=$('#ctx'); if(!el)return; el.innerHTML=h;
   var a=$('#ctxMode'); if(a)a.onclick=function(){newBillFlow(true)};
-  var t=$('#ctxTable'); if(t)t.onclick=function(){newBillFlow(true)};
+  var t=$('#ctxTable'); if(t)t.onclick=changeTable;
   var c=$('#ctxCust'); if(c)c.onclick=function(){newBillFlow(true)};
 }
 function renderAll(){renderStrip();renderCats();renderGrid();renderCart()}
@@ -417,7 +421,7 @@ function renderGrid(){
       +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))
       +'<span class="catbdg">'+esc(p.cat)+'</span>'
       +'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button></div>'
-      +'<div class="pb"><div class="pn" title="'+esc(p.name)+'">'+esc(p.name)+'</div>'
+      +'<div class="pb"><div class="pn" style="color:#15221b;font-size:13px;font-weight:800" title="'+esc(p.name)+'">'+esc(p.name||'(no name)')+'</div>'
       +'<div class="pp">'+money(p.price)+(p.weighted?' <small>/ KG</small>':(p.pizza?' <small>onwards</small>':''))+'</div>'
       +'<div class="prow"><div class="qb"><button data-dec="'+esc(p.id)+'">-</button>'
       +'<span data-calc="'+esc(p.id)+'" title="Calculator">'+qfmt(q)+'</span>'
@@ -507,6 +511,37 @@ function optionsModal(p){
 
 
 
+
+/* Customer table shift kar de to yahan se table badal lein (bill wahi rehta hai) */
+function changeTable(){
+  var bb=api('pos-boot'); if(bb.ok)BOOT.tables=bb.boot.tables;
+  var list=(BOOT.tables||[]);
+  var body=list.length?'<div class="tgrid" id="ctg">'+list.map(function(t){
+    var n=esc(t.display_name||t.name), busy=t.status==='OCCUPIED', cur=(n===curTable);
+    return '<button class="tcard'+(busy&&!cur?' busy':'')+(cur?' cur':'')+'" data-t="'+n+'"><b>'+n+'</b><small>'
+      +(cur?'Current':(busy?'Occupied':'Available'))+(t.seats?(' &middot; '+t.seats+' seats'):'')+'</small></button>';
+  }).join('')+'</div>':'<div class="cempty">Koi table nahi</div>';
+  var ov=modal('<div class="dh"><h3>Shift / Change Table</h3><p>Mojooda bill'+(curTable?(' ('+esc(curTable)+')'):'')+' doosre table par shift karein</p></div>'
+    +'<div class="db">'+body+'<div style="margin-top:10px"><button class="tb" id="ctNew">+ New Table</button></div></div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button></div>',true);
+  function bind(){
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-t]'),function(b){b.onclick=function(){
+      var old=curTable; curTable=b.dataset.t;
+      ov.remove();renderCtx();renderCart();
+      toast(old?('Bill '+old+' se '+curTable+' par shift ho gaya'):('Table '+curTable+' select'));
+    }});
+  }
+  bind();
+  ov.querySelector('#ctNew').onclick=function(){
+    var n=prompt('New table name:','Table '+((BOOT.tables||[]).length+1));
+    if(!n)return;
+    var r=api('pos-table-create',{name:n.trim(),seats:4});
+    if(!r.ok){toast(r.message||'Failed');return}
+    var b2=api('pos-boot'); if(b2.ok)BOOT.tables=b2.boot.tables;
+    ov.remove();changeTable();
+  };
+}
+
 /* ============ ITEM PICTURE (auto-fetch / URL / upload) ============ */
 function imageModal(id){
   var p=BOOT.products.filter(function(x){return x.id===id})[0];
@@ -514,21 +549,28 @@ function imageModal(id){
   var url=p.img||'';
   var ov=modal('<div class="dh"><h3>Item Picture &mdash; '+esc(p.name)+'</h3><p>Auto fetch karein, URL dalein, ya apni picture upload karein.</p></div>'
     +'<div class="db"><div class="imgprev"><img id="ipImg" src="'+esc(url)+'" alt="" onerror="this.style.visibility=\'hidden\'"></div>'
-    +'<div class="qv" style="grid-template-columns:1fr 1fr;margin:11px 0">'
-      +'<button id="ipAuto">&#128269; Auto fetch by name</button>'
-      +'<button id="ipShuffle">&#127922; Another photo</button></div>'
+    +'<div class="qv" style="grid-template-columns:1fr 1fr 1fr;margin:11px 0">'
+      +'<button id="ipAuto">&#128269; Auto fetch</button>'
+      +'<button id="ipShuffle">&#127922; Another photo</button>'
+      +'<button id="ipGoogle">&#127760; Google Images</button></div>'
     +'<label class="f">Image URL</label><input class="inp" id="ipUrl" value="'+esc(url.indexOf('data:')===0?'':url)+'" placeholder="https://...">'
     +'<label class="f" style="margin-top:10px">Ya apni file upload karein (max ~300KB)</label>'
     +'<input class="inp" id="ipFile" type="file" accept="image/*">'
-    +'<div class="box" style="font-size:11px;color:var(--ink2)">Auto fetch item ke naam se photo laata hai. Pasand na aaye to "Another photo" dabayein.</div></div>'
+    +'<div class="box" style="font-size:11px;color:var(--ink2)"><b>Auto fetch</b> item ke naam se photo laata hai. Pasand na aaye to <b>Another photo</b>. <b>Google Images</b> se picture par right-click &rarr; "Copy image address" &rarr; upar URL box mein paste karein. Ya apni file upload karein.</div></div>'
     +'<div class="df"><button class="sec" data-x>Cancel</button><button class="sec" id="ipClear">Remove</button><button class="go" id="ipSave">Save Picture</button></div>');
   function setUrl(u){url=u;var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=u;if(u.indexOf('data:')!==0)ov.querySelector('#ipUrl').value=u}
+  /* loremflickr = free keyword image service, koi API key nahi.
+     (source.unsplash.com band ho chuka hai, is liye hataya gaya.) */
   function autoUrl(){
-    var q=encodeURIComponent(p.name+' food');
-    return 'https://source.unsplash.com/400x300/?'+q+'&sig='+Math.floor(Math.random()*100000);
+    var kw=(p.name||'food').toLowerCase().replace(/[^a-z0-9 ]/g,'').trim().split(/\s+/).slice(0,3).join(',');
+    return 'https://loremflickr.com/400/300/'+encodeURIComponent(kw||'food')+',food?lock='+Math.floor(Math.random()*100000);
   }
   ov.querySelector('#ipAuto').onclick=function(){setUrl(autoUrl());toast('Photo fetch ki gayi - pasand na ho to Another photo')};
   ov.querySelector('#ipShuffle').onclick=function(){setUrl(autoUrl())};
+  ov.querySelector('#ipGoogle').onclick=function(){
+    window.open('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(p.name+' food'),'_blank');
+    toast('Google Images khul gaya - picture par right-click > Copy image address, phir URL box mein paste karein');
+  };
   ov.querySelector('#ipUrl').oninput=function(){url=this.value.trim();var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=url};
   ov.querySelector('#ipFile').onchange=function(){
     var f=this.files&&this.files[0]; if(!f)return;
@@ -660,8 +702,10 @@ function newCustomerModal(cb){
 function totals(){
   var sub=cart.reduce(function(a,l){return a+l.qty*l.price},0);
   var d=Math.min(disc.type==='percent'?sub*disc.value/100:disc.value,sub);
-  var base=sub-d, svc=base*orderSvc/100, tax=(base+svc)*orderTax/100;
-  return {sub:sub,disc:d,svc:svc,tax:tax,grand:base+svc+tax};
+  var base=sub-d;
+  var sv=svc.type==='percent'?base*svc.value/100:svc.value;
+  var tax=(base+sv)*orderTax/100;
+  return {sub:sub,disc:d,svc:sv,tax:tax,grand:base+sv+tax};
 }
 function renderCart(){
   var c=$('#cart');
@@ -673,7 +717,7 @@ function renderCart(){
       +(l.sentQty>0?'<span class="sent">Sent: '+qfmt(l.sentQty)+'</span> ':'')
       +(l.note?esc(l.note):(l.sentQty>0?'':'&nbsp;'))+'</small></div>'
       +'<div class="cir">'+money(l.price)+'</div>'
-      +'<div class="cit">'+money(l.qty*l.price)+'<button class="cix" data-cx="'+i+'">&times;</button></div></div>';
+      +'<div class="cit"><span>'+money(l.qty*l.price)+'</span><button class="cix" data-cx="'+i+'">&times;</button></div></div>';
   }).join('');
   Array.prototype.forEach.call(c.querySelectorAll('[data-cu]'),function(b){b.onclick=function(e){e.stopPropagation();cart[b.dataset.cu].qty++;renderCart()}});
   Array.prototype.forEach.call(c.querySelectorAll('[data-cd]'),function(b){b.onclick=function(e){e.stopPropagation();var i=b.dataset.cd,l=cart[i];l.qty--;if(l.qty<=0)cart.splice(i,1);renderCart()}});
@@ -687,8 +731,8 @@ function renderCart(){
   var t=totals();
   $('#tSub').textContent=money(t.sub);
   $('#tDisc').textContent='- '+money(t.disc);
-  $('#tSvc').textContent=money(t.svc)+(orderSvc?' ('+orderSvc+'%)':'');
-  $('#tTax').textContent=money(t.tax)+(orderTax?' ('+orderTax+'% '+(orderTax===SET.tax_card?'card':'cash')+')':'');
+  $('#tSvc').textContent=money(t.svc)+(svc.value&&svc.type==='percent'?' ('+svc.value+'%)':'');
+  $('#tTax').textContent=money(t.tax)+' ('+orderTax+'% '+esc(payMethod)+')';
   $('#tGrand').textContent=money(t.grand);
 
   $('#kotBtn').disabled=!cart.some(function(l){return l.qty-l.sentQty>0});
@@ -743,13 +787,16 @@ function sendKot(autoPrint){
   var delta=cart.filter(function(l){return l.qty-l.sentQty>0})
     .map(function(l){return {id:l.id,name:l.name,qty:l.qty-l.sentQty,price:l.price,note:l.note||''}});
   if(!delta.length){toast('Kitchen ko bhejne ke liye kuch naya nahi');return}
+  /* RUNNING = is bill ka kuch pehle hi kitchen ja chuka hai (mark karne se PEHLE dekho) */
+  var wasRunning=cart.some(function(l){return l.sentQty>0});
   var r=api('pos-kot',payload());
   if(!r.ok){toast(r.message||'KOT save nahi hua - kitchen ko NahI gaya');return}
   syncBill(r);
   cart.forEach(function(l){l.sentQty=l.qty});
   renderCart();
-  if(autoPrint)printNode(slipNode('KOT',delta));
-  else slipPreview('KOT',delta);
+  var kinfo={running:wasRunning};
+  if(autoPrint)printNode(slipNode('KOT',delta,kinfo));
+  else slipPreview('KOT',delta,kinfo);
   toast('KOT sent - sirf naye '+delta.length+' item(s)');
 }
 $('#kotBtn').onclick=function(){sendKot(true)};
@@ -819,7 +866,7 @@ function slipHtml(kind,lines,info){
   var head;
   if(kind==='KOT'){
     /* SIMPLE KOT: restaurant detail nahi. Sirf type, new/running, time, items. */
-    var isRunning=cart.some(function(l){return l.sentQty>0});
+    var isRunning=info&&typeof info.running!=='undefined'?!!info.running:cart.some(function(l){return l.sentQty>0});
     head='<div class="kotType">'+esc(((info&&info.mode)||mode).toUpperCase())
       +((info&&info.table)||curTable?(' - '+esc((info&&info.table)||curTable)):'')+'</div>'
       +'<div class="kotTag">'+(isRunning?'RUNNING ORDER':'NEW ORDER')+'</div>'
@@ -1007,8 +1054,39 @@ function pct(title,cur,cb){
     +'<div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="ok">Apply</button></div>');
   ov.querySelector('#ok').onclick=function(){cb(Number(ov.querySelector('#pv').value||0));ov.remove();renderCart()};
 }
-$('#edSvc').onclick=function(){pct('Service Charge',orderSvc,function(v){orderSvc=v})};
-$('#edTax').onclick=function(){pct('Sales Tax',orderTax,function(v){orderTax=v})};
+$('#edSvc').onclick=function(){
+  var ov=modal('<div class="dh"><h3>Service Charge</h3><p>Percent ya flat amount</p></div><div class="db"><div class="fg">'
+    +'<div><label class="f">Type</label><select class="inp" id="st"><option value="percent">Percent (%)</option><option value="flat">Flat (PKR)</option></select></div>'
+    +'<div><label class="f">Value</label><input class="inp" id="sv" type="number" value="'+svc.value+'"></div></div>'
+    +'<label class="f" style="margin-top:11px">Quick percent</label><div class="qv" style="grid-template-columns:repeat(4,1fr)">'
+    +[3,5,8,10].map(function(v){return '<button data-sp="'+v+'">'+v+'%</button>'}).join('')+'</div>'
+    +'<label class="f" style="margin-top:9px">Quick amount</label><div class="qv" style="grid-template-columns:repeat(4,1fr)">'
+    +[50,100,200,300].map(function(v){return '<button data-sf="'+v+'">'+v+'</button>'}).join('')+'</div></div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="ok">Apply</button></div>');
+  ov.querySelector('#st').value=svc.type;
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-sp]'),function(b){b.onclick=function(){
+    ov.querySelector('#st').value='percent';ov.querySelector('#sv').value=b.dataset.sp}});
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-sf]'),function(b){b.onclick=function(){
+    ov.querySelector('#st').value='flat';ov.querySelector('#sv').value=b.dataset.sf}});
+  ov.querySelector('#ok').onclick=function(){
+    svc={type:ov.querySelector('#st').value,value:Number(ov.querySelector('#sv').value||0)};
+    ov.remove();renderCart();
+  };
+};
+$('#edTax').onclick=function(){
+  var ov=modal('<div class="dh"><h3>Sales Tax</h3><p>Tax rate payment method par depend karta hai (portal settings se)</p></div>'
+    +'<div class="db"><label class="f">Payment Method</label><div class="pmg" id="txPm">'
+    +['Cash','Card','Raast','Easypaisa','JazzCash','Bank'].map(function(m){
+      return '<button class="'+(m===payMethod?'on':'')+'" data-tp="'+m+'">'+m+'<br><small>'+(/^(cash)$/i.test(m)?SET.tax_cash:SET.tax_card)+'%</small></button>'}).join('')
+    +'</div><div class="box" style="font-size:11.5px;color:var(--ink2)">Cash par <b>'+SET.tax_cash+'%</b>, Card/Online par <b>'+SET.tax_card+'%</b>. '
+    +'Ye rates System &amp; Settings se change hote hain. Charge screen par method badalne se tax khud update ho jata hai.</div></div>'
+    +'<div class="df"><button class="sec" data-x>Close (Esc)</button></div>');
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-tp]'),function(b){b.onclick=function(){
+    payMethod=b.dataset.tp;orderTax=taxPct(payMethod);
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-tp]'),function(o){o.classList.remove('on')});
+    b.classList.add('on');renderCart();toast(payMethod+' - tax '+orderTax+'%');
+  }});
+};
 
 /* ================= CUSTOMER / TABLE ================= */
 
@@ -1131,7 +1209,7 @@ $('#sysBtn').onclick=function(){
     var r=api('pos-settings-save',{tax_cash:Number(ov.querySelector('#stCash').value||0),
       tax_card:Number(ov.querySelector('#stCard').value||0),service_charge:Number(ov.querySelector('#stSvc').value||0)});
     if(!r.ok){this.disabled=false;this.textContent='Save Tax Settings';toast(r.message||'Failed');return}
-    SET=r.settings;orderTax=taxPct(payMethod);orderSvc=Number(SET.service_charge)||0;
+    SET=r.settings;orderTax=taxPct(payMethod);svc={type:'percent',value:Number(SET.service_charge)||0};
     ov.remove();renderCart();toast('Tax settings saved');
   };
 };
