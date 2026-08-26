@@ -170,6 +170,13 @@ final class Sync
                     $same ? "Both on $lb"
                           : "This computer: $lb  |  Cloud: " . ($cb !== '' ? $cb : 'unknown')
                             . " - deploy the latest build to the cloud and re-download the offline package");
+                $diff = self::schemaDiff();
+                $bad = \array_slice($diff, 0, 4);
+                $add('Schema match', empty($diff), empty($diff)
+                    ? 'Cloud database matches this computer'
+                    : \implode(' | ', \array_map(
+                        fn($d) => $d['table'] . '.' . $d['column'] . ': ' . $d['issue'], $bad))
+                      . (\count($diff) > 4 ? (' (+' . (\count($diff) - 4) . ' more)') : ''));
                 $add('Bulk sync support', !empty($j['features']['bulk_sync']),
                     !empty($j['features']['bulk_sync'])
                         ? 'Cloud supports fast bulk sync'
@@ -651,10 +658,21 @@ final class Sync
                    "2 rows to upload" ki wajah). Is liye: aage barh jao,
                    magar conflict ko permanently record kar do. */
                 $detail = (string)($r['row_error'] ?? '');
+                if ($detail === '') {
+                    // Cloud ne wajah nahi batayi -> aksar cloud par purana
+                    // build hai jo row_error lautata hi nahi.
+                    $cb = self::cloudBuild()['build'];
+                    $lb = self::localBuild();
+                    if ($cb !== '' && \strtok($cb, ' ') !== \strtok($lb, ' ')) {
+                        $detail = "cloud is on an older build ($cb) and cannot report the reason - "
+                                . "deploy $lb to the server";
+                    } else {
+                        $detail = 'run "Check" for a schema comparison';
+                    }
+                }
                 $why = $conf > 0
                     ? ($conf . ' row(s) rejected - number already used by another device')
-                    : (($sent - $applied) . ' row(s) rejected by cloud'
-                       . ($detail !== '' ? (' - ' . $detail) : ''));
+                    : (($sent - $applied) . ' row(s) rejected by cloud - ' . $detail);
                 self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $why];
                 foreach (($r['conflict_detail'] ?? []) as $cd) self::$lastConflicts[] = $cd;
 
@@ -694,6 +712,69 @@ final class Sync
         }
         if ($cur) $chunks[] = $cur;
         return $chunks;
+    }
+
+    /**
+     * Local aur cloud ke schema ka farq. Row rejection ki sab se aam wajah
+     * yehi hoti hai: cloud par column ghayab hai, ya chhota hai, ya NOT NULL
+     * hai jabke local uske baghair row bhej raha hai.
+     * @return array<int,array{table:string,column:string,issue:string}>
+     */
+    public static function schemaDiff(array $tables = []): array
+    {
+        $c = self::cfg();
+        if (!$tables) $tables = \array_slice((array)($c['push_tables'] ?? []), 0, 25);
+        $out = [];
+        try {
+            $resp = self::post('sync-schema', ['tables' => \array_values($tables)]);
+        } catch (\Throwable $e) {
+            return [['table' => '-', 'column' => '-', 'issue' => 'Cloud schema not readable: ' . $e->getMessage()]];
+        }
+        $cloud = (array)($resp['schema'] ?? []);
+        if (!$cloud) {
+            return [['table' => '-', 'column' => '-',
+                     'issue' => 'Cloud did not return its schema (older build on the server).']];
+        }
+        $pdo = DB::pdo();
+        foreach ($tables as $t) {
+            if (!isset($cloud[$t])) continue;
+            try {
+                $q = $pdo->prepare("SELECT column_name c,column_type t,is_nullable n
+                                      FROM information_schema.columns
+                                     WHERE table_schema=DATABASE() AND table_name=?");
+                $q->execute([$t]);
+                $local = [];
+                foreach ($q->fetchAll() as $r) $local[$r['c']] = ['type' => $r['t'], 'null' => $r['n']];
+            } catch (\Throwable $e) { continue; }
+
+            foreach ($local as $col => $def) {
+                if (!isset($cloud[$t][$col])) {
+                    $out[] = ['table' => $t, 'column' => $col, 'issue' => 'missing on cloud (data in this column will be dropped)'];
+                    continue;
+                }
+                $cd = $cloud[$t][$col];
+                if ($def['type'] !== $cd['type']) {
+                    $lm = self::typeLen($def['type']); $cm = self::typeLen($cd['type']);
+                    if ($lm > 0 && $cm > 0 && $cm < $lm) {
+                        $out[] = ['table' => $t, 'column' => $col,
+                                  'issue' => "cloud column is smaller ({$cd['type']} vs {$def['type']}) - rows can be rejected"];
+                    }
+                }
+            }
+            foreach ($cloud[$t] as $col => $cd) {
+                if (isset($local[$col])) continue;
+                if ($cd['null'] === 'NO' && $cd['default'] === null) {
+                    $out[] = ['table' => $t, 'column' => $col,
+                              'issue' => 'cloud requires this column but this computer does not have it - rows will be rejected'];
+                }
+            }
+        }
+        return $out;
+    }
+
+    private static function typeLen(string $t): int
+    {
+        return \preg_match('/\((\d+)/', $t, $m) ? (int)$m[1] : 0;
     }
 
     /** Lagatar nakaam koshishon ki ginti (scope ke against). */

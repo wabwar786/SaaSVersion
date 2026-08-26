@@ -1732,3 +1732,42 @@ run 4-5 saaf, row quarantine mein
 `payments | 1 | REJECTED | ... SQLSTATE[22001]: String data, right truncat...` ✓
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V52 — Schema comparison: ab wajah khud pakri jayegi
+
+## Aap ke naye log ka matlab
+Message aaya: *"2 row(s) rejected by cloud"* — **bina kisi wajah ke**.
+V51 mein cloud ko `row_error` bhejna tha. Wajah nadarad hone ka matlab
+sirf ek hai: **cloud par abhi V51 se purana build hai**, jo yeh field
+lautata hi nahi.
+
+Ab yeh soorat chup nahi rahegi — message khud batayega:
+*"N row(s) rejected by cloud - cloud is on an older build (V44 build ...)
+and cannot report the reason - deploy V52 build ... to the server"*
+
+## Naya tool: Schema comparison (Check button mein)
+Row rejection ki sab se aam wajah **schema drift** hoti hai — cloud ka
+column ghayab, chhota, ya NOT NULL. Naya `sync-schema` endpoint cloud ka
+schema deta hai aur node apne se compare karta hai. **Check** mein naya
+step **"Schema match"**:
+
+  FAIL Schema match  orders.bill_no: cloud column is smaller
+                     (varchar(40) vs varchar(80)) - rows can be rejected
+                     | orders.notes: missing on cloud
+                     | payments.provider_reference: cloud column is smaller
+
+Teen tarah ke masle pakre jate hain:
+  * column cloud par **ghayab** (us column ka data gir jata hai)
+  * cloud ka column **chhota** (rows reject hoti hain)
+  * cloud par **NOT NULL** column jo node ke paas hai hi nahi
+
+## Tested
+Barabar schema par: sirf asli drift dikhi (orders.bill_no 40 vs 80) ✓
+Jaan boojh kar cloud par column chhota + ek column drop kiya:
+teeno issues theek pakre gaye ✓
+Purane cloud build ka message: verify kiya ✓
+Diagnose ke ab **11 steps** (Build match + Schema match samet) ✓
+
+PHP lint clean · 44 pages OK
