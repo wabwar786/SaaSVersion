@@ -17,7 +17,25 @@ function shift_report(array $sh, ?string $until): array {
           'sales_total'=>$sales,'by_method'=>$methods,'cash_sales'=>$cash,
           'cash_expenses'=>(float)$e['cashx'],'all_expenses'=>(float)$e['allx'],'expected_cash'=>$expected];
 }
-function pos_bill_guard(array $d):string{$bill=ltrim((string)($d['bill_no']??''),'#');$p=DB::pdo();if($bill!==''){$q=$p->prepare("SELECT order_status FROM orders WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1");$q->execute([site_id(),today(),$bill]);$st=$q->fetchColumn();if($st===false||$st==='OPEN')return $bill;}return (string)\Aio\Services\PageData::nextBill();}
+/* Bill number ab node ke prefix ke saath (offline: "L1-0007", cloud: "0007").
+   Warna do nodes ke bill takra kar cloud par ek doosre ko mita dete the. */
+function pos_bill_no(int $n):string{
+  $pre=\Aio\Services\PageData::billPrefix();
+  return $pre.str_pad((string)$n,4,'0',STR_PAD_LEFT);
+}
+function pos_bill_guard(array $d):string{
+  $bill=ltrim((string)($d['bill_no']??''),'#');
+  $pre=\Aio\Services\PageData::billPrefix();
+  if($bill!==''&&$pre!==''&&strpos($bill,$pre)!==0)$bill=$pre.ltrim($bill,'-');
+  $p=DB::pdo();
+  if($bill!==''){
+    $q=$p->prepare("SELECT order_status FROM orders WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1");
+    $q->execute([site_id(),today(),$bill]);
+    $st=$q->fetchColumn();
+    if($st===false||$st==='OPEN')return $bill;
+  }
+  return pos_bill_no((int)\Aio\Services\PageData::nextBill());
+}
 function needLogin(){if(!Auth::user())fail('Login required',401);}function needSuper(){if(!Platform::superUser())fail('Super admin login required',401);}
 /* ============================================================
    SYNC AUTH — ab PER-TENANT.
@@ -169,7 +187,7 @@ case 'inventory-item-create':needLogin();Auth::requireModule('inventory');$d=bod
 case 'purchase-receive':needLogin();Auth::requireModule('purchasing');$d=body();$p=DB::pdo();$supplierName=$d['meta']['supplier']??'Supplier';$q=$p->prepare("SELECT id FROM suppliers WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$supplierName]);$sid=$q->fetchColumn();if(!$sid){$sid=uuid();$p->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,status) VALUES(?,?,?,?,'ACTIVE')")->execute([$sid,tenant_id(),site_id(),$supplierName]);}$lines=[];foreach($d['lines'] as $x){$itemId=(string)($x['itemId']??'');$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE id=? AND site_id=?");$iq->execute([$itemId,site_id()]);$it=$iq->fetch();if(!$it&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$it=$iq->fetch();}if(!$it)continue;$lines[]=['item_id'=>$it['id'],'purchase_qty'=>(float)$x['purchaseQty'],'purchase_factor'=>(float)$it['purchase_factor'],'unit_cost'=>(float)$x['unitCost'],'location_id'=>$it['default_storage_location_id']?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn(),'batch_no'=>'','expiry_date'=>''];}$grn=$d['meta']['reference']??('GRN-'.date('Ymd-His'));PurchaseService::receive(['grn_no'=>$grn,'supplier_id'=>$sid,'supplier_invoice_no'=>''],$lines);$amount=array_sum(array_map(fn($x)=>(float)$x['purchaseQty']*(float)$x['unitCost'],$d['lines']));ok(['amount'=>$amount,'movements'=>$lines,'state'=>PageData::storeState()]);
 case 'store-save-state':needLogin();$d=body();$p=DB::pdo();foreach($d['menuCategories']??[] as $c){$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$c['name']]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,is_active) VALUES(?,?,?,?,1)")->execute([$cid,tenant_id(),site_id(),$c['name']]);}$station=strtoupper($c['printer']??'MAIN');$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND UPPER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$station]);$pid=$pr->fetchColumn();if($pid){$p->prepare("DELETE FROM menu_category_printer_routes WHERE category_id=?")->execute([$cid]);$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,is_active) VALUES(?,?,?,?,?,1,1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}}ok(['state'=>PageData::storeState()]);
 case 'recipe-save':needLogin();Auth::requireModule('recipe');$d=body();$p=DB::pdo();$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$cq->execute([site_id(),$d['category']]);$cid=$cq->fetchColumn();if(!$cid)fail('Menu category not found.');$menuId=$d['id']??'';if($menuId&&!preg_match('/^[0-9a-f-]{36}$/i',$menuId))$menuId='';$ingredients=[];foreach($d['ingredients']??[] as $x){$iid=(string)($x['itemId']??'');if(!preg_match('/^[0-9a-f-]{36}$/i',$iid)&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$iid=$iq->fetchColumn()?:'';}if($iid)$ingredients[]=['item_id'=>$iid,'qty'=>(float)$x['qty'],'waste_pct'=>(float)($x['wastePct']??0)];}$id=RecipeService::save(['menu_item_id'=>$menuId,'category_id'=>$cid,'code'=>'','name'=>$d['menuName'],'description'=>'','consumption_type'=>$d['mode']==='direct'?'DIRECT_INVENTORY':'RECIPE','direct_inventory_item_id'=>(function()use($p,$d){$iid=$d['inventoryItemId']??null;if($iid&&preg_match('/^[0-9a-f-]{36}$/i',(string)$iid))return$iid;if(!empty($d['inventoryItemName'])){$q=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$d['inventoryItemName']]);return$q->fetchColumn()?:null;}return null;})(),'direct_inventory_qty'=>$d['directQty']??null,'base_price'=>0,'yield_qty'=>$d['yieldQty']??1],$ingredients);$state=PageData::storeState();$recipe=null;foreach($state['recipes'] as $r)if($r['id']===$id)$recipe=$r;ok(['recipe'=>$recipe?:['id'=>$id]+$d,'state'=>$state]);
-case 'pos-next-bill':needLogin();ok(['next'=>PageData::nextBill()]);
+case 'pos-next-bill':needLogin();ok(['next'=>pos_bill_no((int)PageData::nextBill())]);
 case 'pos-diagnostics':needLogin();$p=DB::pdo();$out=['tenant_id'=>tenant_id(),'site_id'=>site_id(),'role'=>cfg('app.role')];
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$out['site_name']=$sq->fetchColumn()?:'(site row missing!)';
 $c=function($sql,$a)use($p){$q=$p->prepare($sql);$q->execute($a);return (int)$q->fetchColumn();};
@@ -214,12 +232,17 @@ if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE t
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
 $root=dirname(__DIR__);
 require_once $root.'/tools/build_offline_bundle.php';
+/* Kitne offline packages pehle ban chuke: har naye ko agla node code milta hai */
+$nodeSeq=0;
+try{$nq=$p->prepare("SELECT COUNT(DISTINCT node_ip) FROM sync_activity WHERE tenant_id=?");$nq->execute([tenant_id()]);$nodeSeq=(int)$nq->fetchColumn();}catch(Throwable $e){}
 $base=rtrim((string)cfg('app.base_url'),'/');
 /* Config seal ke andar jata hai - sync token plaintext disk par NahI */
 $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_url'=>'http://localhost:8080',
                  'cloud_url'=>$base,'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
                  /* helpers.php local mode mein yahi keys parhta hai */
-                 'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi'],
+                 'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi',
+                 /* Har offline installation ka apna bill prefix - takrao khatam */
+                 'node_code'=>'L'.(string)(1+(int)$nodeSeq)],
  'db'=>['host'=>'127.0.0.1','port'=>3307,'database'=>'aio_local','username'=>'root','password'=>'','charset'=>'utf8mb4'],
  'tenant'=>['id'=>(string)$t['id'],'slug'=>(string)$t['slug'],'site_id'=>site_id(),'site_name'=>(string)$siteName],
  'sync'=>[
@@ -609,7 +632,7 @@ if($mode==='existing'&&!empty($inv['item_id'])){$iq=$p->prepare("SELECT id FROM 
 elseif($mode==='new'){$invName=trim((string)($inv['name']??$name));$unitCode=strtoupper(trim((string)($inv['unit']??'PCS')))?:'PCS';$uq=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$uq->execute([$unitCode]);$unitId=$uq->fetchColumn();if(!$unitId){$uq=$p->prepare("SELECT id FROM units ORDER BY code LIMIT 1");$uq->execute();$unitId=$uq->fetchColumn();}if(!$unitId)fail('No units configured');$lq=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY name LIMIT 1");$lq->execute([site_id()]);$loc=$lq->fetchColumn();$directId=\Aio\Services\InventoryService::createItem(['category_id'=>null,'sku'=>null,'barcode'=>null,'name'=>$invName,'usage_mode'=>'DIRECT_SALE','stock_unit_id'=>$unitId,'purchase_unit_name'=>$unitCode,'purchase_factor'=>1,'avg_cost'=>(float)($inv['cost']??0),'reorder_level'=>(float)($inv['reorder']??0),'track_batch'=>0,'track_expiry'=>0,'location_id'=>$loc?:null,'opening_qty'=>(float)($inv['opening_qty']??0)]);$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
 $mid=uuid();$vn=0;DB::tx(function($p)use($d,$mid,$cid,$name,$itemType,$consumption,$directId,$directQty,$price,&$vn){$p->prepare("INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,description,item_type,consumption_type,direct_inventory_item_id,direct_inventory_qty,base_price,is_active,is_online,is_pos) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,1,1)")->execute([$mid,tenant_id(),site_id(),$cid,$name,(string)($d['desc']??''),$itemType,$consumption,$directId,$directQty,$price]);$opts=is_array($d['variants']??null)?$d['variants']:[];foreach($opts as $o){$vname=trim((string)($o['name']??''));$vprice=(float)($o['price']??0);if($vname===''||$vprice<=0)continue;$vn++;$p->prepare("INSERT INTO menu_item_variants(id,tenant_id,site_id,menu_item_id,name,price,sort_order,is_active) VALUES(?,?,?,?,?,?,?,1)")->execute([uuid(),tenant_id(),site_id(),$mid,$vname,$vprice,$vn]);}});
 ok(['id'=>$mid,'category_id'=>$cid,'inventory_item_id'=>$directId,'variants'=>$vn]);
-case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);ok(['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>PageData::nextBill(),'dashboard'=>PageData::dashboard()]);
+case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);ok(['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard()]);
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();$d['bill_no']=pos_bill_guard($d);$r=PosService::sendKot($d,$d['items']??[]);$r['bill_no']=$d['bill_no'];ok($r);
 case 'customer-order':
 $d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();
@@ -679,9 +702,14 @@ ok(['row'=>$row]);
 case 'sync-ping':ok(['role'=>cfg('app.role'),'time'=>date('c')]);
 case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
  if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
+ Sync::$lastConflicts=[];
+ $sent=count($d['rows']??[]);
  $n=Sync::applyRows($tbl,$d['rows']??[],$stid);
+ $conf=Sync::$lastConflicts;
  if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
- ok(['applied'=>$n]);
+ if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
+ ok(['applied'=>$n,'sent'=>$sent,'conflicts'=>count($conf),
+     'conflict_detail'=>array_slice($conf,0,5)]);
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;

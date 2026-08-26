@@ -47,8 +47,27 @@ final class PageData {
   $tb=$p->prepare("SELECT id,display_name,status,seats FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$tb->execute([site_id()]);$tables=$tb->fetchAll();
   $sh=$p->prepare("SELECT id,shift_no FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$sh->execute([site_id()]);$shift=$sh->fetch()?:null;
   $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,dt.display_name table_name,c.full_name customer_name,pm.name payment_name,fi.provider_invoice_no fbr_no FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN payments py ON py.order_id=o.id LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED' ORDER BY o.closed_at DESC LIMIT 50");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
-  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'nextBill'=>self::nextBill()]; }
- public static function nextBill(): int {$p=DB::pdo();$q=$p->prepare("SELECT bill_no FROM orders WHERE site_id=? AND business_date=? ORDER BY created_at DESC LIMIT 200");$q->execute([site_id(),today()]);$max=0;foreach($q->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$max=max($max,$n);}return $max+1;}
+  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
+ /** Har node ka apna bill prefix (offline package config se; cloud par khali).
+  *  Is ke baghair offline aur online dono aaj ke din 0001 banate the aur
+  *  cloud par unique (site,date,bill_no) takra kar ek doosre ko mita dete the. */
+ public static function billPrefix(): string {
+   $c = (string)(cfg('app.node_code') ?: '');
+   $c = strtoupper(preg_replace('/[^A-Za-z0-9]/','',$c) ?? '');
+   return $c !== '' ? substr($c,0,4).'-' : '';
+ }
+ public static function nextBill(): int {$p=DB::pdo();$pre=self::billPrefix();
+   $q=$p->prepare("SELECT bill_no FROM orders WHERE site_id=? AND business_date=? ORDER BY created_at DESC LIMIT 300");
+   $q->execute([site_id(),today()]);$max=0;
+   foreach($q->fetchAll() as $x){
+     $b=(string)$x['bill_no'];
+     // Sirf apne hi node ke numbers ginon - doosre node ka L1-0007 hamara
+     // counter aage na barhaye.
+     if($pre!==''){ if(strpos($b,$pre)!==0) continue; $b=substr($b,strlen($pre)); }
+     elseif(preg_match('/^[A-Z0-9]{1,4}-/',$b)) continue;
+     $n=(int)preg_replace('/\D/','',$b);$max=max($max,$n);
+   }
+   return $max+1;}
  public static function moduleData(string $page): ?array { $p=DB::pdo();$money=fn($n)=>'PKR '.number_format((float)$n,0);$tbl=null;$stats=[];
   if($page==='customers.html'){$q=$p->prepare("SELECT full_name,phone,(SELECT COUNT(*) FROM orders o WHERE o.customer_id=c.id) orders,(SELECT COALESCE(SUM(grand_total),0) FROM orders o WHERE o.customer_id=c.id AND o.order_status='CLOSED') spend,customer_type FROM customers c WHERE tenant_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 100");$q->execute([tenant_id()]);$rows=[];foreach($q->fetchAll() as $x)$rows[]=[$x['full_name'],$x['phone']?:'—',$x['orders'],$money($x['spend']),$x['customer_type'],'<span class="tag green">Active</span>'];$cnt=(int)$p->query("SELECT COUNT(*) FROM customers WHERE status='ACTIVE'")->fetchColumn();$stats=[$cnt,$cnt,0,'PKR 0'];$tbl=['headers'=>['Customer','Phone','Orders','Total Spend','Type','Status'],'rows'=>$rows];}
   elseif($page==='orders_management.html'){$q=$p->prepare("SELECT o.bill_no,o.service_mode,COALESCE(dt.display_name,c.full_name,'Walk-in') target,u.full_name waiter,(SELECT COUNT(*) FROM order_items i WHERE i.order_id=o.id) items,o.grand_total,o.order_status,o.opened_at FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN users u ON u.id=o.waiter_user_id WHERE o.site_id=? AND o.order_status<>'CLOSED' ORDER BY o.opened_at DESC LIMIT 100");$q->execute([site_id()]);$rows=[];foreach($q->fetchAll() as $x)$rows[]=[$x['bill_no'],self::modeLabel($x['service_mode']),$x['target'],$x['waiter']?:'—',$x['items'],$money($x['grand_total']),$x['order_status'],floor((time()-strtotime($x['opened_at']))/60).'m'];$running=count($rows);$held=self::count($p,"SELECT COUNT(*) FROM orders WHERE site_id=? AND hold_status=1 AND order_status<>'CLOSED'",[site_id()]);$stats=[$running,$held,self::count($p,"SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING')",[site_id()]),self::count($p,"SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status='READY'",[site_id()])];$tbl=['headers'=>['Bill','Mode','Table / Customer','Waiter','Items','Amount','Status','Age'],'rows'=>$rows];}

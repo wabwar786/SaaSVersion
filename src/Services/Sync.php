@@ -233,7 +233,7 @@ final class Sync
         $hasTenant = in_array('tenant_id', $cols, true);
         $ts        = self::tsColumn($table);
 
-        $applied = 0; $skipped = 0; $failed = 0; $lastErr = '';
+        $applied = 0; $skipped = 0; $failed = 0; $conflicts = 0; $lastErr = '';
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
         foreach ($rows as $row) {
             $data = array_intersect_key((array)$row, array_flip($cols));
@@ -250,14 +250,42 @@ final class Sync
                         $skipped++; continue;
                     }
                 }
-                $keys = array_keys($data);
-                $ph   = implode(',', array_fill(0, count($keys), '?'));
-                $set  = implode(',', array_map(fn($k) => "`$k`=VALUES(`$k`)",
-                            array_filter($keys, fn($k) => $k !== 'id')));
-                $sql  = "INSERT INTO `$table` (`" . implode('`,`', $keys) . "`) VALUES ($ph)";
-                if ($set !== '') $sql .= " ON DUPLICATE KEY UPDATE $set";
-                $pdo->prepare($sql)->execute(array_values($data));
-                $applied++;
+                /* PEHLE: "INSERT ... ON DUPLICATE KEY UPDATE" chalti thi. Agar
+                   doosre node ki row ka koi UNIQUE key (misal site+date+bill_no)
+                   takra jata to wo MOJOODA row ko overwrite kar deti thi —
+                   do alag bills mil kar ek ban jate the aur raqam badal jati
+                   thi, phir bhi "applied" count barh jata tha. Ab:
+                     - wahi id maujood  -> UPDATE by id
+                     - nahi maujood     -> INSERT; koi doosri unique takra
+                                           jaye to row REJECT + conflict log. */
+                $ex = $pdo->prepare("SELECT 1 FROM `$table` WHERE id=? LIMIT 1");
+                $ex->execute([$data['id']]);
+                if ($ex->fetchColumn()) {
+                    $upd = array_diff_key($data, ['id' => 1]);
+                    if ($upd) {
+                        $set = implode(',', array_map(fn($k) => "`$k`=?", array_keys($upd)));
+                        $args = array_values($upd); $args[] = $data['id'];
+                        $pdo->prepare("UPDATE `$table` SET $set WHERE id=?")->execute($args);
+                    }
+                    $applied++;
+                } else {
+                    $keys = array_keys($data);
+                    $ph   = implode(',', array_fill(0, count($keys), '?'));
+                    try {
+                        $pdo->prepare("INSERT INTO `$table` (`" . implode('`,`', $keys) . "`) VALUES ($ph)")
+                            ->execute(array_values($data));
+                        $applied++;
+                    } catch (\PDOException $pe) {
+                        if ((int)$pe->getCode() === 23000) {
+                            $conflicts++;
+                            self::$lastConflicts[] = ['table' => $table, 'id' => (string)$data['id'],
+                                'key' => isset($data['bill_no']) ? ('bill '.$data['bill_no']) : '',
+                                'error' => \substr($pe->getMessage(), 0, 140)];
+                            continue;
+                        }
+                        throw $pe;
+                    }
+                }
             } catch (\Throwable $e) {
                 // Ek row ka masla (misal duplicate bill number) poori batch
                 // ko na rokay — baqi rows chalti rahen.
@@ -269,12 +297,19 @@ final class Sync
         if ($failed > 0) {
             self::$lastRowErrors[$table] = "$failed row(s) skipped: $lastErr";
         }
+        if ($conflicts > 0) {
+            self::$lastRowErrors[$table] = ($self = self::$lastRowErrors[$table] ?? '')
+                . ($self ? ' | ' : '')
+                . "$conflicts row(s) rejected - duplicate key (another device already used that number)";
+        }
         self::$lastSkipped += $skipped;
         return $applied;
     }
 
     /** @var array<string,string> per-table row errors (diagnostics) */
     public static array $lastRowErrors = [];
+    /** @var array<int,array{table:string,id:string,key:string,error:string}> */
+    public static array $lastConflicts = [];
     public static int $lastSkipped = 0;
 
     /* ------------------------- watermark state ------------------------- */
@@ -453,15 +488,30 @@ final class Sync
                 $since = self::watermark($scope);
                 $rows = self::changedRows($table, $since, $batch);
                 if (!$rows) { $summary[$table] = 0; continue; }
-                self::post('sync-push', [
+                $resp = self::post('sync-push', [
                     'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
                     'table' => $table,
                     'rows' => $rows,
                 ]);
+                $sent    = count($rows);
+                $applied = isset($resp['applied']) ? (int)$resp['applied'] : $sent;
                 $ts = self::tsColumn($table);
                 $maxWm = end($rows)[$ts];
-                self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
-                $summary[$table] = count($rows);
+
+                if ($applied < $sent) {
+                    /* Cloud ne kuch rows qubool NahI kin (aksar duplicate bill
+                       number). Pehle watermark phir bhi aage barh jata tha aur
+                       wo rows HAMESHA ke liye gum ho jati thin. Ab watermark
+                       wahin rukta hai aur wajah log mein aati hai. */
+                    $why = !empty($resp['conflicts'])
+                        ? ($resp['conflicts'] . ' row(s) rejected by cloud (duplicate number from another device)')
+                        : (($sent - $applied) . ' row(s) not accepted by cloud');
+                    self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $why];
+                    self::setWatermark($scope, $since, 'ERROR', $why, $applied);
+                } else {
+                    self::setWatermark($scope, $maxWm, 'OK', null, $sent);
+                }
+                $summary[$table] = $applied;
             } catch (\Throwable $e) {
                 // Ek table ka masla baqi tables ko na rokay. Pehle poora
                 // sync yahin ruk jata tha aur pata bhi nahi chalta tha ke

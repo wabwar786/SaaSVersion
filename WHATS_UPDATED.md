@@ -1517,3 +1517,49 @@ boxes [0 · never · POS → System & Settings → Download Offline Version],
 View log khulta hai aur saaf batata hai ✓ page errors 0
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V47 — DATA LOSS FIX: bill numbers takrana + khamosh merge
+
+Aap ke do dashboards (local 31,146 / cloud 14,195) ka poora tajziya kiya.
+**Do alag masle** the:
+
+## Masla 1 — Cloud par purana build
+Aap ka local log `⬆144 rows OK` dikha raha tha (users 2, payments 6,
+kitchen_tickets 6, floors 2 ...) magar cloud "no branch computer yet".
+Wajah: Railway par **V42 se purana** build hai — us mein `sync_activity`
+table aur logging hai hi nahi. Data ja raha tha, cloud record nahi kar raha
+tha. **Hal: cloud par yeh version deploy karein** (ye aap ko karna hai).
+
+## Masla 2 — Bill numbers takra kar DATA MITA rahe the (asli sabab)
+`orders` par unique key hai `(site_id, business_date, bill_no)`. Offline
+node aur online POS dono aaj ke din `0001, 0002 ...` banate hain. Cloud par
+`INSERT ... ON DUPLICATE KEY UPDATE` chalti thi, to doosre node ka bill
+**mojooda bill ko overwrite** kar deta tha — do bills mil kar ek, raqam
+badal jati, aur server phir bhi `applied:1` keh deta tha.
+Sabit kiya:
+  cloud bill 7777 = 10,000 + offline bill 7777 = 20,000
+  -> cloud par EK row bachi, raqam 20,000 (10,000 wala bill gum)
+
+### Teen fix
+1. **Node-scoped bill numbers**: har offline package ko apna `node_code`
+   milta hai (L1, L2, ...) aur uske bills `L2-0001` bante hain. Cloud ke
+   bills `0001` hi rehte hain. Takra hi nahi sakte. Counter bhi sirf apne
+   prefix wale bills ginta hai.
+2. **Server ab khamoshi se merge nahi karta**: wahi `id` mile to UPDATE,
+   warna INSERT; koi doosri unique takra jaye to row **reject** + conflict
+   detail wapas (`applied`, `sent`, `conflicts`, `conflict_detail`).
+3. **Push ab applied count verify karta hai**: cloud ne jitni rows li usse
+   kam apply kin to **watermark aage nahi barhta** (row dobara koshish
+   hogi) aur log mein PARTIAL + wajah aati hai. Pehle wo rows hamesha ke
+   liye gum ho jati thin.
+
+## Tested
+Conflict: row A (10,000) mehfooz, row B reject —
+`applied:0, conflicts:1, "Duplicate entry ... for key uq_order_site_bill_date"` ✓
+E2E: offline bills **L2-0001, L2-0002**, cloud bill **9004**, sync ok,
+orders 2 + payments 2 pushed, table errors **none**, cloud par tamam bills
+saath saath mojood ✓ local node regression ✓
+
+PHP lint clean · 44 pages OK
