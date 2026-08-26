@@ -2392,3 +2392,206 @@ Theek kar diya (aur ab `removed N rows` bhi dikhata hai).
    (Cloud ka data safe rehta hai — sirf markers bante hain.)
 3. Branch computer par app kholein, dashboard par **Sync now**.
 4. Tasdeeq: `tombstones royal-grill` — markers `applied` dikhne chahiyen.
+
+---
+
+# V62.1 — 24 MINUTE WALA KHAMOSH LOGOUT (aur jhoot bolta hua error)
+
+## Alamat
+
+    > list
+    Server returned HTTP 500 (not JSON)
+    Invalid CSRF token.
+
+Saath hi restaurant user ka login "lagta hi nahi tha".
+
+## Asli wajah — yeh V62 ka bug nahi tha, shuru se maujood tha
+
+`session-diagnostics.php` ne pakra:
+
+    cookie_matches_id   : false
+    csrf_token_present  : false
+    session_dir_writable: true      <- storage bilkul theek thi
+    session_files_on_disk: 19
+
+Yani session likhi ja rahi thi, magar **mit ja rahi thi**.
+
+Docker image (`php:8.2-apache`) mein koi `php.ini` hai hi nahi, is liye
+PHP ke built-in defaults chal rahe the:
+
+    session.gc_maxlifetime = 1440    (SIRF 24 MINUTE)
+    session.gc_probability = 1
+    session.gc_divisor     = 100     (~har 100 requests par GC)
+    session.lazy_write     = 1
+
+Do alag tareeqon se yeh maar deta tha:
+
+1. **24 minute ki khamoshi = logout.** Restaurant mein yeh rozana hota
+   hai — cashier zara der bill na kaate, wapas aa kar sab kuch fail.
+
+2. **`lazy_write=1` ki wajah se CHALTA HUA session bhi marta tha.**
+   Agar session ka DATA na badle to PHP file dobara likhta hi nahi, is
+   liye uska mtime purana rehta hai — aur GC use bhi uda deta hai,
+   chahe user musalsal kaam kar raha ho.
+
+### Loop jo tootta hi nahi tha
+
+Session GC ho jane ke baad har POST naya khali session banata tha
+jismein `_csrf` hota hi nahi (kyunke `csrf_json()` `Csrf::token()` tak
+pohanchne se PEHLE fail kar deta tha). Page ka JS purana token pakde
+baitha rehta tha. Nateeja: **page refresh kiye baghair kabhi theek nahi
+hota tha.**
+
+## Fix 1 — session ab ek poori shift chalti hai
+
+`src/bootstrap.php`:
+- `gc_maxlifetime` = 12 ghante
+- `lazy_write = 0` — har request par mtime taza, active user kabhi nahi nikalta
+- `gc_divisor` 100 -> 1000 (kam faltu GC)
+- `cookie_lifetime` 12 ghante + har request par cookie ki expiry aage
+- `cookie_secure` HTTPS par khud on (`X-Forwarded-Proto` bhi dekhta hai),
+  local HTTP node par off — warna offline installation ka login toot jata
+
+## Fix 2 — error khud jhoot bol raha tha
+
+`Csrf::verifyOrFail()` yeh karta tha:
+
+    http_response_code(419); exit('Invalid CSRF token.');
+
+- **419 non-standard status hai.** Apache use reason-phrase ke baghair
+  aage nahi bhej pata — browser tak **500** pohanchta tha. Isi liye
+  "HTTP 500 (not JSON)" dikhta tha, jo asli wajah chhupa raha tha.
+- **Plain text tha, JSON nahi**, aur `exit` exception nahi phenkta —
+  is liye `api.php` ka `try/catch` kabhi chala hi nahi.
+
+Ab exception phenkta hai, `api.php` saaf JSON deta hai **403** ke saath
+(jo Apache theek se aage bhejta hai) aur message asli baat batata hai.
+
+## Fix 3 — CSRF auto-recovery
+
+Naya `csrf-token` endpoint (GET, is liye khud CSRF se guzarta nahi).
+`db_api.js` aur Platform Console dono: token expire mile to naya le kar
+**khud ek dafa retry** karte hain. Deploy/restart ke baad purana tab
+khula reh jane par ab kuch nahi tootega.
+
+## Fix 4 — boot par storage ki guarantee
+
+`docker-entrypoint.sh` ab Apache start hone se pehle `storage/sessions`
+banata hai, `www-data` ko deta hai, aur **www-data ban kar likh kar
+test karta hai**:
+
+    [boot] session storage writable OK
+    [boot] WARNING: storage/sessions NOT writable by www-data - login/CSRF will fail
+
+## Fix 5 — diagnostics ab yeh sab dikhata hai
+
+`/session-diagnostics.php` mein naye fields: `gc_maxlifetime_sec`,
+`gc_maxlifetime_human`, `lazy_write`, `cookie_secure`,
+`cookie_lifetime_sec`. Naya verdict `SHORT_LIFETIME` — agar
+`gc_maxlifetime` ek ghante se kam ho to saaf keh deta hai ke purana
+build chal raha hai.
+
+---
+
+# V62.2 — "0 Modules": permissions kabhi sync hui hi nahi
+
+## Alamat
+
+    Local  : Counter 1 · Cashier · Main Branch · 6 Modules · Active
+    Online : Counter 1 · Cashier · Main Branch · 0 Modules · Active
+
+Wahi user, wahi role, wahi branch — magar cloud par ek bhi module nahi.
+Koi error, koi warning. Bilkul khamosh.
+
+## Do alag bugs, ek saath
+
+### Bug 1 — `user_module_access` sync ho hi nahi sakti thi
+
+Users page jab modules assign karta hai to rows `user_module_access`
+mein jati hain. Aur wo table:
+
+| jagah | maujood? |
+|---|---|
+| `syncTableAllowed()` (server allow-list) | NahI |
+| `push_tables` / `pull_tables` (config) | NahI |
+| `migrate_sync_columns.php` (`updated_at`) | NahI |
+
+**Teenon jagah gayab.** Yani wo rows kabhi node se bahar nikal hi nahi
+sakti thin.
+
+Isi tarah `users`, `user_roles`, `roles`, `role_modules` server ki
+allow-list mein to the, magar `config/local.php` ke `push_tables` mein
+**ek bhi nahi** — poora staff/permissions ka hissa sync se bahar tha.
+
+### Bug 2 — sync ho bhi jati to bhi 0 hi rehta
+
+`seed_platform_modules.php`:
+
+    ->execute([uuid(), $key, $name, $sort]);
+
+**`uuid()` — har installation par RANDOM.** Cloud par `pos` module ka
+id kuch aur, branch computer par kuch aur.
+
+`Auth::moduleKeys()` join `uma.module_id = pm.id` par chalti hai. Node
+ki row cloud par pohanch bhi jati to uska `module_id` wahan kisi module
+se match hi nahi karta. Join khali -> **"0 Modules"**, khamoshi se.
+Yehi `role_modules` par bhi lagu tha.
+
+## Fixes
+
+**1. Module ids ab deterministic**
+Naya helper `module_uuid($key)` (`src/helpers.php`) — id `module_key`
+se derive hoti hai (UUIDv5 jaisa), is liye har installation par bilkul
+wahi nikalti hai. `seed_platform_modules.php` ab yehi use karta hai.
+
+**2. `scripts/migrate_module_ids.php`** — purane random ids ko canonical
+par le aati hai. Child references (`user_module_access.module_id`,
+`role_modules.module_id`, `site_modules`, `tenant_modules`) **pehle**
+update hote hain, phir parent ka id — warna orphan rows reh jayen aur
+permissions phir bhi khali dikhein. Aadha-migrate hui soorat mein purani
+row merge ho jati hai. Transaction + FK checks off. Idempotent.
+Aakhir mein `MODULE_FINGERPRINT` print karta hai.
+
+**3. Permission tables sync mein**
+- `syncTableAllowed()`: `user_module_access`, `user_site_access`,
+  `platform_modules`
+- `migrate_sync_columns.php`: `user_module_access`, `user_site_access`
+  (`updated_at` ke baghair sync inhen khamoshi se skip karti thi — wahi
+  V40 wala masla)
+- `config/local.php` ke push **aur** pull dono mein: `users`,
+  `user_roles`, `roles`, `role_modules`, `user_module_access`,
+  `user_form_permissions`
+- `Sync::cfg()` inhen **zabardasti** daalta hai (jaise `sync_tombstones`
+  ke saath), taake purani config wale nodes ko bhi mil jaye
+
+`users` two-way chalta hai, engine ke mojooda last-write-wins ke saath:
+jo `updated_at` naya, wo jeetta hai. Password change `updated_at` bump
+karta hai, is liye taza password hamesha jeetta hai.
+
+**4. Yeh khamoshi dobara na ho — handshake mein module fingerprint**
+`sync-schema` ab `module_fingerprint` bhi lautata hai. `Check` /
+`Sync::diagnose()` mein naya step **"Module IDs match"**:
+
+    MISMATCH - permissions sync NahI hongi (har user online "0 Modules"
+    dikhega). Dono taraf `php scripts/migrate_module_ids.php` chalayein.
+
+**5. UI par nazar aaye**
+Users page par `0 Modules` ab laal `.tag red` hai. Pehle wo bilkul
+normal lagta tha — isi liye mahinon chhup sakta tha.
+
+**6. Naya console command**
+
+    permissions <slug>     (ya: perms <slug>)
+
+Har user ke modules aur unka zariya (DIRECT vs VIA ROLE), aur upar
+module fingerprint. Jin users ke paas ek bhi module nahi wo laal, aur
+neeche saaf hidayat.
+
+## Deploy ke baad
+
+1. Cloud deploy — `migrate_module_ids.php` entrypoint mein khud chalti hai.
+2. Node par app kholein (installer bhi ab yeh migration chalata hai),
+   ya haath se: `php scripts/migrate_module_ids.php`
+3. Node par dashboard -> **Check** -> "Module IDs match" sabz hona chahiye.
+4. Node par **Sync now**.
+5. Cloud console par tasdeeq: `permissions royal-grill`

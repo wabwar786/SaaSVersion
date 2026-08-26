@@ -59,6 +59,12 @@ if (!$writable) {
              . '(aam tor par deploy / container restart ke baad). Ek dafa logout kar ke dobara login karein, '
              . 'ya is site ki cookie clear karein. V62 ka client naya CSRF token khud le leta hai, '
              . 'magar LOGIN ke liye ek taza page chahiye.';
+} elseif (((int)ini_get('session.gc_maxlifetime')) < 3600) {
+    $verdict = 'SHORT_LIFETIME';
+    $advice  = 'session.gc_maxlifetime sirf ' . ini_get('session.gc_maxlifetime') . ' second hai. '
+             . 'Itni der khamoshi ke baad user khamoshi se logout ho jata hai aur har POST par '
+             . 'CSRF fail hota hai. V62.1 ka bootstrap.php ise 12 ghante kar deta hai — '
+             . 'shayad purana build chal raha hai.';
 } elseif (!Csrf::has()) {
     $verdict = 'NO_TOKEN';
     $advice  = 'Is session mein abhi CSRF token bana hi nahi. Koi app page (misal /login.html) '
@@ -79,6 +85,13 @@ echo json_encode([
         'session_dir_writable'  => $writable,
         'session_files_on_disk' => $files,
         'csrf_token_present'    => Csrf::has(),
+        /* V62.1 — yahi wo do settings thin jinhon ne 24 minute baad
+           khamoshi se logout kar dena tha. */
+        'gc_maxlifetime_sec'    => (int)ini_get('session.gc_maxlifetime'),
+        'gc_maxlifetime_human'  => round(((int)ini_get('session.gc_maxlifetime')) / 3600, 1) . ' hours',
+        'lazy_write'            => (string)ini_get('session.lazy_write'),
+        'cookie_secure'         => (bool)ini_get('session.cookie_secure'),
+        'cookie_lifetime_sec'   => (int)ini_get('session.cookie_lifetime'),
     ],
 
     'auth' => [

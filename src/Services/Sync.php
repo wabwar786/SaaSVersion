@@ -181,6 +181,25 @@ final class Sync
                     !empty($j['features']['bulk_sync'])
                         ? 'Cloud supports fast bulk sync'
                         : 'Cloud is on an older build - sync will be slow and may time out');
+
+                /* V62.2 — MODULE IDS.
+                   `platform_modules.id` pehle har installation par random
+                   thi. Node ki `user_module_access` rows cloud par kisi
+                   module se match hi nahi karti thin, is liye online har
+                   user "0 Modules" dikhata tha — bina kisi error ke.
+                   Ab yeh mismatch SAAF NAZAR AATA hai. */
+                try {
+                    $cf = (string)(self::post('sync-schema', ['tables' => []])['module_fingerprint'] ?? '');
+                    $lf = self::moduleFingerprint();
+                    $mok = ($cf !== '' && $lf !== '' && $cf === $lf);
+                    $add('Module IDs match', $mok, $mok
+                        ? 'Cloud aur is computer par module ids ek jaisi hain'
+                        : 'MISMATCH - permissions sync NahI hongi (har user online "0 Modules" dikhega). '
+                          . 'Dono taraf `php scripts/migrate_module_ids.php` chalayein.  '
+                          . 'This: ' . substr($lf, 0, 8) . '  |  Cloud: ' . (($cf !== '') ? substr($cf, 0, 8) : 'unknown'));
+                } catch (\Throwable $e) {
+                    $add('Module IDs match', false, 'Check nahi chal saka: ' . substr($e->getMessage(), 0, 90));
+                }
             }
         } catch (\Throwable $e) {
             $add('Cloud response', false, $e->getMessage());
@@ -217,11 +236,22 @@ final class Sync
            config purani ho. Pehle sync sirf "kya badla" bhejti thi; "kya mit
            gaya" ka koi rasta nahi tha, is liye cloud par delete/reset hua
            data branch computer par zinda reh jata tha. Config edit karne ka
-           intezar nahi kar sakte — yahan zabardasti daal rahe hain. */
+           intezar nahi kar sakte — yahan zabardasti daal rahe hain.
+
+           V62.2 — wahi kahani PERMISSIONS ki thi. `user_module_access`
+           kisi list mein thi hi nahi, is liye node par assign kiye hue
+           modules kabhi cloud tak pohanchte hi nahi the aur online har
+           user "0 Modules" dikhata tha. Purani config wale nodes ko bhi
+           yeh milna chahiye. */
+        $force = [
+            'sync_tombstones',
+            'users', 'user_roles', 'roles', 'role_modules',
+            'user_module_access', 'user_form_permissions',
+        ];
         foreach (['push_tables', 'pull_tables'] as $k) {
             $list = (array)($c[$k] ?? []);
-            if ($list && !in_array('sync_tombstones', $list, true)) {
-                $list[] = 'sync_tombstones';
+            if ($list) {
+                foreach ($force as $t) if (!in_array($t, $list, true)) $list[] = $t;
             }
             $c[$k] = $list;
         }
@@ -306,6 +336,21 @@ final class Sync
     }
 
     public static function tsCol(string $table): ?string { return self::tsColumn($table); }
+
+    /**
+     * platform_modules ka fingerprint — cloud aur node par HAMESHA barabar
+     * hona chahiye. Alag ho to permissions sync ho kar bhi be-asar rehti
+     * hain (join match hi nahi karta).
+     */
+    public static function moduleFingerprint(): string
+    {
+        try {
+            $q = DB::pdo()->query(
+                "SELECT MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY module_key SEPARATOR '|')) AS fp
+                   FROM platform_modules WHERE is_active=1");
+            return (string)($q->fetchColumn() ?: '');
+        } catch (\Throwable $e) { return ''; }
+    }
 
     /* ------------------------- read/apply ------------------------- */
 

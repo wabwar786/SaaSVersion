@@ -17,6 +17,32 @@ function uuid(): string {
     $d=random_bytes(16); $d[6]=chr((ord($d[6]) & 0x0f)|0x40); $d[8]=chr((ord($d[8]) & 0x3f)|0x80);
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($d),4));
 }
+/**
+ * module_uuid() — HAR INSTALLATION PAR WAHI ID.
+ *
+ * Pehle `platform_modules.id` `uuid()` se banti thi — yani cloud par
+ * `pos` module ka id kuch aur, branch computer par kuch aur. Aur
+ * `user_module_access.module_id` / `role_modules.module_id` usi id par
+ * join karte hain.
+ *
+ * Nateeja: node par assign kiye hue modules cloud par pohanch bhi jayen
+ * to unka `module_id` wahan kisi module se match hi nahi karta tha —
+ * join khali, aur user ko **"0 Modules"** dikhta tha. Koi error nahi,
+ * koi warning nahi. Poora khamosh.
+ *
+ * Ab id `module_key` se derive hoti hai (UUIDv5 jaisa, namespace ke
+ * saath md5), is liye har installation par bilkul wahi nikalti hai.
+ */
+function module_uuid(string $key): string {
+    $h = md5('aio-platform-module:' . strtolower(trim($key)));
+    // UUID shakal + version 5 / variant bits, taake CHAR(36) columns fit rahe
+    $b = str_split($h, 2);
+    $b[6] = dechex((hexdec($b[6]) & 0x0f) | 0x50);
+    $b[8] = dechex((hexdec($b[8]) & 0x3f) | 0x80);
+    $h = implode('', array_map(fn($x) => str_pad($x, 2, '0', STR_PAD_LEFT), $b));
+    return substr($h,0,8).'-'.substr($h,8,4).'-'.substr($h,12,4).'-'.substr($h,16,4).'-'.substr($h,20,12);
+}
+
 function tenant_id(): string {
     // Cloud (multi-tenant): logged-in user's tenant, or the tenant resolved
     // from the business slug during login. Local (offline): fixed config tenant.

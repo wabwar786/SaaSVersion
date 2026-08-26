@@ -44,12 +44,23 @@ return [
             'expenses', 'cashier_shifts', 'reservations', 'riders',
             'promotions', 'printers', 'devices', 'employee_profiles',
             'floors', 'dining_tables', 'stock_adjustments', 'notification_queue',
+            // V62.2 — staff aur unki permissions. Yeh pehle list mein thin
+            // hi nahi, is liye node par banaye gaye users/modules kabhi
+            // cloud par nazar nahi aate the.
+            'users', 'user_roles', 'roles', 'role_modules',
+            'user_module_access', 'user_form_permissions',
+            'sync_tombstones',
         ],
         // Cloud -> Local PULL: sirf master/reference data neeche aati hai
         // (head-office se edit hone wali). ui_records per-branch hai -> pull nahi.
         'pull_tables' => [
             'menu_categories', 'menu_items', 'suppliers',
             'promotions', 'printers',
+            // V62.2 — head office se banaye gaye staff aur unki permissions
+            // branch par bhi aani chahiyen.
+            'users', 'user_roles', 'roles', 'role_modules',
+            'user_module_access', 'user_form_permissions',
+            'sync_tombstones',
         ],
     ],
 ];

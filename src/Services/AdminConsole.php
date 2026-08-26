@@ -112,6 +112,8 @@ final class AdminConsole
                 case 'resync':    return self::cmdResync($args[0] ?? '', strtolower($args[1] ?? 'transactions'), (string)$flags['confirm']);
                 case 'tombstones':
                 case 'deletes':   return self::cmdTombstones($args[0] ?? '');
+                case 'permissions':
+                case 'perms':     return self::cmdPermissions($args[0] ?? '');
                 case 'nodes':     return self::cmdNodes();
                 case 'sync':      return self::cmdSync($args[0] ?? '');
                 case 'audit':     return self::cmdAudit($args[0] ?? '');
@@ -160,6 +162,7 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'resync <slug> [transactions|all] --confirm "<name>"'],
             ['t' => 'd',  'v' => '   branch computer ko cloud ke barabar laata hai (cloud ka data safe rehta hai)'],
             ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
+            ['t' => 'k',  'v' => 'permissions <slug>  — har user ke modules aur unka zariya'],
             ['t' => 'k',  'v' => 'clear · version · help'],
             ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh chalayein'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
@@ -513,6 +516,68 @@ final class AdminConsole
                 (string)$r['scope_mode'],
                 substr((string)$r['created_at'], 0, 19),
                 $r['applied_at'] ? (substr((string)$r['applied_at'], 0, 19) . '  (' . (int)$r['rows_deleted'] . ' rows)') : 'pending')];
+        }
+        return self::out($lines);
+    }
+
+    /**
+     * permissions — har user ke modules, aur yeh ke wo kahan se aa rahe hain.
+     *
+     * Yeh command us haqiqi masle ke baad bani jahan node par user ke 6
+     * modules the aur cloud par usi user ke 0. Wajah do thin:
+     *   1) `user_module_access` kisi sync list mein thi hi nahi
+     *   2) `platform_modules.id` har installation par random thi, is liye
+     *      row pohanch bhi jati to join match hi nahi karta
+     * Dono soorton mein UI sirf "0 Modules" dikhata tha — koi error nahi.
+     */
+    private static function cmdPermissions(string $slug): array
+    {
+        $t = self::tenant($slug);
+        $p = DB::pdo();
+
+        $lines = [];
+        $fp = \Aio\Services\Sync::moduleFingerprint();
+        $lines[] = ['t' => 'k', 'v' => 'Module fingerprint: ' . ($fp !== '' ? $fp : '(none)')];
+        $lines[] = ['t' => 'd', 'v' => 'Node par bhi yehi hona chahiye. Alag ho to permissions be-asar rehti hain.'];
+        $lines[] = ['t' => 'i', 'v' => ''];
+
+        $q = $p->prepare(
+            "SELECT u.id, u.full_name, u.email, u.is_tenant_admin,
+                    COALESCE(r.name,'-') role_name,
+                    (SELECT COUNT(*) FROM user_module_access a
+                      WHERE a.user_id=u.id AND a.access_mode='ALLOW') direct_mods,
+                    (SELECT COUNT(*) FROM role_modules rm
+                      JOIN user_roles ur2 ON ur2.role_id=rm.role_id AND ur2.user_id=u.id
+                     WHERE rm.is_allowed=1) role_mods
+               FROM users u
+               LEFT JOIN user_roles ur ON ur.user_id=u.id
+               LEFT JOIN roles r ON r.id=ur.role_id
+              WHERE u.tenant_id=? AND u.deleted_at IS NULL
+              GROUP BY u.id
+              ORDER BY u.is_tenant_admin DESC, u.full_name");
+        $q->execute([$t['id']]);
+        $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) return self::out([['t' => 'd', 'v' => 'Is business ka koi user nahi.']]);
+
+        $lines[] = ['t' => 'k', 'v' => sprintf('%-26s %-16s %7s %7s', 'USER', 'ROLE', 'DIRECT', 'VIA ROLE')];
+        $blank = 0;
+        foreach ($rows as $r) {
+            $d = (int)$r['direct_mods']; $rm = (int)$r['role_mods'];
+            $admin = (int)$r['is_tenant_admin'] === 1;
+            $total = $admin ? -1 : ($d + $rm);
+            if (!$admin && $total === 0) $blank++;
+            $lines[] = ['t' => ($admin || $total > 0) ? 'g' : 'e',
+                        'v' => sprintf('%-26s %-16s %7s %7s',
+                            substr((string)$r['full_name'], 0, 26),
+                            substr((string)$r['role_name'], 0, 16),
+                            $admin ? 'ALL' : (string)$d,
+                            $admin ? 'ALL' : (string)$rm)];
+        }
+        if ($blank > 0) {
+            $lines[] = ['t' => 'i', 'v' => ''];
+            $lines[] = ['t' => 'e', 'v' => $blank . ' user ke paas ek bhi module nahi hai.'];
+            $lines[] = ['t' => 'd', 'v' => 'Agar node par yeh users modules ke saath dikhte hain to dono taraf'];
+            $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` chalayein, phir node par Sync now.'];
         }
         return self::out($lines);
     }

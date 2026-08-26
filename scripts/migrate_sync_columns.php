@@ -35,6 +35,8 @@ $tables = [
     'expenses','expense_categories','reservations','riders','delivery_orders',
     'promotions','printers','floors','dining_tables','payment_methods',
     'users','user_roles','roles','role_modules','user_form_permissions',
+    /* V62.2 — inke baghair sync inhen KHAMOSHI se skip karti thi. */
+    'user_module_access','user_site_access',
     'employee_profiles','paired_devices','notification_queue','ui_records','devices',
 ];
 

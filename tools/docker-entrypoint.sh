@@ -53,6 +53,7 @@ php scripts/migrate_sync_log.php    || echo "[boot] sync log migrate skipped"
 php scripts/migrate_delete_support.php || echo "[boot] delete support migrate skipped"
 php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
+php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 # --- Apache PEHLE start hota hai taake Railway ka healthcheck foran pass ho.

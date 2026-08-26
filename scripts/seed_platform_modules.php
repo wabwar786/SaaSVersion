@@ -8,7 +8,11 @@ $modules=['dashboard'=>'Dashboard','shift'=>'Opening & Closing Shift','pos'=>'Sa
 $sort=1;$added=0;
 foreach($modules as $key=>$name){
   $q=$pdo->prepare('SELECT id FROM platform_modules WHERE module_key=?');$q->execute([$key]);
-  if(!$q->fetchColumn()){$pdo->prepare("INSERT INTO platform_modules(id,module_key,name,industry_code,sort_order,is_active) VALUES(?,?,?,'RESTAURANT',?,1)")->execute([uuid(),$key,$name,$sort]);$added++;}
+  /* V62.2 — id ab uuid() se NAHI, module_key se derive hoti hai.
+     Warna cloud aur har node par ek hi module ka id alag hota tha aur
+     user_module_access / role_modules ki rows doosri taraf ja kar kisi
+     module se match hi nahi karti thin -> khamoshi se "0 Modules". */
+  if(!$q->fetchColumn()){$pdo->prepare("INSERT INTO platform_modules(id,module_key,name,industry_code,sort_order,is_active) VALUES(?,?,?,'RESTAURANT',?,1)")->execute([module_uuid($key),$key,$name,$sort]);$added++;}
   $sort++;
 }
 echo "PLATFORM_MODULES_READY total=".count($modules)." added=$added\n";
