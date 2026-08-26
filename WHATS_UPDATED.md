@@ -462,3 +462,40 @@ calculator ✓ tax 16% cash / 8% card switch ✓ KOT delta ✓ charge focus=rcv,
 Enter→pay+print popup+new bill (0101→0102, cart clear) ✓ payment errors 0 ✓
 F1 ✓ auto-hold (1)→(2) ✓ row 53.9px ✓ delete rgb(226,55,68) ✓ tax settings
 save→17% reflect ✓
+
+---
+
+# V23 — POS refinements (9 points)
+
+1. **ESC se new-bill popup band** hota hai + "Cancel (Esc)" button. Sirf
+   Shift Opening gate band nahi hoti (wo lazmi hai).
+2. **Item ka naam ab card par sabse upar aur bara** (13px bold). Category
+   ab image par chhoti badge hai, is liye naam aur category gaddmad nahi.
+3. Bill # / mode / table / customer / "+ New Bill (F1)" sab **upar status
+   strip mein** shift ho gaye. Right panel ka pura hissa ab item table ko
+   milta hai (~558px height).
+4. **Har popup ESC se band** (topmost pehle).
+5. **Hold Bill / Preview-Print / WhatsApp** ab bill ke neeche nahi —
+   **Charge / Action popup ke andar** hain.
+6. **Left drawer menu hata diya.** Logo par click: Admin/Manager →
+   Dashboard, **Cashier → sirf apni Shift detail** (koi report nahi).
+7. **Manager password** = Users & Access mein banaye gaye kisi bhi Admin /
+   Owner / Manager user ka apna login password. Ab **server par verify**
+   hota hai (`pos-verify-manager`), aur void log mein "approved by <naam>"
+   record hota hai. Modal mein yeh hint bhi likha hai.
+8. **KOT print ab simple**: restaurant detail nahi — sirf bara ORDER TYPE
+   (TAKEAWAY/DINE IN + table), box mein **NEW ORDER / RUNNING ORDER**,
+   bill no, time+date, aur bare font mein qty + item.
+9. **Item picture change**: card par hover karte hi camera button. Modal
+   mein — **Auto fetch by name** (item ke naam se photo), "Another photo",
+   URL paste, ya **apni file upload** (max 300KB, data-URL). Remove ka bhi
+   option. `menu_items.image_url` column + `migrate_menu_image.php`
+   (entrypoint hooked).
+
+## Browser-tested
+ESC new-bill ✓ ESC charge ✓ drawer/menuBtn 0 ✓ logo button ✓ strip mein
+bill+ctx+new-bill ✓ item names dikh rahe ✓ category badge ✓ picture modal
+(auto/url/upload) + DB persist ✓ hold/preview/wa charge modal mein ✓ KOT
+print = TAKEAWAY / RUNNING ORDER / bill / time / items (restaurant naam
+nahi) ✓ manager password: ghalat reject, sahi accept + "by Ahmed Khan"
+void log ✓ page errors 0 ✓

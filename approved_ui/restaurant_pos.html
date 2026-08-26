@@ -61,7 +61,13 @@ button{cursor:pointer;border:0;background:none}
 .th img{width:100%;height:100%;object-fit:cover;display:block}
 .bdg{position:absolute;top:5px;right:5px;background:rgba(21,34,27,.84);color:#fff;font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:999px}
 .pb{padding:7px 8px 8px;display:flex;flex-direction:column;gap:5px;flex:1}
-.pn{font-size:12.5px;font-weight:800;line-height:1.28;min-height:32px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
+.pn{font-size:13px;font-weight:800;line-height:1.3;min-height:34px;color:var(--ink);word-break:break-word}
+.catbdg{position:absolute;left:5px;bottom:5px;background:rgba(255,255,255,.92);color:var(--ink2);font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
+.imgb{position:absolute;left:5px;top:5px;background:rgba(255,255,255,.92);border-radius:999px;width:22px;height:22px;font-size:11px;line-height:1;opacity:0;transition:.13s}
+.prod:hover .imgb{opacity:1}
+.imgb:hover{background:#fff;transform:scale(1.1)}
+.imgprev{height:170px;border:1px solid var(--l);border-radius:12px;background:var(--bg);display:grid;place-items:center;overflow:hidden}
+.imgprev img{width:100%;height:100%;object-fit:cover}
 .pc{font-size:9px;color:var(--ink3);font-weight:600;letter-spacing:.2px;text-transform:uppercase;opacity:.85}
 .pp{font-size:13px;font-weight:800;color:var(--ok)}
 .pp small{font-size:9px;font-weight:700;color:var(--ink3)}
@@ -91,8 +97,8 @@ button{cursor:pointer;border:0;background:none}
 .selrow select{flex:1;padding:7px 8px;border:1px solid var(--l);border-radius:8px;background:var(--panel);outline:none;min-width:0;font-size:11.5px}
 .selrow .mini{padding:7px 9px;border:1px solid var(--l);border-radius:8px;font-weight:800;font-size:11px;flex:none}
 .selrow .mini:hover{border-color:var(--brand);color:var(--brand)}
-.ctx{display:flex;gap:5px;flex-wrap:wrap}
-.ctx span{background:var(--bg);border:1px solid var(--l);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700}
+.ctx{display:inline-flex;gap:5px;align-items:center}
+.ctx span{background:var(--panel);border:1px solid var(--l);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
 .ctx span b{color:var(--ok)}
 .ctx .chg{cursor:pointer}
 .ctx .chg:hover{border-color:var(--brand);color:var(--brand)}
@@ -210,6 +216,11 @@ textarea.inp{min-height:62px;resize:vertical}
 /* slip */
 .slip{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;background:#fff;border:1px dashed var(--l);border-radius:8px;padding:14px}
 .slip h4{text-align:center;font-size:13px;margin-bottom:2px}
+.slip .kotType{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px}
+.slip .kotTag{text-align:center;font-size:12px;font-weight:800;margin:3px 0 4px;border:2px solid #000;padding:2px}
+.slip .kq{font-size:16px;font-weight:800;width:42px;vertical-align:top}
+.slip .kn{font-size:14px;font-weight:700;padding-bottom:6px}
+.slip .kn i{font-size:11px;font-weight:600}
 .slip .c{text-align:center;color:var(--ink2);font-size:10px}
 .slip hr{border:0;border-top:1px dashed #c9d4cd;margin:8px 0}
 .slip table{width:100%;border-collapse:collapse}
@@ -223,8 +234,7 @@ textarea.inp{min-height:62px;resize:vertical}
 <body>
 <div class="pos">
   <header class="top">
-    <button class="iconb" id="menuBtn">&#9776;</button>
-    <div class="mark">U</div>
+    <button class="mark" id="homeBtn" title="Home">U</button>
     <div class="search"><span>&#128269;</span><input id="q" placeholder="Search menu, item code, barcode..."><span class="kbd">Ctrl K</span></div>
     <div class="perio"><span>Best Selling</span><select id="period"><option>Today</option><option>Yesterday</option><option>Last 7 days</option></select></div>
     <div style="flex:1"></div>
@@ -244,20 +254,8 @@ textarea.inp{min-height:62px;resize:vertical}
   </main>
 
   <aside class="right">
-    <div class="rh">
-      <div class="rh1">
-        <div style="flex:1"><h2 id="billTitle">Bill #0001</h2><div class="sub" id="billSub">New order</div></div>
-        <button class="tb" id="newBillBtn">+ New Bill</button>
-      </div>
-      <div class="ctx" id="ctx"></div>
-    </div>
     <div class="thead"><span>QTY</span><span>DESCRIPTION</span><span>RATE</span><span>TOTAL</span></div>
     <div class="items" id="cart"></div>
-    <div class="qrow">
-      <button id="holdNowBtn">Hold Bill</button>
-      <button id="previewBtn">Preview / Print</button>
-      <button id="waBtn">WhatsApp</button>
-    </div>
     <div class="tot">
       <div class="tr"><span class="lb">Subtotal</span><span id="tSub">PKR 0</span></div>
       <div class="tr"><span class="lb">Discount <button class="ed" id="edDisc">Edit</button></span><span id="tDisc">- PKR 0</span></div>
@@ -272,32 +270,11 @@ textarea.inp{min-height:62px;resize:vertical}
   </aside>
 </div>
 
-<nav class="drawer" id="drawer">
-  <h4>OPERATIONS</h4>
-  <a href="/index.html">&#128202; Dashboard</a>
-  <a href="/orders_management.html">&#128220; Orders</a>
-  <a href="/kds.html">&#127859; Kitchen Display</a>
-  <a href="/tables_floors.html">&#127869; Tables &amp; Floors</a>
-  <a href="/shift_management.html">&#128337; Shift Management</a>
-  <h4>INVENTORY &amp; MENU</h4>
-  <a href="/inventory_creation.html">&#128230; Inventory</a>
-  <a href="/menu_management.html">&#128209; Menu &amp; Categories</a>
-  <a href="/recipe_making.html">&#127859; Recipe &amp; Food Cost</a>
-  <a href="/purchasing.html">&#128722; Purchasing</a>
-  <a href="/wastage_adjustment.html">&#9888; Wastage</a>
-  <h4>PEOPLE</h4>
-  <a href="/customers.html">&#128100; Customers</a>
-  <a href="/users_access.html">&#128272; Users &amp; Access</a>
-  <h4>REPORTS</h4>
-  <a href="/reports.html">&#128200; Reports</a>
-  <a href="/expenses.html">&#128181; Expenses</a>
-</nav>
-<div class="scrim" id="scrim"></div>
 <div class="toast" id="toast"></div>
 
 <script>
 'use strict';
-var VERSION='POS v22';
+var VERSION='POS v23';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -369,12 +346,12 @@ function boot(){
 function fillTables(){}
 function fillCustomers(){}
 function renderCtx(){
-  var h='<span>'+esc(mode)+'</span>';
+  var h='<span>'+esc(mode)+(cart.length?(' &middot; '+cart.length+' line'+(cart.length===1?'':'s')):'')+'</span>';
   if(mode==='Dine In')h+='<span class="chg" id="ctxTable">Table: <b>'+esc(curTable||'--')+'</b></span>';
   if(mode==='Home Delivery')h+='<span class="chg" id="ctxCust">'+esc(curCustName)+(curCustPhone?' &middot; '+esc(curCustPhone):'')+'</span>';
   if(mode==='Takeaway')h+='<span class="chg" id="ctxCust">'+esc(curCustName)+'</span>';
   h+='<span class="chg" id="ctxMode">Change</span>';
-  $('#ctx').innerHTML=h;
+  var el=$('#ctx'); if(!el)return; el.innerHTML=h;
   var a=$('#ctxMode'); if(a)a.onclick=function(){newBillFlow(true)};
   var t=$('#ctxTable'); if(t)t.onclick=function(){newBillFlow(true)};
   var c=$('#ctxCust'); if(c)c.onclick=function(){newBillFlow(true)};
@@ -388,13 +365,17 @@ function renderStrip(){
     +(shift?'<span class="sb"><span class="dot g"></span>Shift '+esc(shift.shift_no)+'<a href="#" class="dn" id="sClose">Close</a></span>'
            :'<span class="sb"><span class="dot r"></span>Shift closed<a href="#" id="sOpen">Open</a></span>')
     +'<span class="sb">&#127869; '+n+' items</span>'
-    +'<span class="sb">&#129534; Bill #'+billNo+'</span>'
+    +'<span class="sb">&#129534; <b>Bill #'+billNo+'</b></span>'
+    +'<span id="ctx" class="ctx"></span>'
+    +'<button class="tb" id="newBillBtn" style="padding:3px 10px;font-size:11px">+ New Bill (F1)</button>'
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali &mdash; "+ New Item" se banayein</span>':'')
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
   var b=$('#sClose'); if(b)b.onclick=function(e){e.preventDefault();closeShift()};
   var d=$('#sDiag'); if(d)d.onclick=function(e){e.preventDefault();showDiagnostics()};
+  var nb=$('#newBillBtn'); if(nb)nb.onclick=onNewBill;
+  renderCtx();
 }
 
 /* ================= CATEGORIES + GRID ================= */
@@ -433,9 +414,10 @@ function renderGrid(){
     return '<div class="prod">'
       +'<div class="th" data-add="'+esc(p.id)+'" title="Click to add">'
       +(p.img?'<img src="'+esc(p.img)+'" alt="" onerror="this.remove()">':'&#127869;')
-      +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))+'</div>'
-      +'<div class="pb"><div class="pn">'+esc(p.name)+'</div>'
-      +'<div class="pc">'+esc(p.cat)+'</div>'
+      +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))
+      +'<span class="catbdg">'+esc(p.cat)+'</span>'
+      +'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button></div>'
+      +'<div class="pb"><div class="pn" title="'+esc(p.name)+'">'+esc(p.name)+'</div>'
       +'<div class="pp">'+money(p.price)+(p.weighted?' <small>/ KG</small>':(p.pizza?' <small>onwards</small>':''))+'</div>'
       +'<div class="prow"><div class="qb"><button data-dec="'+esc(p.id)+'">-</button>'
       +'<span data-calc="'+esc(p.id)+'" title="Calculator">'+qfmt(q)+'</span>'
@@ -446,6 +428,9 @@ function renderGrid(){
   Array.prototype.forEach.call(g2.querySelectorAll('[data-add]'),function(b){b.onclick=function(){addItem(this.dataset.add)}});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-inc]'),function(b){b.onclick=function(e){e.stopPropagation();var i=this.dataset.inc;preQty[i]=(preQty[i]||1)+1;renderGrid()}});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-dec]'),function(b){b.onclick=function(e){e.stopPropagation();var i=this.dataset.dec;preQty[i]=Math.max(0.001,(preQty[i]||1)-1);renderGrid()}});
+  Array.prototype.forEach.call(g2.querySelectorAll('[data-img]'),function(b){b.onclick=function(e){
+    e.stopPropagation();imageModal(b.dataset.img);
+  }});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-calc]'),function(b){b.onclick=function(e){
     e.stopPropagation();var id=this.dataset.calc;
     calculator('Set Quantity',preQty[id]||1,function(v){preQty[id]=v;renderGrid()});
@@ -521,6 +506,52 @@ function optionsModal(p){
 }
 
 
+
+/* ============ ITEM PICTURE (auto-fetch / URL / upload) ============ */
+function imageModal(id){
+  var p=BOOT.products.filter(function(x){return x.id===id})[0];
+  if(!p)return;
+  var url=p.img||'';
+  var ov=modal('<div class="dh"><h3>Item Picture &mdash; '+esc(p.name)+'</h3><p>Auto fetch karein, URL dalein, ya apni picture upload karein.</p></div>'
+    +'<div class="db"><div class="imgprev"><img id="ipImg" src="'+esc(url)+'" alt="" onerror="this.style.visibility=\'hidden\'"></div>'
+    +'<div class="qv" style="grid-template-columns:1fr 1fr;margin:11px 0">'
+      +'<button id="ipAuto">&#128269; Auto fetch by name</button>'
+      +'<button id="ipShuffle">&#127922; Another photo</button></div>'
+    +'<label class="f">Image URL</label><input class="inp" id="ipUrl" value="'+esc(url.indexOf('data:')===0?'':url)+'" placeholder="https://...">'
+    +'<label class="f" style="margin-top:10px">Ya apni file upload karein (max ~300KB)</label>'
+    +'<input class="inp" id="ipFile" type="file" accept="image/*">'
+    +'<div class="box" style="font-size:11px;color:var(--ink2)">Auto fetch item ke naam se photo laata hai. Pasand na aaye to "Another photo" dabayein.</div></div>'
+    +'<div class="df"><button class="sec" data-x>Cancel</button><button class="sec" id="ipClear">Remove</button><button class="go" id="ipSave">Save Picture</button></div>');
+  function setUrl(u){url=u;var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=u;if(u.indexOf('data:')!==0)ov.querySelector('#ipUrl').value=u}
+  function autoUrl(){
+    var q=encodeURIComponent(p.name+' food');
+    return 'https://source.unsplash.com/400x300/?'+q+'&sig='+Math.floor(Math.random()*100000);
+  }
+  ov.querySelector('#ipAuto').onclick=function(){setUrl(autoUrl());toast('Photo fetch ki gayi - pasand na ho to Another photo')};
+  ov.querySelector('#ipShuffle').onclick=function(){setUrl(autoUrl())};
+  ov.querySelector('#ipUrl').oninput=function(){url=this.value.trim();var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=url};
+  ov.querySelector('#ipFile').onchange=function(){
+    var f=this.files&&this.files[0]; if(!f)return;
+    if(f.size>300*1024){toast('File bari hai (max 300KB)');return}
+    var rd=new FileReader();
+    rd.onload=function(){setUrl(String(rd.result))};
+    rd.readAsDataURL(f);
+  };
+  ov.querySelector('#ipClear').onclick=function(){
+    var r=api('menu-item-image',{menu_item_id:id,image_url:''});
+    if(!r.ok){toast(r.message||'Failed');return}
+    p.img='';ov.remove();renderGrid();toast('Picture hata di gayi');
+  };
+  ov.querySelector('#ipSave').onclick=function(){
+    if(!url){toast('Pehle picture select karein');return}
+    this.disabled=true;this.textContent='Saving...';
+    var r=api('menu-item-image',{menu_item_id:id,image_url:url});
+    if(!r.ok){this.disabled=false;this.textContent='Save Picture';toast(r.message||'Failed');return}
+    p.img=url;                       /* foran card par lagao */
+    ov.remove();renderGrid();toast('Picture saved');
+  };
+}
+
 /* ============ NEW BILL FLOW (mode -> table / customer) ============ */
 function newBillFlow(isEdit){
   var chosen=isEdit?mode:null;
@@ -532,7 +563,7 @@ function newBillFlow(isEdit){
       +'<button class="nbm" data-m="Home Delivery"><b>&#128663; Delivery</b><small>Customer address</small></button>'
       +'</div></div>'
       +'<div id="nbStep2" class="hide"></div></div>'
-    +'<div class="df" id="nbFoot"><button class="sec" data-x id="nbCancel">Cancel</button></div>',true,!isEdit);
+    +'<div class="df" id="nbFoot"><button class="sec" data-x id="nbCancel">Cancel (Esc)</button></div>',true);
   ov.id='nbOv';
 
   function tables(){
@@ -598,7 +629,6 @@ function newBillFlow(isEdit){
     }
   }
   Array.prototype.forEach.call(ov.querySelectorAll('[data-m]'),function(b){b.onclick=function(){step2(this.dataset.m)}});
-  if(!isEdit){var cb=ov.querySelector('#nbCancel'); if(cb)cb.remove();}
   if(isEdit&&chosen){/* edit: seedha mode step par rehne do */}
 }
 
@@ -660,9 +690,7 @@ function renderCart(){
   $('#tSvc').textContent=money(t.svc)+(orderSvc?' ('+orderSvc+'%)':'');
   $('#tTax').textContent=money(t.tax)+(orderTax?' ('+orderTax+'% '+(orderTax===SET.tax_card?'card':'cash')+')':'');
   $('#tGrand').textContent=money(t.grand);
-  $('#billTitle').textContent='Bill #'+billNo;
-  $('#billSub').textContent=mode+(curTable?' - '+curTable:'')+' - '+cart.length+' line'+(cart.length===1?'':'s');
-  renderCtx();
+
   $('#kotBtn').disabled=!cart.some(function(l){return l.qty-l.sentQty>0});
   $('#chargeBtn').disabled=!cart.length;
   renderStrip();
@@ -681,14 +709,19 @@ function voidApproval(line,ok){
     +'<div class="box"><label class="f">Reason</label>'
     +'<select class="inp" id="vReason"><option>Customer cancelled</option><option>Wrong entry</option><option>Item unavailable</option><option>Quality issue</option><option>Other</option></select>'
     +'<label class="f" style="margin-top:9px">Note</label><input class="inp" id="vNote" placeholder="Optional">'
-    +'<label class="f" style="margin-top:9px">Manager Password</label><input class="inp" id="vPass" type="password" placeholder="Required"></div></div>'
+    +'<label class="f" style="margin-top:9px">Manager Password</label><input class="inp" id="vPass" type="password" placeholder="Admin / Owner / Manager ka password">'+'<div style="font-size:10.5px;color:var(--ink2);margin-top:6px">Manager password = Users &amp; Access mein banaye gaye kisi bhi Admin / Owner / Manager user ka apna login password.</div></div></div>'
     +'<div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="vOk">Approve Void</button></div>');
   ov.querySelector('#vOk').onclick=function(){
-    if(!ov.querySelector('#vPass').value){toast('Manager password zaroori hai');return}
+    var pw=ov.querySelector('#vPass').value;
+    if(!pw){toast('Manager password zaroori hai');return}
+    this.disabled=true;this.textContent='Verifying...';
+    /* server par verify: koi bhi Admin/Owner/Manager user ka password chalega */
+    var v=api('pos-verify-manager',{password:pw});
+    if(!v.ok){this.disabled=false;this.textContent='Approve Void';toast(v.message||'Manager password ghalat hai');return}
     var rec={bill:billNo,item:line.name,qty:line.sentQty,reason:ov.querySelector('#vReason').value,
-      note:ov.querySelector('#vNote').value||'',at:new Date().toLocaleString()};
+      note:ov.querySelector('#vNote').value||'',approvedBy:v.manager,at:new Date().toLocaleString()};
     api('records-save',{module:'void_logs',data:rec});
-    ov.remove();ok();
+    ov.remove();toast('Approved by '+v.manager);ok();
   };
 }
 
@@ -733,8 +766,14 @@ $('#chargeBtn').onclick=function(){
     +'</div><label class="f">Received Amount</label><input class="inp" id="rcv" type="number" inputmode="decimal" value="'+Math.round(t.grand)+'" style="font-size:16px;font-weight:800">'
     +'<div class="qv" style="grid-template-columns:repeat(4,1fr);margin-top:8px">'
     +[500,1000,2000,5000].map(function(v){return '<button data-cash="'+v+'">'+v+'</button>'}).join('')+'</div>'
-    +'<div class="chgbox" style="margin-top:11px"><span>Change to return</span><b id="chg">PKR 0</b></div></div>'
-    +'<div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="doPay">Complete Payment</button></div>');
+    +'<div class="chgbox" style="margin-top:11px"><span>Change to return</span><b id="chg">PKR 0</b></div>'
+    +'<div class="qv" style="grid-template-columns:repeat(3,1fr);margin-top:4px">'
+      +'<button id="cmHold">Hold Bill</button><button id="cmPrev">Preview / Print</button><button id="cmWa">WhatsApp</button></div>'
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="doPay">Complete Payment</button></div>');
+  ov.querySelector('#cmHold').onclick=function(){ov.remove();holdCurrent()};
+  ov.querySelector('#cmPrev').onclick=function(){slipPreview('BILL',cart.slice())};
+  ov.querySelector('#cmWa').onclick=function(){waSend('BILL',cart.slice())};
   function refreshTot(){
     orderTax=taxPct(pay); t=totals(); renderCart();
     ov.querySelector('#ptotAmt').textContent=money(t.grand);
@@ -777,16 +816,29 @@ $('#chargeBtn').onclick=function(){
 /* ================= SLIP / PRINT ================= */
 function slipHtml(kind,lines,info){
   var t=(info&&info.t)||totals();
-  var head='<h4>'+esc((BOOT.site&&BOOT.site.name)||'Urban Spoon')+'</h4>'
-    +'<div class="c">'+(kind==='KOT'?'KITCHEN ORDER TICKET':'SALES INVOICE')+'</div>'
-    +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+' &middot; '+esc((info&&info.mode)||mode)
-    +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
-    +'<div class="c">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
+  var head;
+  if(kind==='KOT'){
+    /* SIMPLE KOT: restaurant detail nahi. Sirf type, new/running, time, items. */
+    var isRunning=cart.some(function(l){return l.sentQty>0});
+    head='<div class="kotType">'+esc(((info&&info.mode)||mode).toUpperCase())
+      +((info&&info.table)||curTable?(' - '+esc((info&&info.table)||curTable)):'')+'</div>'
+      +'<div class="kotTag">'+(isRunning?'RUNNING ORDER':'NEW ORDER')+'</div>'
+      +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+'</div>'
+      +'<div class="c">'+esc(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))
+      +' &middot; '+esc(new Date().toLocaleDateString())+'</div><hr>';
+  }else{
+    head='<h4>'+esc((BOOT.site&&BOOT.site.name)||'Urban Spoon')+'</h4>'
+      +'<div class="c">SALES INVOICE</div>'
+      +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+' &middot; '+esc((info&&info.mode)||mode)
+      +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
+      +'<div class="c">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
+  }
   var rows=lines.map(function(l){
-    return '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td>'
-      +(kind==='KOT'?'':'<td class="r">'+money(l.qty*l.price)+'</td>')+'</tr>';
+    return kind==='KOT'
+      ? '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)+(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>'
+      : '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td><td class="r">'+money(l.qty*l.price)+'</td></tr>';
   }).join('');
-  var foot=kind==='KOT'?'<hr><div class="c">** KITCHEN COPY **</div>'
+  var foot=kind==='KOT'?'<hr>'
     :'<hr><table>'
       +'<tr><td>Subtotal</td><td class="r">'+money(t.sub)+'</td></tr>'
       +(t.disc?'<tr><td>Discount</td><td class="r">-'+money(t.disc)+'</td></tr>':'')
@@ -821,7 +873,10 @@ function printNode(node){
   st.textContent='body{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;padding:10px;margin:0}'
     +'table{width:100%;border-collapse:collapse}td{padding:2px 0;vertical-align:top}.r{text-align:right}'
     +'h4{text-align:center;font-size:13px;margin:0 0 2px}.c{text-align:center;font-size:10px;color:#555}'
-    +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}';
+    +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}'
+    +'.kotType{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px}'
+    +'.kotTag{text-align:center;font-size:12px;font-weight:800;margin:3px 0 4px;border:2px solid #000;padding:2px}'
+    +'.kq{font-size:16px;font-weight:800;width:42px}.kn{font-size:14px;font-weight:700;padding-bottom:6px}.kn i{font-size:11px}';
   d.head.appendChild(st);
   var wrap=d.createElement('div');
   wrap.innerHTML=node.innerHTML;
@@ -844,8 +899,6 @@ function waSend(kind,lines,info){
     ov.remove();
   };
 }
-$('#previewBtn').onclick=function(){slipPreview('BILL',cart.slice())};
-$('#waBtn').onclick=function(){if(!cart.length){toast('Cart khali hai');return}waSend('BILL',cart.slice())};
 
 /* ================= NEW BILL / HOLDS / DUPLICATE ================= */
 function newBill(next,skipFlow){
@@ -858,13 +911,13 @@ function newBill(next,skipFlow){
   if(!skipFlow)newBillFlow();
 }
 /* New Bill: mojooda cart apne aap HOLD ho jata hai (alag button zaroori nahi) */
-$('#newBillBtn').onclick=function(){
+function onNewBill(){
   if(!shift){openGate();return}
   if(cart.length){
     if(holdCurrent(true))toast('Purana bill hold ho gaya');
     else return;
   }else newBill();
-};
+}
 function loadHolds(){
   var r=api('records-list&module='+HOLD);
   holds=(r.ok&&r.rows)?r.rows:[];
@@ -881,7 +934,6 @@ function holdCurrent(silent){
   if(!silent)toast('Bill hold kar diya');
   return true;
 }
-$('#holdNowBtn').onclick=holdCurrent;
 $('#holdsBtn').onclick=function(){
   loadHolds();
   var body=holds.length?holds.map(function(h,i){
@@ -1052,7 +1104,7 @@ $('#voidBtn').onclick=function(){
   var rows=(r.ok&&r.rows)?r.rows:[];
   var body=rows.length?rows.map(function(v){
     return '<div class="lrow"><div><b>'+esc(v.item)+' &middot; Bill #'+esc(v.bill)+'</b>'
-      +'<small>Qty '+esc(v.qty)+' &middot; '+esc(v.reason)+(v.note?' &middot; '+esc(v.note):'')+' &middot; '+esc(v.at)+'</small></div></div>';
+      +'<small>Qty '+esc(v.qty)+' &middot; '+esc(v.reason)+(v.note?' &middot; '+esc(v.note):'')+(v.approvedBy?' &middot; by '+esc(v.approvedBy):'')+' &middot; '+esc(v.at)+'</small></div></div>';
   }).join(''):'<div class="cempty">Koi void record nahi</div>';
   modal('<div class="dh"><h3>Void Logs</h3><p>Kitchen-sent items jo void hue</p></div><div class="db">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button></div>',true);
@@ -1180,16 +1232,38 @@ function modal(html,wide,noClose){
   var ov=document.createElement('div');ov.className='ov';
   ov.innerHTML='<div class="dlg'+(wide?' wide':'')+'">'+html+'</div>';
   document.body.appendChild(ov);
-  Array.prototype.forEach.call(ov.querySelectorAll('[data-x]'),function(b){b.onclick=function(){ov.remove()}});
-  if(!noClose)ov.onclick=function(e){if(e.target===ov)ov.remove()};
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-x]'),function(b){b.onclick=function(){closeModal(ov)}});
+  if(!noClose)ov.onclick=function(e){if(e.target===ov)closeModal(ov)};
   return ov;
 }
+function closeModal(ov){ if(ov&&ov.parentNode)ov.remove(); }
+/* ESC: sab se upar wala popup band (shift gate ke ilawa - wo lazmi hai) */
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape')return;
+  var all=document.querySelectorAll('.ov');
+  if(!all.length)return;
+  var top=all[all.length-1];
+  if(top.id==='gateOv')return;           /* shift gate band nahi hoti */
+  e.preventDefault();closeModal(top);
+});
 $('#q').oninput=function(){search=this.value;renderGrid()};
-$('#menuBtn').onclick=function(){$('#drawer').classList.add('on');$('#scrim').classList.add('on')};
-$('#scrim').onclick=function(){$('#drawer').classList.remove('on');$('#scrim').classList.remove('on')};
+/* Logo: admin/manager -> Dashboard; cashier -> apni shift detail (reports nahi) */
+$('#homeBtn').onclick=function(){
+  var role=((BOOT.cashier&&BOOT.cashier.role)||'').toLowerCase();
+  if(role.indexOf('cashier')>=0){myShift();return}
+  location.href='/index.html';
+};
+function myShift(){
+  if(!shift){toast('Koi shift open nahi');return}
+  var pr=api('shift-preview');
+  if(!pr.ok){toast(pr.message||'Failed');return}
+  modal('<div class="dh"><h3>My Shift</h3><p>Aap ki mojooda shift ki tafseel</p></div>'
+    +'<div class="db">'+repRows(pr.report)+'</div>'
+    +'<div class="df"><button class="sec" data-x>Close</button></div>');
+}
 document.addEventListener('keydown',function(e){
   if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#q').focus()}
-  if(e.key==='F1'){e.preventDefault();$('#newBillBtn').click()}
+  if(e.key==='F1'){e.preventDefault();onNewBill()}
   if(e.key==='F2'){e.preventDefault();if(!$('#kotBtn').disabled)$('#kotBtn').click()}
   if(e.key==='F3'){e.preventDefault();if(!$('#chargeBtn').disabled)$('#chargeBtn').click()}
 });
