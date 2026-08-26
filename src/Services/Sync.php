@@ -284,7 +284,10 @@ final class Sync
         // Branch scope: multi-branch business mein ek branch ko doosri
         // branch ka transactional data neeche nahi aana chahiye.
         if ($site && in_array('site_id', $cols, true)) {
-            $where .= " AND site_id = ?";
+            /* NULL site_id = tenant-level data (misal customers jo kisi ek
+               branch se bandhe nahi). Pehle sirf "site_id = ?" tha, is liye
+               aisi saari rows kabhi neeche NahI aati thin. */
+            $where .= " AND (site_id = ? OR site_id IS NULL)";
             $args[] = $site;
         }
         $sql = "SELECT * FROM `$table` WHERE $where ORDER BY `$ts` ASC LIMIT $limit";
@@ -315,17 +318,36 @@ final class Sync
      */
     public static function applyRows(string $table, array $rows, ?string $forceTenantId = null, bool $lastWriteWins = false): int
     {
-        if (!$rows || !self::tableExists($table)) return 0;
+        if (!$rows) return 0;
+        if (!self::tableExists($table)) {
+            // Yeh bhi ek KHAMOSH rasta tha: table cloud par mojood na ho to
+            // chupchaap 0 wapas aata tha - node ko "rejected" dikhta, wajah
+            // kahin nahi.
+            self::$lastRowErrors[$table] = 'table does not exist on the cloud database (run the migrations there)';
+            return 0;
+        }
         $cols      = self::columns($table);
         $pdo       = DB::pdo();
         $hasTenant = in_array('tenant_id', $cols, true);
         $ts        = self::tsColumn($table);
 
-        $applied = 0; $skipped = 0; $failed = 0; $conflicts = 0; $lastErr = '';
+        $applied = 0; $skipped = 0; $failed = 0; $conflicts = 0; $noId = 0; $lastErr = '';
+        self::$lastAudit = [];   // har row ka anjaam (diagnostics ke liye)
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
         foreach ($rows as $row) {
             $data = array_intersect_key((array)$row, array_flip($cols));
-            if (!isset($data['id'])) continue;
+            if (!isset($data['id'])) {
+                // PEHLE: yeh row CHUPCHAAP gir jati thi - na applied, na
+                // failed, na conflict. Node ko sirf "rejected by cloud"
+                // dikhta tha aur wajah kahin darj hi nahi hoti thi.
+                $noId++;
+                $rid = (string)(((array)$row)['id'] ?? '');
+                self::$lastAudit[] = ['id' => $rid, 'status' => 'SKIPPED',
+                    'reason' => $rid === ''
+                        ? 'row has no id'
+                        : 'the cloud table has no "id" column for this row'];
+                continue;
+            }
             if ($forceTenantId !== null && $hasTenant) $data['tenant_id'] = $forceTenantId;
 
             try {
@@ -356,6 +378,7 @@ final class Sync
                         $pdo->prepare("UPDATE `$table` SET $set WHERE id=?")->execute($args);
                     }
                     $applied++;
+                    self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'UPDATED', 'reason' => ''];
                 } else {
                     $keys = array_keys($data);
                     $ph   = implode(',', array_fill(0, count($keys), '?'));
@@ -363,12 +386,15 @@ final class Sync
                         $pdo->prepare("INSERT INTO `$table` (`" . implode('`,`', $keys) . "`) VALUES ($ph)")
                             ->execute(array_values($data));
                         $applied++;
+                        self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'INSERTED', 'reason' => ''];
                     } catch (\PDOException $pe) {
                         if ((int)$pe->getCode() === 23000) {
                             $conflicts++;
                             self::$lastConflicts[] = ['table' => $table, 'id' => (string)$data['id'],
                                 'key' => isset($data['bill_no']) ? ('bill '.$data['bill_no']) : '',
                                 'error' => \substr($pe->getMessage(), 0, 140)];
+                            self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'CONFLICT',
+                                'reason' => \substr(\preg_replace('/\s+/', ' ', $pe->getMessage()) ?? '', 0, 180)];
                             continue;
                         }
                         throw $pe;
@@ -379,12 +405,19 @@ final class Sync
                 // ko na rokay — baqi rows chalti rahen.
                 $failed++;
                 $lastErr = \substr(\preg_replace('/\s+/', ' ', $e->getMessage()) ?? '', 0, 220);
+                self::$lastAudit[] = ['id' => (string)($data['id'] ?? '?'), 'status' => 'FAILED',
+                    'reason' => $lastErr];
             }
         }
         $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
         if ($failed > 0) {
             self::$lastRowErrors[$table] = "$failed row(s) skipped: $lastErr";
+        }
+        if ($noId > 0) {
+            self::$lastRowErrors[$table] = ($p0 = self::$lastRowErrors[$table] ?? '')
+                . ($p0 ? ' | ' : '')
+                . "$noId row(s) skipped - the cloud table is missing columns this row needs (schema is older on the cloud)";
         }
         if ($conflicts > 0) {
             self::$lastRowErrors[$table] = ($self = self::$lastRowErrors[$table] ?? '')
@@ -399,6 +432,8 @@ final class Sync
     public static array $lastRowErrors = [];
     /** @var array<int,array{table:string,id:string,key:string,error:string}> */
     public static array $lastConflicts = [];
+    /** @var array<int,array{id:string,status:string,reason:string}> har row ka anjaam */
+    public static array $lastAudit = [];
     public static int $lastSkipped = 0;
 
     /* ------------------------- watermark state ------------------------- */
@@ -658,6 +693,14 @@ final class Sync
                    "2 rows to upload" ki wajah). Is liye: aage barh jao,
                    magar conflict ko permanently record kar do. */
                 $detail = (string)($r['row_error'] ?? '');
+                if ($detail === '' && !empty($r['rejected'])) {
+                    $bits = [];
+                    foreach (\array_slice((array)$r['rejected'], 0, 2) as $b) {
+                        $bits[] = \substr((string)($b['id'] ?? '?'), 0, 8) . ': '
+                                . (string)($b['status'] ?? '') . ' - ' . (string)($b['reason'] ?? '');
+                    }
+                    $detail = \implode(' | ', $bits);
+                }
                 if ($detail === '') {
                     // Cloud ne wajah nahi batayi -> aksar cloud par purana
                     // build hai jo row_error lautata hi nahi.

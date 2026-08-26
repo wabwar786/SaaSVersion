@@ -1771,3 +1771,46 @@ Purane cloud build ka message: verify kiya ✓
 Diagnose ke ab **11 steps** (Build match + Schema match samet) ✓
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V53 — Sync test suite (28 tests) + do naye bugs pakre gaye
+
+Aap ke kehne par is dafa **baar baar zip nahi banayi**. Ek proper test
+suite likhi (`tools/sync_suite.py`) jo har scenario khud chala kar check
+karti hai, aur zip sirf tab banayi jab **28/28 pass** ho gaye.
+
+## Suite ne do ASLI bugs pakre
+
+**1. NULL `site_id` wali rows kabhi pull hi nahi hoti thin.**
+Pull ka filter `AND site_id = ?` tha. Jo rows kisi ek branch se bandhi
+nahi hotin (misal cloud par banaye gaye customers, jinka site_id NULL
+hota hai) wo **kabhi neeche nahi aati thin**. Ab:
+`AND (site_id = ? OR site_id IS NULL)`.
+Yahi wajah thi ke cloud par banaya customer local par nazar nahi aata tha.
+
+**2. Cloud par table maujood na ho to KHAMOSHI se 0 rows.**
+`applyRows()` shuru mein `if (!$rows || !tableExists) return 0;` karta
+tha — na error, na wajah. Node ko sirf "rejected by cloud" dikhta tha.
+Ab saaf message: *"table does not exist on the cloud database (run the
+migrations there)"*.
+
+## Suite kya kya check karti hai (28 tests)
+1. Healthy sync · zero par settle · koi table error nahi
+2. Speed (5 second se kam) — **0.09s**
+3. Duplicate key: wajah, cloud ka data mehfooz, atka nahi
+4. Cloud par table ghayab: saaf report
+5. Data too long: **asli SQL error**, retry cap, quarantine record
+6. Schema comparison: chhota column pakra jata hai
+7. Diagnose ke 11 steps (Build match + Schema match samet)
+8. Node cloud par register + apna build batata hai
+9. Two-way: cloud -> local aur local -> cloud dono
+10. Bill prefix (L2-) mojood
+11. Sync log: runs, per-table detail, cloud activity
+
+## Nateeja
+    28/28 passed
+Suite `tools/sync_suite.py` mein shamil hai — aainda kisi bhi tabdeeli ke
+baad chala kar poora sync ek command mein verify kiya ja sakta hai.
+
+PHP lint clean · 44 pages OK · dashboard + POS JS clean · local node OK

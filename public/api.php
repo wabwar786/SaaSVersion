@@ -809,15 +809,17 @@ case 'sync-push-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
    if(!syncTableAllowed($tbl)){$out[$tbl]=['error'=>'not allowed','applied'=>0,'sent'=>is_array($rows)?count($rows):0];continue;}
    $rows=is_array($rows)?$rows:[];
    try{
-     Sync::$lastConflicts=[];unset(Sync::$lastRowErrors[$tbl]);
+     Sync::$lastConflicts=[];Sync::$lastAudit=[];unset(Sync::$lastRowErrors[$tbl]);
      $n=Sync::applyRows($tbl,$rows,$stid);
      $conf=Sync::$lastConflicts;
+     $bad=array_values(array_filter(Sync::$lastAudit,fn($a)=>!in_array($a['status'],['INSERTED','UPDATED'],true)));
      /* Asli wajah bhi wapas bhejo. Pehle sirf gina jata tha ke kitni rows
         na chalin - kyun nahi chalin, wo cloud ke andar hi reh jata tha aur
         node par "X row(s) not accepted" jaisa be-maani message aata tha. */
      $out[$tbl]=['applied'=>$n,'sent'=>count($rows),'conflicts'=>count($conf),
                  'conflict_detail'=>array_slice($conf,0,3),
-                 'row_error'=>Sync::$lastRowErrors[$tbl]??null];
+                 'row_error'=>Sync::$lastRowErrors[$tbl]??null,
+                 'rejected'=>array_slice($bad,0,5)];
      if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
      if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
    }catch(Throwable $e){
