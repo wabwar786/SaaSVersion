@@ -180,10 +180,39 @@ final class Auth {
         return array_column($q->fetchAll(), 'module_key');
     }
 
+    /** Business ko super-admin se assign kiye gaye features (null = sab allowed). */
+    public static function tenantFeatures(): ?array {
+        static $cache = false;
+        if ($cache !== false) return $cache;
+        $cache = null;
+        try {
+            $q = DB::pdo()->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
+            $q->execute([tenant_id()]);
+            $j = $q->fetchColumn();
+            if ($j) { $a = json_decode((string)$j, true); if (is_array($a) && $a) $cache = $a; }
+        } catch (\Throwable $e) {}
+        return $cache;
+    }
+
     public static function canModule(string $key): bool {
         if (!self::user()) return false;
+        // 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai
+        $feat = self::tenantFeatures();
+        if ($feat !== null && !in_array($key, $feat, true)) return false;
+        // 2) User-level permission
         if (self::isAdmin()) return true;
         return in_array($key, self::user()['modules'] ?? [], true);
+    }
+
+    /** Cashier = tenant admin nahi. Price change jaise kaam sirf admin/manager. */
+    public static function isManager(): bool {
+        if (!self::user()) return false;
+        if (self::isAdmin()) return true;
+        try {
+            $q = DB::pdo()->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND (r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+            $q->execute([self::user()['id']]);
+            return (bool)$q->fetchColumn();
+        } catch (\Throwable $e) { return false; }
     }
 
     public static function requireModule(string $key): void {

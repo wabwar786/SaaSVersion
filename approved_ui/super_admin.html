@@ -31,6 +31,24 @@
   .tag.ok{background:rgba(40,199,111,.15);color:var(--ok)}.tag.warn{background:rgba(255,159,67,.15);color:var(--warn)}
   .tag.bad{background:rgba(226,55,68,.18);color:#ff8f98}
   .mini{padding:6px 10px;font-size:12px}
+.navtabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.ntab{padding:10px 20px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--ink,#e8eef5);font-weight:700;cursor:pointer}
+.ntab.on{background:var(--accent,#e23744);border-color:var(--accent,#e23744);color:#fff}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.stat{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:rgba(255,255,255,.03)}
+.stat small{display:block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;opacity:.65;margin-bottom:6px}
+.stat b{font-size:22px;font-weight:800}
+.tablewrap{overflow:auto}
+.chip-due{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800}
+.due-red{background:rgba(226,55,68,.18);color:#ff8f98}
+.due-amber{background:rgba(255,159,67,.18);color:#ffc078}
+.due-ok{background:rgba(40,199,111,.15);color:#4ade80}
+.fgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-height:44vh;overflow:auto}
+.fitem{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px}
+.modalov{position:fixed;inset:0;background:rgba(3,8,18,.72);z-index:900;display:flex;align-items:center;justify-content:center;padding:18px}
+.modalbox{background:#0f1626;border:1px solid var(--line);border-radius:16px;width:100%;max-width:560px;max-height:88vh;overflow:auto;padding:22px}
+.modalbox h3{margin-bottom:4px}
+.modalbox .row{margin-top:14px}
   .detail-row td{background:#0d1424}
   .subtable th,.subtable td{font-size:12px;padding:6px 8px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -68,6 +86,26 @@
       </div>
     </div>
 
+    <div class="navtabs">
+      <button class="ntab on" data-nav="dash">Dashboard</button>
+      <button class="ntab" data-nav="biz">Businesses</button>
+      <button class="ntab" data-nav="create">Create Business</button>
+    </div>
+
+    <div data-sec="dash">
+      <div class="stats" id="statCards"></div>
+      <div class="card">
+        <h2>Renewals due (next 30 days)</h2>
+        <div class="tablewrap"><table><thead><tr><th>Business</th><th>Expiry</th><th>Days</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="renewRows"><tr><td colspan=6 class=muted>Loading...</td></tr></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>Recent payments</h2>
+        <div class="tablewrap"><table><thead><tr><th>Business</th><th>Amount</th><th>Method</th><th>Date</th></tr></thead>
+        <tbody id="payRows"><tr><td colspan=4 class=muted>Loading...</td></tr></tbody></table></div>
+      </div>
+    </div>
+
     <div id="pwCard" class="card hide">
       <h2>Change Super Admin Password</h2>
       <div class="grid">
@@ -84,7 +122,7 @@
       <p class="muted" style="margin-top:10px">Fix: service redeploy/restart karein — boot par migrations khud missing tables/columns bana dengi (V15+).</p>
     </div>
 
-    <div class="card">
+    <div class="card hide" data-sec="create">
       <h2>Create Restaurant Business</h2>
       <div class="grid">
         <div><label>Business Name *</label><input id="f_business_name" placeholder="Royal Grill"></div>
@@ -118,10 +156,10 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card hide" data-sec="biz">
       <div class="head-row"><h2 style="margin:0">Businesses</h2><button class="btn sec" id="refreshBtn">Refresh</button></div>
       <div style="overflow:auto"><table>
-        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th style="min-width:330px">Actions</th></tr></thead>
+        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th style="min-width:420px">Actions</th></tr></thead>
         <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table></div>
     </div>
@@ -150,7 +188,7 @@ function enterDash(u){show('dash');$('saWho').textContent=u.name+' ('+u.email+')
   // default dates
   const t=new Date();const iso=d=>d.toISOString().slice(0,10);
   $('f_start_date').value=iso(t);const nm=new Date(t);nm.setMonth(nm.getMonth()+1);$('f_expiry_date').value=iso(nm);
-  loadPlans();loadBiz();checkHealth();
+  loadPlans();checkHealth();nav('dash');
 }
 async function loadPlans(){const r=await api('sa-plans');const sel=$('f_plan');sel.innerHTML='';
   (r.plans||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.price>0?(' · PKR '+Number(p.price).toLocaleString()):'');sel.appendChild(o)});}
@@ -159,6 +197,156 @@ function bizTag(b){
   if(b.expired)return '<span class="tag warn">Expired</span>';
   return '<span class="tag ok">Active</span>';
 }
+
+/* ================= NAV ================= */
+function nav(sec){
+  document.querySelectorAll('[data-nav]').forEach(function(b){b.classList.toggle('on',b.dataset.nav===sec)});
+  document.querySelectorAll('[data-sec]').forEach(function(d){d.classList.toggle('hide',d.dataset.sec!==sec)});
+  if(sec==='dash')loadDash();
+  if(sec==='biz')loadBiz();
+}
+document.querySelectorAll('[data-nav]').forEach(function(b){b.onclick=function(){nav(this.dataset.nav)}});
+
+/* ================= DASHBOARD ================= */
+function pkr(n){return 'PKR '+Math.round(Number(n)||0).toLocaleString()}
+async function loadDash(){
+  const r=await api('sa-dashboard');
+  if(!r.ok){$('statCards').innerHTML='<div class="muted">'+(r.message||'Failed')+'</div>';return}
+  const d=r.dash;
+  $('statCards').innerHTML=[
+    ['Businesses',d.businesses],['Active',d.active],['Suspended',d.suspended],
+    ['Branches',d.branches],['Users',d.users],
+    ['Revenue (MTD)',pkr(d.revenue_mtd)],['Revenue (total)',pkr(d.revenue_total)],
+    ['Renewals ≤30d',(d.renewals||[]).length]
+  ].map(function(x){return '<div class="stat"><small>'+x[0]+'</small><b>'+x[1]+'</b></div>'}).join('');
+
+  const rn=d.renewals||[];
+  $('renewRows').innerHTML=rn.length?rn.map(function(x){
+    const days=Number(x.days);
+    const cls=days<0?'due-red':(days<=7?'due-amber':'due-ok');
+    const lbl=days<0?('Expired '+Math.abs(days)+'d ago'):(days+' days');
+    return '<tr><td><b>'+x.name+'</b><br><span class="muted">'+x.slug+'</span></td>'
+      +'<td>'+(x.expiry_date||'—')+'</td><td><span class="chip-due '+cls+'">'+lbl+'</span></td>'
+      +'<td>'+pkr(x.amount)+'</td><td>'+(x.status||'')+'</td>'
+      +'<td><button class="btn sec mini" onclick="bizRenew(\''+x.id+'\')">Renew</button></td></tr>';
+  }).join(''):'<tr><td colspan=6 class=muted>Agle 30 din mein koi renewal nahi</td></tr>';
+
+  const pm=d.recent_payments||[];
+  $('payRows').innerHTML=pm.length?pm.map(function(x){
+    return '<tr><td>'+x.name+'</td><td>'+pkr(x.amount)+'</td><td>'+(x.method||'')+'</td><td>'+String(x.paid_at||'').slice(0,16).replace('T',' ')+'</td></tr>';
+  }).join(''):'<tr><td colspan=4 class=muted>Koi payment nahi</td></tr>';
+}
+
+/* ================= MODAL HELPER ================= */
+function sModal(html){
+  const ov=document.createElement('div');ov.className='modalov';
+  ov.innerHTML='<div class="modalbox">'+html+'</div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov)ov.remove()};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){ov.remove();document.removeEventListener('keydown',esc)}});
+  ov.querySelectorAll('[data-x]').forEach(function(b){b.onclick=function(){ov.remove()}});
+  return ov;
+}
+
+/* ================= BRANDING ================= */
+async function bizBrand(id){
+  const b=(window.__bizRows||[]).find(function(x){return x.id===id})||{};
+  const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Naam, logo aur colors — login aur poore software par lagenge.</p>'
+    +'<div class="grid" style="margin-top:14px">'
+    +'<div><label>Display Name</label><input id="brName" placeholder="'+(b.name||'')+'"></div>'
+    +'<div><label>Primary Color</label><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
+    +'<div><label>Accent Color</label><input id="brAccent" type="color" value="#ff5864" style="height:42px;padding:4px"></div>'
+    +'</div>'
+    +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</label><input id="brFile" type="file" accept="image/*"></div>'
+    +'<div id="brPrev" style="margin-top:12px;height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;overflow:hidden"><span class="muted">Logo preview</span></div>'
+    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="brSave">Save Branding</button>'
+    +'<button class="btn sec" id="brClear">Remove Logo</button></div>');
+  let logo='';
+  ov.querySelector('#brFile').onchange=function(){
+    const f=this.files&&this.files[0];if(!f)return;
+    if(f.size>1024*1024){toast('Logo 1MB se bara hai');return}
+    const rd=new FileReader();rd.onload=function(){logo=String(rd.result);
+      ov.querySelector('#brPrev').innerHTML='<img src="'+logo+'" style="max-height:88px;max-width:100%;object-fit:contain">'};
+    rd.readAsDataURL(f);
+  };
+  ov.querySelector('#brClear').onclick=function(){logo='';ov.querySelector('#brPrev').innerHTML='<span class="muted">Logo hata diya</span>'};
+  ov.querySelector('#brSave').onclick=async function(){
+    this.disabled=true;this.textContent='Saving…';
+    const r=await api('sa-branding-save',{tenant_id:id,display_name:ov.querySelector('#brName').value,
+      logo_url:logo,brand_color:ov.querySelector('#brColor').value,brand_accent:ov.querySelector('#brAccent').value});
+    this.disabled=false;this.textContent='Save Branding';
+    toast(r.ok?'Branding saved':(r.message||'Failed'));
+    if(r.ok)ov.remove();
+  };
+}
+
+/* ================= FEATURES ================= */
+async function bizFeatures(id){
+  const r=await api('sa-features-get&tenant_id='+id);
+  if(!r.ok){toast(r.message||'Failed');return}
+  const sel=r.selected;   // null = sab allowed
+  const ov=sModal('<h3>Features</h3><p class="muted">Is business ko sirf yahi features milenge. Kuch select na karein to sab allowed.</p>'
+    +'<div class="row" style="margin:12px 0"><button class="btn sec mini" id="fAll">Select all</button>'
+    +'<button class="btn sec mini" id="fNone">Clear all</button></div>'
+    +'<div class="fgrid" id="fList">'+(r.modules||[]).map(function(m){
+      const on=(sel===null)||sel.indexOf(m.module_key)>=0;
+      return '<label class="fitem"><input type="checkbox" value="'+m.module_key+'"'+(on?' checked':'')+'> '+(m.title||m.module_key)+'</label>';
+    }).join('')+'</div>'
+    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="fSave">Save Features</button></div>');
+  ov.querySelector('#fAll').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=true})};
+  ov.querySelector('#fNone').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=false})};
+  ov.querySelector('#fSave').onclick=async function(){
+    const f=[...ov.querySelectorAll('#fList input:checked')].map(function(c){return c.value});
+    this.disabled=true;this.textContent='Saving…';
+    const rr=await api('sa-features-save',{tenant_id:id,features:f});
+    this.disabled=false;this.textContent='Save Features';
+    toast(rr.ok?(f.length+' features assigned'):(rr.message||'Failed'));
+    if(rr.ok)ov.remove();
+  };
+}
+
+/* ================= WHATSAPP ================= */
+const WA_EVENTS=[
+  ['bill_paid','Bill complete — customer ko invoice/PDF link'],
+  ['order_received','Naya online/QR order aaya — manager ko alert'],
+  ['order_ready','Order ready — customer ko'],
+  ['order_dispatched','Delivery dispatch — customer ko rider info'],
+  ['shift_closed','Shift close report — owner ko'],
+  ['low_stock','Inventory reorder level se neeche — manager ko'],
+  ['subscription_expiry','Subscription expiry reminder — business owner ko'],
+  ['daily_summary','Rozana sales summary — owner ko']
+];
+async function bizWa(id){
+  const r=await api('sa-wa-get&tenant_id='+id);
+  if(!r.ok){toast(r.message||'Failed');return}
+  const w=r.wa||{};
+  const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect karein aur events select karein.</p>'
+    +'<div class="grid" style="margin-top:14px">'
+    +'<div style="grid-column:1/-1"><label>API Base URL</label><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
+    +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</label><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
+    +'</div>'
+    +'<div class="row" style="margin-top:12px"><button class="btn sec" id="waT">Test Connection</button><span id="waS" class="muted"></span></div>'
+    +'<h3 style="margin-top:18px;font-size:15px">Events</h3>'
+    +'<div class="fgrid" style="grid-template-columns:1fr">'+WA_EVENTS.map(function(e){
+      const on=(w.events||[]).indexOf(e[0])>=0;
+      return '<label class="fitem"><input type="checkbox" value="'+e[0]+'"'+(on?' checked':'')+'> <span><b>'+e[0]+'</b><br><span class="muted" style="font-size:11px">'+e[1]+'</span></span></label>';
+    }).join('')+'</div>'
+    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="waSave">Save</button></div>');
+  ov.querySelector('#waT').onclick=async function(){
+    ov.querySelector('#waS').textContent='Testing…';
+    const t=await api('sa-wa-test',{url:ov.querySelector('#waU').value,key:ov.querySelector('#waK').value});
+    ov.querySelector('#waS').textContent=t.ok?('OK · '+JSON.stringify(t.status).slice(0,90)):(t.message||'Failed');
+  };
+  ov.querySelector('#waSave').onclick=async function(){
+    const ev=[...ov.querySelectorAll('.fgrid input:checked')].map(function(c){return c.value});
+    this.disabled=true;this.textContent='Saving…';
+    const rr=await api('sa-wa-save',{tenant_id:id,url:ov.querySelector('#waU').value,key:ov.querySelector('#waK').value,events:ev});
+    this.disabled=false;this.textContent='Save';
+    toast(rr.ok?(ev.length+' events enabled'):(rr.message||'Failed'));
+    if(rr.ok)ov.remove();
+  };
+}
+
 async function loadBiz(){const r=await api('sa-business-list');const tb=$('bizRows');
   if(!r.ok){tb.innerHTML='<tr><td colspan=6 class=muted>'+(r.message||'Failed')+'</td></tr>';return}
   const rows=r.businesses||[];window.__bizRows=rows;
@@ -174,6 +362,9 @@ async function loadBiz(){const r=await api('sa-business-list');const tb=$('bizRo
       <button class="btn sec mini" onclick="bizDetail('${b.id}')">Detail</button>
       <button class="btn sec mini" onclick="bizRenew('${b.id}')">Renew</button>
       <button class="btn sec mini" onclick="bizResetAdmin('${b.id}')">Reset Pass</button>
+      <button class="btn sec mini" onclick="bizBrand('${b.id}')">Branding</button>
+      <button class="btn sec mini" onclick="bizFeatures('${b.id}')">Features</button>
+      <button class="btn sec mini" onclick="bizWa('${b.id}')">WhatsApp</button>
       <button class="btn sec mini" onclick="bizToggle('${b.id}',${suspended?1:0})">${suspended?'Open':'Suspend'}</button>
     </div></td>
   </tr>`}).join(''):'<tr><td colspan=6 class=muted>No businesses yet. Create one above.</td></tr>';

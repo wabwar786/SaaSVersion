@@ -616,3 +616,55 @@ thumb 92 / img 92 / card 194 ✓ overlapping cards: **0** ✓ item name
 [Find Photo, Upload Image], URL box gone, 8 results ✓ cart rows
 "1 Playwright Tikka | 1 x 999 | PKR 999" + serial badges + qty pill
 (12px/800/green) ✓ 0 page errors ✓
+
+---
+
+# V27 — Branding, Feature Assignment, Roles, Super Admin Dashboard, WhatsApp
+
+## 1. Per-business branding (naam / logo / colors)
+Super Admin > business row > **Branding**: display name, logo upload (1MB),
+primary + accent color. Yeh sab **login screen aur poore software** par
+lagta hai — naya `public/brand.js` har page par CSS variables aur brand
+text/logo override karta hai (page ke markup ko chhue baghair).
+Migration: tenants par `display_name, logo_url, brand_color, brand_accent`.
+
+## 13. Feature assignment per business
+Super Admin > **Features**: 36 modules ki list, jo select honge business ko
+sirf wahi milenge (kuch select na karein = sab allowed).
+Enforcement `Auth::canModule()` mein hai — **admin par bhi** lagta hai, is
+liye API level par bhi block hota hai, sirf menu chhupana nahi.
+
+## 2 / 3 / 4. Cashier roles
+- `Auth::isManager()` (tenant admin ya Manager/Owner/Admin role).
+- **Price change, item create, category create, picture change, POS
+  settings — sirf Admin/Manager.** Cashier ko yeh buttons dikhte hi nahi
+  aur server bhi 403 deta hai.
+- Cashier ko POS par **"My Shift"** button milta hai: current shift ki
+  opening/closing reconciliation report, print ke saath; shift band ho to
+  aakhri closed shift ki report.
+
+## 5 / 6. Super Admin ab proper software
+Nav tabs: **Dashboard · Businesses · Create Business**.
+Dashboard par 8 stat cards (businesses/active/suspended/branches/users/
+revenue MTD/revenue total/renewals), **Renewals due (next 30 days)** table
+(days-left color chips + inline Renew), aur **Recent payments**.
+
+## 7. WhatsApp integration
+Super Admin > **WhatsApp**: WA Engine ka Base URL + `x-api-key`,
+**Test Connection** button (`/api/status` hit karta hai), aur **8 events**
+select karne ke liye: bill_paid, order_received, order_ready,
+order_dispatched, shift_closed, low_stock, subscription_expiry,
+daily_summary. Settings tenant par save hoti hain.
+
+## 10. Collation error (business list)
+`Platform::listBusinesses()` aur dashboard queries ab **explicit
+`COLLATE utf8mb4_unicode_ci`** ke saath join karti hain, aur
+`migrate_collation.php` ab table-level ke saath **column-level** bhi fix
+karti hai. Ab mixed-collation DB par bhi error nahi aayega.
+
+## Tested (headless browser)
+super admin: tabs ✓ 8 stat cards (revenue MTD PKR 30,000) ✓ renewals 2 rows
+with day chips ✓ payments 3 ✓ features 36 modules → 5 assigned ✓ branding
+saved ✓ WhatsApp 8 events → 2 enabled ✓ business list error-free ✓
+client: login title "Royal Grill House", --brand #0a7d5a ✓ POS par bhi wahi
+color (Add button rgb(10,125,90)) ✓ pos-boot `can.manage` ✓ 0 page errors ✓

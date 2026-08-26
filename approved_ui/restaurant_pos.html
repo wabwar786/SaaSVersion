@@ -286,7 +286,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v26';
+var VERSION='POS v27';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -318,6 +318,31 @@ var BOOT={products:[],categories:[],customers:[],tables:[],printers:{}};
 var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
 var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
+var CAN={manage:false};
+
+/* Branding: restaurant ka naam/logo POS par */
+function applyBrand(){
+  var b=BOOT.brand||{};
+  if(b.name){try{document.title=b.name+' - POS'}catch(e){}}
+  if(b.logo){
+    var m=$('#homeBtn');
+    if(m&&!m.querySelector('img')){m.textContent='';
+      var im=document.createElement('img');im.src=b.logo;
+      im.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit';
+      m.style.overflow='hidden';m.style.padding='0';m.appendChild(im);}
+  }
+}
+/* Cashier ko sirf allowed cheezein: item/price/settings admin ke liye */
+function applyRole(){
+  if(CAN.manage)return;
+  ['newItemBtn','sysBtn','voidBtn'].forEach(function(id){var e=$('#'+id);if(e)e.classList.add('hide')});
+  var shiftBtn=document.getElementById('myShiftBtn');
+  if(!shiftBtn){
+    var b=document.createElement('button');b.className='tb';b.id='myShiftBtn';b.textContent='My Shift';
+    b.onclick=myShift;
+    var host=$('#dupBtn');if(host&&host.parentNode)host.parentNode.insertBefore(b,host);
+  }
+}
 var curTable='', curCustId='walkin', curCustName='Walk-in Customer', curCustPhone='';
 var SET={tax_cash:16,tax_card:8,service_charge:0};
 var payMethod='Cash';
@@ -350,6 +375,9 @@ function boot(){
     $('#avIni').textContent=BOOT.cashier.name.split(/\s+/).map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();
   }
   if(BOOT.settings){SET=BOOT.settings;svc={type:'percent',value:Number(SET.service_charge)||0}}
+  CAN=BOOT.can||{manage:false};
+  applyBrand();
+  applyRole();
   orderTax=taxPct('Cash');
   loadHolds(); renderAll();
   if(!shift){openGate();return}
@@ -428,7 +456,7 @@ function renderGrid(){
       +(p.img?'<img src="'+esc(p.img)+'" alt="" onerror="this.remove()">':'&#127869;')
       +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))
       +'<span class="catbdg">'+esc(p.cat)+'</span>'
-      +'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button></div>'
+      +(CAN.manage?'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button>':'')+'</div>'
       +'<div class="pb"><div class="pn" style="color:#15221b;font-size:13px;font-weight:800" title="'+esc(p.name)+'">'+esc(p.name||'(no name)')+'</div>'
       +'<div class="pp">'+money(p.price)+(p.weighted?' <small>/ KG</small>':(p.pizza?' <small>onwards</small>':''))+'</div>'
       +'<div class="prow"><div class="qb"><button data-dec="'+esc(p.id)+'">-</button>'
@@ -441,7 +469,9 @@ function renderGrid(){
   Array.prototype.forEach.call(g2.querySelectorAll('[data-inc]'),function(b){b.onclick=function(e){e.stopPropagation();var i=this.dataset.inc;preQty[i]=(preQty[i]||1)+1;renderGrid()}});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-dec]'),function(b){b.onclick=function(e){e.stopPropagation();var i=this.dataset.dec;preQty[i]=Math.max(0.001,(preQty[i]||1)-1);renderGrid()}});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-img]'),function(b){b.onclick=function(e){
-    e.stopPropagation();imageModal(b.dataset.img);
+    e.stopPropagation();
+    if(!CAN.manage){toast('Picture change sirf Admin/Manager');return}
+    imageModal(b.dataset.img);
   }});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-calc]'),function(b){b.onclick=function(e){
     e.stopPropagation();var id=this.dataset.calc;
@@ -1129,7 +1159,10 @@ $('#edTax').onclick=function(){
 /* ================= CUSTOMER / TABLE ================= */
 
 /* ================= ITEM MANAGEMENT ================= */
-$('#newItemBtn').onclick=function(){openItemModal('item')};
+$('#newItemBtn').onclick=function(){
+  if(!CAN.manage){toast('Sirf Admin/Manager item ya rate change kar sakta hai');return}
+  openItemModal('item');
+};
 function openItemModal(startTab){
   var tab=startTab||'item', inv=[];
   var sr=api('store-state'); if(sr.ok&&sr.state)inv=sr.state.inventoryItems||[];
@@ -1380,12 +1413,14 @@ $('#homeBtn').onclick=function(){
   location.href='/index.html';
 };
 function myShift(){
-  if(!shift){toast('Koi shift open nahi');return}
-  var pr=api('shift-preview');
-  if(!pr.ok){toast(pr.message||'Failed');return}
-  modal('<div class="dh"><h3>My Shift</h3><p>Aap ki mojooda shift ki tafseel</p></div>'
-    +'<div class="db">'+repRows(pr.report)+'</div>'
-    +'<div class="df"><button class="sec" data-x>Close</button></div>');
+  var pr=shift?api('shift-preview'):api('shift-last-report');
+  if(!pr.ok){toast(pr.message||'Koi shift record nahi');return}
+  var ov=modal('<div class="dh"><h3>'+(shift?'Current Shift':'Last Closed Shift')+'</h3><p>Opening / closing reconciliation</p></div>'
+    +'<div class="db" id="msBody">'+repRows(pr.report)+'</div>'
+    +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="msPrint">Print</button>'
+    +(shift?'<button class="go" id="msClose">Close Shift</button>':'')+'</div>');
+  ov.querySelector('#msPrint').onclick=function(){printNode(ov.querySelector('#msBody'))};
+  var cb=ov.querySelector('#msClose'); if(cb)cb.onclick=function(){ov.remove();closeShift()};
 }
 document.addEventListener('keydown',function(e){
   if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#q').focus()}

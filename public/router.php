@@ -41,9 +41,27 @@ $html=str_replace(
 );
 $html=preg_replace('/(["\'])assets\//','$1/assets/',$html);
 
+// ---- Tenant branding (naam / logo / colors) ----
+$brand=['name'=>'','logo'=>'','color'=>'','accent'=>''];
+try{
+  $btid=null;
+  if(Auth::user())$btid=$_SESSION['user']['tenant_id']??null;
+  elseif(!empty($_SESSION['login_tenant_id']))$btid=$_SESSION['login_tenant_id'];
+  if(!$btid && cfg('app.role')!=='cloud')$btid=tenant_id();
+  if($btid){
+    $bq=\Aio\DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");
+    $bq->execute([$btid]);
+    if($br=$bq->fetch()){
+      $brand=['name'=>(string)($br['display_name']?:$br['name']),'logo'=>(string)($br['logo_url']??''),
+              'color'=>(string)($br['brand_color']??''),'accent'=>(string)($br['brand_accent']??'')];
+    }
+  }
+}catch(\Throwable $e){}
+
 $head='<script src="/ui_state_reset.js?b=v14"></script>'
-     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';</script>'
-     .'<script src="/db_api.js?b=v14"></script>';
+     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';</script>'
+     .'<script src="/db_api.js?b=v14"></script>'
+     .'<script src="/brand.js?b=v26"></script>';
 // DB-first hydration only on authenticated app pages (source of truth = DB).
 // db_boot POS par NahI chahiye: POS khud pos-boot se hydrate hota hai, aur
 // db_boot ki 2 synchronous XHRs page load ko slow karti thin.

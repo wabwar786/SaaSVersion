@@ -40,6 +40,28 @@ foreach ($rows as $r) {
 }
 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
-echo "COLLATION_NORMALIZED target=$target converted=$done skipped=$skip pending_before=".count($rows)."\n";
+// 3) Column-level pass: jo TEXT/VARCHAR columns ab bhi off-collation hain
+//    (table convert fail hua ho) unhe alag se badlo. JSON (utf8mb4_bin)
+//    columns chhoro - wo joins mein use nahi hote.
+$cq = $pdo->prepare(
+    "SELECT table_name t, column_name c, column_type ct, is_nullable n
+       FROM information_schema.columns
+      WHERE table_schema=? AND collation_name IS NOT NULL
+        AND collation_name NOT IN (?, 'utf8mb4_bin')"
+);
+$cq->execute([$db, $target]);
+$cols = $cq->fetchAll();
+$pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+$cfix = 0;
+foreach ($cols as $c) {
+    try {
+        $null = strtoupper($c['n']) === 'YES' ? 'NULL' : 'NOT NULL';
+        $pdo->exec("ALTER TABLE `{$c['t']}` MODIFY `{$c['c']}` {$c['ct']} CHARACTER SET utf8mb4 COLLATE $target $null");
+        $cfix++;
+    } catch (\Throwable $e) { echo "  skip col {$c['t']}.{$c['c']}: ".substr($e->getMessage(),0,90)."\n"; }
+}
+$pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+
+echo "COLLATION_NORMALIZED target=$target converted=$done skipped=$skip columns_fixed=$cfix pending_before=".count($rows)."\n";
 
 // build: V17.1 build 2026-08-25
