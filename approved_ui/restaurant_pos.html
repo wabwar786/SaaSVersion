@@ -66,6 +66,8 @@ button{cursor:pointer;border:0;background:none}
 .prod .pb .pn{font-size:13px!important;font-weight:800!important;line-height:1.3;min-height:34px;color:#15221b!important;word-break:break-word;display:block!important;visibility:visible!important;opacity:1!important}
 .catbdg{position:absolute;left:5px;bottom:5px;background:rgba(255,255,255,.92);color:var(--ink2);font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
 .imgb{position:absolute;left:5px;top:5px;background:rgba(255,255,255,.92);border-radius:999px;width:22px;height:22px;font-size:11px;line-height:1;opacity:0;transition:.13s}
+.imgb.delb{left:32px;color:#c54f59}
+
 .prod:hover .imgb{opacity:1}
 .imgb:hover{background:#fff;transform:scale(1.1)}
 .imgprev{height:170px;border:1px solid var(--l);border-radius:12px;background:var(--bg);display:grid;place-items:center;overflow:hidden}
@@ -649,7 +651,8 @@ function renderGrid(){
       +(p.img?'<img src="'+esc(p.img)+'" alt="" onerror="this.remove()">':'&#127869;')
       +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))
       +'<span class="catbdg">'+esc(p.cat)+'</span>'
-      +(CAN.manage?'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button>':'')+'</div>'
+      +(CAN.manage?'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button>':'')
+      +(CAN.manage?'<button class="imgb delb" data-delitem="'+esc(p.id)+'" data-name="'+esc(p.name||'')+'" title="Delete item">&#128465;</button>':'')+'</div>'
       +'<div class="pb"><div class="pn" style="color:#15221b;font-size:13px;font-weight:800" title="'+esc(p.name)+'">'+esc(p.name||'(no name)')+'</div>'
       +'<div class="pp">'+money(p.price)+(p.weighted?' <small>/ KG</small>':(p.pizza?' <small>onwards</small>':''))+'</div>'
       +'<div class="prow"><div class="qb"><button data-dec="'+esc(p.id)+'">-</button>'
@@ -665,6 +668,18 @@ function renderGrid(){
     e.stopPropagation();
     if(!CAN.manage){toast('Picture change sirf Admin/Manager');return}
     imageModal(b.dataset.img);
+  }});
+  /* V62 — POS par item delete. Pehle yahan sirf rate aur picture badal
+     sakte the; item hatane ka koi rasta nahi tha. Server bata dega agar
+     item bills mein use ho chuka hai (tab Inactive/force ka option milta
+     hai) — khamosh "ho gaya" kabhi nahi. */
+  Array.prototype.forEach.call(g2.querySelectorAll('[data-delitem]'),function(b){b.onclick=function(e){
+    e.stopPropagation();
+    if(!CAN.manage){toast('Item delete sirf Admin/Manager');return}
+    window.DeleteKit.confirm({entity:'menu_item',id:b.dataset.delitem,name:b.dataset.name||'',
+      what:'Menu item',title:'Item delete karein?',
+      warning:'Item POS grid aur menu se hat jayega. Purane bills waise hi rehte hain.',
+      onDone:function(){boot()}});
   }});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-calc]'),function(b){b.onclick=function(e){
     e.stopPropagation();var id=this.dataset.calc;

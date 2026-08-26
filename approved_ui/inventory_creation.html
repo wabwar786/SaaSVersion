@@ -58,7 +58,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table>
+      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
     <div class="inventory-cards" id="cards"></div>
   </section>
@@ -111,7 +111,7 @@ function refreshCategoryControls(){
   $('#itemCategory').innerHTML=state.inventoryCategories.map(c=>'<option>'+c+'</option>').join('');
   if([...$('#itemCategory').options].some(o=>o.value===old))$('#itemCategory').value=old;
   $('#categoryFilter').innerHTML='<option value="">All Categories</option>'+state.inventoryCategories.map(c=>'<option>'+c+'</option>').join('');
-  $('#categoryList').innerHTML=state.inventoryCategories.map(c=>'<span class="category-chip">'+c+'</span>').join('');
+  $('#categoryList').innerHTML=state.inventoryCategories.map(c=>'<span class="category-chip">'+c+' <button data-del-cat="'+c+'" title="Delete category" style="border:0;background:none;color:var(--danger);cursor:pointer;font-size:13px;line-height:1">&times;</button></span>').join('');
 }
 function render(){
   const state=RestaurantStore.getState(),q=$('#search').value.toLowerCase().trim(),cat=$('#categoryFilter').value,usage=$('#usageFilter').value;
@@ -120,8 +120,8 @@ function render(){
   $('#statLow').textContent=state.inventoryItems.filter(i=>status(i)==='Low').length;
   $('#statDirect').textContent=state.inventoryItems.filter(i=>i.usage==='Direct Sale').length;
   $('#statBoth').textContent=state.inventoryItems.filter(i=>i.usage==='Both').length;
-  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td></tr>').join('');
-  $('#cards').innerHTML=list.map(i=>'<article class="inventory-card"><div class="inventory-card-top"><div><h3>'+i.name+'</h3><small>'+i.category+' · '+i.usage+'</small></div><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></div><div class="inventory-card-grid"><div><span>On Hand</span><b>'+RestaurantStore.formatStock(i)+'</b></div><div><span>Average Cost</span><b>'+RestaurantStore.formatPurchaseCost(i)+'</b></div><div><span>Purchase Unit</span><b>'+i.purchaseUnit+' × '+i.purchaseFactor+'</b></div><div><span>Storage</span><b>'+i.storage+'</b></div></div></article>').join('');
+  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
+  $('#cards').innerHTML=list.map(i=>'<article class="inventory-card"><div class="inventory-card-top"><div><h3>'+i.name+'</h3><small>'+i.category+' · '+i.usage+'</small></div><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></div><div class="inventory-card-grid"><div><span>On Hand</span><b>'+RestaurantStore.formatStock(i)+'</b></div><div><span>Average Cost</span><b>'+RestaurantStore.formatPurchaseCost(i)+'</b></div><div><span>Purchase Unit</span><b>'+i.purchaseUnit+' × '+i.purchaseFactor+'</b></div><div><span>Storage</span><b>'+i.storage+'</b></div></div><div class="action-row" style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn sm danger" data-del-item="'+i.id+'" data-name="'+i.name+'">Delete</button></div></article>').join('');
 }
 function setTab(tab){
   activeTab=tab;$$('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
@@ -137,8 +137,24 @@ $('#saveItem').onclick=()=>{
   closeM('newItemModal');refreshCategoryControls();render();toast(name+' added to inventory');
 };
 $('#search').oninput=render;$('#categoryFilter').onchange=render;$('#usageFilter').onchange=render;
-document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c)closeM(c.dataset.close)});
+function catRows(){try{const v=JSON.parse(localStorage.getItem(RestaurantStore.KEY)||'{}');return v.inventoryCategoryRows||[]}catch(e){return[]}}
+document.addEventListener('click',e=>{
+  const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}
+  /* V62 — is page par pehle delete (aur edit) ka koi rasta hi nahi tha.
+     Ab asli DB delete DeleteKit se: agar item kisi recipe mein use ho
+     raha ho ya uska stock khali na ho to server saaf wajah deta hai,
+     khamoshi se "ho gaya" kabhi nahi kehta. */
+  const di=e.target.closest('[data-del-item]');
+  if(di){window.DeleteKit.confirm({entity:'inventory_item',id:di.dataset.delItem,name:di.dataset.name||'',
+    what:'Inventory item',title:'Item delete karein?',
+    warning:'Item purchasing aur recipes ki list se hat jayega. Purani purchase history mehfooz rehti hai.'});return}
+  const dc=e.target.closest('[data-del-cat]');
+  if(dc){const nm=dc.dataset.delCat,row=catRows().find(x=>x.name===nm);
+    if(!row){toast('Category database mein nahi mili - page refresh karein');return}
+    window.DeleteKit.confirm({entity:'inventory_category',id:row.id,name:nm,
+      what:'Inventory category',title:'Category delete karein?'});return}
+});
 refreshCategoryControls();render();
 </script>
 <script src="access_store.js"></script><script src="shell.js" data-active="inventory"></script><div class="scrim" id="scrim"></div></body></html>
-<!-- build: V17.1 build 2026-08-25 -->
+<!-- build: V62 build 2026-08-26 -->

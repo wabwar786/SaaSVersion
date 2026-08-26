@@ -1,7 +1,7 @@
 # Project Handoff Prompt — SaaSVersion (Multi-Tenant Restaurant POS SaaS)
 
-> Naye chat mein yeh poora file paste karein, aur saath mein latest ZIP
-> (`SaaSVersion_V57_ConsoleAndReset.zip`) upload karein.
+> Naye chat mein yeh poora file paste karein, aur saath latest ZIP
+> (`SaaSVersion_V61_MySQL8Fix.zip`) upload karein.
 
 ---
 
@@ -11,138 +11,158 @@
 - Roman Urdu + English mila kar baat karta hun. Isi tarah jawab dein.
 - **Complete, copy-paste ready code** chahiye — diffs ya adhoore snippets nahi.
 - Lambi tashreeh ke bajaye seedha code aur natija.
-- **Build tasks ke liye: pehle workflow / architecture / design pesh karein** review ke liye.
-  Jab main **"Final"** kahun tabhi poora code banayein.
-- **Har chhoti tabdeeli par naya ZIP na banayein.** Pehle testing/verification mukammal
-  karein, sab pass ho jaye, phir **ek** package dein.
-- Industry-standard delivery chahiye: security, performance, scalability, usability,
-  reliability har solution mein shamil.
+- **Build tasks ke liye: pehle workflow / architecture / design pesh karein** review
+  ke liye. Jab main **"Final"** kahun tabhi poora code banayein.
+- **Har chhoti tabdeeli par naya ZIP na banayein.** Pehle testing mukammal karein,
+  sab pass ho jaye, phir **ek** package dein.
+- Industry-standard delivery: security, performance, scalability, usability,
+  reliability har solution mein.
 
 ---
 
 ## Product
 
-Multi-tenant restaurant POS + all-in-one SaaS platform.
-Har business (tenant) ka apna cloud portal, aur chahe to **offline (branch computer)
-installation** jo cloud se background mein sync hoti hai.
+Multi-tenant restaurant POS + all-in-one SaaS. Har business (tenant) ka apna cloud
+portal, aur chahe to **offline branch-computer installation** jo cloud se background
+mein sync hoti hai.
 
 ### Stack
-- PHP 8.2 + MySQL/MariaDB, plain HTML/CSS/JS UI (koi framework nahi)
-- Railway par deploy (Docker, `php:8.2-apache`)
+- PHP 8.2 + MySQL/MariaDB, plain HTML/CSS/JS (koi framework nahi)
+- Railway par deploy (Docker, `php:8.2-apache`) — **Railway par MySQL 8 hai**
 - Repo: `https://github.com/wabwar786/SaaSVersion.git`
 - Live: `https://saasversion-production.up.railway.app`
-- Config: `config/cloud.php` (Railway) / `config/local.php` / sealed `config/offline.php`
+- Config: `config/cloud.php` / `config/local.php` / sealed `config/offline.php`
 - Super admin: `super@admin.local / Super@123`
-- Test business: Royal Grill (`royal-grill`), owner login `owner / 2cU5Xzyx7M`
+- Test business: Royal Grill (`royal-grill`), owner `owner / 2cU5Xzyx7M`
+
+### MySQL 8 vs MariaDB — yeh mujhe do dafa kaat chuka hai
+MySQL 8 `information_schema` ke column names **UPPERCASE** deta hai
+(`TABLE_NAME`), MariaDB lowercase. **Har `information_schema` query par explicit
+lowercase alias lagayein** — `SELECT table_name AS t`, `SELECT column_name AS c`.
+Warna sandbox (MariaDB) par sab chalta hai aur production (MySQL 8) par khamoshi
+se tootta hai.
+
+Isi tarah `api.php` ke shuru mein `display_errors=0` hai — ek PHP warning bhi JSON
+response tor deti thi aur browser sirf "Request failed" dikhata tha.
 
 ### Design system
-`public/shared.css` mein sab kuch hai — tokens aur classes.
-**Sirf yehi classes use karein**, warna page bay-shakal ho jata hai:
+`public/shared.css` mein sab kuch hai. **Sirf yehi classes use karein:**
 `.app .sidebar .main .header .content` · `.panel .panel-head .panel-body[.flush]` ·
-`.table-wrap` + `.table` (+ `.num`, `.t-main`, `.t-sub`) · `.field > span` + input ·
+`.table-wrap` + `.table` (+ `.num .nw .t-main .t-sub`) · `.field > span` + input ·
 `.form-grid` (+ `.full`) · `.kpis .kpi[.ok|.info|.warn]` · `.btn[.primary|.danger|.sm]` ·
 `.tag[.green|.amber|.red]` · `.grid2 .grid3 .split`
-(`.card`, `.inp`, `.tablewrap` **maujood nahi hain** — inhen kabhi use na karein.)
+(`.card`, `.inp`, `.tablewrap` **maujood nahi** — kabhi use na karein.)
 
 ### Key files
-- `public/api.php` — saare endpoints (bahut bara file)
+- `public/api.php` — saare endpoints
 - `src/Services/Sync.php` — sync engine
-- `src/Services/AdminData.php` — backup / factory reset / import
-- `src/Services/PageData.php` — posBoot, dashboard, bill numbering
-- `src/Services/Auth.php`, `Platform.php`, `PosService.php`, `Pdf.php`
-- `approved_ui/restaurant_pos.html` — POS (v33)
-- `approved_ui/index.html` — business dashboard
-- `approved_ui/super_admin.html` — Platform Console
-- `approved_ui/qr.html`, `pair.html`
+- `src/Services/AdminData.php` — backup / factory reset / purge / delete / import
+- `src/Services/AdminConsole.php` — command console (server-side parser)
+- `src/Services/PageData.php` · `Auth.php` · `Platform.php` · `PosService.php` · `Pdf.php`
+- `approved_ui/restaurant_pos.html` (POS v33) · `index.html` (business dashboard)
+  · `super_admin.html` (Platform Console) · `qr.html` · `pair.html`
 - `tools/build_offline_bundle.php` — AES-256-GCM sealed offline package
 - `tools/sync_suite.py` — 34-test sync suite
 - `tools/reset_verify.py` — factory reset verifier
 - `scripts/migrate_*.php` — migrations (docker-entrypoint par khud chalti hain)
-- `WHATS_UPDATED.md` — har version ka mukammal record
+- `WHATS_UPDATED.md` — V40 se V61 tak har fix ka record
 
 ---
 
-## Current state: **V57**
+## Current state: **V61**
 
-### Sync engine (V40–V55 mein poori tarah dobara likha gaya)
-Yeh sab bugs mil kar theek huay — aur inhen dobara na toRein:
-
-1. **23 tables ka koi timestamp column nahi tha** → sync unhen khamoshi se skip karti thi
-   (`payments` bhi shamil, isi liye local/cloud sales figures alag the).
-   `migrate_sync_columns.php` har syncable table par `updated_at` daalta hai.
-2. **Two-way sync**: push 56 = pull 56 tables. Pehle pull sirf 12 master tables ka tha.
-3. **Bulk sync**: `sync-push-bulk` / `sync-pull-bulk`. Pehle har table ki alag HTTP request
-   thi (100+ requests, 60–90 sec, timeout). Ab **0.4 sec**.
-4. **Silent merge khatam**: cloud ab `ON DUPLICATE KEY UPDATE` nahi karta. Wahi `id` ho to
-   UPDATE, warna INSERT; koi doosri unique takra jaye to row **reject** + wajah.
-   (Pehle do nodes ke bills mil kar ek ho jate the aur raqam badal jati thi.)
-5. **Applied count verify**: cloud ne kam rows li to watermark aage nahi barhta.
-   3 nakaam koshishon ke baad row quarantine (`sync_activity` status `REJECTED`).
-6. **Node-scoped bill numbers**: har offline package ka apna `node_code` (L1, L2…),
-   bills `L2-0001`. Purane bina-prefix bills conflict par **khud renumber** ho jate hain.
-7. **Schema lookup**: `columns()` ab `DATABASE()` se schema leta hai (pehle config se —
-   Railway par naam alag hone se **har table "does not exist"** ban jati thi).
-8. **NULL `site_id` rows** ab pull hoti hain (pehle filter unhen chhoR deta tha).
-9. **Version handshake**: `sync-ping` build + features deta hai; mismatch par dashboard
-   par laal warning. **Check** button mein "Build match" aur "Schema match" steps.
-10. **Node heartbeat**: har sync request par node `sync_nodes` mein register hota hai —
-    rows bheje baghair bhi cloud par nazar aata hai.
+### Sync engine (V40–V55 mein dobara likha gaya) — inhen na toRein
+1. **23 tables ka timestamp column nahi tha** → sync unhen khamoshi se skip karti thi
+   (`payments` bhi). `migrate_sync_columns.php` har table par `updated_at` daalta hai.
+2. **Two-way**: push 56 = pull 56 tables (pehle pull sirf 12 master tables ka tha).
+3. **Bulk sync**: `sync-push-bulk` / `sync-pull-bulk` — 100+ requests se **0.4 sec**.
+4. **Silent merge khatam**: wahi `id` → UPDATE, warna INSERT; koi unique takra jaye
+   to row **reject** + wajah. (Pehle do nodes ke bills mil kar ek ho jate the aur
+   raqam badal jati thi.)
+5. **Applied count verify** + 3 nakaam koshishon ke baad quarantine.
+6. **Node-scoped bill numbers** (`L2-0001`); purane bills conflict par khud renumber.
+7. **Schema lookup** `DATABASE()` se (config ke DB naam se nahi).
+8. **NULL `site_id` rows** ab pull hoti hain.
+9. **Version handshake** — build mismatch par dashboard par laal warning; `Check`
+   mein "Build match" aur "Schema match" steps.
+10. **Node heartbeat** — rows bheje baghair bhi node cloud par nazar aata hai.
 11. Retry: DNS/timeout/5xx par 3 koshishen.
 
-**Sync ka status POS par nahi, dashboard par hai** — "Cloud Synchronization" card:
-status pill, last sync, waiting rows, **Sync now / Check / View log**.
-Auto-sync 3 jagah se: background loop, dashboard, POS — har **2 minute**.
+Sync status **dashboard par** hai (POS par nahi): status pill, last sync, waiting
+rows, **Sync now / Check / View log**. Auto-sync har 2 minute (background loop +
+dashboard + POS).
+Log: `sync_runs` + `sync_activity` (cloud aur node dono), 60 din baad khud saaf.
 
-**Log**: `sync_runs` (har pass, per-table detail) + `sync_activity` (har transfer,
-cloud + node dono). 60 din baad khud saaf.
-
-### Platform Console (V56–V57) — `super_admin.html`
+### Platform Console — `super_admin.html`
 Sidebar: Dashboard · Sync Monitor · All Businesses · Create Business ·
-**Backup & Reset** · **Import Data** · Audit Log · Health · Account.
+Backup & Reset · Import Data · **Command Console** · Audit Log · Health · Account.
 
-- **Backup**: poora business ek JSON file (`FULL` ya `MASTER`), download hoti hai.
-- **Factory Reset**: do hifazatein — business ka poora naam type karna, aur
-  pichle **1 ghante mein backup** liya gaya ho.
+- **Backup** → JSON file (FULL / MASTER) download, record rakha jata hai.
+- **Factory reset** — naam se confirm + 1 ghante ke andar backup lazmi.
   `TXN` = sirf transactions; `FULL` = sab kuch, **sirf admin login bachta hai**,
-  phir branch defaults dobara seed.
-  Tables **information_schema se dynamically** nikalti hain (73), hardcoded list nahi.
-- **Import**: wahi backup file wapas — **sirf master data** (menu, items, recipes,
-  inventory, suppliers, customers, staff/roles, tables, printers).
-  Transactional data jaan-boojh kar import nahi hota. Skip/Overwrite option.
-- **Audit log**: har super-admin action record.
+  phir branch defaults dobara seed. Tables `information_schema` se **dynamically**
+  (73), hardcoded list nahi.
+- **Delete business** — 73 tenant-scoped tables + sync/admin logs + subscriptions +
+  sites + organizations + khud `tenants` row. Kuch nahi bachta.
+- **Import** — wahi backup file wapas, **sirf master data** (transactional kabhi nahi).
+- **Audit log** — har super-admin action.
 
-### Baqi features (pehle se mukammal)
+### Command Console (V58–V61)
+Terminal screen, `>` prompt, Up/Down history, quick-command chips.
+
+    list · info <slug> · users <slug> · footprint <slug> · selftest [slug]
+    suspend <slug> · activate <slug>
+    backup <slug> [full|master]
+    reset <slug> [txn|full] --confirm "<name>"
+    purge <slug> <what> [--before YYYY-MM-DD] --confirm "<name>"
+        what: transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs
+    delete <slug> --confirm "<name>"
+    nodes · sync [slug] · audit [slug] · tables · query SELECT ...
+    clear · version · help
+
+**Hifazatein (sab server-side):** confirm ke baghair chalti hi nahi; galat naam par
+asli naam ke saath poori command bana kar deta hai; `<slug>` jaise brackets khud
+saaf; reset/purge se pehle backup lazmi (logs ke liye nahi); `query` sirf
+SELECT/SHOW/DESCRIBE, bina LIMIT par khud `LIMIT 100`; har amal audit mein.
+`sa-console` ka jawab **hamesha JSON** (shutdown handler + try/catch), aur client
+HTTP status + raw jawab dikhata hai.
+
+**`selftest` sab se pehla diagnostic hai** — tables, permissions, backup status,
+data footprint sab check karta hai.
+
+### Baqi features
 Offline sealed package (AES-256-GCM + HMAC tamper check, portable PHP + MariaDB,
-Windows installer), per-tenant branding, feature flags (36 modules), shift management
-(per-user per-counter, cash clear gate, handover), QR table ordering, device pairing,
-WhatsApp integration, print templates + PDF bills, super admin dashboard.
+Windows installer), per-tenant branding, feature flags (36 modules), shift
+management (per-user per-counter, cash clear gate, handover), QR table ordering,
+device pairing, WhatsApp integration, print templates + PDF bills.
 
 ---
 
-## Testing (yeh chalana zaroori hai)
+## Testing (release se pehle lazmi)
 
 ```bash
-# 34-test sync suite — offline node + cloud dono par
-python3 tools/sync_suite.py <offline_dir>
-
-# factory reset verifier — har tenant-scoped table ginta hai
-python3 tools/reset_verify.py <business-slug>
+python3 tools/sync_suite.py <offline_dir>     # 34 tests
+python3 tools/reset_verify.py <slug>          # har tenant-scoped table ginta hai
+php tools/check_pages.php                     # 44 pages
+# + PHP lint sab files, aur key pages ka JS `node --check`
 ```
 
-Har release se pehle: PHP lint (sab files) · `php tools/check_pages.php` ·
-key pages ka JS `node --check` · sync suite **34/34** · reset verifier CLEAN.
+**Note:** `reset_verify.py` royal-grill ka data wipe kar deta hai. Us ke baad
+offline package se bana node khali hota hai aur sync suite fail karti hai —
+pehle backup se restore karein, phir suite chalayein.
 
 ---
 
-## Ahem aadat (mere tajurbe se)
+## Ahem aadat (mehnga seekha)
 
-- **Browser mein khud dekh kar verify karein** (Playwright). Kai dafa endpoint theek tha
-  magar UI toota hua tha — ek dafa poora JS `<script src="...">` tag ke andar chala gaya
-  tha aur kabhi chala hi nahi.
-- **Khamosh failure sab se bara dushman hai.** Har error ki asli wajah user tak pahunchni
-  chahiye — "rejected by cloud" jaisa be-maani message nahi.
-- Cloud aur offline **dono taraf deploy** zaroori hai; version mismatch ho to console
-  khud batata hai.
+- **Browser mein khud dekh kar verify karein** (Playwright). Ek dafa poora JS
+  `<script src="...">` tag ke andar chala gaya tha aur kabhi chala hi nahi —
+  endpoint theek tha magar UI mara hua tha.
+- **Khamosh failure sab se bara dushman hai.** Har error ki asli wajah user tak
+  pohanchni chahiye; "rejected by cloud" jaisa be-maani message nahi.
+- **Cloud aur offline dono taraf deploy** zaroori hai. Ek dafa meri chaar updates
+  cloud par pohanchi hi nahi thin aur ghanton usi masle par lage.
+- Production MySQL 8, sandbox MariaDB — farq ka khayal rakhein (ooper dekhein).
 
 ---
 
@@ -155,13 +175,13 @@ key pages ka JS `node --check` · sync suite **34/34** · reset verifier CLEAN.
 - ionCube/SourceGuardian (mojooda AES sealing obfuscation hai, na-qabil-e-tor nahi)
 - QR ordering ke liye `menu_items.is_online` column
 - Offline ke liye multi-worker PHP server (built-in single-threaded hai)
-- Sync backlog **drain mode** — ek mahine ka backlog abhi batches mein jata hai;
-  drain + bara batch size se minton mein clear ho sakta hai
+- Sync backlog **drain mode** — ek mahine ka backlog abhi batches mein jata hai
+- Console: `impersonate <slug>` (support ke liye business mein login), broadcast message
 
 ---
 
 ## Pehla kaam
 
-`SaaSVersion_V57_ConsoleAndReset.zip` upload kar raha hun. Isay extract karke
-`WHATS_UPDATED.md` parh lein (V40 se V57 tak har fix ka record hai), phir batayein
-ke aap ne state samajh li — uske baad main agla kaam dunga.
+`SaaSVersion_V61_MySQL8Fix.zip` upload kar raha hun. Extract karke
+`WHATS_UPDATED.md` parh lein (V40–V61 ka poora record), phir batayein ke state
+samajh li — uske baad main agla kaam dunga.

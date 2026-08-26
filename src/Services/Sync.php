@@ -212,6 +212,19 @@ final class Sync
                 $c['cloud_api_url'] = rtrim((string)$GLOBALS['config']['app']['cloud_url'], '/') . '/api.php';
             }
         }
+        /* V62 — DELETE CHANNEL.
+           `sync_tombstones` har installation mein sync honi CHAHIYE, chahe
+           config purani ho. Pehle sync sirf "kya badla" bhejti thi; "kya mit
+           gaya" ka koi rasta nahi tha, is liye cloud par delete/reset hua
+           data branch computer par zinda reh jata tha. Config edit karne ka
+           intezar nahi kar sakte — yahan zabardasti daal rahe hain. */
+        foreach (['push_tables', 'pull_tables'] as $k) {
+            $list = (array)($c[$k] ?? []);
+            if ($list && !in_array('sync_tombstones', $list, true)) {
+                $list[] = 'sync_tombstones';
+            }
+            $c[$k] = $list;
+        }
         return $c;
     }
 
@@ -1041,6 +1054,156 @@ final class Sync
 
 
 
+    /* ==================================================================
+       TOMBSTONES — "kya mit gaya" ka channel.
+
+       Yeh V62 ka sab se bara fix hai. Sync engine sirf upsert karti thi
+       (updated_at watermark + INSERT/UPDATE). Jab cloud par `DELETE FROM
+       orders ...` chalta tha (factory reset / purge / force delete), row
+       bina koi nishan chhore ghayab ho jati thi. Node agli pull par
+       poochta: "mere watermark ke baad kya naya hai?" — cloud kehta
+       "kuch nahi". Node ko khabar hi nahi hoti thi ke hazaron rows mit
+       chuki hain, aur wo apna purana data pakde baitha rehta tha.
+
+       Ab har hard delete `sync_tombstones` mein nishan chhorta hai. Wo
+       table ek normal syncable table hai, is liye dono taraf pohanchti
+       hai; yeh function usay parh kar local rows uda deta hai.
+
+       Do modes:
+         ROW  — ek row (row_id se)
+         WIPE — us table ki poori tenant/site scope (`before_ts` tak).
+                Isi se factory reset ab node tak pohanchta hai.
+
+       `before_ts` guard is liye hai ke wipe idempotent rahe: reset ke
+       BAAD banaya gaya naya data kabhi na mite, chahe wohi tombstone
+       dobara process ho jaye.
+       ================================================================== */
+
+    /** Yeh tables kabhi tombstone se delete nahi hotin. */
+    private const TOMBSTONE_DENY = [
+        'sync_tombstones', 'sync_tombstones_applied', 'sync_state', 'sync_runs',
+        'sync_activity', 'sync_nodes', 'sync_retries', 'deletion_log',
+        'platform_users', 'platform_modules', 'tenants', 'organizations',
+        'subscription_plans', 'tenant_subscriptions', 'subscription_payments',
+    ];
+
+    /**
+     * Aayi hui tombstones apply karo.
+     * @return array{applied:int,rows:int,errors:array<int,string>}
+     */
+    public static function applyTombstones(int $limit = 500): array
+    {
+        $out = ['applied' => 0, 'rows' => 0, 'errors' => []];
+        if (!self::tableExists('sync_tombstones')) return $out;
+        if (!self::tableExists('sync_tombstones_applied')) return $out;
+
+        $p = DB::pdo();
+        try {
+            $q = $p->prepare(
+                "SELECT t.id, t.tenant_id, t.site_id, t.table_name, t.row_id,
+                        t.scope_mode, t.before_ts, t.reason
+                   FROM sync_tombstones t
+                   LEFT JOIN sync_tombstones_applied a ON a.tombstone_id = t.id
+                  WHERE a.tombstone_id IS NULL
+                  ORDER BY t.created_at ASC
+                  LIMIT $limit"
+            );
+            $q->execute();
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            $out['errors'][] = 'tombstone read: '.substr($e->getMessage(), 0, 140);
+            return $out;
+        }
+        if (!$rows) return $out;
+
+        foreach ($rows as $t) {
+            $table = (string)$t['table_name'];
+            $n = 0;
+
+            if ($table === '' || in_array($table, self::TOMBSTONE_DENY, true) || !self::tableExists($table)) {
+                self::markTombstoneApplied((string)$t['id'], 0);
+                $out['applied']++;
+                continue;
+            }
+
+            try {
+                $cols = self::columns($table);
+                $where = []; $args = [];
+
+                if (($t['scope_mode'] ?? 'ROW') === 'WIPE' && (string)$t['row_id'] === 'ALL') {
+                    /* poori scope — magar sirf us waqt tak ka data */
+                    $where[] = '1=1';
+                    if (!empty($t['before_ts'])) {
+                        $tsCol = in_array('created_at', $cols, true) ? 'created_at'
+                               : (in_array('updated_at', $cols, true) ? 'updated_at' : null);
+                        if ($tsCol) { $where[] = "`$tsCol` <= ?"; $args[] = $t['before_ts']; }
+                    }
+                } else {
+                    if (!in_array('id', $cols, true)) {
+                        self::markTombstoneApplied((string)$t['id'], 0);
+                        $out['applied']++;
+                        continue;
+                    }
+                    $where[] = 'id = ?'; $args[] = (string)$t['row_id'];
+                }
+
+                /* Tenant/branch scope — ek business ka tombstone doosre ka
+                   data kabhi na chhoo sake. */
+                if (!empty($t['tenant_id']) && in_array('tenant_id', $cols, true)) {
+                    $where[] = 'tenant_id = ?'; $args[] = $t['tenant_id'];
+                }
+                if (!empty($t['site_id']) && in_array('site_id', $cols, true)) {
+                    $where[] = '(site_id = ? OR site_id IS NULL)'; $args[] = $t['site_id'];
+                }
+
+                $p->exec('SET FOREIGN_KEY_CHECKS=0');
+                $st = $p->prepare("DELETE FROM `$table` WHERE ".implode(' AND ', $where));
+                $st->execute($args);
+                $n = $st->rowCount();
+                $p->exec('SET FOREIGN_KEY_CHECKS=1');
+
+                self::markTombstoneApplied((string)$t['id'], $n);
+                $out['applied']++;
+                $out['rows'] += $n;
+
+                if ($n > 0) {
+                    /* Wipe ke baad us table ka watermark reset — warna node
+                       ka purana watermark aage hone ki wajah se wo rows
+                       dobara kabhi push/pull hi nahi hotin. */
+                    try {
+                        $p->prepare("DELETE FROM sync_state WHERE scope IN (?,?)")
+                          ->execute(['push:'.$table, 'pull:'.$table]);
+                    } catch (\Throwable $e) {}
+                }
+            } catch (\Throwable $e) {
+                try { $p->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (\Throwable $e2) {}
+                /* KHAMOSH NAHI. Wajah run log tak jayegi. */
+                $out['errors'][] = $table.': '.substr($e->getMessage(), 0, 140);
+            }
+        }
+
+        /* 90 din se purani tombstones + unke markers saaf */
+        try {
+            if (random_int(1, 20) === 1) {
+                $p->exec("DELETE FROM sync_tombstones_applied WHERE applied_at < DATE_SUB(NOW(), INTERVAL 90 DAY)");
+                $p->exec("DELETE FROM sync_tombstones WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)");
+            }
+        } catch (\Throwable $e) {}
+
+        return $out;
+    }
+
+    private static function markTombstoneApplied(string $id, int $rows): void
+    {
+        try {
+            DB::pdo()->prepare(
+                "INSERT INTO sync_tombstones_applied (tombstone_id, rows_deleted, applied_at)
+                 VALUES (?,?,NOW(6))
+                 ON DUPLICATE KEY UPDATE rows_deleted = VALUES(rows_deleted), applied_at = NOW(6)"
+            )->execute([$id, $rows]);
+        } catch (\Throwable $e) {}
+    }
+
     /** One full sync run (push then pull). Never throws to the caller. */
     public static function run(string $triggeredBy = 'auto'): array
     {
@@ -1060,12 +1223,19 @@ final class Sync
             self::touchState('engine', 'SYNCING');
             $pushed = self::push();
             $pulled = self::pull();
+
+            /* Pull ke BAAD — pehle tombstones neeche aani hain, phir apply.
+               Yeh wo step hai jis ke baghair cloud par delete kiya hua data
+               node par hamesha zinda rehta tha. */
+            $tomb = self::applyTombstones();
+
             $total  = array_sum($pushed) + array_sum($pulled);
             self::touchState('engine', 'OK', null);
 
             $problems = [];
             foreach (self::$tableErrors as $te) $problems[] = $te['dir'].' '.$te['table'].': '.$te['error'];
             foreach (self::$lastRowErrors as $tb => $er) $problems[] = $tb.': '.$er;
+            foreach ($tomb['errors'] as $er) $problems[] = 'DELETE '.$er;
 
             $status = $problems ? 'PARTIAL' : 'OK';
             if (self::$abortedReason !== '') $status = 'ERROR';
@@ -1077,6 +1247,7 @@ final class Sync
 
             return ['ok' => empty(self::$abortedReason), 'run_id' => $runId,
                     'pushed' => $pushed, 'pulled' => $pulled, 'total' => $total,
+                    'deleted_rows' => $tomb['rows'], 'tombstones' => $tomb['applied'],
                     'skipped_rows' => self::$lastSkipped,
                     'table_errors' => self::$tableErrors,
                     'row_errors' => self::$lastRowErrors,
@@ -1202,4 +1373,4 @@ final class Sync
     }
 }
 
-// build: V17.1 build 2026-08-25
+// build: V62 build 2026-08-26

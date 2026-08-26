@@ -16,7 +16,22 @@ use PDO;
  */
 final class ModuleBridge
 {
-    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu'];
+    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu', 'tables'];
+
+    /**
+     * UI module -> DeleteService entity.
+     * Pehle delete yahan hard-coded UPDATE se hota tha aur natija kabhi
+     * user tak nahi pohanchta tha. Ab sab kuch DeleteService se guzarta
+     * hai: wahi dependency checks, wahi tombstones, wahi audit.
+     */
+    private const DELETE_ENTITY = [
+        'customers' => 'customer',
+        'suppliers' => 'supplier',
+        'expenses'  => 'expense',
+        'menu'      => 'menu_item',
+        'wastage'   => 'wastage',
+        'tables'    => 'table',
+    ];
 
     public static function handles(string $module): bool
     {
@@ -33,6 +48,7 @@ final class ModuleBridge
             'expenses'  => self::listExpenses(),
             'wastage'   => self::listWastage(),
             'menu'      => self::listMenu(),
+            'tables'    => self::listTables(),
             default     => [],
         };
     }
@@ -48,38 +64,92 @@ final class ModuleBridge
             'expenses'  => self::saveExpense($id, $d),
             'wastage'   => self::saveWastage($id, $d),
             'menu'      => self::saveMenu($id, $d),
+            'tables'    => self::saveTable($id, $d),
             default     => throw new \RuntimeException('Unbridged module: '.$module),
         };
     }
 
     /* ============================ DELETE ============================ */
 
-    public static function delete(string $module, string $id): void
+    /**
+     * @param string $mode 'auto' | 'force' | 'deactivate'
+     * @return array DeleteService ka poora natija — BLOCKED ki soorat mein
+     *               asli wajah bhi saath jati hai (pehle sirf khamoshi thi).
+     */
+    public static function delete(string $module, string $id, string $mode = 'auto', string $reason = ''): array
     {
-        $p = DB::pdo();
-        switch ($module) {
-            case 'customers':
-                $p->prepare("UPDATE customers SET status='INACTIVE', deleted_at=NOW(6) WHERE id=? AND tenant_id=?")
-                  ->execute([$id, tenant_id()]);
-                break;
-            case 'suppliers':
-                $p->prepare("UPDATE suppliers SET status='INACTIVE', deleted_at=NOW(6) WHERE id=? AND tenant_id=?")
-                  ->execute([$id, tenant_id()]);
-                break;
-            case 'expenses':
-                $p->prepare("UPDATE expenses SET status='REJECTED' WHERE id=? AND tenant_id=?")
-                  ->execute([$id, tenant_id()]);
-                break;
-            case 'menu':
-                $p->prepare("UPDATE menu_items SET deleted_at=NOW(6), is_active=0 WHERE id=? AND tenant_id=?")
-                  ->execute([$id, tenant_id()]);
-                break;
-            case 'wastage':
-                // Stock already moved — deletion is not allowed; adjustments are audit records.
-                throw new \RuntimeException('Wastage entries cannot be deleted (stock already adjusted). Post a correcting entry instead.');
-        }
+        $entity = self::DELETE_ENTITY[$module] ?? null;
+        if ($entity === null) throw new \RuntimeException('Unbridged module: '.$module);
+        return DeleteService::delete($entity, $id, $mode, $reason);
     }
 
+
+    /* ------------------------- tables & floors -------------------------
+
+       Yeh page pehle `ui_records` mein likhta tha jabke POS asli
+       `dining_tables` se padhta hai — do alag jagah. Is liye yahan
+       banayi hui table POS par kabhi nazar nahi aati thi aur yahan
+       delete karne ka POS par koi asar hi nahi hota tha. Ab dono ek
+       hi table par hain. */
+
+    private static function listTables(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT dt.id, dt.display_name name, dt.seats, dt.status,
+                    COALESCE(f.name,'Main Floor') floor,
+                    COALESCE((SELECT o.grand_total FROM orders o
+                               WHERE o.table_id = dt.id AND o.order_status='OPEN'
+                               ORDER BY o.created_at DESC LIMIT 1),0) bill
+               FROM dining_tables dt
+               LEFT JOIN floors f ON f.id = dt.floor_id
+              WHERE dt.tenant_id=? AND dt.site_id=? AND dt.deleted_at IS NULL
+              ORDER BY f.sort_order, dt.display_name"
+        );
+        $q->execute([tenant_id(), site_id()]);
+        $map = ['AVAILABLE' => 'Free', 'OCCUPIED' => 'Occupied', 'RESERVED' => 'Reserved'];
+        return array_map(fn($x) => [
+            'id' => $x['id'], 'name' => $x['name'], 'floor' => $x['floor'],
+            'seats' => (int)$x['seats'], 'bill' => (float)$x['bill'],
+            'status' => $map[strtoupper((string)$x['status'])] ?? 'Free',
+        ], $q->fetchAll());
+    }
+
+    private static function saveTable(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Table name required');
+        $seats = max(1, (int)($d['seats'] ?? 4));
+        $status = ['Free' => 'AVAILABLE', 'Occupied' => 'OCCUPIED', 'Reserved' => 'RESERVED'][$d['status'] ?? 'Free'] ?? 'AVAILABLE';
+
+        $floorName = trim((string)($d['floor'] ?? '')) ?: 'Main Floor';
+        $fq = $p->prepare("SELECT id FROM floors WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");
+        $fq->execute([site_id(), $floorName]);
+        $fid = $fq->fetchColumn();
+        if (!$fid) {
+            $fid = uuid();
+            $p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,9,1)")
+              ->execute([$fid, tenant_id(), site_id(), $floorName]);
+        }
+
+        if ($id !== '') {
+            $st = $p->prepare("UPDATE dining_tables SET display_name=?, floor_id=?, seats=?, status=?, updated_at=NOW(6)
+                                WHERE id=? AND tenant_id=? AND site_id=?");
+            $st->execute([$name, $fid, $seats, $status, $id, tenant_id(), site_id()]);
+            return $id;
+        }
+        $dupe = $p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? AND deleted_at IS NULL LIMIT 1");
+        $dupe->execute([site_id(), $name]);
+        if ($dupe->fetchColumn()) throw new \RuntimeException('Is naam ki table pehle se maujood hai');
+
+        $id = uuid();
+        $code = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name), 0, 10))
+              ?: ('T'.substr(str_replace('-', '', $id), 0, 4));
+        $p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active)
+                     VALUES(?,?,?,?,?,?,?,'SQUARE',?,1)")
+          ->execute([$id, tenant_id(), site_id(), $fid, $code, $name, $seats, $status]);
+        return $id;
+    }
 
     /* ------------------------- menu ------------------------- */
 
@@ -242,7 +312,7 @@ final class ModuleBridge
                     e.payment_method method, e.description note, e.status, COALESCE(ec.name,'General') cat
                FROM expenses e
                LEFT JOIN expense_categories ec ON ec.id=e.category_id
-              WHERE e.tenant_id=? AND e.site_id=? AND e.status<>'REJECTED'
+              WHERE e.tenant_id=? AND e.site_id=? AND e.status<>'REJECTED' AND e.deleted_at IS NULL
               ORDER BY e.expense_date DESC, e.created_at DESC LIMIT 500"
         );
         $q->execute([tenant_id(), site_id()]);
@@ -366,4 +436,4 @@ final class ModuleBridge
     }
 }
 
-// build: V17.1 build 2026-08-25
+// build: V62 build 2026-08-26

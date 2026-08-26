@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){fail('Security token expired. Refresh the screen and try again.',419);}}}
 function shift_report(array $sh, ?string $until): array {
@@ -150,6 +150,9 @@ function syncTableAllowed(string $table): bool {
     'expenses','expense_categories','reservations','riders','delivery_orders',
     'promotions','printers','floors','dining_tables','payment_methods',
     'paired_devices','notification_queue','devices','ui_records',
+    /* V62: DELETE CHANNEL — is table ke baghair cloud par delete kiya hua
+       data node par hamesha zinda rehta tha. */
+    'sync_tombstones',
   ];
   return in_array($table,$allow,true);
 }function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
@@ -513,6 +516,110 @@ case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtouppe
  $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
 case 'qr-session-close':needLogin();$d=body();$p=DB::pdo();$p->prepare("UPDATE qr_sessions SET status='CLOSED',closed_at=NOW(6) WHERE site_id=? AND table_name=? AND status='ACTIVE'")->execute([site_id(),(string)($d['table']??'')]);ok();
 /* ============ OFFLINE LOGIN: user dropdown ============ */
+/* ============================================================
+   V62 — UNIVERSAL DELETE
+   Pehle har page ka apna (ya koi bhi nahi) delete tha, aur client
+   server ka jawab check hi nahi karta tha: user ko "removed" dikhta
+   tha aur row database mein zinda rehti thi. Ab sab kuch DeleteService
+   se guzarta hai aur jawab hamesha teen mein se ek hota hai:
+   DELETED / BLOCKED (asli wajah ke saath) / FORCED.
+   ============================================================ */
+case 'entity-delete':needLogin();$d=body();
+ $ent=preg_replace('/[^a-z_]/','',strtolower((string)($d['entity']??'')));
+ $id=(string)($d['id']??'');
+ $mode=strtolower((string)($d['mode']??'auto'));
+ if(!in_array($mode,['auto','force','deactivate'],true))$mode='auto';
+ if($ent===''||!DeleteService::has($ent))fail('Unknown entity: '.$ent);
+ /* Force delete par manager password lazmi — ek click se permanent
+    delete kabhi nahi. */
+ if($mode==='force'){
+   $pw=(string)($d['manager_password']??'');
+   if($pw==='')fail('Force delete ke liye manager password zaroori hai',422);
+   $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+   $mq->execute([tenant_id()]);$okpw=false;
+   foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
+   if(!$okpw)fail('Manager password ghalat hai',401);
+ }
+ try{$r=DeleteService::delete($ent,$id,$mode,(string)($d['reason']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
+
+case 'entity-restore':needLogin();$d=body();
+ $ent=preg_replace('/[^a-z_]/','',strtolower((string)($d['entity']??'')));
+ if($ent===''||!DeleteService::has($ent))fail('Unknown entity: '.$ent);
+ try{$r=DeleteService::restore($ent,(string)($d['id']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
+
+case 'recycle-bin':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ ok(['rows'=>DeleteService::recycleBin((int)($_GET['days']??30))]);
+
+case 'delete-entities':needLogin();ok(['entities'=>DeleteService::entities()]);
+
+case 'order-void':needLogin();$d=body();
+ if(!Auth::isManager())fail('Bill void sirf Admin/Manager kar sakta hai',403);
+ $pw=(string)($d['manager_password']??'');
+ if($pw==='')fail('Manager password zaroori hai',422);
+ $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+ $mq->execute([tenant_id()]);$mid=null;
+ foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$mid=$mu['id'];break;}}
+ if(!$mid)fail('Manager password ghalat hai',401);
+ try{$r=DeleteService::voidOrder((string)($d['id']??''),(string)($d['reason']??''),$mid);}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
+
+/* ---------- USER: password / status / delete ----------
+   Password change ka option pehle "maujood" tha magar chhupa hua:
+   edit modal ka field khali aata tha aur label "Temporary Password"
+   likha tha — kisi ko andaza hi nahi tha ke yahan likhne se password
+   badal jayega. Ab alag, saaf endpoint. */
+case 'user-password':needLogin();Auth::requireModule('users');$d=body();
+ $uid=(string)($d['id']??'');$np=(string)($d['password']??'');
+ if($uid==='')fail('User required');
+ if(strlen($np)<4)fail('Password kam az kam 4 characters ka hona chahiye');
+ $p=DB::pdo();$q=$p->prepare("SELECT id,full_name FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
+ $q->execute([$uid,tenant_id()]);$u=$q->fetch();
+ if(!$u)fail('User nahi mila');
+ [$h,$alg]=UserService::passwordHash($np);
+ $p->prepare("UPDATE users SET password_hash=?,password_algo=?,must_change_password=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([$h,$alg,!empty($d['must_change'])?1:0,$uid]);
+ ok(['message'=>$u['full_name'].' ka password badal diya gaya.','state'=>accessState()]);
+
+case 'user-status':needLogin();Auth::requireModule('users');$d=body();
+ $uid=(string)($d['id']??'');$st=strtoupper((string)($d['status']??''));
+ if(!in_array($st,['ACTIVE','SUSPENDED'],true))fail('status ACTIVE ya SUSPENDED');
+ if($uid==='')fail('User required');
+ if($uid===(current_user()['id']??''))fail('Aap apna hi account suspend nahi kar sakte.');
+ $p=DB::pdo();
+ if($st==='SUSPENDED'){
+   /* Aakhri zinda admin kabhi band na ho, warna business se sab bahar. */
+   $c=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE' AND deleted_at IS NULL AND id<>?");
+   $c->execute([tenant_id(),$uid]);
+   $isAdm=$p->prepare("SELECT is_tenant_admin FROM users WHERE id=? AND tenant_id=?");$isAdm->execute([$uid,tenant_id()]);
+   if((int)$isAdm->fetchColumn()===1&&(int)$c->fetchColumn()===0)fail('Yeh akhri active admin hai — suspend nahi ho sakta.');
+ }
+ $st2=$p->prepare("UPDATE users SET status=?,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
+ $st2->execute([$st,$uid,tenant_id()]);
+ if($st2->rowCount()<1)fail('User nahi mila ya pehle hi isi halat mein hai.');
+ ok(['message'=>'User '.($st==='ACTIVE'?'activate':'suspend').' ho gaya.','state'=>accessState()]);
+
+case 'user-delete':needLogin();Auth::requireModule('users');$d=body();
+ $uid=(string)($d['id']??'');
+ if($uid==='')fail('User required');
+ if($uid===(current_user()['id']??''))fail('Aap apna hi account delete nahi kar sakte.');
+ $p=DB::pdo();
+ $isAdm=$p->prepare("SELECT is_tenant_admin,full_name FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
+ $isAdm->execute([$uid,tenant_id()]);$row=$isAdm->fetch();
+ if(!$row)fail('User nahi mila');
+ if((int)$row['is_tenant_admin']===1){
+   $c=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE' AND deleted_at IS NULL AND id<>?");
+   $c->execute([tenant_id(),$uid]);
+   if((int)$c->fetchColumn()===0)fail('Yeh akhri admin hai — delete nahi ho sakta. Pehle doosra admin banayein.');
+ }
+ try{$r=DeleteService::delete('user',$uid,strtolower((string)($d['mode']??'auto'))==='force'?'force':'auto',(string)($d['reason']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['state'=>accessState()]);
+
 case 'users-list':
  /* Sirf LOCAL (offline) node par bina login ke - wahan ek hi business hota
     hai aur cashier ko naam type karne ke bajaye list se chunna hota hai.
@@ -957,7 +1064,29 @@ case 'sync-status':needLogin();
  ok(['status'=>$st]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
 case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
-case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));if(ModuleBridge::handles($mod)){try{ModuleBridge::delete($mod,$id);}catch(Throwable $e){fail($e->getMessage());}ok(['bridged'=>true]);}DB::pdo()->prepare("UPDATE ui_records SET deleted=1,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$id,tenant_id()]);ok();
+case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));
+ /* V62 — YAHAN KHAMOSH FAILURE THI.
+    Pehle yeh endpoint ok() kar deta tha chahe ek bhi row na badli ho,
+    aur client jawab check hi nahi karta tha: user ko "Record removed"
+    dikhta tha aur reload par row wapas aa jati thi. Ab har rasta ya to
+    asli natija deta hai ya asli wajah. */
+ if($id==='')fail('Record id required');
+ $mode=strtolower((string)($d['mode']??'auto'));if(!in_array($mode,['auto','force','deactivate'],true))$mode='auto';
+ if(ModuleBridge::handles($mod)){
+   if($mode==='force'){
+     $pw=(string)($d['manager_password']??'');if($pw==='')fail('Force delete ke liye manager password zaroori hai',422);
+     $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+     $mq->execute([tenant_id()]);$okpw=false;
+     foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
+     if(!$okpw)fail('Manager password ghalat hai',401);
+   }
+   try{$r=ModuleBridge::delete($mod,$id,$mode,(string)($d['reason']??''));}catch(Throwable $e){fail($e->getMessage());}
+   ok($r+['bridged'=>true]);
+ }
+ $st=DB::pdo()->prepare("UPDATE ui_records SET deleted=1,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=? AND deleted=0");
+ $st->execute([$id,tenant_id(),$mod]);
+ if($st->rowCount()<1)fail('Record nahi mila (ya pehle hi delete ho chuka hai). Screen refresh karein.');
+ ok(['result'=>'DELETED','message'=>'Record delete ho gaya.']);
 case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??'')))fail('Invalid platform credentials',401);$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
 case 'sa-logout':Platform::superLogout();ok();
 case 'sa-me':$u=Platform::superUser();ok(['user'=>$u?['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]:null]);
@@ -1133,4 +1262,4 @@ default:fail('Unknown API action',404);}
   fail($showReal?$e->getMessage():'Operation failed.',500);
 }
 
-// build: V17.1 build 2026-08-25
+// build: V62 build 2026-08-26

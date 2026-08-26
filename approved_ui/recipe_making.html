@@ -2,6 +2,8 @@
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Recipe & Menu</title><link rel="stylesheet" href="shared.css">
 <style>
+.menu-row{position:relative;padding-right:82px}
+
 .recipe-layout{display:grid;grid-template-columns:300px minmax(0,1fr) 310px;gap:12px}.menu-list{display:grid;gap:5px}.menu-row{border:1px solid var(--line);background:#fff;padding:9px;cursor:pointer}.menu-row.active{background:var(--soft);border-color:#c8e2d5}.menu-row b{font-size:12px}.menu-row small{display:block;margin-top:3px;color:var(--muted);font-size:10px}
 .ingredient-head,.ingredient-row{display:grid;grid-template-columns:1.3fr .5fr .45fr .7fr 34px;gap:6px;align-items:center}.ingredient-head{color:var(--muted);font-size:10px;margin-bottom:4px}.ingredient-row{margin-bottom:6px}.ingredient-row input,.ingredient-row select{height:38px}.remove{height:38px;border:1px solid #ecd2d4;background:#fff3f4;color:#b7434d}
 .cost-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}.cost{padding:9px;border:1px solid var(--line);background:#f9fbfa}.cost span{display:block;color:var(--muted);font-size:9px}.cost b{display:block;margin-top:3px;font-size:15px}
@@ -44,7 +46,7 @@ function renderRoutes(){const state=RestaurantStore.getState();$('#routes').inne
 function renderList(){
  const state=RestaurantStore.getState(),q=$('#recipeSearch').value.toLowerCase();
  const list=state.recipes.filter(r=>!q||r.menuName.toLowerCase().includes(q));
- $('#recipeList').innerHTML=list.map(r=>'<div class="menu-row '+(r.id===currentId?'active':'')+'" data-rec="'+r.id+'"><b>'+r.menuName+'</b><small>'+r.category+' · '+(r.mode==='direct'?'Direct Inventory':'Recipe Raw Materials')+'</small></div>').join('');
+ $('#recipeList').innerHTML=list.map(r=>'<div class="menu-row '+(r.id===currentId?'active':'')+'" data-rec="'+r.id+'"><b>'+r.menuName+'</b><small>'+r.category+' · '+(r.mode==='direct'?'Direct Inventory':'Recipe Raw Materials')+'</small><button class="btn sm danger" data-del-menu="'+r.id+'" data-name="'+r.menuName+'" style="position:absolute;right:8px;top:50%;transform:translateY(-50%)">Delete</button></div>').join('');
 }
 function loadRecipe(id){
  const state=RestaurantStore.getState(),r=state.recipes.find(x=>x.id===id);if(!r)return;currentId=r.id;$('#title').textContent=r.menuName;$('#menuName').value=r.menuName;$('#menuCategory').value=r.category;$('#menuMode').value=r.mode;ingredients=(r.ingredients||[]).map(x=>({...x}));$('#directInventory').value=r.inventoryItemId||$('#directInventory').value;$('#directQty').value=r.directQty||1;syncMode();renderIngredients();syncPrinter();renderList()
@@ -60,11 +62,19 @@ function newRecipe(){const state=RestaurantStore.getState();currentId=null;$('#m
 $('#recipeSearch').oninput=renderList;$('#menuMode').onchange=syncMode;$('#menuCategory').onchange=syncPrinter;$('#addIngredient').onclick=()=>{const state=RestaurantStore.getState(),i=state.inventoryItems.find(x=>x.usage==='Recipe Ingredient'||x.usage==='Both');ingredients.push({itemId:i.id,qty:1});renderIngredients()};
 document.addEventListener('change',e=>{let i=e.target.dataset.ingItem;if(i!==undefined){ingredients[+i].itemId=e.target.value;renderIngredients()}});
 document.addEventListener('input',e=>{const i=e.target.dataset.ingQty;if(i!==undefined){ingredients[+i].qty=Number(e.target.value||0);renderIngredients()}});
-document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-rec]');if(r){loadRecipe(r.dataset.rec);return}const d=e.target.closest('[data-remove-ing]');if(d){ingredients.splice(+d.dataset.removeIng,1);renderIngredients();return}});
+document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-rec]');if(r){loadRecipe(r.dataset.rec);return}const d=e.target.closest('[data-remove-ing]');if(d){ingredients.splice(+d.dataset.removeIng,1);renderIngredients();return}
+ /* V62 — recipe/menu item delete. Pehle is page par sirf save tha.
+    Recipe menu_items par bani hoti hai, is liye delete menu_item par
+    jata hai; server bata dega agar item bills mein use ho chuka hai. */
+ const dm=e.target.closest('[data-del-menu]');
+ if(dm){e.stopPropagation();window.DeleteKit.confirm({entity:'menu_item',id:dm.dataset.delMenu,name:dm.dataset.name||'',
+   what:'Menu item + recipe',title:'Recipe delete karein?',
+   warning:'Menu item aur uski recipe dono hat jayengi. POS par bhi nazar nahi aayegi.'});return}
+});
 $('#newRecipeBtn').onclick=newRecipe;$('#categoryBtn').onclick=()=>openM('categoryModal');
 $('#saveCategory').onclick=()=>{const n=$('#catName').value.trim();if(!n){toast('Category name required');return}const state=RestaurantStore.getState();if(state.menuCategories.some(c=>c.name.toLowerCase()===n.toLowerCase())){toast('Category already exists');return}state.menuCategories.push({name:n,printer:$('#catPrinter').value});RestaurantStore.saveState(state);closeM('categoryModal');populate();$('#menuCategory').value=n;syncPrinter();toast(n+' category created with '+printers[$('#catPrinter').value])};
 $('#saveRecipe').onclick=()=>{const name=$('#menuName').value.trim();if(!name){toast('Menu item name required');return}const mode=$('#menuMode').value;const recipe={id:currentId||undefined,menuName:name,category:$('#menuCategory').value,mode,yieldQty:1};if(mode==='recipe')recipe.ingredients=ingredients.map(x=>({...x}));else{recipe.inventoryItemId=$('#directInventory').value;recipe.directQty=Number($('#directQty').value||1)}const r=RestaurantStore.addRecipe(recipe);currentId=r.recipe.id;populate();loadRecipe(currentId);toast(name+' saved')};
 $('#previewDeduction').onclick=()=>{const mode=$('#menuMode').value,state=RestaurantStore.getState();let lines=[];if(mode==='direct'){const item=state.inventoryItems.find(x=>x.id===$('#directInventory').value),q=Number($('#directQty').value||1);lines=[{name:item.name,qty:q,unit:item.stockUnit,onHand:RestaurantStore.formatStock(item)}]}else lines=ingredients.map(ing=>{const item=state.inventoryItems.find(x=>x.id===ing.itemId);return {name:item.name,qty:ing.qty,unit:item.stockUnit,onHand:RestaurantStore.formatStock(item)}});$('#previewBody').innerHTML=lines.map(x=>'<div style="display:flex;justify-content:space-between;gap:10px;padding:8px;border-bottom:1px solid #edf1ef"><div><b>'+x.name+'</b><small style="display:block;color:#6f7d75;margin-top:2px">On hand: '+x.onHand+'</small></div><b>− '+x.qty+' '+x.unit+'</b></div>').join('');openM('previewModal')};
 populate();const first=RestaurantStore.getState().recipes[0];if(first)loadRecipe(first.id);
 </script><script src="access_store.js"></script><script src="shell.js" data-active="recipe"></script><div class="scrim" id="scrim"></div></body></html>
-<!-- build: V17.1 build 2026-08-25 -->
+<!-- build: V62 build 2026-08-26 -->

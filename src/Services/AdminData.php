@@ -147,6 +147,9 @@ final class AdminData
         'admin_audit', 'admin_backups', 'admin_imports',
         'sync_nodes', 'sync_activity', 'sync_runs', 'sync_state', 'sync_cursors',
         'migration_state', 'sync_retries',
+        /* V62 — yeh reset mein kabhi na jayen. Agar factory reset khud
+           tombstones uda de to node ko delete ki khabar hi na pohanche. */
+        'sync_tombstones', 'sync_tombstones_applied', 'deletion_log',
     ];
 
     /**
@@ -206,6 +209,33 @@ final class AdminData
 
         $keepTxnSafe = $mode === 'TXN' ? self::MASTER_TABLES : [];
         $out = [];
+
+        /* V62 — YEH WO LAMHA HAI JAHAN PEHLE SAB TOOTTA THA.
+           Reset cloud par rows uda deta tha aur peeche koi nishan nahi
+           chhorta tha, is liye branch computer par purana data zinda
+           rehta tha (aur node ka sync_state kabhi reset hone par wapas
+           cloud par chala jata tha). Ab har table par ek WIPE marker
+           likha jata hai; wo tombstone node tak jata hai aur wahan bhi
+           wahi rows uda deta hai.
+           `$cut` guard: reset ke BAAD ka naya data kabhi na mite. */
+        $cut = date('Y-m-d H:i:s.u');
+        $wiped = 0;
+        foreach (self::wipeableTables() as $t) {
+            $name = $t['name'];
+            if ($keepTxnSafe && in_array($name, $keepTxnSafe, true)) continue;
+            try {
+                DeleteService::wipeMarker($pdo, $name, 'factory reset ('.$mode.')', $cut, $tenantId, null);
+                $wiped++;
+            } catch (\Throwable $e) {
+                /* Tombstone na likha ja saka to reset rok dena behtar hai —
+                   warna cloud khali aur node bhara: wahi purana masla. */
+                throw new \RuntimeException(
+                    'Factory reset rok di gayi: sync tombstone nahi likha ja saka ('
+                    . substr($e->getMessage(), 0, 140)
+                    . '). Pehle `php scripts/migrate_delete_support.php` chalayein.');
+            }
+        }
+
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 
         foreach (self::wipeableTables() as $t) {
@@ -261,7 +291,7 @@ final class AdminData
         }
 
         return ['deleted' => $out, 'total' => array_sum(array_filter($out, fn($n) => $n > 0)),
-                'kept_admin' => $adminId];
+                'kept_admin' => $adminId, 'wipe_markers' => $wiped];
     }
 
     /* ------------------------------- PURGE ---------------------------- */
@@ -338,6 +368,15 @@ final class AdminData
             }
 
             try {
+                /* V62 — delete se PEHLE nishan, warna node par yeh rows
+                   zinda reh jayengi (poora local-vs-live wala masla). */
+                if (!in_array($t, ['sync_tombstones', 'sync_tombstones_applied', 'deletion_log'], true)) {
+                    DeleteService::wipeMarker(
+                        $pdo, $t, 'purge: '.$group,
+                        ($before !== null && $before !== '') ? $before : date('Y-m-d H:i:s.u'),
+                        $tenantId, null
+                    );
+                }
                 $st = $pdo->prepare("DELETE FROM `$t` WHERE $where");
                 $st->execute($args);
                 if ($st->rowCount() > 0) $out[$t] = $st->rowCount();
@@ -368,6 +407,17 @@ final class AdminData
         $pdo   = DB::pdo();
         $sites = self::siteIds($tenantId);
         $out   = [];
+
+        /* V62 — business delete karne se pehle har table par WIPE marker.
+           Tombstones khud NEVER_WIPE mein hain, is liye zinda rehte hain
+           aur node agli baar connect hone par apna data khud saaf kar deta
+           hai. (Uske baad node ka token bhi mar chuka hoga, magar agar
+           node pehle se connect ho to yeh usay foran saaf kar deta hai.) */
+        $cut = date('Y-m-d H:i:s.u');
+        foreach (self::wipeableTables() as $t) {
+            try { DeleteService::wipeMarker($pdo, $t['name'], 'business deleted', $cut, $tenantId, null); }
+            catch (\Throwable $e) { /* delete-business tombstone par nahi rukta */ }
+        }
 
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 

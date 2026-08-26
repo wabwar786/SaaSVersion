@@ -15,7 +15,7 @@
 <div class="content">
 <div class="stats"><div class="stat"><span>Purchase Orders</span><b id="poCount">0</b><small>Current demo data</small></div><div class="stat"><span>Received</span><b id="receivedCount">0</b><small>Inventory updated</small></div><div class="stat"><span>Pending Receive</span><b id="pendingCount" style="color:var(--orange)">0</b><small>Awaiting GRN</small></div><div class="stat"><span>Total Purchase Value</span><b id="purchaseValue">PKR 0</b><small>Current list</small></div></div>
 <section class="panel"><div class="panel-head"><div><h2>Purchase List</h2><p>Latest purchase orders and goods receiving.</p></div><div class="spacer"></div><input id="purchaseSearch" placeholder="Search PO or supplier..." style="max-width:280px"></div>
-<div class="table-wrap"><table class="table"><thead><tr><th>PO</th><th>Date</th><th>Supplier</th><th>Items</th><th>Amount</th><th>Status</th><th>Inventory</th></tr></thead><tbody id="poRows"></tbody></table></div><div class="purchase-cards" id="poCards"></div></section>
+<div class="table-wrap"><table class="table"><thead><tr><th>PO</th><th>Date</th><th>Supplier</th><th>Items</th><th>Amount</th><th>Status</th><th>Inventory</th><th style="text-align:right">Actions</th></tr></thead><tbody id="poRows"></tbody></table></div><div class="purchase-cards" id="poCards"></div></section>
 </div></main></div>
 
 <div class="modal" id="purchaseModal"><div class="dialog" style="width:min(820px,96vw)"><div class="dialog-head"><div><h3>New Purchase / Goods Receiving</h3><p>On Receive, stock quantity is added to Inventory immediately.</p></div><button class="close" data-close="purchaseModal">×</button></div>
@@ -46,14 +46,22 @@ function render(){
  const state=RestaurantStore.getState(),q=$('#purchaseSearch').value.toLowerCase();
  const list=state.purchaseOrders.filter(p=>!q||(p.id+' '+p.supplier).toLowerCase().includes(q));
  $('#poCount').textContent=state.purchaseOrders.length;$('#receivedCount').textContent=state.purchaseOrders.filter(p=>p.status==='Received').length;$('#pendingCount').textContent=state.purchaseOrders.filter(p=>p.status!=='Received').length;$('#purchaseValue').textContent=money(state.purchaseOrders.reduce((a,p)=>a+Number(p.amount||0),0));
- $('#poRows').innerHTML=list.map(p=>'<tr><td><b>'+p.id+'</b></td><td>'+p.date+'</td><td>'+p.supplier+'</td><td>'+p.lines+'</td><td>'+money(p.amount)+'</td><td><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></td><td>'+(p.status==='Received'?'<span class="tag green">Stock Updated</span>':'Pending')+'</td></tr>').join('');
+ $('#poRows').innerHTML=list.map(p=>'<tr><td><b>'+(p.grn_no||p.id)+'</b></td><td>'+p.date+'</td><td>'+p.supplier+'</td><td>'+p.lines+'</td><td>'+money(p.amount)+'</td><td><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></td><td>'+(p.status==='Received'?'<span class="tag green">Stock Updated</span>':'Pending')+'</td><td><div class="row-actions"><button title="Cancel / delete" data-del-grn="'+p.id+'" data-name="'+(p.grn_no||p.id)+'">&#128465;</button></div></td></tr>').join('');
  $('#poCards').innerHTML=list.map(p=>'<article class="purchase-card"><div class="purchase-card-top"><div><h3>'+p.id+'</h3><small>'+p.supplier+' · '+p.date+'</small></div><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></div><div class="purchase-card-grid"><div><span>Items</span><b>'+p.lines+'</b></div><div><span>Amount</span><b>'+money(p.amount)+'</b></div><div><span>Inventory</span><b>'+(p.status==='Received'?'Updated':'Pending')+'</b></div><div><span>Reference</span><b>'+p.id+'</b></div></div></article>').join('');
 }
 $('#newPurchaseBtn').onclick=()=>{lines=[];addLine('chicken');addLine('coke_tin');openM('purchaseModal')};$('#addLine').onclick=()=>addLine();
 document.addEventListener('input',e=>{let m=e.target.dataset.lineQty;if(m!==undefined)lines[+m].purchaseQty=Number(e.target.value||0);m=e.target.dataset.lineCost;if(m!==undefined)lines[+m].unitCost=Number(e.target.value||0)});
 document.addEventListener('change',e=>{const idx=e.target.dataset.lineItem;if(idx!==undefined){const state=RestaurantStore.getState(),item=state.inventoryItems.find(x=>x.id===e.target.value);lines[+idx].itemId=item.id;lines[+idx].unitCost=Number(item.avgStockCost)*Number(item.purchaseFactor);renderLines()}});
-document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-remove-line]');if(r){lines.splice(+r.dataset.removeLine,1);renderLines();return}});
+document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-remove-line]');if(r){lines.splice(+r.dataset.removeLine,1);renderLines();return}
+ /* V62 — purchase receipt cancel. Yeh sirf row nahi hatata: stock bhi
+    wapas pehle jaisa hota hai (DeleteService reversing movement post
+    karta hai), warna inventory hamesha ke liye galat reh jati. */
+ const dg=e.target.closest('[data-del-grn]');
+ if(dg){window.DeleteKit.confirm({entity:'grn',id:dg.dataset.delGrn,name:dg.dataset.name||'',
+   what:'Purchase receipt',title:'Purchase receipt cancel karein?',
+   warning:'Is receipt se aaya hua stock WAPAS nikal liya jayega aur avg cost dobara calculate hogi. Yeh amal audit log mein record hota hai.'});return}
+});
 $('#receivePurchase').onclick=()=>{if(!lines.length){toast('Add at least one purchase item');return}const result=RestaurantStore.receivePurchase(lines,{supplier:$('#supplier').value,reference:$('#poReference').value.trim()||undefined});if(window.RestaurantLive) RestaurantLive.recordPurchase(result.amount);closeM('purchaseModal');render();toast('Purchase received · '+result.movements.length+' inventory items updated')};
 $('#purchaseSearch').oninput=render;render();
 </script><script src="access_store.js"></script><script src="shell.js" data-active="purchasing"></script><div class="scrim" id="scrim"></div></body></html>
-<!-- build: V17.1 build 2026-08-25 -->
+<!-- build: V62 build 2026-08-26 -->

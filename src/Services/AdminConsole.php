@@ -14,7 +14,7 @@ use PDO;
 final class AdminConsole
 {
     /** Jin commands ke liye --confirm "<business name>" lazmi hai. */
-    private const NEEDS_CONFIRM = ['reset', 'delete', 'purge'];
+    private const NEEDS_CONFIRM = ['reset', 'delete', 'purge', 'resync'];
 
     public static function run(string $line, string $actor): array
     {
@@ -109,6 +109,9 @@ final class AdminConsole
                                       (string)($flags['before'] ?? ''), (string)$flags['confirm'], $actor);
                 case 'suspend':   return self::cmdStatus($args[0] ?? '', 'SUSPENDED', $actor);
                 case 'activate':  return self::cmdStatus($args[0] ?? '', 'ACTIVE', $actor);
+                case 'resync':    return self::cmdResync($args[0] ?? '', strtolower($args[1] ?? 'transactions'), (string)$flags['confirm']);
+                case 'tombstones':
+                case 'deletes':   return self::cmdTombstones($args[0] ?? '');
                 case 'nodes':     return self::cmdNodes();
                 case 'sync':      return self::cmdSync($args[0] ?? '');
                 case 'audit':     return self::cmdAudit($args[0] ?? '');
@@ -154,6 +157,9 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'tables                            tenant-scoped tables'],
             ['t' => 'k',  'v' => 'query SELECT ...                  read-only, max 100 rows'],
             ['t' => 'h',  'v' => 'CONSOLE'],
+            ['t' => 'k',  'v' => 'resync <slug> [transactions|all] --confirm "<name>"'],
+            ['t' => 'd',  'v' => '   branch computer ko cloud ke barabar laata hai (cloud ka data safe rehta hai)'],
+            ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
             ['t' => 'k',  'v' => 'clear · version · help'],
             ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh chalayein'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
@@ -421,6 +427,94 @@ final class AdminConsole
         DB::pdo()->prepare("UPDATE tenants SET status=? WHERE id=?")->execute([$status, $t['id']]);
         AdminData::audit($actor, (string)$t['id'], $status === 'ACTIVE' ? 'ACTIVATE' : 'SUSPEND', 'console');
         return self::out([['t' => 'g', 'v' => $t['name'] . ' is now ' . $status]], ['refresh' => true]);
+    }
+
+    /**
+     * resync — BRANCH COMPUTER ko cloud ke barabar laata hai.
+     *
+     * Yeh command us haqiqi masle ke liye hai jahan cloud par data 0 hai
+     * magar branch computer par purana data abhi bhi nazar aata hai. Wajah:
+     * purane build mein sync sirf "kya badla" bhejti thi, "kya mit gaya"
+     * ka koi channel tha hi nahi — is liye cloud par ki hui delete kabhi
+     * node tak pohanchti hi nahi thi.
+     *
+     * Yeh command CLOUD ka data BILKUL NahI chhoota. Sirf wipe markers
+     * likhta hai; agli sync par node apni wahi tables khud saaf kar ke
+     * cloud se dobara bharta hai.
+     */
+    private static function cmdResync(string $slug, string $what, string $confirm): array
+    {
+        $t = self::tenant($slug);
+        if ($confirm !== (string)$t['name']) {
+            return self::err('Confirm name match nahi hua. Run:  resync ' . $t['slug']
+                           . ' ' . $what . ' --confirm "' . $t['name'] . '"');
+        }
+
+        $master = AdminData::MASTER_TABLES;
+        $skip = ['sync_tombstones', 'sync_tombstones_applied', 'deletion_log', 'users', 'user_roles',
+                 'roles', 'role_modules', 'user_form_permissions', 'user_module_access'];
+
+        $cut = date('Y-m-d H:i:s.u');
+        $pdo = DB::pdo();
+        $n = 0; $names = [];
+        foreach (AdminData::wipeableTables() as $tb) {
+            $name = $tb['name'];
+            if (in_array($name, $skip, true)) continue;
+            if ($what !== 'all' && in_array($name, $master, true)) continue;
+            try {
+                DeleteService::wipeMarker($pdo, $name, 'console resync', $cut, (string)$t['id'], null);
+                $n++; $names[] = $name;
+            } catch (\Throwable $e) {
+                return self::err('Tombstone nahi likha ja saka: ' . $e->getMessage()
+                               . '  — pehle `php scripts/migrate_delete_support.php` chalayein.');
+            }
+        }
+
+        AdminData::audit('console', (string)$t['id'], 'RESYNC', $what . ' (' . $n . ' tables)');
+
+        $lines = [
+            ['t' => 'g', 'v' => 'Resync markers bana diye: ' . $n . ' tables'],
+            ['t' => 'd', 'v' => 'Cloud ka data waisa hi hai — kuch delete NahI hua.'],
+            ['t' => 'd', 'v' => 'Agli sync par branch computer yeh tables khud saaf kar ke'],
+            ['t' => 'd', 'v' => 'cloud se dobara bharega. Node par "Sync now" dabayein.'],
+            ['t' => 'k', 'v' => 'Cut-off: ' . $cut . '  (is ke baad ka naya data mehfooz hai)'],
+        ];
+        if ($names) $lines[] = ['t' => 'd', 'v' => implode(', ', array_slice($names, 0, 18))
+                                                . (count($names) > 18 ? ' …' : '')];
+        return self::out($lines);
+    }
+
+    /** Pending aur applied delete signals — sync ka delete channel dekhne ke liye. */
+    private static function cmdTombstones(string $slug): array
+    {
+        $pdo = DB::pdo();
+        $where = ''; $args = [];
+        if ($slug !== '') { $t = self::tenant($slug); $where = ' WHERE ts.tenant_id = ?'; $args[] = $t['id']; }
+
+        try {
+            $q = $pdo->prepare(
+                "SELECT ts.table_name, ts.scope_mode, ts.row_id, ts.reason, ts.origin_node,
+                        ts.created_at, a.applied_at, a.rows_deleted
+                   FROM sync_tombstones ts
+                   LEFT JOIN sync_tombstones_applied a ON a.tombstone_id = ts.id
+                   $where
+                  ORDER BY ts.created_at DESC LIMIT 40");
+            $q->execute($args);
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            return self::err('sync_tombstones table nahi mili — `php scripts/migrate_delete_support.php` chalayein.');
+        }
+        if (!$rows) return self::out([['t' => 'd', 'v' => 'Koi delete signal nahi.']]);
+
+        $lines = [['t' => 'k', 'v' => sprintf('%-26s %-6s %-19s %s', 'TABLE', 'MODE', 'CREATED', 'APPLIED HERE')]];
+        foreach ($rows as $r) {
+            $lines[] = ['t' => $r['applied_at'] ? 'g' : 'd', 'v' => sprintf('%-26s %-6s %-19s %s',
+                substr((string)$r['table_name'], 0, 26),
+                (string)$r['scope_mode'],
+                substr((string)$r['created_at'], 0, 19),
+                $r['applied_at'] ? (substr((string)$r['applied_at'], 0, 19) . '  (' . (int)$r['rows_deleted'] . ' rows)') : 'pending')];
+        }
+        return self::out($lines);
     }
 
     private static function cmdNodes(): array

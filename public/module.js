@@ -32,7 +32,6 @@
       return null; // null = API not reachable -> caller falls back
     }
     function dbSave(data){var r=window.DBApi.req('records-save',{module:cfg.storeKey,data:data});return (r&&r.ok)?r.id:null}
-    function dbDelete(id){window.DBApi.req('records-delete',{module:cfg.storeKey,id:id})}
 
     return {
       mode: useDB?'db':'local',
@@ -58,8 +57,14 @@
         if(this.mode==='db'){data.id=id;if(dbSave(data)!==null)return}
         var l=lsGet();var r=l.find(function(x){return x.id===id});if(r)Object.assign(r,data);lsSet(l);
       },
-      remove:function(id){
-        if(this.mode==='db'){dbDelete(id);return}
+      /* PEHLE YAHAN KHAMOSH FAILURE THI:
+           remove:function(id){ if(this.mode==='db'){dbDelete(id);return} ... }
+         Server ka jawab discard ho jata tha. Wastage "delete nahi ho sakti"
+         kehta, CSRF token expire ho jata, permission na hoti — UI phir bhi
+         "Record removed" dikhata aur reload par row wapas aa jati.
+         Ab DB mode mein delete DeleteKit se hota hai (jo jawab parhta hai)
+         aur yeh sirf localStorage fallback sambhalta hai. */
+      removeLocal:function(id){
         var l=lsGet().filter(function(x){return x.id!==id});lsSet(l);
       }
     };
@@ -170,8 +175,25 @@
       if(e.target.closest('#mSave')){save();return}
       var c=e.target.closest('[data-close]');if(c){closeM();return}
       var ed=e.target.closest('[data-edit]');if(ed){openForm(ed.getAttribute('data-edit'));return}
-      var dl=e.target.closest('[data-del]');if(dl){delId=dl.getAttribute('data-del');var r=rows.find(function(x){return x.id===delId});$('#mDelName').textContent=r?(r[cfg.nameField||'name']||''):'';openM('mDel');return}
-      if(e.target.closest('#mConfirmDel')){db.remove(delId);closeM();reload();toast((cfg.recordName||'Record')+' removed');return}
+      var dl=e.target.closest('[data-del]');if(dl){
+        delId=dl.getAttribute('data-del');
+        var r=rows.find(function(x){return x.id===delId});
+        var nm=r?(r[cfg.nameField||'name']||''):'';
+        if(db.mode==='db'&&window.DeleteKit){
+          /* Asli server delete — natija (aur rukawat ki wajah) user tak. */
+          window.DeleteKit.confirm({
+            module:cfg.storeKey,id:delId,name:nm,
+            what:(cfg.recordName||'Record'),
+            title:'Delete '+(cfg.recordName||'record')+'?',
+            onDone:function(){reload()}
+          });
+        }else{
+          /* Pure-offline / file:// fallback — localStorage. */
+          $('#mDelName').textContent=nm;openM('mDel');
+        }
+        return;
+      }
+      if(e.target.closest('#mConfirmDel')){db.removeLocal(delId);closeM();reload();toast((cfg.recordName||'Record')+' removed');return}
     });
     document.addEventListener('keydown',function(e){if(e.key==='Escape')closeM()});
     var srch=$('#mSearch');if(srch)srch.oninput=paint;
@@ -181,4 +203,4 @@
   window.RestaurantModule={render:render,helpers:M};
 })();
 
-/* build: V17.1 build 2026-08-25 */
+/* build: V62 build 2026-08-26 */

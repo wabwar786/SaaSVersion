@@ -51,6 +51,9 @@
                storage: i.storage, usage: i.usage, batch: !!i.batch, expiry: !!i.expiry };
     });
     cur.menuCategories = s.menuCategories || [];
+    /* V62: ids bhi cache karo — delete/edit inhi se hota hai. */
+    cur.inventoryCategoryRows = s.inventoryCategoryRows || [];
+    cur.menuCategoryRows      = s.menuCategoryRows || [];
     cur.recipes        = s.recipes || [];
     cur.purchaseOrders = s.purchaseOrders || [];
     try { localStorage.setItem(STORE_KEY, JSON.stringify(cur)); } catch (e) {}
@@ -78,4 +81,4 @@
   };
 })();
 
-/* build: V17.1 build 2026-08-25 */
+/* build: V62 build 2026-08-26 */

@@ -2210,3 +2210,185 @@ Yehi wajah thi ke ek chhoti si warning poore console ko tor deti thi.
 `reset royal-grill txn --confirm "Royal Grill"` — saaf JSON ✓
 `purge royal-grill logs --confirm "Royal Grill"` — saaf JSON ✓
 Sync suite **34/34** · PHP lint clean · 44 pages OK
+
+---
+
+# V62 — Delete Everywhere + Sync ka DELETE CHANNEL
+
+## Asli shikayat
+
+> "Restaurant mein user ka password change karne aur user delete karne ka
+>  option nahi aa raha. Is ke elawa koi item delete karna chahun wo bhi
+>  nahi ho rahi. Koi bhi entry delete karna chahun usko delete hona chahiye."
+>
+> "Local par still old data kyun aa raha hai jab ke live par data 0 hai,
+>  transaction delete kiye hain."
+
+Yeh **do alag masle nahi the** — ek hi jar thi.
+
+## Jar 1 — Sync mein "kya mit gaya" ka koi channel tha hi nahi
+
+Sync engine sirf do kaam janti thi:
+
+    changedRows()  ->  SELECT * FROM table WHERE updated_at > ?    (kya badla)
+    applyRows()    ->  wahi id mile to UPDATE, warna INSERT        (upsert)
+
+`Sync.php` mein `tombstone` / `deleted` ka ek lafz bhi nahi tha.
+
+Jab cloud par `factoryReset()` / `purge()` **hard DELETE** chalate the, row
+bina koi nishan chhore ghayab ho jati thi. Node agli pull par poochta:
+"mere watermark ke baad kya naya hai?" — cloud kehta "kuch nahi". Node ko
+khabar hi nahi hoti thi ke hazaron rows mit chuki hain.
+
+Aur is se bara khatra: node ka `sync_state` kabhi reset ho jaye (offline
+package reinstall, DB restore, `migrate_sync_columns.php` dobara) to wo
+**saara purana data ek jhatke mein wapas cloud par push** kar deta.
+Live 0 par thi magar **stable nahi** thi.
+
+### Fix — `sync_tombstones`
+
+`scripts/migrate_delete_support.php`:
+- `sync_tombstones` — har hard delete ka nishan (tenant/site scoped)
+- `sync_tombstones_applied` — LOCAL rehta hai, kabhi sync nahi hota
+  (warna ek node ka "apply ho gaya" doosre par chala jata aur wahan
+  delete kabhi hoti hi nahi)
+- `deletion_log` — har delete/void/restore ka audit
+- 24 tables par `deleted_at` (recipes, dining_tables, floors, printers,
+  goods_receipts, cashier_shifts, expenses, roles, promotions ...)
+
+`Sync.php`:
+- `applyTombstones()` — pull ke BAAD chalta hai. Do modes:
+  `ROW` (ek row) aur `WIPE` (us table ki poori tenant/site scope).
+- `before_ts` guard — WIPE sirf us waqt tak ka data uthata hai, is liye
+  reset ke **baad** ka naya data kabhi nahi mit sakta, chahe wohi
+  tombstone dobara process ho jaye.
+- `TOMBSTONE_DENY` — platform tables (tenants, platform_users,
+  subscriptions, sync_* khud) kabhi tombstone se delete nahi hotin.
+- Wipe ke baad us table ka watermark reset — warna node ka aage barha
+  hua watermark us table ko dobara kabhi laata hi nahi.
+- `cfg()` ab `sync_tombstones` ko push/pull lists mein **zabardasti**
+  daalta hai — purani config wale nodes ko bhi mil jata hai.
+- Errors run-log mein jaate hain. Khamosh nahi.
+
+`AdminData.php`:
+- `factoryReset` / `purge` / `deleteBusiness` ab delete se **pehle**
+  wipe marker likhte hain. Marker na bane to **reset ruk jata hai** —
+  warna wahi "cloud khali, node bhara" wala haal.
+- Tombstone tables `NEVER_WIPE` mein daal di gayin.
+
+### Naya console command — `resync`
+
+    resync <slug> [transactions|all] --confirm "<name>"
+
+**Cloud ka data bilkul nahi chhoota.** Sirf wipe markers likhta hai;
+agli sync par node apni wahi tables khud saaf kar ke cloud se dobara
+bharta hai. Yeh us haalat ka hal hai jahan reset purane build par hua
+tha aur tombstone bana hi nahi.
+
+    tombstones [slug]     — pending / applied delete signals
+
+### Node-side tools
+`scripts/node_reset.php` + `RESET_NODE.bat` (`--dry-run` ke saath) —
+pure-offline installation ya purane build ke cases ke liye. Pehle node
+par kuch saaf karne ka koi tareeqa hi nahi tha.
+
+## Jar 2 — Delete KHAMOSHI SE fail hoti thi
+
+`module.js` mein:
+
+    function dbDelete(id){ window.DBApi.req('records-delete',{...}) }   // result discard
+    remove:function(id){ if(this.mode==='db'){dbDelete(id);return} ... } // no check
+
+Server jo bhi kahe — `419 token expired`, "Wastage cannot be deleted",
+permission denied, FK error — UI phir bhi **"Record removed"** dikhata
+tha aur `reload()` par row wapas aa jati thi. `records-delete` khud bhi
+`rowCount()` check kiye baghair `ok()` kar deta tha.
+
+### Fix
+- `records-delete` ab `rowCount()` check karta hai; 0 rows par `fail()`.
+- `dbDelete()` hata diya. `module.js` ab `DeleteKit` se guzarta hai.
+  **Ek fix = 23 module pages theek.**
+- `public/delete_kit.js` — poore software ka ek hi confirm modal.
+  Sirf `shared.css` ki mojooda classes. `BLOCKED` par asli wajah,
+  + "Sirf Inactive karein" + "Force delete (manager password)".
+  `router.php` har page par inject karta hai.
+
+## Jar 3 — Bohat si jagah delete ka rasta tha hi nahi
+
+`src/Services/DeleteService.php` — 17 entities ka registry, teen natije:
+
+    DELETED  — soft (deleted_at + is_active=0), sync-safe
+    BLOCKED  — asli wajah: "42 bill lines mein use hua hai"
+               + can_deactivate / can_force
+    FORCED   — Admin, manager password, child rows + tombstone
+
+- Permission: Owner/Admin, warna `user_form_permissions.can_delete`
+  (yeh table maujood thi magar kabhi use hi nahi ho rahi thi).
+- GRN / wastage delete par **stock reverse** hota hai — warna inventory
+  hamesha ke liye galat reh jati.
+- Recycle bin — 30 din tak soft-deleted rows wapas.
+- **Bill delete nahi hota** — `voidOrder()`: order VOID, payments
+  cancel, becha hua stock wapas, bill number history mein salamat.
+  FBR aur accounting dono mehfooz.
+
+### UI jahan pehle kuch bhi nahi tha
+
+| Page | Ab |
+|---|---|
+| `users_access.html` | Access / **Password** / Suspend / **Delete** + status tag |
+| `inventory_creation.html` | item delete (table + card), category chip par × |
+| `recipe_making.html` | recipe delete |
+| `purchasing.html` | GRN cancel (stock reverse), GRN no ab UUID ki jagah |
+| `restaurant_pos.html` | item card par delete (manager-only) |
+
+**Users page ka password:** option "maujood" tha magar chhupa hua —
+`accessState()` har user ka `password:''` bhejta tha, edit modal ka
+field khali aata tha aur label "Temporary Password" likha tha. Kisi ko
+andaza hi nahi hota tha ke wahan likhne se password badal jayega. Ab
+alag `user-password` endpoint aur apna modal.
+
+### Naye endpoints
+`entity-delete` · `entity-restore` · `recycle-bin` · `delete-entities`
+`order-void` · `user-password` · `user-status` · `user-delete`
+
+`user-delete` / `user-status` par guards: khud ko delete/suspend nahi,
+aakhri active admin nahi.
+
+## Bonus — `tables_floors` ka split brain
+
+`tables` module `ui_records` mein likhta tha jabke POS `dining_tables`
+se padhta hai. **Do alag jagah** — is liye wahan banayi hui table POS
+par kabhi nazar nahi aati thi aur wahan delete karne ka POS par koi
+asar hi nahi hota tha. Ab `ModuleBridge` se dono ek hi table par.
+
+## Bonus 2 — `offline_sync.html` ki JS MARI HUI THI
+
+    } else { toast(...); }
+    else{ toast(...); }        <-- do else
+
+JS syntax error. Us page ka **poora script kabhi chala hi nahi** —
+"Sync now" button dead tha aur status kabhi refresh nahi hota tha.
+Theek kar diya (aur ab `removed N rows` bhi dikhata hai).
+
+## Testing
+
+    node --check   44 pages ka inline JS + public/*.js   -> 0 fail
+    PHP structural audit (braces/strings/heredoc)         -> 0 fail
+                          (views/modules/dashboard.php ek
+                           false positive hai: "Today's" ka
+                           apostrophe PHP tags ke bahar)
+
+**NahI chalaya** (sandbox mein PHP binary maujood nahi tha):
+`php -l`, `tools/check_pages.php`, `tools/sync_suite.py`,
+`tools/reset_verify.py`. Yeh aap ke sandbox par chalana zaroori hai.
+
+## Deploy ke baad pehla kaam
+
+1. Cloud deploy — migration `docker-entrypoint.sh` mein khud chalti hai.
+2. Platform Console -> Command Console:
+
+       resync royal-grill transactions --confirm "Royal Grill"
+
+   (Cloud ka data safe rehta hai — sirf markers bante hain.)
+3. Branch computer par app kholein, dashboard par **Sync now**.
+4. Tasdeeq: `tombstones royal-grill` — markers `applied` dikhne chahiyen.
