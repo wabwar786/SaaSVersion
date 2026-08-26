@@ -1892,3 +1892,60 @@ number ka bill ->
 ## Nateeja
     34/34 passed
 PHP lint clean · 44 pages OK · dashboard + POS JS clean · local node OK
+
+---
+
+# V56 — Platform Console (Super Admin) ka mukammal naya portal
+
+## Naya shell — restaurant jaisa
+Purana portal ek dark single-page tha (478 lines, 3 tabs) jo baqi software
+se bilkul mail nahi khata tha. Ab wahi design system (`shared.css`) —
+left sidebar + header + cards + tables, light theme, wahi tokens.
+
+**Sidebar (9 screens, 4 groups):**
+  Overview   : Dashboard · Sync Monitor
+  Businesses : All Businesses · Create Business
+  Data       : Backup & Reset · Import Data
+  System     : Audit Log · Health · Account
+
+Purane portal ke saare kaam mehfooz: business list, detail, renew,
+reset password, branding, features, WhatsApp, suspend/activate, create,
+plans, health, password change.
+
+## Naya: Backup → Download → Factory Reset
+- **Download backup**: poora business ek JSON file mein.
+  *Full* (master + transactions) ya *Master only*.
+  Har backup ka record rakha jata hai.
+- **Factory reset** do hifazaton ke saath:
+  1. business ka **poora naam type** karna zaroori
+  2. **pichle 1 ghante mein backup** liya gaya ho, warna server mana kar
+     deta hai
+  Do mode: *Transactions only* (menu/items/customers mehfooz) ya
+  *Everything*.
+
+## Naya: Import — wahi backup file wapas
+Drag/click se file chunein → **preview** (kaun si tables aayengi, kitni
+rows) → import. Sirf **master data**: menu, items, recipes, inventory,
+suppliers, customers, staff/roles, tables, printers.
+Transactional data (orders, payments, shifts) jaan-boojh kar **import nahi
+hota** — bill numbers aur stock effects kharab ho jate.
+Duplicate par "Skip" ya "Overwrite" ka option. Import history bhi.
+
+## Naya: Sync Monitor + Audit Log
+- **Sync Monitor**: saare businesses ke branch computers — node code, IP,
+  build, last seen; 24h transfers/rows; aur rejected/failed transfers.
+- **Audit Log**: har super-admin action (backup, reset, import) — kis ne,
+  kab, kis business par, kitni rows.
+
+## Tested (asli browser, poora cycle)
+Login → console ✓ · 9 sidebar links ✓ · dashboard 8 KPIs ✓
+Businesses: 3 rows, 8 actions ✓
+Sync Monitor: 1 node (L2, V55 build), 677 transfers, 16,350 rows ✓
+Backup: **backup_royalgrill_FULL_20260826_1701.json — 25 tables, 162 rows,
+157KB** ✓
+Reset guard: galat naam par block, orders **mehfooz** ✓
+TXN reset: 95 rows deleted, **menu_items 9 salamat** ✓
+FULL reset: sab 0 → **import** se master data wapis (menu 9, customers 2),
+orders 0 hi rahe ✓
+Audit log: IMPORT / FACTORY_RESET / BACKUP sab record ✓
+Sync suite regression: **34/34 passed** · PHP lint clean · 44 pages OK

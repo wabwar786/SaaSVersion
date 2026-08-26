@@ -972,6 +972,104 @@ $out['renewals']=$ren;
 $pay=$p->query("SELECT sp.amount,sp.method,sp.paid_at,t.name FROM subscription_payments sp JOIN tenants t ON t.id=sp.tenant_id COLLATE utf8mb4_unicode_ci ORDER BY sp.paid_at DESC LIMIT 8")->fetchAll();
 $out['recent_payments']=$pay;
 ok(['dash'=>$out]);
+/* ============ SUPER ADMIN: BACKUP / RESET / IMPORT ============ */
+case 'sa-backup':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $scope=strtoupper((string)($_GET['scope']??'FULL'));if(!in_array($scope,['MASTER','FULL'],true))$scope='FULL';
+ $p=DB::pdo();$q=$p->prepare("SELECT slug,name FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
+ if(!$t)fail('Business not found',404);
+ $b=\Aio\Services\AdminData::backup($tid,$scope);
+ $file='backup_'.preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug']).'_'.$scope.'_'.date('Ymd_Hi').'.json';
+ $p->prepare("INSERT INTO admin_backups(id,tenant_id,scope,file_name,tables_count,rows_count,size_bytes,checksum,created_by,created_at)
+              VALUES(?,?,?,?,?,?,?,?,?,NOW(6))")
+   ->execute([uuid(),$tid,$scope,$file,$b['meta']['tables'],$b['meta']['rows'],$b['meta']['bytes'],$b['meta']['checksum'],
+              (string)(Platform::superUser()['email']??'super'),]);
+ \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),$tid,'BACKUP',
+   $scope.' - '.$b['meta']['tables'].' tables, '.$b['meta']['rows'].' rows');
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/json');
+ header('Content-Disposition: attachment; filename="'.$file.'"');
+ header('Content-Length: '.strlen($b['json']));
+ echo $b['json'];exit;
+
+case 'sa-backup-list':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');
+ $q=DB::pdo()->prepare("SELECT scope,file_name,tables_count,rows_count,size_bytes,created_by,created_at
+                          FROM admin_backups WHERE tenant_id=? ORDER BY created_at DESC LIMIT 20");
+ $q->execute([$tid]);ok(['backups'=>$q->fetchAll()]);
+
+case 'sa-factory-reset':needSuper();$d=body();
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $mode=strtoupper((string)($d['mode']??'TXN'));if(!in_array($mode,['TXN','FULL'],true))$mode='TXN';
+ $p=DB::pdo();$q=$p->prepare("SELECT name,slug FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
+ if(!$t)fail('Business not found',404);
+ /* Hifazat 1: business ka naam type karna zaroori */
+ if(trim((string)($d['confirm_name']??''))!==trim((string)$t['name']))
+   fail('Type the exact business name to confirm: '.$t['name'],422);
+ /* Hifazat 2: pichle 1 ghante mein backup liya gaya ho */
+ $bq=$p->prepare("SELECT COUNT(*) FROM admin_backups WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 HOUR)");
+ $bq->execute([$tid]);
+ if(!(int)$bq->fetchColumn())fail('Download a backup first - reset is only allowed within 1 hour of a backup.',422);
+ $res=\Aio\Services\AdminData::factoryReset($tid,$mode);
+ \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),$tid,'FACTORY_RESET',
+   $mode.' - '.array_sum(array_filter($res,fn($n)=>$n>0)).' rows deleted');
+ ok(['mode'=>$mode,'deleted'=>$res,'total'=>array_sum(array_filter($res,fn($n)=>$n>0))]);
+
+case 'sa-import-inspect':needSuper();
+ $raw=file_get_contents('php://input');
+ $d=json_decode($raw,true);
+ $file=is_array($d)?(string)($d['file']??''):'';
+ if($file==='')fail('No file content received');
+ ok(\Aio\Services\AdminData::inspect($file));
+
+case 'sa-import-run':needSuper();
+ $raw=file_get_contents('php://input');$d=json_decode($raw,true);
+ if(!is_array($d))fail('Bad request');
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $file=(string)($d['file']??'');if($file==='')fail('No file content received');
+ $mode=strtoupper((string)($d['mode']??'SKIP'));if(!in_array($mode,['SKIP','UPDATE'],true))$mode='SKIP';
+ $only=is_array($d['only']??null)?array_map('strval',$d['only']):[];
+ $p=DB::pdo();$sq=$p->prepare("SELECT id FROM sites WHERE tenant_id=? ORDER BY created_at LIMIT 1");
+ $sq->execute([$tid]);$sid=$sq->fetchColumn()?:null;
+ $r=\Aio\Services\AdminData::importBackup($file,$tid,$sid?:null,$mode,$only);
+ if(empty($r['ok']))fail((string)($r['message']??'Import failed'));
+ $p->prepare("INSERT INTO admin_imports(id,tenant_id,site_id,source,file_name,tables_json,rows_inserted,rows_updated,rows_skipped,status,error_text,created_by,created_at)
+              VALUES(?,?,?,'BACKUP',?,?,?,?,?,?,?,?,NOW(6))")
+   ->execute([uuid(),$tid,$sid?:null,(string)($d['file_name']??'backup.json'),
+              json_encode($r['per_table']),$r['inserted'],$r['updated'],$r['skipped'],
+              $r['errors']?'PARTIAL':'OK',$r['errors']?implode(' | ',$r['errors']):null,
+              (string)(Platform::superUser()['email']??'super')]);
+ \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),$tid,'IMPORT',
+   'inserted '.$r['inserted'].', updated '.$r['updated'].', skipped '.$r['skipped']);
+ ok($r);
+
+case 'sa-import-list':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');
+ $q=DB::pdo()->prepare("SELECT source,file_name,rows_inserted,rows_updated,rows_skipped,status,error_text,created_by,created_at
+                          FROM admin_imports WHERE tenant_id=? ORDER BY created_at DESC LIMIT 20");
+ $q->execute([$tid]);ok(['imports'=>$q->fetchAll()]);
+
+case 'sa-audit':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');
+ $p=DB::pdo();
+ if($tid!==''){$q=$p->prepare("SELECT actor,action,detail,ip,created_at FROM admin_audit WHERE tenant_id=? ORDER BY created_at DESC LIMIT 50");$q->execute([$tid]);}
+ else{$q=$p->prepare("SELECT a.actor,a.action,a.detail,a.ip,a.created_at,t.name business
+                        FROM admin_audit a LEFT JOIN tenants t ON t.id=a.tenant_id
+                       ORDER BY a.created_at DESC LIMIT 50");$q->execute();}
+ ok(['audit'=>$q->fetchAll()]);
+
+case 'sa-sync-monitor':needSuper();
+ $p=DB::pdo();
+ $n=$p->query("SELECT n.node_code,n.machine_fingerprint ip,n.app_version,n.last_seen_at,n.status,t.name business
+                 FROM sync_nodes n LEFT JOIN tenants t ON t.id=n.tenant_id
+                ORDER BY n.last_seen_at DESC LIMIT 30")->fetchAll();
+ $a=$p->query("SELECT COUNT(*) transfers,COALESCE(SUM(rows_count),0) rows_total
+                 FROM sync_activity WHERE created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)")->fetch();
+ $f=$p->query("SELECT t.name business,s.table_name,s.rows_count,s.note,s.created_at
+                 FROM sync_activity s LEFT JOIN tenants t ON t.id=s.tenant_id
+                WHERE s.status IN ('FAILED','REJECTED') ORDER BY s.created_at DESC LIMIT 20")->fetchAll();
+ ok(['nodes'=>$n,'today'=>$a,'failures'=>$f]);
+
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
 case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
 case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);

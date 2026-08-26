@@ -1,254 +1,585 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Platform · Super Admin</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Platform Console — SmartPOS</title>
+<link rel="stylesheet" href="shared.css">
 <style>
-  :root{--bg:#0b1020;--panel:#141b2e;--line:#26304a;--ink:#e9edf6;--ink2:#9aa6c0;--brand:#e23744;--brand2:#ff5864;--ok:#28c76f;--warn:#ff9f43;--chip:#1d2740}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,Segoe UI,Roboto,Inter,sans-serif;background:linear-gradient(160deg,#0b1020,#0e1428);color:var(--ink);min-height:100vh}
-  a{color:var(--brand2)}
-  .wrap{max-width:1080px;margin:0 auto;padding:22px}
-  .brand{display:flex;align-items:center;gap:12px;margin-bottom:20px}
-  .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:grid;place-items:center;font-weight:800}
-  .brand h1{font-size:18px;font-weight:700}.brand p{font-size:12px;color:var(--ink2)}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
-  .card h2{font-size:15px;margin-bottom:14px;font-weight:650}
-  label{display:block;font-size:12px;color:var(--ink2);margin:0 0 5px}
-  input,select{width:100%;padding:10px 12px;background:#0d1424;border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:14px;outline:none}
-  input:focus,select:focus{border-color:var(--brand)}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .grid .full{grid-column:1/-1}
-  .btn{padding:11px 18px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;font-weight:650;cursor:pointer;font-size:14px}
-  .btn.sec{background:var(--chip);border:1px solid var(--line)}
-  .btn:disabled{opacity:.6;cursor:default}
-  .center{max-width:400px;margin:8vh auto}
-  table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);font-size:13px}
-  th{color:var(--ink2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
-  .tag{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
-  .tag.ok{background:rgba(40,199,111,.15);color:var(--ok)}.tag.warn{background:rgba(255,159,67,.15);color:var(--warn)}
-  .tag.bad{background:rgba(226,55,68,.18);color:#ff8f98}
-  .mini{padding:6px 10px;font-size:12px}
-.navtabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-.ntab{padding:10px 20px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--ink,#e8eef5);font-weight:700;cursor:pointer}
-.ntab.on{background:var(--accent,#e23744);border-color:var(--accent,#e23744);color:#fff}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
-.stat{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:rgba(255,255,255,.03)}
-.stat small{display:block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;opacity:.65;margin-bottom:6px}
-.stat b{font-size:22px;font-weight:800}
-.tablewrap{overflow:auto}
-.chip-due{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:800}
-.due-red{background:rgba(226,55,68,.18);color:#ff8f98}
-.due-amber{background:rgba(255,159,67,.18);color:#ffc078}
-.due-ok{background:rgba(40,199,111,.15);color:#4ade80}
-.fgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-height:44vh;overflow:auto}
-.fitem{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px}
-.modalov{position:fixed;inset:0;background:rgba(3,8,18,.72);z-index:900;display:flex;align-items:center;justify-content:center;padding:18px}
-.modalbox{background:#0f1626;border:1px solid var(--line);border-radius:16px;width:100%;max-width:560px;max-height:88vh;overflow:auto;padding:22px}
-.modalbox h3{margin-bottom:4px}
-.modalbox .row{margin-top:14px}
-  .detail-row td{background:#0d1424}
-  .subtable th,.subtable td{font-size:12px;padding:6px 8px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .muted{color:var(--ink2);font-size:12px}
-  .linkbox{background:#0d1424;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13px;word-break:break-all}
-  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:#0d1424;border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:12px;opacity:0;transition:.25s;z-index:99}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .hide{display:none!important}
-  .succ{background:linear-gradient(135deg,rgba(40,199,111,.12),transparent);border:1px solid rgba(40,199,111,.35)}
-  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
-  .kv b{color:#fff}
-  .head-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+/* ---- console-only additions on top of the shared design system ---- */
+.login-wrap{min-height:100vh;display:grid;place-items:center;background:var(--bg);padding:24px}
+.login-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-lg);padding:34px 30px;width:100%;max-width:400px}
+.login-card .mark{width:46px;height:46px;border-radius:12px;background:var(--ink);color:#fff;
+  display:grid;place-items:center;font-weight:800;font-size:19px;margin-bottom:16px;font-family:var(--display)}
+.login-card h1{font-family:var(--display);font-size:20px;margin:0 0 4px}
+.login-card p{color:var(--muted);font-size:13px;margin:0 0 20px}
+
+.side-brand{padding:18px 18px 14px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:center}
+.side-brand .m{width:36px;height:36px;border-radius:10px;background:var(--ink);color:#fff;
+  display:grid;place-items:center;font-weight:800;font-family:var(--display)}
+.side-brand b{font-family:var(--display);font-size:14px;display:block;line-height:1.2}
+.side-brand small{color:var(--muted);font-size:11px}
+.side-group{padding:14px 12px 4px}
+.side-group h4{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);
+  font-weight:800;padding:0 8px 6px;margin:0}
+.side-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r);
+  color:var(--ink-2);font-size:13.5px;font-weight:600;cursor:pointer;border:0;background:none;width:100%;text-align:left}
+.side-link:hover{background:var(--surface-2);color:var(--ink)}
+.side-link.on{background:var(--brand-soft);color:var(--brand-ink)}
+.side-link .i{width:18px;text-align:center;opacity:.8}
+.side-link .badge{margin-left:auto;background:var(--brand);color:#fff;border-radius:999px;
+  font-size:10px;font-weight:800;padding:1px 7px}
+
+.sec{display:none}
+.sec.on{display:block}
+.pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.pagehead h2{font-family:var(--display);font-size:19px;margin:0}
+.pagehead p{color:var(--muted);font-size:13px;margin:3px 0 0}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0;font-weight:600}
+
+.zone{border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;background:var(--surface)}
+.zone.danger{border-color:var(--danger-line);background:var(--danger-soft)}
+.zone.warn{border-color:var(--warn-line);background:var(--warn-soft)}
+.zone h3{font-family:var(--display);font-size:14.5px;margin:0 0 4px}
+.zone p{font-size:12.5px;color:var(--ink-2);margin:0 0 12px;line-height:1.6}
+.step{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.step .n{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;
+  font-weight:800;display:grid;place-items:center;flex:none}
+.step .n.done{background:var(--ok)}
+.step b{font-size:13px;display:block}
+.step small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px;line-height:1.5}
+
+.drop{border:2px dashed var(--line-strong);border-radius:var(--r-lg);padding:26px;text-align:center;
+  background:var(--surface-2);cursor:pointer}
+.drop:hover{border-color:var(--brand);background:var(--brand-soft)}
+.drop b{display:block;font-size:14px;margin-bottom:3px}
+.drop small{color:var(--muted);font-size:12px}
+
+.biz-row{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);
+  border-radius:var(--r);margin-bottom:8px;background:var(--surface);cursor:pointer}
+.biz-row:hover{border-color:var(--brand-line);background:var(--brand-soft)}
+.biz-row.on{border-color:var(--brand);background:var(--brand-soft)}
+.biz-row .av{width:36px;height:36px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);
+  display:grid;place-items:center;font-weight:800;font-family:var(--display);flex:none}
+.biz-row b{font-size:13.5px;display:block}
+.biz-row small{color:var(--muted);font-size:11.5px}
+
+.modal-ov{position:fixed;inset:0;background:rgba(27,25,23,.55);z-index:900;display:grid;place-items:center;padding:20px}
+.modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);width:100%;
+  max-width:560px;max-height:88vh;overflow:auto}
+.modal-box .mh{padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+.modal-box .mh h3{font-family:var(--display);font-size:16px;margin:0}
+.modal-box .mh p{color:var(--muted);font-size:12.5px;margin:3px 0 0}
+.modal-box .mb{padding:18px 22px}
+.modal-box .mf{padding:14px 22px 18px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--line)}
+
+.toast-el{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:12px 20px;border-radius:var(--r);font-weight:600;font-size:13px;opacity:0;transition:.25s;z-index:999;pointer-events:none;max-width:90vw}
+.toast-el.on{opacity:1}
+.mini{padding:5px 10px;font-size:12px}
+.muted{color:var(--muted)}
+.hide{display:none!important}
+pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px;font-size:11.5px;max-height:230px;overflow:auto;white-space:pre-wrap;margin:0}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="brand"><div class="logo">◆</div><div><h1>All-in-One Platform</h1><p>Super Admin · Business Management</p></div></div>
 
-  <!-- LOGIN -->
-  <div id="loginView" class="card center">
-    <h2>Super Admin Login</h2>
-    <div style="margin-bottom:12px"><label>Email</label><input id="saEmail" placeholder="super@admin.local" value="super@admin.local"></div>
-    <div style="margin-bottom:16px"><label>Password</label><input id="saPass" type="password" placeholder="••••••••"></div>
-    <button class="btn" id="saLoginBtn" style="width:100%">Sign in</button>
-    <p class="muted" style="margin-top:12px">Default: super@admin.local / Super@123 — pehli baar login ke baad change karein.</p>
-  </div>
-
-  <!-- DASHBOARD -->
-  <div id="dashView" class="hide">
-    <div class="head-row">
-      <div class="muted">Signed in as <b id="saWho"></b> <span id="healthChip"></span></div>
-      <div class="row">
-        <button class="btn sec" id="pwBtn">Change Password</button>
-        <button class="btn sec" id="saLogout">Logout</button>
-      </div>
-    </div>
-
-    <div class="navtabs">
-      <button class="ntab on" data-nav="dash">Dashboard</button>
-      <button class="ntab" data-nav="biz">Businesses</button>
-      <button class="ntab" data-nav="create">Create Business</button>
-    </div>
-
-    <div data-sec="dash">
-      <div class="stats" id="statCards"></div>
-      <div class="card">
-        <h2>Renewals due (next 30 days)</h2>
-        <div class="tablewrap"><table><thead><tr><th>Business</th><th>Expiry</th><th>Days</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
-        <tbody id="renewRows"><tr><td colspan=6 class=muted>Loading...</td></tr></tbody></table></div>
-      </div>
-      <div class="card">
-        <h2>Recent payments</h2>
-        <div class="tablewrap"><table><thead><tr><th>Business</th><th>Amount</th><th>Method</th><th>Date</th></tr></thead>
-        <tbody id="payRows"><tr><td colspan=4 class=muted>Loading...</td></tr></tbody></table></div>
-      </div>
-    </div>
-
-    <div id="pwCard" class="card hide">
-      <h2>Change Super Admin Password</h2>
-      <div class="grid">
-        <div><label>Current Password</label><input id="pw_cur" type="password"></div>
-        <div><label>New Password (min 8)</label><input id="pw_new" type="password"></div>
-        <div><label>Confirm New Password</label><input id="pw_new2" type="password"></div>
-      </div>
-      <div class="row" style="margin-top:14px"><button class="btn" id="pwSave">Update Password</button></div>
-    </div>
-
-    <div id="healthCard" class="card hide" style="border-color:rgba(255,159,67,.5)">
-      <h2>⚠ Database Health</h2>
-      <div id="healthBody" class="muted" style="font-size:13px"></div>
-      <p class="muted" style="margin-top:10px">Fix: service redeploy/restart karein — boot par migrations khud missing tables/columns bana dengi (V15+).</p>
-    </div>
-
-    <div class="card hide" data-sec="create">
-      <h2>Create Restaurant Business</h2>
-      <div class="grid">
-        <div><label>Business Name *</label><input id="f_business_name" placeholder="Royal Grill"></div>
-        <div><label>Owner Name *</label><input id="f_owner_name" placeholder="Ahmed Khan"></div>
-        <div><label>Owner Email *</label><input id="f_owner_email" type="email" placeholder="owner@royalgrill.pk"></div>
-        <div><label>Owner Phone</label><input id="f_owner_phone" placeholder="0300-1234567"></div>
-        <div><label>Branch Name</label><input id="f_branch_name" placeholder="Main Branch" value="Main Branch"></div>
-        <div><label>Industry</label><select id="f_industry"><option value="RESTAURANT">Restaurant</option></select></div>
-        <div class="full"><label>Business Address</label><input id="f_address" placeholder="Blue Area, Islamabad"></div>
-        <div><label>Subscription Plan</label><select id="f_plan"></select></div>
-        <div><label>Amount (PKR)</label><input id="f_amount" type="number" min="0" value="10000"></div>
-        <div><label>Payment Method</label><select id="f_payment_method"><option>CASH</option><option>BANK</option><option>CARD</option><option>EASYPAISA</option><option>JAZZCASH</option><option>RAAST</option></select></div>
-        <div><label>Start Date</label><input id="f_start_date" type="date"></div>
-        <div><label>Expiry Date</label><input id="f_expiry_date" type="date"></div>
-        <div><label>Payment Reference</label><input id="f_payment_reference" placeholder="TRX-99881"></div>
-      </div>
-      <div class="row" style="margin-top:16px"><button class="btn" id="createBtn">Create Business</button><span class="muted">Create hone par client link + admin password milega (ek dafa).</span></div>
-    </div>
-
-    <!-- success -->
-    <div id="successCard" class="card succ hide">
-      <h2>✅ Business Created</h2>
-      <div class="kv"><span>Business</span><b id="s_name"></b></div>
-      <div class="kv"><span>Client Login Link</span><b><a id="s_link" href="#" target="_blank"></a></b></div>
-      <div class="kv"><span>Admin Email</span><b id="s_email"></b></div>
-      <div class="kv"><span>Admin Password (save now)</span><b id="s_pass" style="color:var(--warn)"></b></div>
-      <div class="kv"><span>Sync Token (for offline)</span><b id="s_token" style="font-size:11px"></b></div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn sec" id="copyLink">Copy client link</button>
-        <button class="btn sec" id="copyCreds">Copy login details</button>
-      </div>
-    </div>
-
-    <div class="card hide" data-sec="biz">
-      <div class="head-row"><h2 style="margin:0">Businesses</h2><button class="btn sec" id="refreshBtn">Refresh</button></div>
-      <div style="overflow:auto"><table>
-        <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th><th style="min-width:420px">Actions</th></tr></thead>
-        <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
-      </table></div>
-    </div>
+<!-- ===================== LOGIN ===================== -->
+<div class="login-wrap" id="loginView">
+  <div class="login-card">
+    <div class="mark">W</div>
+    <h1>Platform Console</h1>
+    <p>Wabwar Software House — super admin access</p>
+    <label class="f">Email</label>
+    <input class="inp" id="saEmail" type="email" placeholder="super@admin.local" autocomplete="username">
+    <label class="f" style="margin-top:12px">Password</label>
+    <input class="inp" id="saPass" type="password" autocomplete="current-password">
+    <button class="btn primary" id="saLoginBtn" style="width:100%;margin-top:18px">Sign in</button>
+    <div id="loginMsg" style="margin-top:12px;font-size:12.5px;color:var(--danger)"></div>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+
+<!-- ===================== CONSOLE ===================== -->
+<div class="app hide" id="dashView">
+  <aside class="sidebar" id="side">
+    <div class="side-brand">
+      <div class="m">W</div>
+      <div><b>Platform Console</b><small id="saWho">super admin</small></div>
+    </div>
+    <div class="side-group">
+      <h4>Overview</h4>
+      <button class="side-link on" data-nav="dash"><span class="i">▦</span> Dashboard</button>
+      <button class="side-link" data-nav="sync"><span class="i">⇅</span> Sync Monitor</button>
+    </div>
+    <div class="side-group">
+      <h4>Businesses</h4>
+      <button class="side-link" data-nav="biz"><span class="i">⌂</span> All Businesses</button>
+      <button class="side-link" data-nav="create"><span class="i">＋</span> Create Business</button>
+    </div>
+    <div class="side-group">
+      <h4>Data</h4>
+      <button class="side-link" data-nav="backup"><span class="i">⇩</span> Backup &amp; Reset</button>
+      <button class="side-link" data-nav="import"><span class="i">⇧</span> Import Data</button>
+    </div>
+    <div class="side-group">
+      <h4>System</h4>
+      <button class="side-link" data-nav="audit"><span class="i">≣</span> Audit Log</button>
+      <button class="side-link" data-nav="health"><span class="i">✓</span> Health</button>
+      <button class="side-link" data-nav="account"><span class="i">⚙</span> Account</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1 id="pageTitle">Dashboard</h1><p id="pageSub">Platform overview</p></div>
+      <div class="header-spacer"></div>
+      <span class="live-pill" id="buildPill">—</span>
+      <button class="btn" id="saLogout">Sign out</button>
+    </header>
+
+    <div class="content">
+
+      <!-- ---------- DASHBOARD ---------- -->
+      <section class="sec on" data-sec="dash">
+        <div class="kpis" id="statCards"></div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="card">
+            <div class="card-head"><h2>Renewals due (30 days)</h2></div>
+            <div class="tablewrap"><table>
+              <thead><tr><th>Business</th><th>Expiry</th><th>Days</th><th>Amount</th><th></th></tr></thead>
+              <tbody id="renewRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Recent payments</h2></div>
+            <div class="tablewrap"><table>
+              <thead><tr><th>Business</th><th>Amount</th><th>Method</th><th>Date</th></tr></thead>
+              <tbody id="payRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- SYNC MONITOR ---------- -->
+      <section class="sec" data-sec="sync">
+        <div class="kpis" id="syncStats"></div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-head"><h2>Branch computers</h2>
+            <button class="btn sm" id="syncRefresh">Refresh</button></div>
+          <div class="tablewrap"><table>
+            <thead><tr><th>Business</th><th>Node</th><th>Build</th><th>Last seen</th><th>Status</th></tr></thead>
+            <tbody id="nodeRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="card-head"><h2>Rejected / failed transfers</h2></div>
+          <div id="syncFail"></div>
+        </div>
+      </section>
+
+      <!-- ---------- BUSINESSES ---------- -->
+      <section class="sec" data-sec="biz">
+        <div class="pagehead">
+          <div><h2>All Businesses</h2><p>Every tenant on the platform</p></div>
+          <div class="tools"><button class="btn sm" id="refreshBtn">Refresh</button></div>
+        </div>
+        <div class="card">
+          <div class="tablewrap"><table>
+            <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th>
+            <th style="min-width:400px">Actions</th></tr></thead>
+            <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ---------- CREATE ---------- -->
+      <section class="sec" data-sec="create">
+        <div class="pagehead"><div><h2>Create Business</h2>
+          <p>New tenant with its own branch, admin user and subscription</p></div></div>
+        <div class="card">
+          <div class="fg">
+            <div><label class="f">Business name</label><input class="inp" id="f_business_name" placeholder="Royal Grill"></div>
+            <div><label class="f">Industry</label><select class="inp" id="f_industry"><option value="RESTAURANT">Restaurant</option></select></div>
+            <div><label class="f">Branch name</label><input class="inp" id="f_branch_name" placeholder="Main Branch"></div>
+            <div><label class="f">Address</label><input class="inp" id="f_address"></div>
+            <div><label class="f">Owner name</label><input class="inp" id="f_owner_name"></div>
+            <div><label class="f">Owner email</label><input class="inp" id="f_owner_email" type="email"></div>
+            <div><label class="f">Owner phone</label><input class="inp" id="f_owner_phone"></div>
+            <div><label class="f">Plan</label><select class="inp" id="f_plan"></select></div>
+            <div><label class="f">Start date</label><input class="inp" id="f_start_date" type="date"></div>
+            <div><label class="f">Expiry date</label><input class="inp" id="f_expiry_date" type="date"></div>
+            <div><label class="f">Amount</label><input class="inp" id="f_amount" type="number"></div>
+            <div><label class="f">Payment method</label><select class="inp" id="f_payment_method">
+              <option>Cash</option><option>Bank</option><option>Card</option><option>Raast</option></select></div>
+            <div class="full"><label class="f">Payment reference</label><input class="inp" id="f_payment_reference"></div>
+          </div>
+          <button class="btn primary" id="createBtn" style="margin-top:16px">Create business</button>
+        </div>
+        <div class="card hide" id="successCard" style="margin-top:14px;border-color:var(--ok-line);background:var(--ok-soft)">
+          <div class="card-head"><h2>Business created</h2></div>
+          <dl class="dl">
+            <dt>Business</dt><dd id="s_name"></dd>
+            <dt>Client link</dt><dd id="s_link"></dd>
+            <dt>Admin email</dt><dd id="s_email"></dd>
+            <dt>Password</dt><dd id="s_pass"></dd>
+            <dt>Sync token</dt><dd id="s_token" style="word-break:break-all;font-size:11px"></dd>
+          </dl>
+          <div class="tools" style="margin-top:12px">
+            <button class="btn sm" id="copyLink">Copy link</button>
+            <button class="btn sm" id="copyCreds">Copy credentials</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- BACKUP & RESET ---------- -->
+      <section class="sec" data-sec="backup">
+        <div class="pagehead"><div><h2>Backup &amp; Factory Reset</h2>
+          <p>Download a business's data, then wipe it safely</p></div></div>
+        <div class="card">
+          <label class="f">Business</label>
+          <select class="inp" id="bkBiz" style="max-width:420px"></select>
+        </div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="zone">
+            <h3>1 · Download backup</h3>
+            <p>Everything is written to one JSON file — menu, inventory, customers,
+               suppliers, staff, and (in Full mode) orders, payments and shifts.
+               This same file can be imported back later.</p>
+            <label class="f">What to include</label>
+            <select class="inp" id="bkScope">
+              <option value="FULL">Full — master data + all transactions</option>
+              <option value="MASTER">Master data only — menu, items, customers, staff</option>
+            </select>
+            <button class="btn primary" id="bkGo" style="width:100%;margin-top:12px">Download backup file</button>
+            <div id="bkList" style="margin-top:14px"></div>
+          </div>
+
+          <div class="zone danger">
+            <h3>2 · Factory reset</h3>
+            <p><b>This deletes data permanently.</b> Only allowed within one hour of a
+               downloaded backup, and you must type the business name to confirm.</p>
+            <label class="f">What to delete</label>
+            <select class="inp" id="frMode">
+              <option value="TXN">Transactions only — keep menu, items, customers, staff</option>
+              <option value="FULL">Everything — also menu, items, customers, suppliers</option>
+            </select>
+            <label class="f" style="margin-top:10px">Type the business name to confirm</label>
+            <input class="inp" id="frConfirm" placeholder="exact business name">
+            <button class="btn danger" id="frGo" style="width:100%;margin-top:12px">Factory reset</button>
+            <div id="frOut" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- IMPORT ---------- -->
+      <section class="sec" data-sec="import">
+        <div class="pagehead"><div><h2>Import Data</h2>
+          <p>Load master data from a SmartPOS backup file</p></div></div>
+        <div class="card">
+          <label class="f">Import into</label>
+          <select class="inp" id="imBiz" style="max-width:420px"></select>
+          <div class="drop" id="imDrop" style="margin-top:14px">
+            <b>Choose a backup file</b>
+            <small>The .json file downloaded from Backup &amp; Reset</small>
+          </div>
+          <input type="file" id="imFile" accept=".json,application/json" class="hide">
+          <div id="imPreview" style="margin-top:14px"></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="card-head"><h2>Import history</h2></div>
+          <div id="imList"></div>
+        </div>
+      </section>
+
+      <!-- ---------- AUDIT ---------- -->
+      <section class="sec" data-sec="audit">
+        <div class="pagehead"><div><h2>Audit Log</h2>
+          <p>Every super-admin action on the platform</p></div>
+          <div class="tools"><button class="btn sm" id="auditRefresh">Refresh</button></div></div>
+        <div class="card">
+          <div class="tablewrap"><table>
+            <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Business</th><th>Detail</th></tr></thead>
+            <tbody id="auditRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ---------- HEALTH ---------- -->
+      <section class="sec" data-sec="health">
+        <div class="pagehead"><div><h2>Platform Health</h2>
+          <p>Database and schema diagnostics</p></div>
+          <div class="tools"><button class="btn sm" id="healthRefresh">Run checks</button></div></div>
+        <div class="card"><div id="healthBody" class="muted">Running…</div></div>
+      </section>
+
+      <!-- ---------- ACCOUNT ---------- -->
+      <section class="sec" data-sec="account">
+        <div class="pagehead"><div><h2>Account</h2><p>Super admin password</p></div></div>
+        <div class="card" style="max-width:460px">
+          <label class="f">Current password</label><input class="inp" id="pw_cur" type="password">
+          <label class="f" style="margin-top:10px">New password</label><input class="inp" id="pw_new" type="password">
+          <label class="f" style="margin-top:10px">Repeat new password</label><input class="inp" id="pw_new2" type="password">
+          <button class="btn primary" id="pwSave" style="margin-top:16px">Change password</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="toast-el" id="toast"></div>
 
 <script>
-const CSRF = window.APP_CSRF || '';
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(()=>t.className='toast',1900)}
-async function api(action, payload){
-  const opt={method:payload?'POST':'GET',headers:{'Accept':'application/json'}};
-  if(payload){opt.headers['Content-Type']='application/json';opt.headers['X-CSRF-Token']=CSRF;opt.body=JSON.stringify(payload)}
-  const res=await fetch('/api.php?action='+action,opt);
-  let j={ok:false,message:'Request failed'};try{j=await res.json()}catch(e){}
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var CSRF=window.APP_CSRF||'';
+var BIZ=[];                      /* business list cache */
+
+function toast(m){var t=$('toast');t.textContent=m;t.className='toast-el on';
+  clearTimeout(t._t);t._t=setTimeout(function(){t.className='toast-el'},3200)}
+function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function pkr(n){return 'PKR '+Math.round(Number(n)||0).toLocaleString()}
+function fmt(ts){if(!ts)return '—';var d=new Date(String(ts).replace(' ','T'));
+  return isNaN(d.getTime())?String(ts).slice(0,16):d.toLocaleString()}
+
+async function api(action,payload){
+  var opt={method:payload?'POST':'GET',headers:{'Accept':'application/json'}};
+  if(payload){opt.headers['Content-Type']='application/json';opt.headers['X-CSRF-Token']=CSRF;
+    opt.body=JSON.stringify(payload)}
+  var res=await fetch('/api.php?action='+action,opt);
+  var j={ok:false,message:'Request failed'};
+  try{j=await res.json()}catch(e){}
   return j;
 }
-const $=id=>document.getElementById(id);
-function show(view){$('loginView').classList.toggle('hide',view!=='login');$('dashView').classList.toggle('hide',view!=='dash')}
+function copyText(t){if(navigator.clipboard)navigator.clipboard.writeText(t);toast('Copied')}
 
-async function boot(){
-  const me=await api('sa-me');
-  if(me.ok && me.user){enterDash(me.user)} else {show('login')}
-}
-function enterDash(u){show('dash');$('saWho').textContent=u.name+' ('+u.email+')';
-  // default dates
-  const t=new Date();const iso=d=>d.toISOString().slice(0,10);
-  $('f_start_date').value=iso(t);const nm=new Date(t);nm.setMonth(nm.getMonth()+1);$('f_expiry_date').value=iso(nm);
-  loadPlans();checkHealth();nav('dash');
-}
-async function loadPlans(){const r=await api('sa-plans');const sel=$('f_plan');sel.innerHTML='';
-  (r.plans||[]).forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.price>0?(' · PKR '+Number(p.price).toLocaleString()):'');sel.appendChild(o)});}
-function bizTag(b){
-  if(String(b.status).toUpperCase()==='SUSPENDED')return '<span class="tag bad">Suspended</span>';
-  if(b.expired)return '<span class="tag warn">Expired</span>';
-  return '<span class="tag ok">Active</span>';
-}
-
-/* ================= NAV ================= */
-function nav(sec){
-  document.querySelectorAll('[data-nav]').forEach(function(b){b.classList.toggle('on',b.dataset.nav===sec)});
-  document.querySelectorAll('[data-sec]').forEach(function(d){d.classList.toggle('hide',d.dataset.sec!==sec)});
-  if(sec==='dash')loadDash();
-  if(sec==='biz')loadBiz();
-}
-document.querySelectorAll('[data-nav]').forEach(function(b){b.onclick=function(){nav(this.dataset.nav)}});
-
-/* ================= DASHBOARD ================= */
-function pkr(n){return 'PKR '+Math.round(Number(n)||0).toLocaleString()}
-async function loadDash(){
-  const r=await api('sa-dashboard');
-  if(!r.ok){$('statCards').innerHTML='<div class="muted">'+(r.message||'Failed')+'</div>';return}
-  const d=r.dash;
-  $('statCards').innerHTML=[
-    ['Businesses',d.businesses],['Active',d.active],['Suspended',d.suspended],
-    ['Branches',d.branches],['Users',d.users],
-    ['Revenue (MTD)',pkr(d.revenue_mtd)],['Revenue (total)',pkr(d.revenue_total)],
-    ['Renewals ≤30d',(d.renewals||[]).length]
-  ].map(function(x){return '<div class="stat"><small>'+x[0]+'</small><b>'+x[1]+'</b></div>'}).join('');
-
-  const rn=d.renewals||[];
-  $('renewRows').innerHTML=rn.length?rn.map(function(x){
-    const days=Number(x.days);
-    const cls=days<0?'due-red':(days<=7?'due-amber':'due-ok');
-    const lbl=days<0?('Expired '+Math.abs(days)+'d ago'):(days+' days');
-    return '<tr><td><b>'+x.name+'</b><br><span class="muted">'+x.slug+'</span></td>'
-      +'<td>'+(x.expiry_date||'—')+'</td><td><span class="chip-due '+cls+'">'+lbl+'</span></td>'
-      +'<td>'+pkr(x.amount)+'</td><td>'+(x.status||'')+'</td>'
-      +'<td><button class="btn sec mini" onclick="bizRenew(\''+x.id+'\')">Renew</button></td></tr>';
-  }).join(''):'<tr><td colspan=6 class=muted>Agle 30 din mein koi renewal nahi</td></tr>';
-
-  const pm=d.recent_payments||[];
-  $('payRows').innerHTML=pm.length?pm.map(function(x){
-    return '<tr><td>'+x.name+'</td><td>'+pkr(x.amount)+'</td><td>'+(x.method||'')+'</td><td>'+String(x.paid_at||'').slice(0,16).replace('T',' ')+'</td></tr>';
-  }).join(''):'<tr><td colspan=4 class=muted>Koi payment nahi</td></tr>';
-}
-
-/* ================= MODAL HELPER ================= */
-function sModal(html){
-  const ov=document.createElement('div');ov.className='modalov';
-  ov.innerHTML='<div class="modalbox">'+html+'</div>';
+function sModal(html,wide){
+  var ov=document.createElement('div');ov.className='modal-ov';
+  ov.innerHTML='<div class="modal-box"'+(wide?' style="max-width:760px"':'')+'>'+html+'</div>';
   document.body.appendChild(ov);
   ov.onclick=function(e){if(e.target===ov)ov.remove()};
-  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){ov.remove();document.removeEventListener('keydown',esc)}});
-  ov.querySelectorAll('[data-x]').forEach(function(b){b.onclick=function(){ov.remove()}});
+  document.addEventListener('keydown',function k(e){if(e.key==='Escape'){ov.remove();document.removeEventListener('keydown',k)}});
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-x]'),function(b){b.onclick=function(){ov.remove()}});
   return ov;
 }
 
-/* ================= BRANDING ================= */
+/* ===================== NAV ===================== */
+var TITLES={dash:['Dashboard','Platform overview'],
+  sync:['Sync Monitor','Branch computers and data transfers'],
+  biz:['All Businesses','Every tenant on the platform'],
+  create:['Create Business','New tenant setup'],
+  backup:['Backup & Reset','Download data, then wipe safely'],
+  import:['Import Data','Load master data from a backup file'],
+  audit:['Audit Log','Super-admin actions'],
+  health:['Platform Health','Database diagnostics'],
+  account:['Account','Super admin password']};
+
+function nav(sec){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b){
+    b.classList.toggle('on',b.dataset.nav===sec)});
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sec]'),function(d){
+    d.classList.toggle('on',d.dataset.sec===sec)});
+  var t=TITLES[sec]||['',''];$('pageTitle').textContent=t[0];$('pageSub').textContent=t[1];
+  if(sec==='dash')loadDash();
+  if(sec==='biz')loadBiz();
+  if(sec==='sync')loadSync();
+  if(sec==='audit')loadAudit();
+  if(sec==='health')checkHealth();
+  if(sec==='backup'||sec==='import')fillBizSelects();
+  document.querySelector('.sidebar').classList.remove('open');
+}
+
+/* ===================== DASHBOARD ===================== */
+async function loadDash(){
+  var r=await api('sa-dashboard');
+  if(!r.ok){$('statCards').innerHTML='<div class="muted">'+esc(r.message||'Failed')+'</div>';return}
+  var d=r.dash;
+  $('statCards').innerHTML=[
+    ['Businesses',d.businesses,''],['Active',d.active,'ok'],['Suspended',d.suspended,'warn'],
+    ['Branches',d.branches,'info'],['Users',d.users,''],
+    ['Revenue (MTD)',pkr(d.revenue_mtd),'ok'],['Revenue (total)',pkr(d.revenue_total),''],
+    ['Renewals ≤30d',(d.renewals||[]).length,'warn']
+  ].map(function(x){return '<div class="kpi '+x[2]+'"><div class="lab">'+x[0]+'</div><div class="val">'+x[1]+'</div></div>'}).join('');
+
+  var rn=d.renewals||[];
+  $('renewRows').innerHTML=rn.length?rn.map(function(x){
+    var days=Number(x.days);
+    var cls=days<0?'red':(days<=7?'amber':'green');
+    var lbl=days<0?('Expired '+Math.abs(days)+'d'):(days+' days');
+    return '<tr><td><b>'+esc(x.name)+'</b><br><span class="muted">'+esc(x.slug)+'</span></td>'
+      +'<td>'+esc(x.expiry_date||'—')+'</td><td><span class="tag '+cls+'">'+lbl+'</span></td>'
+      +'<td>'+pkr(x.amount)+'</td>'
+      +'<td><button class="btn sm" onclick="bizRenew(\'' + x.id + '\')">Renew</button></td></tr>';
+  }).join(''):'<tr><td colspan="5" class="muted">No renewals in the next 30 days</td></tr>';
+
+  var pm=d.recent_payments||[];
+  $('payRows').innerHTML=pm.length?pm.map(function(x){
+    return '<tr><td>'+esc(x.name)+'</td><td>'+pkr(x.amount)+'</td><td>'+esc(x.method||'')+'</td>'
+      +'<td>'+fmt(x.paid_at)+'</td></tr>';
+  }).join(''):'<tr><td colspan="4" class="muted">No payments yet</td></tr>';
+}
+
+/* ===================== SYNC MONITOR ===================== */
+async function loadSync(){
+  var r=await api('sa-sync-monitor');
+  if(!r.ok){$('nodeRows').innerHTML='<tr><td colspan="5" class="muted">'+esc(r.message||'Failed')+'</td></tr>';return}
+  var t=r.today||{};
+  $('syncStats').innerHTML=
+    '<div class="kpi"><div class="lab">Branch computers</div><div class="val">'+(r.nodes||[]).length+'</div></div>'+
+    '<div class="kpi ok"><div class="lab">Transfers (24h)</div><div class="val">'+(t.transfers||0)+'</div></div>'+
+    '<div class="kpi info"><div class="lab">Rows moved (24h)</div><div class="val">'+(t.rows_total||0)+'</div></div>'+
+    '<div class="kpi warn"><div class="lab">Failures</div><div class="val">'+(r.failures||[]).length+'</div></div>';
+
+  $('nodeRows').innerHTML=(r.nodes||[]).length?r.nodes.map(function(n){
+    return '<tr><td><b>'+esc(n.business||'—')+'</b></td>'
+      +'<td>'+esc(n.node_code||'—')+'<br><span class="muted">'+esc(n.ip||'')+'</span></td>'
+      +'<td>'+esc(n.app_version||'unknown')+'</td><td>'+fmt(n.last_seen_at)+'</td>'
+      +'<td><span class="tag '+(n.status==='ACTIVE'?'green':'amber')+'">'+esc(n.status)+'</span></td></tr>';
+  }).join(''):'<tr><td colspan="5" class="muted">No offline installation has connected yet</td></tr>';
+
+  $('syncFail').innerHTML=(r.failures||[]).length?r.failures.map(function(f){
+    return '<div class="step"><div class="n" style="background:var(--danger)">!</div>'
+      +'<div><b>'+esc(f.business||'')+' · '+esc(f.table_name)+'</b>'
+      +'<small>'+esc(f.note||'')+' · '+fmt(f.created_at)+'</small></div></div>';
+  }).join(''):'<div class="muted">No failed transfers</div>';
+}
+
+/* ===================== BUSINESSES ===================== */
+function bizTag(b){
+  if((b.status||'')==='SUSPENDED')return '<span class="tag red">Suspended</span>';
+  if(b.expired)return '<span class="tag amber">Expired</span>';
+  return '<span class="tag green">Active</span>';
+}
+async function loadBiz(){
+  var r=await api('sa-business-list');
+  if(!r.ok){$('bizRows').innerHTML='<tr><td colspan="6" class="muted">'+esc(r.message||'Failed')+'</td></tr>';return}
+  BIZ=r.businesses||[];window.__bizRows=BIZ;
+  $('bizRows').innerHTML=BIZ.length?BIZ.map(function(b){
+    var susp=(b.status||'')==='SUSPENDED';
+    return '<tr><td><b>'+esc(b.name)+'</b><br><span class="muted">'+esc(b.owner_email||'')+'</span></td>'
+      +'<td>'+esc(b.slug)+'</td><td>'+(b.branches||0)+'</td>'
+      +'<td>'+esc(b.expiry_date||'—')+'</td><td>'+bizTag(b)+'</td>'
+      +'<td><div class="tools">'
+      +'<button class="btn sm" onclick="copyText(\'' + (b.client_link||'') + '\')">Link</button>'
+      +'<button class="btn sm" onclick="bizDetail(\'' + b.id + '\')">Detail</button>'
+      +'<button class="btn sm" onclick="bizRenew(\'' + b.id + '\')">Renew</button>'
+      +'<button class="btn sm" onclick="bizResetAdmin(\'' + b.id + '\')">Reset pass</button>'
+      +'<button class="btn sm" onclick="bizBrand(\'' + b.id + '\')">Branding</button>'
+      +'<button class="btn sm" onclick="bizFeatures(\'' + b.id + '\')">Features</button>'
+      +'<button class="btn sm" onclick="bizWa(\'' + b.id + '\')">WhatsApp</button>'
+      +'<button class="btn sm" onclick="bizToggle(\'' + b.id + '\',' + (susp?1:0) + ')">'+(susp?'Activate':'Suspend')+'</button>'
+      +'</div></td></tr>';
+  }).join(''):'<tr><td colspan="6" class="muted">No businesses yet</td></tr>';
+  fillBizSelects();
+}
+function fillBizSelects(){
+  var opts=BIZ.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+' ('+esc(b.slug)+')</option>'}).join('');
+  ['bkBiz','imBiz'].forEach(function(id){
+    var el=$(id);if(!el)return;var cur=el.value;el.innerHTML=opts||'<option value="">No businesses</option>';
+    if(cur)el.value=cur;
+  });
+  if(BIZ.length){loadBackupList();loadImportList();}
+}
+
+/* ===================== BACKUP & RESET ===================== */
+async function loadBackupList(){
+  var tid=$('bkBiz').value;if(!tid)return;
+  var r=await api('sa-backup-list&tenant_id='+tid);
+  var b=(r.ok&&r.backups)?r.backups:[];
+  $('bkList').innerHTML=b.length
+    ? '<div class="f" style="margin-bottom:6px">Recent backups</div>'+b.slice(0,5).map(function(x){
+        return '<div class="step"><div class="n done">✓</div><div><b>'+esc(x.scope)+' · '
+          +x.rows_count+' rows</b><small>'+esc(x.file_name)+' · '+fmt(x.created_at)+'</small></div></div>';
+      }).join('')
+    : '<div class="muted" style="font-size:12px">No backup taken yet</div>';
+}
+async function loadImportList(){
+  var tid=$('imBiz').value;if(!tid)return;
+  var r=await api('sa-import-list&tenant_id='+tid);
+  var b=(r.ok&&r.imports)?r.imports:[];
+  $('imList').innerHTML=b.length?b.map(function(x){
+    return '<div class="step"><div class="n '+(x.status==='OK'?'done':'')+'">'+(x.status==='OK'?'✓':'!')+'</div>'
+      +'<div><b>'+esc(x.file_name||'backup')+'</b><small>inserted '+x.rows_inserted
+      +' · updated '+x.rows_updated+' · skipped '+x.rows_skipped+' · '+fmt(x.created_at)+'</small>'
+      +(x.error_text?('<small style="color:var(--danger)">'+esc(x.error_text)+'</small>'):'')+'</div></div>';
+  }).join(''):'<div class="muted">No imports yet</div>';
+}
+
+/* ===================== IMPORT ===================== */
+var IMPORT_FILE=null,IMPORT_NAME='';
+function readFile(f,cb){var rd=new FileReader();rd.onload=function(){cb(String(rd.result))};rd.readAsText(f)}
+
+async function previewImport(){
+  var r=await api('sa-import-inspect',{file:IMPORT_FILE});
+  if(!r.ok){$('imPreview').innerHTML='<div class="zone danger"><b>'+esc(r.message||'Cannot read this file')+'</b></div>';return}
+  var can=(r.tables||[]).filter(function(t){return t.importable});
+  var skip=(r.tables||[]).filter(function(t){return !t.importable});
+  $('imPreview').innerHTML=
+    '<div class="zone"><h3>'+esc((r.business&&r.business.name)||'Backup')+'</h3>'
+    +'<p>Scope: <b>'+esc(r.scope)+'</b> · Created: '+fmt(r.created)+'</p>'
+    +'<div class="f">Will be imported ('+can.length+' tables)</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px">'
+    +can.map(function(t){return '<span class="tag green">'+esc(t.table)+' '+t.rows+'</span>'}).join('')+'</div>'
+    +(skip.length?('<div class="f">Skipped — transactional data is never imported</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
+      +skip.map(function(t){return '<span class="tag">'+esc(t.table)+' '+t.rows+'</span>'}).join('')+'</div>'):'')
+    +'<label class="f" style="margin-top:14px">If a record already exists</label>'
+    +'<select class="inp" id="imMode"><option value="SKIP">Skip it (safest)</option>'
+    +'<option value="UPDATE">Overwrite with the file\'s version</option></select>'
+    +'<button class="btn primary" id="imRun" style="width:100%;margin-top:12px">Import master data</button>'
+    +'<div id="imOut" style="margin-top:12px"></div></div>';
+
+  $('imRun').onclick=async function(){
+    this.disabled=true;this.textContent='Importing…';
+    var res=await api('sa-import-run',{tenant_id:$('imBiz').value,file:IMPORT_FILE,
+      file_name:IMPORT_NAME,mode:$('imMode').value});
+    this.disabled=false;this.textContent='Import master data';
+    if(!res.ok){$('imOut').innerHTML='<div class="zone danger">'+esc(res.message||'Import failed')+'</div>';return}
+    var rows=Object.keys(res.per_table||{}).map(function(t){
+      var v=res.per_table[t];
+      return '<div class="step"><div class="n done">✓</div><div><b>'+esc(t)+'</b>'
+        +'<small>inserted '+v.inserted+' · updated '+v.updated+' · skipped '+v.skipped+'</small></div></div>';
+    }).join('');
+    $('imOut').innerHTML='<div class="zone" style="border-color:var(--ok-line);background:var(--ok-soft)">'
+      +'<h3>Import complete</h3><p>Inserted <b>'+res.inserted+'</b> · updated <b>'+res.updated
+      +'</b> · skipped <b>'+res.skipped+'</b></p>'+rows
+      +((res.errors&&res.errors.length)?('<pre class="out">'+esc(res.errors.join('\n'))+'</pre>'):'')
+      +'</div>';
+    toast('Imported '+(res.inserted+res.updated)+' records');
+    loadImportList();
+  };
+}
+
+/* ===================== AUDIT / HEALTH ===================== */
+async function loadAudit(){
+  var r=await api('sa-audit');
+  var a=(r.ok&&r.audit)?r.audit:[];
+  $('auditRows').innerHTML=a.length?a.map(function(x){
+    return '<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.actor||'')+'</td>'
+      +'<td><span class="tag">'+esc(x.action)+'</span></td><td>'+esc(x.business||'—')+'</td>'
+      +'<td class="muted">'+esc(x.detail||'')+'</td></tr>';
+  }).join(''):'<tr><td colspan="5" class="muted">No actions recorded yet</td></tr>';
+}
+async function checkHealth(){
+  $('healthBody').innerHTML='<span class="muted">Running…</span>';
+  var r=await api('sa-diagnostics');
+  if(!r.ok){$('healthBody').innerHTML='<div class="zone danger">'+esc(r.message||'Failed')+'</div>';return}
+  var d=r.diagnostics||r;
+  $('healthBody').innerHTML='<pre class="out">'+esc(JSON.stringify(d,null,2))+'</pre>';
+}
+
+/* ===================== BUSINESS ACTIONS (existing) ===================== */
 async function bizBrand(id){
   const b=(window.__bizRows||[]).find(function(x){return x.id===id})||{};
   const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Naam, logo aur colors — login aur poore software par lagenge.</p>'
@@ -280,7 +611,6 @@ async function bizBrand(id){
   };
 }
 
-/* ================= FEATURES ================= */
 async function bizFeatures(id){
   const r=await api('sa-features-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
@@ -305,17 +635,6 @@ async function bizFeatures(id){
   };
 }
 
-/* ================= WHATSAPP ================= */
-const WA_EVENTS=[
-  ['bill_paid','Bill complete — customer ko invoice/PDF link'],
-  ['order_received','Naya online/QR order aaya — manager ko alert'],
-  ['order_ready','Order ready — customer ko'],
-  ['order_dispatched','Delivery dispatch — customer ko rider info'],
-  ['shift_closed','Shift close report — owner ko'],
-  ['low_stock','Inventory reorder level se neeche — manager ko'],
-  ['subscription_expiry','Subscription expiry reminder — business owner ko'],
-  ['daily_summary','Rozana sales summary — owner ko']
-];
 async function bizWa(id){
   const r=await api('sa-wa-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
@@ -347,46 +666,6 @@ async function bizWa(id){
   };
 }
 
-async function loadBiz(){const r=await api('sa-business-list');const tb=$('bizRows');
-  if(!r.ok){tb.innerHTML='<tr><td colspan=6 class=muted>'+(r.message||'Failed')+'</td></tr>';return}
-  const rows=r.businesses||[];window.__bizRows=rows;
-  tb.innerHTML=rows.length?rows.map(b=>{
-    const suspended=String(b.status).toUpperCase()==='SUSPENDED';
-    return `<tr id="biz-${b.id}">
-    <td><b>${b.name||''}</b><br><span class="muted">${b.owner_email||''}</span></td>
-    <td>${b.slug||''}</td><td>${b.branches||1}</td>
-    <td>${b.expiry_date||'—'}</td>
-    <td>${bizTag(b)}</td>
-    <td><div class="row">
-      <button class="btn sec mini" onclick="copyText('${b.client_link}')">Copy link</button>
-      <button class="btn sec mini" onclick="bizDetail('${b.id}')">Detail</button>
-      <button class="btn sec mini" onclick="bizRenew('${b.id}')">Renew</button>
-      <button class="btn sec mini" onclick="bizResetAdmin('${b.id}')">Reset Pass</button>
-      <button class="btn sec mini" onclick="bizBrand('${b.id}')">Branding</button>
-      <button class="btn sec mini" onclick="bizFeatures('${b.id}')">Features</button>
-      <button class="btn sec mini" onclick="bizWa('${b.id}')">WhatsApp</button>
-      <button class="btn sec mini" onclick="bizToggle('${b.id}',${suspended?1:0})">${suspended?'Open':'Suspend'}</button>
-    </div></td>
-  </tr>`}).join(''):'<tr><td colspan=6 class=muted>No businesses yet. Create one above.</td></tr>';
-}
-async function bizToggle(id,reopen){
-  if(!reopen && !confirm('Suspend this business? Client login block ho jayega.'))return;
-  const r=await api(reopen?'sa-business-activate':'sa-business-suspend',{tenant_id:id});
-  toast(r.ok?(r.message||'Done'):(r.message||'Failed'));if(r.ok)loadBiz();
-}
-async function bizRenew(id){
-  const exp=prompt('New expiry date (YYYY-MM-DD):');if(!exp)return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(exp.trim())){toast('Date format: YYYY-MM-DD');return}
-  const amtRaw=prompt('Payment amount (PKR, 0 = no payment record):','10000');if(amtRaw===null)return;
-  const r=await api('sa-business-renew',{tenant_id:id,expiry_date:exp.trim(),amount:Number(amtRaw||0),payment_method:'CASH'});
-  toast(r.ok?(r.message||'Renewed'):(r.message||'Failed'));if(r.ok)loadBiz();
-}
-async function bizResetAdmin(id){
-  if(!confirm('Business admin ka password reset karein? Purana password kaam nahi karega.'))return;
-  const r=await api('sa-business-reset-admin',{tenant_id:id});
-  if(!r.ok){toast(r.message||'Failed');return}
-  prompt('New one-time password for '+r.admin_email+' (copy now):',r.admin_password);
-}
 async function bizDetail(id){
   const tr=document.getElementById('biz-'+id);if(!tr)return;
   const exist=document.getElementById('det-'+id);
@@ -408,71 +687,153 @@ async function bizDetail(id){
   </td>`;
   tr.after(det);
 }
-async function checkHealth(){
-  const r=await api('sa-diagnostics');
-  const chip=$('healthChip');if(!chip)return;
-  if(!r.ok){chip.innerHTML='';return}
-  if(r.healthy){chip.innerHTML=' · <span class="tag ok">DB healthy</span>';$('healthCard').classList.add('hide');}
-  else{
-    chip.innerHTML=' · <span class="tag warn">DB issues</span>';
-    $('healthCard').classList.remove('hide');
-    $('healthBody').innerHTML=
-      (r.missing_tables.length?('<b>Missing tables:</b> '+r.missing_tables.join(', ')+'<br>'):'')+
-      (r.missing_columns.length?('<b>Missing columns:</b> '+r.missing_columns.join(', ')):'');
-  }
-}
-function copyText(t){navigator.clipboard?.writeText(t);toast('Copied')}
 
-$('saLoginBtn').onclick=async function(){this.disabled=true;
-  const r=await api('sa-login',{email:$('saEmail').value.trim(),password:$('saPass').value});
-  this.disabled=false;
-  if(r.ok){enterDash(r.user)} else {toast(r.message||'Login failed')}
+async function bizRenew(id){
+  const exp=prompt('New expiry date (YYYY-MM-DD):');if(!exp)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(exp.trim())){toast('Date format: YYYY-MM-DD');return}
+  const amtRaw=prompt('Payment amount (PKR, 0 = no payment record):','10000');if(amtRaw===null)return;
+  const r=await api('sa-business-renew',{tenant_id:id,expiry_date:exp.trim(),amount:Number(amtRaw||0),payment_method:'CASH'});
+  toast(r.ok?(r.message||'Renewed'):(r.message||'Failed'));if(r.ok)loadBiz();
+}
+
+async function bizResetAdmin(id){
+  if(!confirm('Business admin ka password reset karein? Purana password kaam nahi karega.'))return;
+  const r=await api('sa-business-reset-admin',{tenant_id:id});
+  if(!r.ok){toast(r.message||'Failed');return}
+  prompt('New one-time password for '+r.admin_email+' (copy now):',r.admin_password);
+}
+
+async function bizToggle(id,reopen){
+  if(!reopen && !confirm('Suspend this business? Client login block ho jayega.'))return;
+  const r=await api(reopen?'sa-business-activate':'sa-business-suspend',{tenant_id:id});
+  toast(r.ok?(r.message||'Done'):(r.message||'Failed'));if(r.ok)loadBiz();
+}
+
+function bizTag(b){
+  if(String(b.status).toUpperCase()==='SUSPENDED')return '<span class="tag bad">Suspended</span>';
+  if(b.expired)return '<span class="tag warn">Expired</span>';
+  return '<span class="tag ok">Active</span>';
+}
+
+/* ===================== BOOT ===================== */
+function show(view){$('loginView').classList.toggle('hide',view!=='login');
+  $('dashView').classList.toggle('hide',view!=='dash')}
+
+async function loadPlans(){
+  var r=await api('sa-plans');
+  var sel=$('f_plan');if(!sel)return;
+  sel.innerHTML=((r.ok&&r.plans)?r.plans:[]).map(function(p){
+    return '<option value="'+esc(p.code||p.id||p.name)+'">'+esc(p.name||p.code)+'</option>'}).join('')
+    ||'<option value="STANDARD">Standard</option>';
+}
+
+async function enterDash(me){
+  show('dash');
+  $('saWho').textContent=(me&&me.email)?me.email:'super admin';
+  await loadBiz();loadPlans();nav('dash');
+  var pi=await api('sync-ping');
+  $('buildPill').textContent=(pi&&pi.build)?pi.build.split(' ')[0]:'—';
+}
+
+$('saLoginBtn').onclick=async function(){
+  this.disabled=true;this.textContent='Signing in…';
+  $('loginMsg').textContent='';
+  var r=await api('sa-login',{email:$('saEmail').value,password:$('saPass').value});
+  this.disabled=false;this.textContent='Sign in';
+  if(!r.ok){$('loginMsg').textContent=r.message||'Login failed';return}
+  CSRF=window.APP_CSRF||CSRF;
+  enterDash(r.user||r.me);
 };
-$('saLogout').onclick=async()=>{await api('sa-logout',{});show('login')};
+$('saPass').onkeydown=function(e){if(e.key==='Enter')$('saLoginBtn').click()};
+$('saLogout').onclick=async function(){await api('sa-logout',{});location.reload()};
+$('menuBtn').onclick=function(){document.querySelector('.sidebar').classList.toggle('open')};
+Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b){
+  b.onclick=function(){nav(this.dataset.nav)}});
 $('refreshBtn').onclick=loadBiz;
+$('syncRefresh').onclick=loadSync;
+$('auditRefresh').onclick=loadAudit;
+$('healthRefresh').onclick=checkHealth;
+$('bkBiz').onchange=loadBackupList;
+$('imBiz').onchange=loadImportList;
+
+$('bkGo').onclick=function(){
+  var tid=$('bkBiz').value;if(!tid){toast('Select a business');return}
+  toast('Preparing backup…');
+  window.location.href='/api.php?action=sa-backup&tenant_id='+tid+'&scope='+$('bkScope').value;
+  setTimeout(loadBackupList,2500);
+};
+$('frGo').onclick=async function(){
+  var tid=$('bkBiz').value;if(!tid){toast('Select a business');return}
+  var name=$('frConfirm').value.trim();
+  if(!name){toast('Type the business name to confirm');return}
+  var mode=$('frMode').value;
+  var ov=sModal('<div class="mh"><h3>Confirm factory reset</h3>'
+    +'<p>This cannot be undone. Make sure your backup file is safe.</p></div>'
+    +'<div class="mb"><div class="zone danger"><b>'+esc(name)+'</b><br>'
+    +(mode==='FULL'?'ALL data including menu, items, customers and suppliers'
+                   :'All transactions (orders, payments, shifts, stock movements)')
+    +' will be permanently deleted.</div></div>'
+    +'<div class="mf"><button class="btn" data-x>Cancel</button>'
+    +'<button class="btn danger" id="frYes">Yes, delete</button></div>');
+  ov.querySelector('#frYes').onclick=async function(){
+    this.disabled=true;this.textContent='Deleting…';
+    var r=await api('sa-factory-reset',{tenant_id:tid,mode:mode,confirm_name:name});
+    ov.remove();
+    if(!r.ok){$('frOut').innerHTML='<div class="zone danger">'+esc(r.message||'Failed')+'</div>';return}
+    var lines=Object.keys(r.deleted||{}).map(function(t){return t+': '+r.deleted[t]}).join('\n');
+    $('frOut').innerHTML='<div class="zone" style="border-color:var(--ok-line);background:var(--ok-soft)">'
+      +'<h3>Reset complete</h3><p><b>'+r.total+'</b> rows deleted</p>'
+      +'<pre class="out">'+esc(lines)+'</pre></div>';
+    $('frConfirm').value='';
+    toast('Factory reset complete');
+  };
+};
+
+$('imDrop').onclick=function(){$('imFile').click()};
+$('imFile').onchange=function(){
+  var f=this.files&&this.files[0];if(!f)return;
+  if(f.size>25*1024*1024){toast('File is larger than 25MB');return}
+  IMPORT_NAME=f.name;
+  readFile(f,function(txt){IMPORT_FILE=txt;
+    $('imDrop').innerHTML='<b>'+esc(IMPORT_NAME)+'</b><small>'+Math.round(f.size/1024)+' KB · click to choose another</small>';
+    previewImport();});
+};
+
+$('pwSave').onclick=async function(){
+  if($('pw_new').value!==$('pw_new2').value){toast('New passwords do not match');return}
+  var r=await api('sa-password-change',{current:$('pw_cur').value,new:$('pw_new').value});
+  toast(r.ok?'Password changed':(r.message||'Failed'));
+  if(r.ok){$('pw_cur').value=$('pw_new').value=$('pw_new2').value=''}
+};
 
 $('createBtn').onclick=async function(){
-  const d={
-    business_name:$('f_business_name').value.trim(), owner_name:$('f_owner_name').value.trim(),
-    owner_email:$('f_owner_email').value.trim(), owner_phone:$('f_owner_phone').value.trim(),
-    branch_name:$('f_branch_name').value.trim(), industry_code:$('f_industry').value,
-    address:$('f_address').value.trim(), plan_id:$('f_plan').value,
-    amount:Number($('f_amount').value||0), payment_method:$('f_payment_method').value,
-    start_date:$('f_start_date').value, expiry_date:$('f_expiry_date').value,
-    payment_reference:$('f_payment_reference').value.trim()
-  };
-  if(!d.business_name||!d.owner_email){toast('Business name & owner email required');return}
   this.disabled=true;this.textContent='Creating…';
-  const r=await api('sa-business-create',d);
-  this.disabled=false;this.textContent='Create Business';
-  if(!r.ok){toast(r.message||'Create failed');return}
-  const b=r.business;
-  $('s_name').textContent=b.business_name;
-  const link=$('s_link');link.textContent=b.client_link;link.href=b.client_link;
-  $('s_email').textContent=b.admin_email;$('s_pass').textContent=b.admin_password;$('s_token').textContent=b.sync_token;
+  var r=await api('sa-business-create',{
+    business_name:$('f_business_name').value,industry:$('f_industry').value,
+    branch_name:$('f_branch_name').value,address:$('f_address').value,
+    owner_name:$('f_owner_name').value,owner_email:$('f_owner_email').value,
+    owner_phone:$('f_owner_phone').value,plan:$('f_plan').value,
+    start_date:$('f_start_date').value,expiry_date:$('f_expiry_date').value,
+    amount:$('f_amount').value,payment_method:$('f_payment_method').value,
+    payment_reference:$('f_payment_reference').value});
+  this.disabled=false;this.textContent='Create business';
+  if(!r.ok){toast(r.message||'Failed');return}
   $('successCard').classList.remove('hide');
-  $('successCard').scrollIntoView({behavior:'smooth'});
-  window.__lastBiz=b;
-  ['f_business_name','f_owner_name','f_owner_email','f_owner_phone','f_address','f_payment_reference'].forEach(id=>$(id).value='');
-  loadBiz();toast('Business created');
+  $('s_name').textContent=r.business||$('f_business_name').value;
+  $('s_link').textContent=r.client_link||'';
+  $('s_email').textContent=r.admin_email||$('f_owner_email').value;
+  $('s_pass').textContent=r.admin_password||'(set by owner)';
+  $('s_token').textContent=r.sync_token||'';
+  $('copyLink').onclick=function(){copyText(r.client_link||'')};
+  $('copyCreds').onclick=function(){copyText((r.admin_email||'')+' / '+(r.admin_password||''))};
+  toast('Business created');
+  loadBiz();
 };
-$('copyLink').onclick=()=>copyText(window.__lastBiz?.client_link||'');
-$('pwBtn').onclick=()=>$('pwCard').classList.toggle('hide');
-$('pwSave').onclick=async function(){
-  const cur=$('pw_cur').value,n1=$('pw_new').value,n2=$('pw_new2').value;
-  if(n1.length<8){toast('New password min 8 characters');return}
-  if(n1!==n2){toast('New passwords do not match');return}
-  this.disabled=true;
-  const r=await api('sa-password-change',{current:cur,new:n1});
-  this.disabled=false;
-  toast(r.ok?(r.message||'Password changed'):(r.message||'Failed'));
-  if(r.ok){$('pw_cur').value=$('pw_new').value=$('pw_new2').value='';$('pwCard').classList.add('hide');}
-};
-$('copyCreds').onclick=()=>{const b=window.__lastBiz;if(b)copyText(`Login: ${b.client_link}\nEmail: ${b.admin_email}\nPassword: ${b.admin_password}`)};
 
-boot();
+(async function(){
+  var me=await api('sa-me');
+  if(me&&me.ok&&me.user)enterDash(me.user);else show('login');
+})();
 </script>
 </body>
 </html>
-
-<!-- build: V17.1 build 2026-08-25 -->

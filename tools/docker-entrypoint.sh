@@ -38,6 +38,7 @@ php scripts/migrate_devices.php   || echo "[boot] devices migrate skipped"
 php scripts/migrate_shifts.php    || echo "[boot] shifts migrate skipped"
 php scripts/migrate_sync_columns.php || echo "[boot] sync columns migrate skipped"
 php scripts/migrate_sync_log.php    || echo "[boot] sync log migrate skipped"
+php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
