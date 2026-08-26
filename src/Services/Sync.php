@@ -757,6 +757,22 @@ final class Sync
                    jata tha, is liye sync HAMESHA usi jagah atka rehta tha —
                    aap ke log mein wahi 6 tables baar baar. Ab: 3 koshishon
                    ke baad aage barh jao aur un rows ko quarantine kar do. */
+                // Purane bills (prefix se pehle banaye gaye) cloud ke apne
+                // bill numbers se takra jate hain. Aise rows ko yahin par
+                // node-prefix de kar dobara bhej dete hain — warna wo
+                // hamesha ke liye reject rehte.
+                if ($table === 'orders' && $conf > 0) {
+                    $fixed = self::rebrandConflictingBills($r['conflict_detail'] ?? []);
+                    if ($fixed > 0) {
+                        self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table,
+                            'error' => "$fixed old bill(s) renumbered with this computer's prefix - they will upload on the next sync"];
+                        self::setWatermark("push:$table", $meta[$table]['since'], 'PARTIAL',
+                            "$fixed bill(s) renumbered", $applied);
+                        self::clearRetry("push:$table");
+                        continue;
+                    }
+                }
+
                 $tries = self::bumpRetry("push:$table");
                 $permanent = ($conf > 0 && ($applied + $conf) >= $sent);
                 if ($permanent || $tries >= 3) {
@@ -874,6 +890,43 @@ final class Sync
     {
         try { DB::pdo()->prepare("DELETE FROM sync_retries WHERE scope=?")->execute([$scope]); }
         catch (\Throwable $e) {}
+    }
+
+    /**
+     * Jo bills duplicate number ki wajah se reject huay, unhen is node ka
+     * prefix de do (0007 -> L2-0007) taake agli sync mein chale jayen.
+     * Sirf wahi rows chhui jati hain jo cloud ne reject ki hain.
+     */
+    private static function rebrandConflictingBills(array $details): int
+    {
+        $pre = '';
+        try { $pre = \Aio\Services\PageData::billPrefix(); } catch (\Throwable $e) {}
+        if ($pre === '') return 0;
+
+        $pdo = DB::pdo();
+        $fixed = 0;
+        foreach ($details as $d) {
+            $id = (string)($d['id'] ?? '');
+            if ($id === '') continue;
+            try {
+                $q = $pdo->prepare("SELECT bill_no, site_id, business_date FROM orders WHERE id=? LIMIT 1");
+                $q->execute([$id]);
+                $row = $q->fetch();
+                if (!$row) continue;
+                $bill = (string)$row['bill_no'];
+                if ($bill === '' || \strpos($bill, $pre) === 0) continue;   // pehle se prefixed
+
+                $new = $pre . $bill;
+                // local par bhi takrao na ho
+                $c = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE site_id=? AND business_date=? AND bill_no=? AND id<>?");
+                $c->execute([$row['site_id'], $row['business_date'], $new, $id]);
+                if ((int)$c->fetchColumn() > 0) $new = $pre . $bill . '-' . \substr($id, 0, 4);
+
+                $pdo->prepare("UPDATE orders SET bill_no=?, updated_at=NOW(6) WHERE id=?")->execute([$new, $id]);
+                $fixed++;
+            } catch (\Throwable $e) {}
+        }
+        return $fixed;
     }
 
     /** Jo rows cloud ne hamesha ke liye reject kar din — record rakho. */

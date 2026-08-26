@@ -1854,3 +1854,41 @@ push phir bhi kaamyab — `{"ok":true,"applied":1}` aur row cloud DB mein
 mojood ✓ (pehle "table does not exist" aata)
 Poori suite fresh node par: **28/28 passed** ✓
 PHP lint clean · 44 pages OK · local node OK
+
+---
+
+# V55 — Purane bills khud renumber ho kar sync ho jate hain
+
+## Aap ka log
+`⬆ 1  ⬇ 187 rows` — sync **chal para**. users push, aur 187 rows neeche
+aayin (menu, inventory, orders 13, order_items 36, payments 7,
+kitchen_tickets 11, ui_records 33 waghera). Sirf ek cheez bachi:
+
+`orders: 3 row(s) rejected - duplicate key (another device already used
+that number)`
+
+Yeh wo **purane bills** hain jo node-prefix se pehle bane the (0001, 0002...)
+aur cloud ke apne usi din ke bills se takra rahe the. Nayi bills (L2-...)
+pehle se mehfooz hain.
+
+## Fix — automatic renumbering
+Ab jab cloud koi bill duplicate number ki wajah se reject kare, node **usi
+row ko apna prefix de deta hai** (`0007` -> `L2-0007`) aur agli sync mein
+wo chali jati hai. Sirf wahi rows chhui jati hain jo cloud ne reject ki
+hain — cloud ka apna bill bilkul nahi badalta. Local par bhi takrao ho to
+chhota suffix laga diya jata hai.
+
+Log mein saaf likha aata hai:
+*"1 old bill(s) renumbered with this computer's prefix - they will upload
+on the next sync"*
+
+## Test suite ab 34 tests
+Naya scenario shamil: offline par bina prefix ka bill + cloud par usi
+number ka bill ->
+  conflict pakra gaya ✓ local bill **L2-7442** ban gaya ✓
+  agli sync mein cloud tak pohancha ✓ cloud ka original bill (1000) bilkul
+  na chhua gaya ✓
+
+## Nateeja
+    34/34 passed
+PHP lint clean · 44 pages OK · dashboard + POS JS clean · local node OK

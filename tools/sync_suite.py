@@ -69,11 +69,11 @@ check("sync under 5 seconds", el < 5, f"{el:.2f}s")
 print("\n=== 3. DUPLICATE KEY (conflict) ===")
 sql(CLOUD_DB, f"INSERT IGNORE INTO users(id,tenant_id,username,email,full_name,"
               f"password_hash,password_algo,status,is_tenant_admin,created_at,updated_at) "
-              f"VALUES('c0000001-0000-0000-0000-0000000{RUN}','{tid}','dupc{RUN}',"
+              f"VALUES('c0000001-0000-0000-0000-000000{RUN}','{tid}','dupc{RUN}',"
               f"'dup{RUN}@suite.pk','Cloud Dup','{pwh}','BCRYPT','ACTIVE',0,NOW(6),NOW(6))")
 sql(LOCAL_DB, f"INSERT IGNORE INTO users(id,tenant_id,username,email,full_name,"
               f"password_hash,password_algo,status,is_tenant_admin,created_at,updated_at) "
-              f"VALUES('10000001-0000-0000-0000-0000000{RUN}','{tid}','dupl{RUN}',"
+              f"VALUES('10000001-0000-0000-0000-000000{RUN}','{tid}','dupl{RUN}',"
               f"'dup{RUN}@suite.pk','Local Dup','{pwh}','BCRYPT','ACTIVE',0,NOW(6),NOW(6))")
 r = sync()
 msgs = errors_for(r, "users")
@@ -189,6 +189,44 @@ det, _ = sql(LOCAL_DB, "SELECT COUNT(*) FROM sync_runs WHERE detail_json IS NOT 
 check("per-table detail stored", det.isdigit() and int(det) > 0, f"{det} with detail")
 act, _ = sql(CLOUD_DB, f"SELECT COUNT(*) FROM sync_activity WHERE tenant_id='{tid}'")
 check("cloud activity recorded", act.isdigit() and int(act) > 0, f"{act} entries")
+
+
+print("\n=== 12. OLD BILLS WITH CLASHING NUMBERS ===")
+# Asli soorat: offline node ne apna bill OFFLINE banaya (jab cloud tak
+# rasai nahi thi), aur usi number ka bill cloud par bhi ban gaya.
+bd = time.strftime("%Y-%m-%d")
+BILL = "7" + RUN[-3:]                      # har run par naya number
+lid = f"lb000001-0000-0000-0000-000000{RUN}"
+cid = f"cb000001-0000-0000-0000-000000{RUN}"
+
+sql(LOCAL_DB, f"INSERT IGNORE INTO orders(id,tenant_id,site_id,bill_no,business_date,"
+              f"service_mode,order_status,subtotal,grand_total,created_at,updated_at) "
+              f"VALUES('{lid}','{tid}','{sid}','{BILL}','{bd}','TAKEAWAY','CLOSED',2500,2500,NOW(6),NOW(6))")
+made, _ = sql(LOCAL_DB, f"SELECT COUNT(*) FROM orders WHERE id='{lid}'")
+check("offline bill created (no prefix)", made == "1", f"bill {BILL}")
+
+sql(CLOUD_DB, f"INSERT IGNORE INTO orders(id,tenant_id,site_id,bill_no,business_date,"
+              f"service_mode,order_status,subtotal,grand_total,created_at,updated_at) "
+              f"VALUES('{cid}','{tid}','{sid}','{BILL}','{bd}','TAKEAWAY','CLOSED',1000,1000,NOW(6),NOW(6))")
+made, _ = sql(CLOUD_DB, f"SELECT COUNT(*) FROM orders WHERE id='{cid}'")
+check("cloud has same bill number", made == "1")
+
+r = sync()                                  # conflict -> renumber
+msgs = errors_for(r, "orders")
+check("conflict handled + renumbered",
+      any("renumber" in m.lower() for m in msgs),
+      " / ".join(m[:50] for m in msgs) if msgs else "no message")
+newbill, _ = sql(LOCAL_DB, f"SELECT bill_no FROM orders WHERE id='{lid}'")
+check("offline bill got node prefix", newbill.startswith("L") and BILL in newbill, newbill)
+
+sync()                                      # ab upload hona chahiye
+got, _ = sql(CLOUD_DB, f"SELECT COUNT(*) FROM orders WHERE id='{lid}'")
+check("renumbered bill reached cloud", got == "1", f"found={got}")
+amt, _ = sql(CLOUD_DB, f"SELECT grand_total FROM orders WHERE id='{cid}'")
+check("cloud original bill untouched", amt.startswith("1000"), amt)
+
+sql(CLOUD_DB, f"DELETE FROM orders WHERE id IN ('{cid}','{lid}')")
+sql(LOCAL_DB, f"DELETE FROM orders WHERE id IN ('{cid}','{lid}')")
 
 # cleanup
 sql(CLOUD_DB, f"DELETE FROM users WHERE email='dup{RUN}@suite.pk'")
