@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -284,6 +284,15 @@ $mm=$p->prepare("SELECT mi.name,mi.base_price,mi.is_active,mi.is_pos,COALESCE(mc
 $bt=null;try{$bt=count(PageData::posBoot()['products']);}catch(Throwable $e){$out['posBoot_error']=$e->getMessage();}
 $out['posBoot_products']=$bt;
 ok(['diag'=>$out]);
+case 'settings-get':needLogin();
+ /* V63 — Settings page ab ASLI data dikhata hai (pehle 100% localStorage
+    tha: "Urban Spoon", hardcoded NTN, aur Save par kuch hota hi nahi tha). */
+ ok(['settings'=>SettingsService::get()]);
+
+case 'settings-save':needLogin();$d=body();
+ try{$r=SettingsService::save($d);}catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['settings'=>SettingsService::get()]);
+
 case 'pos-settings':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$q->execute([tenant_id(),site_id()]);$j=$q->fetchColumn();$d=$j?(json_decode($j,true)?:[]):[];ok(['settings'=>['tax_cash'=>isset($d['tax_cash'])?(float)$d['tax_cash']:16.0,'tax_card'=>isset($d['tax_card'])?(float)$d['tax_card']:8.0,'service_charge'=>isset($d['service_charge'])?(float)$d['service_charge']:0.0]]);
 case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Settings sirf Admin/Manager badal sakta hai',403);$d=body();$val=['tax_cash'=>max(0,(float)($d['tax_cash']??16)),'tax_card'=>max(0,(float)($d['tax_card']??8)),'service_charge'=>max(0,(float)($d['service_charge']??0))];$p=DB::pdo();$q=$p->prepare("SELECT id FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");$q->execute([tenant_id(),site_id()]);$id=$q->fetchColumn();$json=json_encode($val,JSON_UNESCAPED_UNICODE);if($id)$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([$json,$id]);else $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at) VALUES(?,?,?,'pos_settings',?,0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$json]);ok(['settings'=>$val]);
 case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Picture change sirf Admin/Manager kar sakta hai',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('Valid image URL ya uploaded image chahiye');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);

@@ -21,21 +21,22 @@
         <section class="panel">
           <div class="panel-head"><div><h2>Business information</h2><p>Shown on receipts and invoices</p></div></div>
           <div class="panel-body"><div class="form-grid">
-            <label class="field full"><span>Restaurant name</span><input data-s="name" value="Urban Spoon"></label>
-            <label class="field full"><span>Branch</span><input data-s="branch" value="Islamabad — F10"></label>
-            <label class="field"><span>Phone</span><input data-s="phone" value="051-111-000-999"></label>
-            <label class="field"><span>NTN / STRN</span><input data-s="ntn" value="1234567-8"></label>
-            <label class="field full"><span>Address</span><textarea data-s="address">Plot 21, F-10 Markaz, Islamabad</textarea></label>
+            <label class="field full"><span>Restaurant name</span><input data-s="business_name" placeholder="Business ka naam"></label>
+            <label class="field full"><span>Branch</span><input data-s="branch_name" placeholder="Branch ka naam"></label>
+            <label class="field"><span>Phone</span><input data-s="phone" placeholder="051-XXXXXXX"></label>
+            <label class="field"><span>NTN / STRN</span><input data-s="ntn" placeholder="1234567-8"></label>
+            <label class="field full"><span>Address</span><textarea data-s="address" placeholder="Branch ka poora pata"></textarea></label>
           </div></div>
         </section>
         <section class="panel">
           <div class="panel-head"><div><h2>Tax & currency</h2></div></div>
           <div class="panel-body"><div class="form-grid">
             <label class="field"><span>Currency</span><select data-s="currency"><option>PKR</option><option>USD</option><option>AED</option></select></label>
-            <label class="field"><span>Sales tax %</span><input type="number" data-s="tax" value="16"></label>
-            <label class="field"><span>Service charge %</span><input type="number" data-s="service" value="0"></label>
-            <label class="field"><span>FBR POS mode</span><select data-s="fbr"><option>Enabled</option><option>Disabled</option></select></label>
-            <label class="field full"><span>Rounding</span><select data-s="round"><option>Nearest 1</option><option>Nearest 5</option><option>No rounding</option></select></label>
+            <label class="field"><span>Rounding</span><select data-s="rounding"><option>Nearest 1</option><option>Nearest 5</option><option>No rounding</option></select></label>
+            <label class="field"><span>Cash payment tax % <span class="hint">&middot; cash bills</span></span><input type="number" step="0.01" min="0" max="100" data-s="tax_cash"></label>
+            <label class="field"><span>Card / online payment tax % <span class="hint">&middot; card, wallet, bank</span></span><input type="number" step="0.01" min="0" max="100" data-s="tax_card"></label>
+            <label class="field full"><span>Service charge %</span><input type="number" step="0.01" min="0" max="100" data-s="service_charge"></label>
+            <div class="note full" style="margin-top:4px">Yeh teenon wahi rates hain jo <b>Sale Point</b> use karta hai &mdash; yahan badalte hi POS par foran lagu ho jayenge.</div>
           </div></div>
         </section>
       </div>
@@ -43,19 +44,18 @@
         <section class="panel">
           <div class="panel-head"><div><h2>Receipt</h2></div></div>
           <div class="panel-body"><div class="form-grid">
-            <label class="field full"><span>Header line</span><input data-s="rhead" value="Thank you for dining with Urban Spoon"></label>
-            <label class="field full"><span>Footer line</span><input data-s="rfoot" value="Follow us @urbanspoon.pk"></label>
-            <label class="field"><span>Print logo</span><select data-s="logo"><option>Yes</option><option>No</option></select></label>
-            <label class="field"><span>Paper size</span><select data-s="paper"><option>80mm</option><option>58mm</option></select></label>
+            <label class="field full"><span>Header line</span><input data-s="receipt_header" placeholder="Bill ke upar likhi jane wali line"></label>
+            <label class="field full"><span>Footer line</span><input data-s="receipt_footer" placeholder="Bill ke neeche likhi jane wali line"></label>
+            <label class="field"><span>Print logo</span><select data-s="receipt_logo"><option>Yes</option><option>No</option></select></label>
+            <label class="field"><span>Paper size</span><select data-s="receipt_paper"><option>80mm</option><option>58mm</option></select></label>
           </div></div>
         </section>
         <section class="panel">
           <div class="panel-head"><div><h2>Operations</h2></div></div>
           <div class="panel-body"><div class="form-grid">
-            <label class="field"><span>Default order type</span><select data-s="otype"><option>Dine In</option><option>Takeaway</option><option>Delivery</option></select></label>
-            <label class="field"><span>KOT auto-print</span><select data-s="kot"><option>On</option><option>Off</option></select></label>
-            <label class="field"><span>Low-stock alert</span><select data-s="lowstock"><option>On</option><option>Off</option></select></label>
-            <label class="field"><span>Offline mode</span><select data-s="offline"><option>Auto</option><option>Always on</option></select></label>
+            <label class="field"><span>Default order type</span><select data-s="default_order_type"><option>Dine In</option><option>Takeaway</option><option>Delivery</option></select></label>
+            <label class="field"><span>KOT auto-print</span><select data-s="kot_autoprint"><option>On</option><option>Off</option></select></label>
+            <label class="field full"><span>Low-stock alert</span><select data-s="lowstock_alert"><option>On</option><option>Off</option></select></label>
           </div></div>
         </section>
       </div>
@@ -69,13 +69,61 @@
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="settings"></script>
 <script>
-var KEY='urban_spoon_settings_v1';
-try{var saved=JSON.parse(localStorage.getItem(KEY)||'{}');Object.keys(saved).forEach(function(k){var el=document.querySelector('[data-s="'+k+'"]');if(el)el.value=saved[k]})}catch(e){}
-document.getElementById('saveBtn').onclick=function(){
-  var o={};document.querySelectorAll('[data-s]').forEach(function(el){o[el.getAttribute('data-s')]=el.value});
-  localStorage.setItem(KEY,JSON.stringify(o));
-  var t=document.getElementById('toast');t.textContent='Settings saved';t.className='toast show';setTimeout(function(){t.className='toast'},1600);
-};
+/* V63 — PEHLE YEH POORA PAGE JHOOTA THA.
+   Saara data localStorage mein jata tha (`urban_spoon_settings_v1`),
+   server par kuch nahi. "Settings saved" ka toast aata tha aur doosre
+   computer par kholte hi wapas wahi demo values: "Urban Spoon",
+   "Islamabad — F10", NTN "1234567-8".
+   Ab har field ki asli jagah hai (tenants / sites / organizations /
+   site_settings), aur tax seedha wahin jata hai jahan se POS parhta hai. */
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  function toast(m,err){var t=$('#toast');t.textContent=m;t.className='toast show'+(err?' err':'');
+    clearTimeout(window.__st);window.__st=setTimeout(function(){t.className='toast'},err?3200:1700)}
+
+  function fields(){return document.querySelectorAll('[data-s]')}
+
+  function load(){
+    if(!window.DBApi){toast('Server connection nahi mila. Page refresh karein.',true);return}
+    var r=DBApi.req('settings-get');
+    if(!r.ok){toast(r.message||'Settings load nahi ho sakin',true);return}
+    var d=r.settings||{};
+    Array.prototype.forEach.call(fields(),function(el){
+      var k=el.getAttribute('data-s');
+      if(d[k]===undefined||d[k]===null)return;
+      el.value=d[k];
+    });
+    /* Sirf padhne ki ijazat ho to form lock — warna user bharta rahega
+       aur save par 403 milega. */
+    if(d.can_edit===false){
+      Array.prototype.forEach.call(fields(),function(el){el.disabled=true});
+      $('#saveBtn').disabled=true;
+      $('#saveBtn').textContent='View only';
+      toast('Settings sirf Admin/Manager badal sakta hai');
+    }
+  }
+
+  $('#saveBtn').onclick=function(){
+    var btn=this,o={};
+    Array.prototype.forEach.call(fields(),function(el){o[el.getAttribute('data-s')]=el.value});
+    if(!String(o.business_name||'').trim()){toast('Business ka naam likhein',true);return}
+    if(!String(o.branch_name||'').trim()){toast('Branch ka naam likhein',true);return}
+    btn.disabled=true;btn.textContent='Saving...';
+    var r=DBApi.req('settings-save',o);
+    btn.disabled=false;btn.textContent='Save changes';
+    /* Jawab CHECK hota hai. Pehle yahan koi check tha hi nahi. */
+    if(!r.ok){toast(r.message||'Settings save nahi huin',true);return}
+    if(r.settings){
+      Array.prototype.forEach.call(fields(),function(el){
+        var k=el.getAttribute('data-s');
+        if(r.settings[k]!==undefined&&r.settings[k]!==null)el.value=r.settings[k];
+      });
+    }
+    toast('Settings save ho gayin');
+  };
+
+  load();
+})();
 </script>
 </body>
 </html>

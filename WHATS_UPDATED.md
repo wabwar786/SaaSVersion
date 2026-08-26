@@ -2692,3 +2692,113 @@ hata dein**, warna har deploy par password dobara set hota rahega.
 Agar yeh variables set na hon, to boot par sirf platform accounts ki
 LIST log mein chhap jati hai (koi password nahi) — taake pata chale ke
 login kis email se karna hai.
+
+---
+
+# V63 — Phase 1: Settings, do taxes, khali naya business
+
+Aath features ka pehla phase. Sirf yeh teen cheezein — baqi system ko
+haath nahi lagaya.
+
+## 1. Settings page JHOOTA tha
+
+`settings.html` **100% localStorage** par chal raha tha:
+
+    var KEY='urban_spoon_settings_v1';
+    localStorage.setItem(KEY, JSON.stringify(o));
+    toast('Settings saved')
+
+Server par kuch nahi jata tha. Values hardcoded demo thin — "Urban Spoon",
+"Islamabad — F10", NTN "1234567-8". User "Save changes" dabata, sabz toast
+aata, aur doosre computer par kholte hi wapas wahi demo data.
+
+**Ab har field ki asli jagah hai:**
+
+| Field | Kahan se |
+|---|---|
+| Restaurant name | `tenants.display_name` |
+| Branch | `sites.name` |
+| Phone / Address | `sites.phone` / `sites.address_text` |
+| NTN / STRN | `organizations.tax_no` |
+| Currency, rounding, receipt, operations | `site_settings` |
+
+`site_settings` table schema mein **pehle se maujood** thi (tenant+site
+scoped, `NEVER_WIPE` safe) — naya table nahi banaya.
+
+Naya: `src/Services/SettingsService.php`, endpoints `settings-get` /
+`settings-save` (Admin/Manager only). Sirf padhne ki ijazat ho to form
+khud lock ho jata hai — warna user bharta rehta aur save par 403 milta.
+
+Aur ab client **jawab check karta hai**. Pehle wahan koi check tha hi nahi.
+
+## 2. Do taxes — cash aur card
+
+Settings mein ab:
+
+- **Cash payment tax %**
+- **Card / online payment tax %**
+- **Service charge %**
+
+Yeh alag copy NahI hain — seedha `ui_records / pos_settings` par jate hain,
+**wahi record jo POS parhta hai**. Do jagah rakhne ka matlab hota: Settings
+kuch aur dikhaye, POS kuch aur charge kare, aur farq mahinon nazar na aaye.
+
+`FBR POS mode` wala dropdown hata diya — wo naqli tha (kuch nahi karta
+tha). FBR ka apna page Phase 4 mein banega, aur cloud par dikhega hi nahi.
+`Offline mode` dropdown bhi hataya — wo config se aata hai, page se nahi.
+
+## 3. Naya business ab KHALI banta hai
+
+`Platform::ensureSiteDefaults()` se yeh demo data hata diya:
+
+- 4 menu categories (Pakistani / Fast Food / BBQ / Beverages)
+- Main Floor + 8 tables
+- 6 expense categories
+- "Main Kitchen" printer
+
+Naya customer login kar ke doosre restaurant ka menu dekhta tha, aur uska
+pehla kaam us demo data ko delete karna hota tha.
+
+**Yeh teen abhi bhi seed hote hain** — demo nahi, system reference data:
+
+| | Kyun lazmi |
+|---|---|
+| `units` (PCS, G, KG, ML, L) | inke baghair inventory item **ban hi nahi sakta** |
+| `payment_methods` (Cash, Card, Raast...) | inke baghair POS bill **close nahi kar sakta** |
+| `stock_locations` (Store, Kitchen) | inke baghair purchase **receive nahi hoti** |
+
+Yeh `factory reset FULL` par bhi lagu hai (wahi function chalta hai).
+
+## 4. FBR spec mehfooz — `docs/FBR_SPEC.md`
+
+Customer ke C# POS (`restaurant_sale.cs`) se poora FBR flow nikal kar
+document kar diya: endpoint, JSON model, response parsing, KPRA ka alag
+rasta, aur woh settings jo chahiye hongi.
+
+Do bug jo purane code mein hain aur hum nahi dohrayenge:
+
+1. **Response parsing fixed byte offsets par** — `Substring(18,30)` phir
+   pehle `"` tak. Format zara sa badla to galat number ya crash.
+2. **`catch (Exception ex) { }`** — FBR fail ho to bill khamoshi se bina
+   FBR number ke chhap jata hai. Hamare yahan bill nahi rukega (customer
+   khara hai) magar bill par `FBR: PENDING` likha aayega, entry queue mein
+   jayegi, retry hoga, aur dashboard par pending count nazar aayega.
+
+Tax formula customer ki hidayat par apna: har line ka tax alag nikal kar
+jama, header usi jama se banta hai (alag se dobara nahi ginta) — isi se
+wo mismatch khatam hota hai jo purane mixed rounding se paida hota tha.
+
+## Testing
+
+    php -l  (har PHP file)          -> 0 errors
+    php tools/check_pages.php       -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + JS)    -> 0 failures
+
+NahI chala (sandbox MySQL socket auth par atka): `sync_suite.py`,
+`reset_verify.py`.
+
+## Aage
+
+Phase 2 — roles add/edit + printers (asli `printers` table, category
+mapping, final bill par bhi printer-wise grouping).
+Phase 3 — reports. Phase 4 — discounts, phir FBR.

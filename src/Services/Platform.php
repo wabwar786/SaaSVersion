@@ -160,6 +160,20 @@ final class Platform
      */
     public static function ensureSiteDefaults(PDO $pdo, string $tenantId, string $siteId): array
     {
+        /* V63 — NAYA BUSINESS AB KHALI BANTA HAI.
+           Pehle yahan demo data seed hota tha: 4 menu categories
+           (Pakistani/Fast Food/BBQ/Beverages), Main Floor + 8 tables,
+           6 expense categories aur ek "Main Kitchen" printer. Naya
+           customer login kar ke doosre restaurant ka menu dekhta tha
+           aur pehla kaam us demo data ko delete karna hota tha.
+
+           Ab sirf SYSTEM REFERENCE DATA rehta hai. Yeh demo nahi hai —
+           inke baghair software chalta hi nahi:
+             • units            -> inke baghair inventory item ban hi nahi sakta
+             • payment_methods  -> inke baghair POS bill close nahi kar sakta
+             • stock_locations  -> inke baghair purchase receive nahi hoti
+           Menu, tables, printers, expense categories ab customer khud
+           banata hai (har ek ka apna page maujood hai). */
         $added = [];
 
         // Units (GLOBAL) — missing codes hi insert hote hain.
@@ -189,47 +203,6 @@ final class Platform
             $added[]='stock_locations';
         }
 
-        // Kitchen printer (+ default).
-        $printerId = null;
-        if (!$count("SELECT COUNT(*) FROM printers WHERE tenant_id=? AND site_id=?")) {
-            $printerId = \uuid();
-            $pdo->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,station_code,connection_type,is_active,is_default) VALUES(?,?,?,?,?,?,?,1,1)")
-                ->execute([$printerId,$tenantId,$siteId,'Main Kitchen','KITCHEN','main','WINDOWS']);
-            $added[]='printer';
-        } else {
-            $q=$pdo->prepare("SELECT id FROM printers WHERE tenant_id=? AND site_id=? AND is_active=1 ORDER BY is_default DESC LIMIT 1");
-            $q->execute([$tenantId,$siteId]); $printerId=$q->fetchColumn()?:null;
-        }
-
-        // Starter menu categories + printer routes.
-        if (!$count("SELECT COUNT(*) FROM menu_categories WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL")) {
-            $ci = $pdo->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,?,1)");
-            $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)");
-            foreach (['Pakistani','Fast Food','BBQ','Beverages'] as $i => $c) {
-                $cid=\uuid(); $ci->execute([$cid,$tenantId,$siteId,$c,'•',$i+1]);
-                if ($printerId) $ri->execute([\uuid(),$tenantId,$siteId,$cid,$printerId]);
-            }
-            $added[]='menu_categories';
-        }
-
-        // Floor + 8 tables.
-        if (!$count("SELECT COUNT(*) FROM dining_tables WHERE tenant_id=? AND site_id=?")) {
-            $floorId = \uuid();
-            $pdo->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,?,1,1)")
-                ->execute([$floorId,$tenantId,$siteId,'Main Floor']);
-            $ti = $pdo->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,?,?,1)");
-            for ($i=1; $i<=8; $i++) { $ti->execute([\uuid(),$tenantId,$siteId,$floorId,'T-'.str_pad((string)$i,2,'0',STR_PAD_LEFT),'Table '.$i,4,'SQUARE','AVAILABLE']); }
-            $added[]='floor_tables';
-        }
-
-        // Expense categories (tenant-level).
-        $q=$pdo->prepare("SELECT COUNT(*) FROM expense_categories WHERE tenant_id=?");
-        $q->execute([$tenantId]);
-        if (!(int)$q->fetchColumn()) {
-            $ec = $pdo->prepare("INSERT INTO expense_categories(id,tenant_id,name,is_active) VALUES(?,?,?,1)");
-            foreach (['Kitchen Supplies','Utilities','Staff','Fuel / Delivery','Cleaning','General'] as $c) { $ec->execute([\uuid(),$tenantId,$c]); }
-            $added[]='expense_categories';
-        }
 
         return $added;
     }
