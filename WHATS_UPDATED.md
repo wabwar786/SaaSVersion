@@ -668,3 +668,58 @@ with day chips ✓ payments 3 ✓ features 36 modules → 5 assigned ✓ brandin
 saved ✓ WhatsApp 8 events → 2 enabled ✓ business list error-free ✓
 client: login title "Royal Grill House", --brand #0a7d5a ✓ POS par bhi wahi
 color (Add button rgb(10,125,90)) ✓ pos-boot `can.manage` ✓ 0 page errors ✓
+
+---
+
+# V28 — 502 FIX + Offline Download + QR Ordering + 80mm Print
+
+## 0. 502 Bad Gateway (V27 ke baad) — FIXED
+**Wajah:** entrypoint mein Apache SAB migrations ke BAAD start hota tha, aur
+V27 ka naya column-level collation pass sainkron `ALTER` chalata hai — us
+mein minutes lagte hain, Railway ka healthcheck timeout ho jata tha → 502.
+**Fix (do taraf se):**
+- Entrypoint restructure: **Apache pehle start** hota hai (background),
+  bhaari migrations uske baad background mein chalti hain. App foran
+  respond karta hai.
+- `migrate_collation.php` ab **one-time** hai — nayi `migration_state`
+  table mein marker rakhta hai. Dobara chalana ho to `FORCE_COLLATION=1`.
+
+## 8 / 16. Download Offline Version
+- Naya `offline-package` endpoint: **poora software ZIP** karke deta hai
+  jis mein us business ka `config/offline.php` **already stamped** hota hai
+  (tenant id, site id, site name, sync token, cloud URL). Sync token na ho
+  to khud generate hota hai.
+- ZIP mein `INSTALL_OFFLINE.bat` + `tools/install_offline.ps1`:
+  PHP/DB check → local DB setup → **Desktop shortcut** (business ke naam se)
+  → offline config activate. `OFFLINE_README.txt` Roman Urdu hidayat ke saath.
+- POS > System & Settings > **Download Offline Version** (sirf Admin/Manager).
+- Dockerfile mein `zip` extension add (ZipArchive ke liye lazmi).
+
+## 14 / 15. QR table ordering (session-based)
+- Nayi tables: `qr_sessions`, `qr_orders`.
+- **Har scan par nayi session** banti hai jo default **90 minute** chalti hai
+  (`QR_SESSION_MINUTES` se badlein). Expiry ka faisla **DB ke apne clock**
+  par hota hai. Session expire/close ho to order **reject** — customer ghar
+  ja kar order nahi kar sakta.
+- Naya public page `qr.html` — mobile-first menu, categories, cart, live
+  session timer, restaurant ki branding (naam/logo/color) ke saath.
+- POS header par **QR Orders (n)** badge, har 20s auto-refresh. Modal mein
+  pending orders — **Accept** karne par hi items cart mein aate hain
+  (Reject bhi maujood). **Cashier ke confirm kiye baghair kuch proceed
+  nahi hota.**
+- POS > System > **Open QR Codes**: har table ka QR (print-ready grid) +
+  Print All.
+
+## 12. Print template + FBR QR
+- POS > System > **Print Template**: paper **80mm (3") / 58mm**, FBR QR
+  show/hide, custom footer text. Browser print par `@page size` isi ke
+  mutabiq set hota hai.
+- Final bill par **FBR QR placeholder** (invoice no + amount + tax payload)
+  — asli FBR payload offline version se aayega.
+
+## Tested (headless, do browser tabs: cashier + customer)
+customer: QR page branding "Royal Grill House", Table 1, timer 89:58, menu
+5 items, cart PKR 1,649, send → success screen ✓
+cashier: badge (2) → pending row → Accept → cart mein "Gulab Jamun 2 x 250"
+→ badge (1) ✓ · expired session → order reject ✓ · System modal: Offline /
+QR / Template buttons ✓ template 80mm save ✓ 9 QR cards ✓ page errors 0 ✓

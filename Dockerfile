@@ -1,7 +1,10 @@
 FROM php:8.2-apache
 
 # Extensions the app needs
-RUN docker-php-ext-install pdo_mysql mysqli
+# zip = "Download Offline Version" ke liye lazmi (ZipArchive)
+RUN apt-get update && apt-get install -y --no-install-recommends libzip-dev zip \
+ && docker-php-ext-install pdo_mysql mysqli zip \
+ && rm -rf /var/lib/apt/lists/*
 
 # Force exactly ONE MPM (mod_php requires prefork). Bulletproof: drop every MPM
 # symlink, then enable only prefork. Fixes "More than one MPM loaded".

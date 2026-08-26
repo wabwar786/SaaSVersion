@@ -12,6 +12,22 @@ $pdo = DB::pdo();
 $db  = $GLOBALS['config']['db']['database'];
 $target = 'utf8mb4_unicode_ci';
 
+// One-time guard: yeh migration bhaari hai (sainkron ALTER). Marker table se
+// track karte hain taake har boot par dobara na chale (502/timeout se bachne
+// ke liye). Force karna ho to: FORCE_COLLATION=1
+$pdo->exec("CREATE TABLE IF NOT EXISTS migration_state (
+  migration_key VARCHAR(100) NOT NULL PRIMARY KEY,
+  applied_at DATETIME(6) NOT NULL,
+  note VARCHAR(255) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+$force = getenv('FORCE_COLLATION') === '1';
+$mk = 'collation_v2';
+if (!$force) {
+    $g = $pdo->prepare("SELECT COUNT(*) FROM migration_state WHERE migration_key=?");
+    $g->execute([$mk]);
+    if ((int)$g->fetchColumn()) { echo "COLLATION_ALREADY_APPLIED (FORCE_COLLATION=1 to re-run)\n"; return; }
+}
+
 // 1) DB default — aage banne wali tables sahi collation par banein.
 try { $pdo->exec("ALTER DATABASE `$db` CHARACTER SET utf8mb4 COLLATE $target"); }
 catch (\Throwable $e) { echo "  note(db-default): ".substr($e->getMessage(),0,120)."\n"; }
@@ -61,6 +77,9 @@ foreach ($cols as $c) {
     } catch (\Throwable $e) { echo "  skip col {$c['t']}.{$c['c']}: ".substr($e->getMessage(),0,90)."\n"; }
 }
 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+
+$pdo->prepare("REPLACE INTO migration_state(migration_key,applied_at,note) VALUES(?,NOW(6),?)")
+    ->execute([$mk, "tables=$done cols=$cfix"]);
 
 echo "COLLATION_NORMALIZED target=$target converted=$done skipped=$skip columns_fixed=$cfix pending_before=".count($rows)."\n";
 

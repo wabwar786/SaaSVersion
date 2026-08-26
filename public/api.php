@@ -145,6 +145,88 @@ if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
 if(!$out){try{$ctx2=stream_context_create(['http'=>['timeout'=>6,'header'=>"User-Agent: SaaSVersion-POS\r\n"]]);$raw2=@file_get_contents('https://api.openverse.org/v1/images/?q='.rawurlencode($q.' food').'&page='.$page.'&page_size=12',false,$ctx2);if($raw2){$j2=json_decode($raw2,true);foreach(($j2['results']??[]) as $r){if(!empty($r['thumbnail'])||!empty($r['url']))$out[]=['thumb'=>$r['thumbnail']??$r['url'],'url'=>$r['url']??$r['thumbnail'],'title'=>$r['title']??''];}}}catch(Throwable $e){}}
 if(!$out){$kw=strtolower(preg_replace('/[^a-z0-9 ]/i','',$q));$kw=implode(',',array_slice(preg_split('/\s+/',trim($kw))?:['food'],0,3));for($i=0;$i<8;$i++){$u='https://loremflickr.com/400/300/'.rawurlencode($kw?:'food').',food?lock='.(1000+$i);$out[]=['thumb'=>$u,'url'=>$u,'title'=>$q];}}
 ok(['images'=>array_slice($out,0,12),'source'=>$src]);
+case 'offline-package':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager offline version download kar sakta hai',403);
+$p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
+if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
+$sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
+$root=dirname(__DIR__);
+$tmp=tempnam(sys_get_temp_dir(),'aio');@unlink($tmp);$tmp.='.zip';
+$zip=new ZipArchive();
+if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)fail('ZIP banane mein masla');
+$skipDirs=['.git','storage/logs','storage/sessions','node_modules','docs','.github'];
+$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::SELF_FIRST);
+foreach($it as $f){
+  $abs=$f->getPathname();$rel=ltrim(str_replace('\\','/',substr($abs,strlen($root))),'/');
+  if($rel==='')continue;
+  foreach($skipDirs as $sd){if(strpos($rel,$sd)===0)continue 2;}
+  if(substr($rel,-4)==='.zip')continue;
+  if($f->isDir()){$zip->addEmptyDir($rel);}else{$zip->addFile($abs,$rel);}
+}
+/* --- is business ka apna offline config (stamped) --- */
+$base=rtrim((string)cfg('app.base_url'),'/');
+$cfg="<?php\n// AUTO-GENERATED offline config for: ".addslashes((string)$t['dn'])."\n"
+ ."// Is file ko haath se edit na karein - dobara download kar lein.\n"
+ ."return [\n"
+ ."  'app' => ['role'=>'local','name'=>'".addslashes((string)$t['dn'])."','debug'=>false,\n"
+ ."            'base_url'=>'http://localhost:8080',\n"
+ ."            'cloud_url'=>'".addslashes($base)."'],\n"
+ ."  'db'  => ['host'=>'127.0.0.1','port'=>3306,'database'=>'aio_local',\n"
+ ."            'username'=>'root','password'=>'','charset'=>'utf8mb4'],\n"
+ ."  'tenant' => ['id'=>'".addslashes((string)$t['id'])."','slug'=>'".addslashes((string)$t['slug'])."',\n"
+ ."               'site_id'=>'".addslashes((string)site_id())."','site_name'=>'".addslashes((string)$siteName)."'],\n"
+ ."  'sync' => ['enabled'=>true,'token'=>'".addslashes((string)$t['sync_token'])."',\n"
+ ."             'endpoint'=>'".addslashes($base)."/api.php','interval'=>30],\n"
+ ."];\n";
+$zip->addFromString('config/offline.php',$cfg);
+$zip->addFromString('OFFLINE_README.txt',
+ "OFFLINE VERSION - ".$t['dn']."\n".str_repeat('=',50)."\n\n"
+ ."1) ZIP ko C:\\".preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug'])." mein extract karein.\n"
+ ."2) INSTALL_OFFLINE.bat par double-click karein (ek dafa).\n"
+ ."3) Desktop par bana shortcut khol kar software chalayein.\n\n"
+ ."Branch: ".$siteName."\nCloud: ".$base."\n"
+ ."Internet na ho tab bhi POS chalta rahega; net aate hi data khud sync ho jayega.\n");
+$zip->close();
+$data=file_get_contents($tmp);@unlink($tmp);
+while(ob_get_level())ob_end_clean();
+header('Content-Type: application/zip');
+header('Content-Disposition: attachment; filename="'.preg_replace('/[^A-Za-z0-9_-]/','',(string)$t['slug']).'-offline.zip"');
+header('Content-Length: '.strlen($data));
+echo $data;exit;
+/* ============ QR TABLE ORDERING (session-based) ============ */
+case 'qr-tables':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);$p=DB::pdo();$q=$p->prepare("SELECT id,display_name,table_code FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$q->execute([site_id()]);$base=rtrim((string)cfg('app.base_url'),'/');$rows=[];foreach($q->fetchAll() as $t){$rows[]=['id'=>$t['id'],'name'=>$t['display_name'],'url'=>$base.'/qr.html?t='.rawurlencode((string)$t['id']).'&s='.rawurlencode(site_id())];}ok(['tables'=>$rows,'base'=>$base]);
+/* Scan: har scan par NAYI session banti hai jo sirf N minute chalti hai */
+case 'qr-start':$p=DB::pdo();$tid=(string)($_GET['t']??'');$sid=(string)($_GET['s']??'');if($tid===''||$sid==='')fail('Invalid QR');
+ $tq=$p->prepare("SELECT dt.id,dt.display_name,dt.tenant_id,dt.site_id FROM dining_tables dt WHERE dt.id=? AND dt.site_id=? AND dt.is_active=1");$tq->execute([$tid,$sid]);$t=$tq->fetch();if(!$t)fail('QR valid nahi',404);
+ $mins=(int)(getenv('QR_SESSION_MINUTES')?:90);
+ $tok=bin2hex(random_bytes(20));$qid=uuid();
+ $p->prepare("INSERT INTO qr_sessions(id,tenant_id,site_id,table_id,table_name,token,status,started_at,expires_at) VALUES(?,?,?,?,?,?,'ACTIVE',NOW(6),DATE_ADD(NOW(6),INTERVAL ? MINUTE))")
+   ->execute([$qid,$t['tenant_id'],$t['site_id'],$t['id'],$t['display_name'],$tok,$mins]);
+ $mq=$p->prepare("SELECT mi.id,mi.name,mi.base_price,mi.image_url,COALESCE(mc.name,'General') cat FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id=mi.category_id WHERE mi.site_id=? AND mi.is_active=1 AND mi.is_online=1 AND mi.deleted_at IS NULL ORDER BY COALESCE(mc.sort_order,999),mi.name");$mq->execute([$sid]);
+ $items=array_map(fn($x)=>['id'=>$x['id'],'name'=>$x['name'],'price'=>(float)$x['base_price'],'cat'=>$x['cat'],'img'=>$x['image_url']?:''],$mq->fetchAll());
+ $bq=$p->prepare("SELECT COALESCE(display_name,name) n,logo_url,brand_color FROM tenants WHERE id=?");$bq->execute([$t['tenant_id']]);$br=$bq->fetch()?:[];
+ ok(['token'=>$tok,'table'=>$t['display_name'],'expires_min'=>$mins,'menu'=>$items,
+     'brand'=>['name'=>$br['n']??'Restaurant','logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'']]);
+case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok==='')fail('Session token required',401);
+ /* expiry ka faisla DB ke apne clock par (PHP/MySQL timezone alag ho sakte hain) */
+ $sq=$p->prepare("SELECT *, (expires_at > NOW(6)) AS alive FROM qr_sessions WHERE token=? LIMIT 1");$sq->execute([$tok]);$ses=$sq->fetch();
+ if(!$ses)fail('Session valid nahi - QR dobara scan karein',401);
+ if($ses['status']!=='ACTIVE')fail('Yeh session band ho chuki hai - QR dobara scan karein',401);
+ if(!(int)$ses['alive']){$p->prepare("UPDATE qr_sessions SET status='EXPIRED' WHERE id=?")->execute([$ses['id']]);fail('Session ka waqt khatam - table par QR dobara scan karein',401);}
+ $items=is_array($d['items']??null)?$d['items']:[];if(!$items)fail('Cart khali hai');
+ $clean=[];$tot=0.0;
+ foreach($items as $it){$mid=(string)($it['id']??'');$qty=(float)($it['qty']??0);if($mid===''||$qty<=0)continue;
+   $mq=$p->prepare("SELECT name,base_price FROM menu_items WHERE id=? AND site_id=? AND is_active=1 AND deleted_at IS NULL");$mq->execute([$mid,$ses['site_id']]);$m=$mq->fetch();if(!$m)continue;
+   $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],'note'=>(string)($it['note']??'')];
+   $tot+=$qty*(float)$m['base_price'];}
+ if(!$clean)fail('Koi valid item nahi');
+ $oid=uuid();
+ $p->prepare("INSERT INTO qr_orders(id,tenant_id,site_id,session_id,table_name,items_json,total,status,note,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
+   ->execute([$oid,$ses['tenant_id'],$ses['site_id'],$ses['id'],$ses['table_name'],json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,(string)($d['note']??'')]);
+ ok(['order_id'=>$oid,'total'=>$tot,'status'=>'PENDING','message'=>'Order cashier ko bhej diya gaya - confirm hone ka intezar karein']);
+case 'qr-pending':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT id,table_name,items_json,total,note,created_at FROM qr_orders WHERE site_id=? AND status='PENDING' ORDER BY created_at");$q->execute([site_id()]);$rows=[];foreach($q->fetchAll() as $r){$rows[]=['id'=>$r['id'],'table'=>$r['table_name'],'items'=>json_decode((string)$r['items_json'],true)?:[],'total'=>(float)$r['total'],'note'=>$r['note'],'at'=>substr((string)$r['created_at'],11,5)];}ok(['orders'=>$rows]);
+case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtoupper((string)($d['action']??''));if(!in_array($act,['ACCEPTED','REJECTED'],true))fail('action required');
+ $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
+case 'qr-session-close':needLogin();$d=body();$p=DB::pdo();$p->prepare("UPDATE qr_sessions SET status='CLOSED',closed_at=NOW(6) WHERE site_id=? AND table_name=? AND status='ACTIVE'")->execute([site_id(),(string)($d['table']??'')]);ok();
 case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];$sg=$p2=DB::pdo()->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$sg->execute([tenant_id(),site_id()]);$sj=$sg->fetchColumn();$sd=$sj?(json_decode($sj,true)?:[]):[];$bb['settings']=['tax_cash'=>isset($sd['tax_cash'])?(float)$sd['tax_cash']:16.0,'tax_card'=>isset($sd['tax_card'])?(float)$sd['tax_card']:8.0,'service_charge'=>isset($sd['service_charge'])?(float)$sd['service_charge']:0.0];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
 $bb['brand']=['name'=>($br['display_name']?:($br['name']??'Restaurant')),'logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'','accent'=>$br['brand_accent']??''];
 $bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports')];

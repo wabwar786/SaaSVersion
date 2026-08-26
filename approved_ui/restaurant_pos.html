@@ -250,6 +250,7 @@ textarea.inp{min-height:62px;resize:vertical}
     <div class="search"><span>&#128269;</span><input id="q" placeholder="Search menu, item code, barcode..."><span class="kbd">Ctrl K</span></div>
     <div class="perio"><span>Best Selling</span><select id="period"><option>Today</option><option>Yesterday</option><option>Last 7 days</option></select></div>
     <div style="flex:1"></div>
+    <button class="tb" id="qrBtn">QR Orders <b id="qrCount">(0)</b></button>
     <button class="tb" id="voidBtn">Void Logs</button>
     <button class="tb" id="dupBtn">Duplicate Bill</button>
     <button class="tb amber" id="holdsBtn">Hold Bills <b id="holdCount">(0)</b></button>
@@ -286,7 +287,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v27';
+var VERSION='POS v28';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -319,6 +320,25 @@ var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
 var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
 var CAN={manage:false};
+var PRINT={size:80,qr:true,footer:'Thank you! Visit again.'};
+try{var _pt=localStorage.getItem('aio_print_tpl');if(_pt)PRINT=JSON.parse(_pt)}catch(e){}
+
+/* Table QR codes — download / print (QR image server-free, public generator) */
+function qrCodes(){
+  var r=api('qr-tables');
+  if(!r.ok){toast(r.message||'Failed');return}
+  var tabs=r.tables||[];
+  var body=tabs.length?'<div class="tgrid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">'+tabs.map(function(t){
+    return '<div class="tcard" style="cursor:default"><b>'+esc(t.name)+'</b>'
+      +'<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(t.url)+'" '
+      +'style="width:100%;margin:7px 0;border-radius:8px" alt="" onerror="this.remove()">'
+      +'<small style="word-break:break-all;font-size:8.5px">'+esc(t.url)+'</small></div>';
+  }).join('')+'</div>':'<div class="cempty">Koi table nahi</div>';
+  var ov=modal('<div class="dh"><h3>Table QR Codes</h3><p>Print karke tables par lagayein. Har scan par nayi time-limited session banti hai.</p></div>'
+    +'<div class="db" id="qrBody">'+body+'</div>'
+    +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="go" id="qrPrint">Print All</button></div>',true);
+  ov.querySelector('#qrPrint').onclick=function(){printNode(ov.querySelector('#qrBody'),true)};
+}
 
 /* Branding: restaurant ka naam/logo POS par */
 function applyBrand(){
@@ -379,7 +399,7 @@ function boot(){
   applyBrand();
   applyRole();
   orderTax=taxPct('Cash');
-  loadHolds(); renderAll();
+  loadHolds(); loadQr(); setInterval(loadQr,20000); renderAll();
   if(!shift){openGate();return}
   if(!cart.length&&!billStarted)newBillFlow();
 }
@@ -939,6 +959,12 @@ function slipHtml(kind,lines,info){
       ? '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)+(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>'
       : '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td><td class="r">'+money(l.qty*l.price)+'</td></tr>';
   }).join('');
+  var fbrQr='';
+  if(kind!=='KOT'&&PRINT.qr){
+    var payload='INV:'+((info&&info.billNo)||billNo)+'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax);
+    fbrQr='<hr><div class="c"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(payload)
+      +'" style="width:96px;height:96px" onerror="this.remove()"><div style="font-size:9px">FBR Invoice QR</div></div>';
+  }
   var foot=kind==='KOT'?'<hr>'
     :'<hr><table>'
       +'<tr><td>Subtotal</td><td class="r">'+money(t.sub)+'</td></tr>'
@@ -948,7 +974,7 @@ function slipHtml(kind,lines,info){
       +'<tr><td><b>GRAND TOTAL</b></td><td class="r"><b>'+money(t.grand)+'</b></td></tr>'
       +(info?'<tr><td>Paid ('+esc(info.pay)+')</td><td class="r">'+money(info.rcv)+'</td></tr>'
         +'<tr><td>Change</td><td class="r">'+money(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
-      +'</table><hr><div class="c">Thank you! Visit again.</div>';
+      +'</table>'+fbrQr+'<hr><div class="c">'+esc(PRINT.footer||'Thank you! Visit again.')+'</div>';
   return '<div class="slip">'+head+'<table>'+rows+'</table>'+foot+'</div>';
 }
 function slipNode(kind,lines,info){
@@ -965,16 +991,19 @@ function slipPreview(kind,lines,info){
   ov.querySelector('#slipWa').onclick=function(){waSend(kind,lines,info)};
 }
 /* print: DOM API se — kisi bhi HTML document ko string mein NAHI banate */
-function printNode(node){
+function printNode(node,wide){
   var w=window.open('','_blank','width=380,height=640');
   if(!w){toast('Popup block ho gaya - allow karein');return}
   var d=w.document;
   d.title='Print';
+  var mm=(PRINT.size||80)+'mm';
   var st=d.createElement('style');
   st.textContent='body{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;padding:10px;margin:0}'
     +'table{width:100%;border-collapse:collapse}td{padding:2px 0;vertical-align:top}.r{text-align:right}'
     +'h4{text-align:center;font-size:13px;margin:0 0 2px}.c{text-align:center;font-size:10px;color:#555}'
     +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}'
+    +'@page{size:'+(wide?'auto':mm+' auto')+';margin:'+(wide?'8mm':'2mm')+'}'
+    +(wide?'':'body{width:'+mm+'}')
     +'.kotType{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px}'
     +'.kotTag{text-align:center;font-size:12px;font-weight:800;margin:3px 0 4px;border:2px solid #000;padding:2px}'
     +'.kq{font-size:16px;font-weight:800;width:42px}.kn{font-size:14px;font-weight:700;padding-bottom:6px}.kn i{font-size:11px}';
@@ -1247,6 +1276,44 @@ function openItemModal(startTab){
   };
 }
 
+/* ================= QR ORDERS (customer se) ================= */
+var qrPending=[];
+function loadQr(){
+  var r=api('qr-pending');
+  qrPending=(r.ok&&r.orders)?r.orders:[];
+  var el=$('#qrCount'); if(el)el.textContent='('+qrPending.length+')';
+  var btn=$('#qrBtn');
+  if(btn)btn.style.background=qrPending.length?'#fdf4e9':'';
+}
+$('#qrBtn').onclick=function(){
+  loadQr();
+  var body=qrPending.length?qrPending.map(function(o,i){
+    return '<div class="lrow" style="align-items:flex-start"><div style="flex:1"><b>'+esc(o.table||'Table')+' &middot; '+esc(o.at)+'</b>'
+      +'<small>'+o.items.map(function(x){return qfmt(x.qty)+' x '+esc(x.name)}).join(', ')+'</small>'
+      +'<small style="color:var(--ok);font-weight:800">'+money(o.total)+'</small></div>'
+      +'<div style="display:flex;gap:6px"><button data-rej="'+i+'" style="background:#fdecec;color:var(--brand)">Reject</button>'
+      +'<button data-acc="'+i+'">Accept</button></div></div>';
+  }).join(''):'<div class="cempty">Koi pending QR order nahi</div>';
+  var ov=modal('<div class="dh"><h3>QR / Customer Orders</h3><p>Customer ke bheje hue orders &mdash; Accept karne par hi cart mein aayenge</p></div>'
+    +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-acc]'),function(b){b.onclick=function(){
+    var o=qrPending[b.dataset.acc];
+    if(!shift){toast('Pehle shift open karein');return}
+    if(!billStarted){mode='Dine In';curTable=o.table||'';billStarted=true}
+    o.items.forEach(function(x){
+      var mp=BOOT.products.filter(function(m){return m.id===x.id})[0];
+      if(mp)push(mp,Number(x.qty)||1,x.note||'');
+    });
+    api('qr-handle',{id:o.id,action:'ACCEPTED'});
+    ov.remove();loadQr();renderCtx();renderCart();
+    toast('Order accept ho gaya - ab cart mein hai');
+  }});
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-rej]'),function(b){b.onclick=function(){
+    api('qr-handle',{id:qrPending[b.dataset.rej].id,action:'REJECTED'});
+    ov.remove();loadQr();toast('Order reject kar diya');
+  }});
+};
+
 /* ================= VOID LOGS / SYSTEM / DIAGNOSTICS ================= */
 $('#voidBtn').onclick=function(){
   var r=api('records-list&module=void_logs');
@@ -1272,9 +1339,35 @@ $('#sysBtn').onclick=function(){
     +'<div><label class="f">Card / Online Tax %</label><input class="inp" id="stCard" type="number" step="0.1" value="'+SET.tax_card+'"></div>'
     +'<div class="full"><label class="f">Default Service Charge %</label><input class="inp" id="stSvc" type="number" step="0.1" value="'+SET.service_charge+'"></div>'
     +'</div><button class="tb pri" id="stSave" style="margin-top:9px;width:100%">Save Tax Settings</button></div>'
+    +'<div class="box"><b style="font-size:11px">Table QR Codes</b>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Har table ka apna QR &mdash; customer scan karke khud order kar sakta hai. Session waqt-mehdood hai.</div>'
+    +'<button class="tb" id="sysQr" style="width:100%">Open QR Codes</button></div>'
+    +'<div class="box"><b style="font-size:11px">Offline Version</b>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Internet ke baghair chalne wala package &mdash; is business ke credentials already stamped, net aate hi khud sync.</div>'
+    +'<button class="tb pri" id="sysOffline" style="width:100%">Download Offline Version</button></div>'
+    +'<div class="box"><b style="font-size:11px">Print Template</b>'
+    +'<div class="fg" style="margin-top:7px">'
+    +'<div><label class="f">Paper</label><select class="inp" id="ptSize"><option value="80">80mm (3 inch)</option><option value="58">58mm (2 inch)</option></select></div>'
+    +'<div><label class="f">FBR QR on bill</label><select class="inp" id="ptQr"><option value="1">Show</option><option value="0">Hide</option></select></div>'
+    +'<div class="full"><label class="f">Footer text</label><input class="inp" id="ptFoot" placeholder="Thank you! Visit again."></div>'
+    +'</div><button class="tb" id="ptSave" style="width:100%;margin-top:8px">Save Template</button></div>'
     +'<div class="box"><b style="font-size:11px">Printer Stations</b><div style="margin-top:6px">'
     +(Object.keys(BOOT.printers||{}).map(function(k){return '<div style="font-size:11px;padding:3px 0">'+esc(BOOT.printers[k].name)+' &mdash; '+esc(k)+'</div>'}).join('')||'<span class="cempty">Koi printer nahi</span>')
     +'</div></div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
+  ov.querySelector('#sysOffline').onclick=function(){
+    toast('Offline package ban raha hai - thoda intezar karein');
+    window.location.href='/api.php?action=offline-package';
+  };
+  ov.querySelector('#sysQr').onclick=function(){ov.remove();qrCodes()};
+  var pt=PRINT;
+  ov.querySelector('#ptSize').value=String(pt.size||80);
+  ov.querySelector('#ptQr').value=pt.qr?'1':'0';
+  ov.querySelector('#ptFoot').value=pt.footer||'';
+  ov.querySelector('#ptSave').onclick=function(){
+    PRINT={size:Number(ov.querySelector('#ptSize').value||80),qr:ov.querySelector('#ptQr').value==='1',footer:ov.querySelector('#ptFoot').value||''};
+    try{localStorage.setItem('aio_print_tpl',JSON.stringify(PRINT))}catch(e){}
+    toast('Print template saved ('+PRINT.size+'mm)');
+  };
   ov.querySelector('#stSave').onclick=function(){
     this.disabled=true;this.textContent='Saving...';
     var r=api('pos-settings-save',{tax_cash:Number(ov.querySelector('#stCash').value||0),
