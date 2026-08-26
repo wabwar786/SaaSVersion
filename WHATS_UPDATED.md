@@ -418,3 +418,47 @@ create. **Nuqsan:** features kam, cards bare, space zaya.
 calculator 2.5 apply ✓ bill table 4 columns ✓ discount 10% chip ✓ slip
 preview + Print/WhatsApp ✓ customer create ✓ table create ✓ drawer 14 links
 ✓ system modal ✓ void logs ✓ payment 6 methods + cash chips + change ✓
+
+---
+
+# V22 — POS workflow rework (aapke 12 points)
+
+1. **New Bill Screen**: "+ New Bill" par ek modal khulta hai — Dine In /
+   Takeaway / Delivery. Dine In → usi screen par **table grid** (+ New Table
+   wahin se). Takeaway → seedha POS. Delivery → **customer search list +
+   New Customer** wahin se; select/create hote hi POS.
+2. POS se **mode pills, table dropdown, customer dropdown hata diye**. Ab
+   sirf read-only context chips (mode / table / customer) + "Change".
+   Koi bhi bill shuru hone se pehle system type poochta hai; type select
+   kiye baghair item add block hai.
+3. **F1** = new bill screen · **F2** = Send to Kitchen · **F3** = Charge ·
+   Ctrl+K = search.
+4. Cart ki **poori row par kahin bhi click** karne se calculator khulta hai
+   (sirf qty par nahi). +/- aur delete apna kaam karte hain.
+5. **Tax DB se**: Cash % aur Card/Online % alag, per-branch — System &
+   Settings modal se set hote hain (`pos-settings` / `pos-settings-save`).
+   Payment method badalte hi charge modal mein tax auto switch hota hai.
+6. **Send to Kitchen ab sirf DELTA bhejta/print karta hai** — 5 bottles ja
+   chuki hon aur 2 aur add hon to KOT par sirf 2 aati hain. Print direct
+   nikalti hai (preview ke baghair), KDS ko bhi wahi ticket.
+7. **Charge modal**: khultay hi Received Amount par focus. Enter dabate hi
+   payment complete → **bill khud print** → background mein naya bill
+   (new-bill screen) chal jata hai.
+8. **Payment error fix**: api() ab response se JSON nikaal kar parse karti
+   hai (PHP warning/notice JSON se pehle aa jaye to bhi na toote), aur
+   parse fail ho to saaf message deti hai.
+9. Shift/account open na ho to POS **kuch nahi karta** — gate band nahi
+   hota, item add bhi block.
+10. **New Bill par mojooda bill khud HOLD ho jata hai** — alag Hold button
+    dabana zaroori nahi (button phir bhi mojood hai).
+11. Card par ab **item ka naam bara aur pehle**, category chhoti neeche.
+12. Cart rows lambi (≈54px), delete **laal**, qty/rate/total ke columns
+    chaure.
+
+## Browser-tested (headless Chromium)
+new-bill modal auto-open ✓ purane selectors 0 ✓ Dine In→9 tables→ctx ✓
+Takeaway→seedha POS ✓ Delivery→customer list+create→ctx ✓ row-click
+calculator ✓ tax 16% cash / 8% card switch ✓ KOT delta ✓ charge focus=rcv,
+Enter→pay+print popup+new bill (0101→0102, cart clear) ✓ payment errors 0 ✓
+F1 ✓ auto-hold (1)→(2) ✓ row 53.9px ✓ delete rgb(226,55,68) ✓ tax settings
+save→17% reflect ✓
