@@ -799,7 +799,17 @@ function bizTag(b){
   }
   /* Alag fetch: HTTP status aur raw jawab dikhata hai, taake "Request failed"
      jaisa be-maani message dobara na aaye. */
-  async function consoleApi(cmd){
+  async function freshCsrf(){
+    /* Container restart ke baad purana tab purana token bhejta rehta hai.
+       Naya token le kar ek dafa khud retry - user ko refresh na karna pare. */
+    try{
+      var r=await fetch('/api.php?action=csrf-token',{headers:{'Accept':'application/json'}});
+      var j=await r.json();
+      if(j&&j.ok&&j.token){window.APP_CSRF=j.token;CSRF=j.token;return j.token}
+    }catch(e){}
+    return null;
+  }
+  async function consoleApi(cmd,retried){
     var res;
     try{
       res=await fetch('/api.php?action=sa-console',{method:'POST',
@@ -811,7 +821,15 @@ function bizTag(b){
     }
     var txt='';
     try{txt=await res.text()}catch(e){}
-    try{ return JSON.parse(txt); }
+    try{
+      var j=JSON.parse(txt);
+      if(j&&j.ok===false&&j.csrf&&!retried){
+        var t=await freshCsrf();
+        if(t)return await consoleApi(cmd,true);
+        return {ok:true,lines:[{t:'e',v:'Session expire ho gayi hai - dobara login karein.'}]};
+      }
+      return j;
+    }
     catch(e){
       var out=[{t:'e',v:'Server returned HTTP '+res.status+' (not JSON)'}];
       var clean=(txt||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();

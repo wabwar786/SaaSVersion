@@ -7,6 +7,18 @@ export AIO_CONFIG=config/cloud.php
 rm -f public/*.html 2>/dev/null || true
 
 # --- Railway gives a dynamic PORT; Apache must listen on it ---
+# --- Session storage MUST be writable, warna login kabhi tikta nahi aur
+#     har POST par "Invalid CSRF token" aata hai (khamosh failure: PHP ka
+#     session warning display_errors=0 ki wajah se kahin nazar nahi aata).
+mkdir -p storage/sessions storage/logs
+chown -R www-data:www-data storage 2>/dev/null || true
+chmod -R u+rwX,g+rwX storage 2>/dev/null || true
+if su -s /bin/sh www-data -c 'test -w storage/sessions' 2>/dev/null; then
+  echo "[boot] session storage writable OK"
+else
+  echo "[boot] WARNING: storage/sessions NOT writable by www-data - login/CSRF will fail"
+fi
+
 PORT="${PORT:-8080}"
 sed -ri "s/^Listen [0-9]+/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s!<VirtualHost \*:[0-9]+>!<VirtualHost *:${PORT}>!" /etc/apache2/sites-available/000-default.conf
