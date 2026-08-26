@@ -55,12 +55,14 @@ button{cursor:pointer;border:0;background:none}
 .cat.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .cat i{font-style:normal;opacity:.55;font-weight:600;margin-left:4px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:9px}
-.prod{background:var(--panel);border:1px solid var(--l);border-radius:11px;overflow:hidden;box-shadow:var(--sh);transition:.13s;display:flex;flex-direction:column;position:relative}
+.prod{background:var(--panel);border:1px solid var(--l);border-radius:11px;overflow:hidden!important;box-shadow:var(--sh);transition:.13s;display:flex;flex-direction:column;position:relative;isolation:isolate}
+.prod img{max-width:100%;max-height:100%}
+.pb{position:relative;z-index:2;background:#fff}
 .prod:hover{transform:translateY(-3px);box-shadow:var(--shl);border-color:#c7dccf}
-.th{height:70px;background:linear-gradient(135deg,#eef5f0,#e2ece6);cursor:pointer;display:grid;place-items:center;font-size:24px;position:relative}
-.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th{height:92px;background:linear-gradient(135deg,#eef5f0,#e2ece6);cursor:pointer;display:grid;place-items:center;font-size:24px;position:relative;overflow:hidden!important}
+.th img{position:absolute!important;top:0;left:0;width:100%!important;height:100%!important;object-fit:cover;display:block;max-width:100%;max-height:100%}
 .bdg{position:absolute;top:5px;right:5px;background:rgba(21,34,27,.84);color:#fff;font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:999px}
-.pb{padding:7px 8px 8px;display:flex;flex-direction:column;gap:5px;flex:1}
+.pb{padding:8px 9px 9px;display:flex;flex-direction:column;gap:5px;flex:1;position:relative;z-index:2;background:#fff}
 .prod .pb .pn{font-size:13px!important;font-weight:800!important;line-height:1.3;min-height:34px;color:#15221b!important;word-break:break-word;display:block!important;visibility:visible!important;opacity:1!important}
 .catbdg{position:absolute;left:5px;bottom:5px;background:rgba(255,255,255,.92);color:var(--ink2);font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
 .imgb{position:absolute;left:5px;top:5px;background:rgba(255,255,255,.92);border-radius:999px;width:22px;height:22px;font-size:11px;line-height:1;opacity:0;transition:.13s}
@@ -118,12 +120,15 @@ button{cursor:pointer;border:0;background:none}
 .ciq span{flex:1;text-align:center;font-weight:800;font-size:11px}
 .cid{min-width:0}
 .cid b{font-size:13px;font-weight:800;display:block;line-height:1.3;color:#15221b!important;word-break:break-word}
-.cid small{font-size:11px;color:#6d7c74!important;display:block;margin-top:3px;white-space:pre}
+.cid small{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.cid small .qx{font-size:12px;font-weight:800;color:#0f7a3d!important;background:#eaf6ef;border-radius:6px;padding:1px 7px}
+.cid small .nt{font-size:11px;font-weight:700;color:#b3541e!important;background:#fdf4e9;border-radius:6px;padding:1px 7px}
+.sn{display:inline-grid;place-items:center;min-width:19px;height:19px;border-radius:6px;background:#15221b;color:#fff!important;font-size:10.5px;font-weight:800;margin-right:7px;vertical-align:middle}
 .cit{text-align:right;font-size:14.5px;font-weight:800;color:#15221b!important;white-space:nowrap;display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .cit{font-weight:800}
 .cix{color:var(--brand);font-size:16px;font-weight:800;margin-left:5px;line-height:1}
 .cix:hover{color:#a5121d}
-.sent{color:#0f7a3d!important;font-weight:800}
+.sent{font-size:11px;font-weight:800;color:#0f7a3d!important;background:#eaf6ef;border:1px solid #b9e0c8;border-radius:6px;padding:1px 7px}
 .cempty{padding:46px 18px;text-align:center;color:var(--ink3);font-size:11.5px}
 .qrow{display:flex;gap:5px;padding:7px 12px;border-top:1px solid var(--l);flex-wrap:wrap}
 .qrow button{flex:1;min-width:66px;padding:6px;border:1px solid var(--l);border-radius:7px;font-weight:700;font-size:10.5px}
@@ -281,7 +286,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v25';
+var VERSION='POS v26';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -549,60 +554,56 @@ function changeTable(){
 function imageModal(id){
   var p=BOOT.products.filter(function(x){return x.id===id})[0];
   if(!p)return;
-  var url=p.img||'';
-  var ov=modal('<div class="dh"><h3>Item Picture &mdash; '+esc(p.name)+'</h3><p>Auto fetch karein, URL dalein, ya apni picture upload karein.</p></div>'
-    +'<div class="db"><div class="imgprev"><img id="ipImg" src="'+esc(url)+'" alt="" onerror="this.style.visibility=\'hidden\'"></div>'
-    +'<div class="qv" style="grid-template-columns:1fr 1fr 1fr;margin:11px 0">'
-      +'<button id="ipAuto">&#128269; Auto fetch</button>'
-      +'<button id="ipShuffle">&#127922; Another photo</button>'
-      +'<button id="ipGoogle">&#127760; Google Images</button></div>'
-    +'<label class="f">Search photos</label><div class="selrow"><input class="inp" id="ipQ" value="'+esc(p.name)+'" placeholder="Item name">'
-    +'<button class="tb" id="ipSearch" style="flex:none">Search</button></div>'
-    +'<div id="ipRes" style="margin:9px 0"></div>'
-    +'<label class="f">Image URL</label><input class="inp" id="ipUrl" value="'+esc(url.indexOf('data:')===0?'':url)+'" placeholder="https://...">'
-    +'<label class="f" style="margin-top:10px">Ya apni file upload karein (max ~300KB)</label>'
-    +'<input class="inp" id="ipFile" type="file" accept="image/*">'
-    +'<div class="box" style="font-size:11px;color:var(--ink2)"><b>Auto fetch</b> item ke naam se photo laata hai. Pasand na aaye to <b>Another photo</b>. <b>Google Images</b> se picture par right-click &rarr; "Copy image address" &rarr; upar URL box mein paste karein. Ya apni file upload karein.</div></div>'
-    +'<div class="df"><button class="sec" data-x>Cancel</button><button class="sec" id="ipClear">Remove</button><button class="go" id="ipSave">Save Picture</button></div>');
-  function setUrl(u){url=u;var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=u;if(u.indexOf('data:')!==0)ov.querySelector('#ipUrl').value=u}
-  /* loremflickr = free keyword image service, koi API key nahi.
-     (source.unsplash.com band ho chuka hai, is liye hataya gaya.) */
-  function autoUrl(){
-    var kw=(p.name||'food').toLowerCase().replace(/[^a-z0-9 ]/g,'').trim().split(/\s+/).slice(0,3).join(',');
-    return 'https://loremflickr.com/400/300/'+encodeURIComponent(kw||'food')+',food?lock='+Math.floor(Math.random()*100000);
-  }
-  ov.querySelector('#ipAuto').onclick=function(){setUrl(autoUrl());toast('Photo fetch ki gayi - pasand na ho to Another photo')};
-  ov.querySelector('#ipShuffle').onclick=function(){setUrl(autoUrl())};
-  ov.querySelector('#ipGoogle').onclick=function(){
-    window.open('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(p.name+' food'),'_blank');
-    toast('Google Images khul gaya - picture par right-click > Copy image address, phir URL box mein paste karein');
-  };
-  /* SEARCH: server se image results, grid mein se pick karein */
-  function runSearch(){
+  var url=p.img||'', picked=false;
+  var ov=modal('<div class="dh"><h3>Item Picture &mdash; '+esc(p.name)+'</h3><p>Suggested photo select karein ya apni image upload karein</p></div>'
+    +'<div class="tabs"><button class="tab on" data-it="find">&#128269; Find Photo</button><button class="tab" data-it="up">&#11014; Upload Image</button></div>'
+    +'<div class="db">'
+    +'<div class="imgprev"><img id="ipImg" src="'+esc(url)+'" alt="" onerror="this.style.visibility=\'hidden\'"></div>'
+    +'<div data-ip="find" style="margin-top:11px">'
+      +'<div class="selrow"><input class="inp" id="ipQ" value="'+esc(p.name)+'" placeholder="Item name">'
+      +'<button class="tb" id="ipSearch" style="flex:none">Search</button>'
+      +'<button class="tb" id="ipShuffle" style="flex:none">More</button></div>'
+      +'<div id="ipRes" style="margin-top:9px"></div></div>'
+    +'<div data-ip="up" class="hide" style="margin-top:11px">'
+      +'<label class="f">Apni picture upload karein (max ~1MB)</label>'
+      +'<input class="inp" id="ipFile" type="file" accept="image/*">'
+      +'<div class="box" style="font-size:11px;color:var(--ink2)">JPG/PNG chalega. Image apne aap crop ho kar card par fit ho jayegi.</div></div>'
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="sec" id="ipClear">Remove</button><button class="go" id="ipSave">Save Picture</button></div>',true);
+
+  function setUrl(u){url=u;picked=true;var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=u}
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-it]'),function(b){b.onclick=function(){
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-it]'),function(o){o.classList.remove('on')});
+    b.classList.add('on');
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-ip]'),function(pane){pane.classList.toggle('hide',pane.dataset.ip!==b.dataset.it)});
+  }});
+
+  function runSearch(more){
     var q=(ov.querySelector('#ipQ').value||p.name||'').trim();
     var box=ov.querySelector('#ipRes');
     box.innerHTML='<div class="cempty">Searching...</div>';
-    var r=api('menu-image-search&q='+encodeURIComponent(q));
-    if(!r.ok||!r.images||!r.images.length){box.innerHTML='<div class="cempty">Koi result nahi mila</div>';return}
+    var r=api('menu-image-search&q='+encodeURIComponent(q)+(more?('&page='+(1+Math.floor(Math.random()*4))):''));
+    if(!r.ok||!r.images||!r.images.length){box.innerHTML='<div class="cempty">Koi photo nahi mili &mdash; Upload Image tab use karein</div>';return}
+    window.__ipRes=r.images;
     box.innerHTML='<div class="imgres">'+r.images.map(function(im,i){
       return '<button class="imgcell" data-pick="'+i+'" title="'+esc(im.title||'')+'"><img src="'+esc(im.thumb)+'" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></button>';
-    }).join('')+'</div>';
-    window.__ipRes=r.images;
+    }).join('')+'</div>'+(r.source?('<div style="font-size:10px;color:var(--ink3);margin-top:5px">source: '+esc(r.source)+'</div>'):'');
     Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'),function(b){b.onclick=function(){
-      var im=window.__ipRes[b.dataset.pick];setUrl(im.url||im.thumb);
+      setUrl(window.__ipRes[b.dataset.pick].url||window.__ipRes[b.dataset.pick].thumb);
       Array.prototype.forEach.call(box.querySelectorAll('.imgcell'),function(c){c.classList.remove('on')});
       b.classList.add('on');
     }});
   }
-  ov.querySelector('#ipSearch').onclick=runSearch;
-  ov.querySelector('#ipQ').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();runSearch()}};
-  runSearch();
-  ov.querySelector('#ipUrl').oninput=function(){url=this.value.trim();var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=url};
+  ov.querySelector('#ipSearch').onclick=function(){runSearch(false)};
+  ov.querySelector('#ipShuffle').onclick=function(){runSearch(true)};
+  ov.querySelector('#ipQ').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();runSearch(false)}};
+  runSearch(false);
+
   ov.querySelector('#ipFile').onchange=function(){
     var f=this.files&&this.files[0]; if(!f)return;
-    if(f.size>300*1024){toast('File bari hai (max 300KB)');return}
+    if(f.size>1024*1024){toast('File bari hai (max 1MB)');return}
     var rd=new FileReader();
-    rd.onload=function(){setUrl(String(rd.result))};
+    rd.onload=function(){setUrl(String(rd.result));toast('Image load ho gayi - Save Picture dabayein')};
     rd.readAsDataURL(f);
   };
   ov.querySelector('#ipClear').onclick=function(){
@@ -611,12 +612,11 @@ function imageModal(id){
     p.img='';ov.remove();renderGrid();toast('Picture hata di gayi');
   };
   ov.querySelector('#ipSave').onclick=function(){
-    if(!url){toast('Pehle picture select karein');return}
+    if(!url||!picked){toast('Pehle photo select ya upload karein');return}
     this.disabled=true;this.textContent='Saving...';
     var r=api('menu-item-image',{menu_item_id:id,image_url:url});
     if(!r.ok){this.disabled=false;this.textContent='Save Picture';toast(r.message||'Failed');return}
-    p.img=url;                       /* foran card par lagao */
-    ov.remove();renderGrid();toast('Picture saved');
+    p.img=url;ov.remove();renderGrid();toast('Picture saved');
   };
 }
 
@@ -738,10 +738,10 @@ function renderCart(){
   if(!cart.length)c.innerHTML='<div class="cempty">Cart khali hai<br>item par click karke add karein</div>';
   else c.innerHTML=cart.map(function(l,i){
     return '<div class="ci" data-i="'+i+'" title="Click = quantity calculator">'
-      +'<div class="cid"><b>'+esc(l.name)+'</b>'
-      +'<small>'+qfmt(l.qty)+' x '+Math.round(l.price).toLocaleString()
-      +(l.sentQty>0?'<span class="sent">   sent:'+qfmt(l.sentQty)+'</span>':'')
-      +(l.note?('   '+esc(l.note)):'')+'</small></div>'
+      +'<div class="cid"><b><span class="sn">'+(Number(i)+1)+'</span>'+esc(l.name)+'</b>'
+      +'<small><span class="qx">'+qfmt(l.qty)+' x '+Math.round(l.price).toLocaleString()+'</span>'
+      +(l.sentQty>0?'<span class="sent">sent: '+qfmt(l.sentQty)+'</span>':'')
+      +(l.note?'<span class="nt">'+esc(l.note)+'</span>':'')+'</small></div>'
       +'<div class="cit"><span>'+money(l.qty*l.price)+'</span><button class="cix" data-cx="'+i+'">&times;</button></div></div>';
   }).join('');
   Array.prototype.forEach.call(c.querySelectorAll('[data-cx]'),function(b){b.onclick=function(e){e.stopPropagation();removeLine(b.dataset.cx)}});

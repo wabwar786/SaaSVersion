@@ -574,3 +574,45 @@ row "Playwright Tikka | 1 x 999 | PKR 999 | x" ✓ +/- removed ✓ row-click
 calculator → 3 x 999 ✓ image grid 8 results + pick ✓ PDF link generate +
 asli PDF (header %PDF-1.4, lines verified) ✓ hold resume → count wahi (4)
 ✓ payment → (3) ✓ diagnostics raw sample "name field: OK" ✓ 0 page errors ✓
+
+---
+
+# V26 — ASAL BUG MILA: image item name ko dhaank rahi thi
+
+## Root cause (aapke screenshot ne pakra)
+Product card ka thumb 70px tha, magar `.th img` ka `height:100%`
+grid+`place-items:center` ki wajah se apply NahI hota tha — image apni
+natural aspect par **118px** render hoti thi aur `.th` par `overflow`
+visible tha. Nateeja: image thumb se bahar nikal kar **item name ke upar
+chha jati thi** (isi liye naam "ghayab" tha) aur saath wale card par
+overlap karti thi. Jab images load NahI hoti thin (fake URL) to naam nazar
+aa jata tha — isi liye mere pehle test paas ho rahe the.
+
+**Fix:** `.th{overflow:hidden!important;height:92px}` +
+`.th img{position:absolute;inset:0;width:100%!important;height:100%!important;object-fit:cover}`
+plus `.prod{overflow:hidden!important;isolation:isolate}` aur
+`.pb{position:relative;z-index:2;background:#fff}` — image ab kabhi text
+ke upar nahi aa sakti.
+
+**Bonus fix:** `menu_items.image_url` schema mein `varchar(1000)` tha, is
+liye uploaded (data-URL) images "Data too long" se fail hoti thin.
+`migrate_menu_image.php` ab column ko **MEDIUMTEXT** mein widen karti hai
+(idempotent, boot par khud chalti hai). Upload limit ab 1MB.
+
+## Baqi
+- **Image modal ab sirf 2 options**: "Find Photo" (search + suggested grid,
+  "More" se aur photos) aur "Upload Image". URL box aur alag Google button
+  hata diye.
+  Server par: agar `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX` env set hon to
+  **Google Custom Search Images** use hoti hai (response mein
+  `source: google`), warna license-free suggested photos.
+- **Cart row**: item ke aage **serial number** (dark badge 1,2,3...), aur
+  `1 x 999` ab **bold + green pill** mein; "sent: 2" alag green pill,
+  note amber pill.
+
+## Browser-tested (asli bari images load karke)
+thumb 92 / img 92 / card 194 ✓ overlapping cards: **0** ✓ item name
+"Playwright Tikka" uncovered (elementFromPoint = .pn) ✓ modal tabs
+[Find Photo, Upload Image], URL box gone, 8 results ✓ cart rows
+"1 Playwright Tikka | 1 x 999 | PKR 999" + serial badges + qty pill
+(12px/800/green) ✓ 0 page errors ✓
