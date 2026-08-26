@@ -1406,3 +1406,39 @@ NETWORK DOWN → status=**ERROR**, reason: "Cannot reach the cloud server..." �
 HEALTHY → status=**OK**, up=347 down=444, failed tables **0** ✓
 
 PHP lint clean · 44 pages OK · dashboard JS clean
+
+---
+
+# V44 — Sync log ka button ab waqai kaam karta hai
+
+## Bug: panel ka JS kabhi chalta hi nahi tha
+Cloud Synchronization ka saara JavaScript ghalti se
+`<script src="shared_store.js">` **tag ke andar** chala gaya tha. Browser
+aise script ke andar likha code **kabhi execute nahi karta** — is liye card
+hamesha "checking..." par atka rehta tha aur **View log / Check / Sync now
+teeno buttons chhupe rehte the**. (Dono jagah — cloud aur branch.)
+Fix: JS page ke asli inline script block mein shift kar diya, aur
+`shared_store.js` tag ko sahi band kiya.
+
+Saath: agar `sync-state` fail ho jaye tab bhi card **ab dikhta hai**
+(pehle chhupa reh jata tha) — wajah card par likhi aati hai.
+
+## Log kahan se milta hai
+**Dashboard (index.html) > "Cloud Synchronization" card > "View log"**
+
+- **Online portal par**: 24 ghante ka summary (transfers, rows received,
+  last activity) aur har transfer — table, rows, direction, aur **kis
+  branch IP se**.
+- **Offline/branch computer par**: aakhri 20 sync passes — waqt, trigger
+  (auto/manual), duration, status, `⬆ upar / ⬇ neeche` rows, har table ka
+  chip, aur nakaam tables **❌ Not synced** ke neeche wajah ke saath.
+
+Database mein bhi maujood hai: `sync_runs` (har pass) aur `sync_activity`
+(har table ka transfer) — dono 60 din baad khud saaf.
+
+## Tested (asli browser)
+Cloud dashboard: card visible ✓ pill "cloud server" ✓ button "View log" ✓
+log: **transfers 108, rows received 1543**, last activity 9:24:57,
+har entry table + rows + direction + IP ke saath ✓ page errors 0 ✓
+
+PHP lint clean · 44 pages OK

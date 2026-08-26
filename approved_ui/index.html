@@ -186,7 +186,35 @@
 </div>
 <div class="scrim" id="scrim"></div>
 
-<script src="shared_store.js">
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="dashboard"></script>
+<script>
+var $=function(s){return document.querySelector(s)};
+var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
+function render(){
+  var s=RestaurantLive.get(), inv=RestaurantStore.getState(), acc=RestaurantAccess.get();
+  var low=inv.inventoryItems.filter(function(i){return Number(i.stockQty)<=Number(i.reorderQty)}).length;
+  var pending=acc.requests.length, profit=s.netSales-s.foodCost-s.expenses;
+  $('#heroShift').textContent=s.shift; $('#heroSales').textContent=money(s.netSales)+' net sales today';
+  $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
+  $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
+  $('#kRun').textContent=s.runningOrders; $('#kPrep').textContent=s.preparing; $('#kReady').textContent=s.ready;
+  $('#kOnline').textContent=s.onlineNew; $('#kProfit').textContent=money(profit);
+  $('#kTables').textContent=s.occupiedTables+' / '+s.totalTables; $('#kRiders').textContent=s.ridersRoad; $('#kLow').textContent=low;
+  $('#aDelay').textContent=s.delayed; $('#aOnline').textContent=s.onlineNew; $('#aLow').textContent=low; $('#aReq').textContent=pending;
+  $('#qOnline').textContent=s.onlineNew+' waiting'; $('#qDelay').textContent=s.delayed+' delayed'; $('#qLow').textContent=low+' low';
+  $('#mDine').textContent=money(s.dineIn); $('#mTake').textContent=money(s.takeaway); $('#mDeliv').textContent=money(s.delivery); $('#mOnline').textContent=money(s.online);
+  $('#pCash').textContent=money(s.cash); $('#pCard').textContent=money(s.card); $('#pRaast').textContent=money(s.raast); $('#pWallet').textContent=money(s.walletBank);
+  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
+  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bar-col"><div class="bar" data-v="'+money(v)+'" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
+  $('#bestRows').innerHTML=s.best.map(function(x){return '<tr><td class="t-main">'+x.name+'</td><td class="num">'+x.qty+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+x.cost+'%</td></tr>'}).join('');
+  $('#lastSync').textContent='Updated '+new Date(s.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function clock(){var d=new Date();$('#clockBtn').textContent=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+render();clock();setInterval(clock,30000);window.addEventListener('storage',render);
+
 /* ================= CLOUD SYNC PANEL (admin dashboard) ================= */
 (function(){
   'use strict';
@@ -215,7 +243,7 @@
   }
   function paint(){
     if(!state)return;
-    card.style.display='';
+    card.style.display='';   /* cloud aur branch dono par card nazar aata hai */
     var pill=$$('syncPill'), sub=$$('syncSub'), grid=$$('syncGrid');
     if(state.role==='cloud'){
       pill.className='syncPill sp-ok'; pill.textContent='cloud server';
@@ -243,7 +271,14 @@
       '<div class="syncBox"><small>Mode</small><b>Branch computer</b></div>'+
       (state.last_error?('<div class="syncBox" style="grid-column:1/-1;border-color:#f3c3c7"><small>Last error</small><b style="font-size:12px;font-weight:600">'+esc(state.last_error)+'</b></div>'):'');
   }
-  function refresh(cb){ xhr('sync-state',null,function(r){ if(r.ok&&r.sync){state=r.sync;paint();} if(cb)cb(r); }); }
+  function refresh(cb){
+    xhr('sync-state',null,function(r){
+      if(r.ok&&r.sync){ state=r.sync; }
+      else { state={role:'unknown',enabled:false,reason:(r.message||'Sync status not available'),pending:0}; }
+      paint();
+      if(cb)cb(r);
+    });
+  }
   function runSync(manual){
     if(busy||!state||state.role==='cloud')return;
     if(!state.enabled){ if(manual)showDiag(); return; }
@@ -373,34 +408,7 @@
   setInterval(function(){ if(state&&state.role!=='cloud'&&state.enabled)runSync(false); },120000);
 })();
 
-</script>
-<script src="live_store.js"></script>
-<script src="access_store.js"></script>
-<script src="shell.js" data-active="dashboard"></script>
-<script>
-var $=function(s){return document.querySelector(s)};
-var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
-function render(){
-  var s=RestaurantLive.get(), inv=RestaurantStore.getState(), acc=RestaurantAccess.get();
-  var low=inv.inventoryItems.filter(function(i){return Number(i.stockQty)<=Number(i.reorderQty)}).length;
-  var pending=acc.requests.length, profit=s.netSales-s.foodCost-s.expenses;
-  $('#heroShift').textContent=s.shift; $('#heroSales').textContent=money(s.netSales)+' net sales today';
-  $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
-  $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
-  $('#kRun').textContent=s.runningOrders; $('#kPrep').textContent=s.preparing; $('#kReady').textContent=s.ready;
-  $('#kOnline').textContent=s.onlineNew; $('#kProfit').textContent=money(profit);
-  $('#kTables').textContent=s.occupiedTables+' / '+s.totalTables; $('#kRiders').textContent=s.ridersRoad; $('#kLow').textContent=low;
-  $('#aDelay').textContent=s.delayed; $('#aOnline').textContent=s.onlineNew; $('#aLow').textContent=low; $('#aReq').textContent=pending;
-  $('#qOnline').textContent=s.onlineNew+' waiting'; $('#qDelay').textContent=s.delayed+' delayed'; $('#qLow').textContent=low+' low';
-  $('#mDine').textContent=money(s.dineIn); $('#mTake').textContent=money(s.takeaway); $('#mDeliv').textContent=money(s.delivery); $('#mOnline').textContent=money(s.online);
-  $('#pCash').textContent=money(s.cash); $('#pCard').textContent=money(s.card); $('#pRaast').textContent=money(s.raast); $('#pWallet').textContent=money(s.walletBank);
-  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
-  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bar-col"><div class="bar" data-v="'+money(v)+'" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
-  $('#bestRows').innerHTML=s.best.map(function(x){return '<tr><td class="t-main">'+x.name+'</td><td class="num">'+x.qty+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+x.cost+'%</td></tr>'}).join('');
-  $('#lastSync').textContent='Updated '+new Date(s.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-}
-function clock(){var d=new Date();$('#clockBtn').textContent=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-render();clock();setInterval(clock,30000);window.addEventListener('storage',render);
+
 </script>
 </body>
 </html>
