@@ -287,7 +287,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v28';
+var VERSION='POS v29';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -322,6 +322,43 @@ var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
 var CAN={manage:false};
 var PRINT={size:80,qr:true,footer:'Thank you! Visit again.'};
 try{var _pt=localStorage.getItem('aio_print_tpl');if(_pt)PRINT=JSON.parse(_pt)}catch(e){}
+
+/* ============ DEVICE PAIRING QR (tablet / mobile over LAN) ============ */
+function pairDevice(role,label){
+  var r=api('device-pair-start',{role:role,name:label});
+  if(!r.ok){toast(r.message||'Failed');return}
+  var urls=r.urls||[];
+  var body=urls.map(function(u,i){
+    return '<div style="text-align:center;margin-bottom:14px">'
+      +'<img src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data='+encodeURIComponent(u)+'" '
+      +'style="width:230px;height:230px;border:1px solid var(--l);border-radius:12px" alt="" onerror="this.remove()">'
+      +'<div style="font-size:11px;color:var(--ink2);margin-top:6px;word-break:break-all">'+esc(u)+'</div></div>';
+  }).join('')||'<div class="cempty">Network address nahi mila</div>';
+  var ov=modal('<div class="dh"><h3>Connect '+esc(label)+'</h3>'
+    +'<p>Device ko isi WiFi se milayein, phir yeh QR scan karein. Code '+(r.expires_min||15)+' minute tak valid hai.</p></div>'
+    +'<div class="db">'+body
+    +'<div class="box" style="font-size:11px;color:var(--ink2)">'
+    +'<b>Note:</b> Tablet POS computer ke saath usi local network (WiFi/LAN) par hona chahiye. '
+    +'Internet ki zaroorat nahi - sab kuch is computer se chalta hai.</div></div>'
+    +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="pairList">Connected Devices</button>'
+    +'<button class="go" id="pairNew">New Code</button></div>',true);
+  ov.querySelector('#pairNew').onclick=function(){ov.remove();pairDevice(role,label)};
+  ov.querySelector('#pairList').onclick=function(){ov.remove();deviceList()};
+}
+function deviceList(){
+  var r=api('device-list');
+  var rows=(r.ok&&r.devices)?r.devices:[];
+  var body=rows.length?rows.map(function(d){
+    return '<div class="lrow"><div><b>'+esc(d.device_name||'Device')+' &middot; '+esc(d.device_role)+'</b>'
+      +'<small>'+esc(d.status)+(d.last_seen_at?(' &middot; last seen '+String(d.last_seen_at).slice(0,16).replace('T',' ')):'')+'</small></div>'
+      +'<button data-rev="'+esc(d.id)+'" style="background:#fdecec;color:var(--brand)">Revoke</button></div>';
+  }).join(''):'<div class="cempty">Koi device connected nahi</div>';
+  var ov=modal('<div class="dh"><h3>Connected Devices</h3><p>Tablet / mobile jo is POS se linked hain</p></div>'
+    +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-rev]'),function(b){b.onclick=function(){
+    api('device-revoke',{id:b.dataset.rev});ov.remove();deviceList();toast('Device revoked');
+  }});
+}
 
 /* Table QR codes — download / print (QR image server-free, public generator) */
 function qrCodes(){
@@ -1339,6 +1376,9 @@ $('#sysBtn').onclick=function(){
     +'<div><label class="f">Card / Online Tax %</label><input class="inp" id="stCard" type="number" step="0.1" value="'+SET.tax_card+'"></div>'
     +'<div class="full"><label class="f">Default Service Charge %</label><input class="inp" id="stSvc" type="number" step="0.1" value="'+SET.service_charge+'"></div>'
     +'</div><button class="tb pri" id="stSave" style="margin-top:9px;width:100%">Save Tax Settings</button></div>'
+    +'<div class="box"><b style="font-size:11px">Connect Tablet / Mobile</b>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Tablet ya mobile ko isi WiFi par POS ke saath connect karein - QR scan karte hi device linked ho jata hai.</div>'
+    +'<div class="qv" style="grid-template-columns:1fr 1fr"><button id="sysPairW">Waiter Tablet</button><button id="sysPairK">Kitchen Display</button></div></div>'
     +'<div class="box"><b style="font-size:11px">Table QR Codes</b>'
     +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Har table ka apna QR &mdash; customer scan karke khud order kar sakta hai. Session waqt-mehdood hai.</div>'
     +'<button class="tb" id="sysQr" style="width:100%">Open QR Codes</button></div>'
@@ -1359,6 +1399,8 @@ $('#sysBtn').onclick=function(){
     window.location.href='/api.php?action=offline-package';
   };
   ov.querySelector('#sysQr').onclick=function(){ov.remove();qrCodes()};
+  ov.querySelector('#sysPairW').onclick=function(){ov.remove();pairDevice('WAITER','Waiter Tablet')};
+  ov.querySelector('#sysPairK').onclick=function(){ov.remove();pairDevice('KDS','Kitchen Display')};
   var pt=PRINT;
   ov.querySelector('#ptSize').value=String(pt.size||80);
   ov.querySelector('#ptQr').value=pt.qr?'1':'0';

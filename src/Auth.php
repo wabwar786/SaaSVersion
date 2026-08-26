@@ -55,6 +55,34 @@ final class Auth {
         return null;
     }
 
+    /**
+     * Device pairing ke liye: password ke baghair session banata hai.
+     * Sirf server-side se call hota hai jab pairing token verify ho chuka ho.
+     */
+    public static function startSessionForUser(array $u): void
+    {
+        $pdo = DB::pdo();
+        $u['modules'] = [];
+        if (session_status() === PHP_SESSION_ACTIVE) @session_regenerate_id(true);
+        $_SESSION['user'] = $u;
+        try {
+            if (!empty($u['is_tenant_admin'])) {
+                $u['modules'] = array_column($pdo->query(
+                    "SELECT module_key FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll(), 'module_key');
+            } else {
+                $q = $pdo->prepare(
+                    "SELECT DISTINCT pm.module_key FROM user_roles ur
+                       JOIN role_modules rm ON rm.role_id=ur.role_id AND rm.is_allowed=1
+                       JOIN platform_modules pm ON pm.id=rm.module_id
+                      WHERE ur.user_id=?");
+                $q->execute([$u['id']]);
+                $u['modules'] = array_column($q->fetchAll(), 'module_key');
+            }
+        } catch (\Throwable $e) {}
+        $_SESSION['user'] = $u;
+        if (!empty($u['tenant_id'])) $_SESSION['login_tenant_id'] = $u['tenant_id'];
+    }
+
     public static function login(string $login, string $password): bool {
         $pdo = DB::pdo();
         $login = trim($login);

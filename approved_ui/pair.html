@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect device</title>
+<style>
+:root{--bg:#f4f7f5;--panel:#fff;--ink:#15221b;--ink2:#63736a;--line:#e2eae5;--ok:#0f7a3d;--brand:#e23744}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);
+ min-height:100vh;display:grid;place-items:center;padding:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:30px 26px;
+ max-width:420px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(21,34,27,.08)}
+.ic{font-size:46px;margin-bottom:12px}
+h1{font-size:19px;font-weight:800;margin-bottom:6px}
+p{font-size:13px;color:var(--ink2);line-height:1.55}
+.badge{display:inline-block;margin-top:14px;background:#eaf6ef;color:var(--ok);border-radius:999px;
+ padding:6px 14px;font-weight:800;font-size:12px}
+.err{background:#fdecec;color:#8c1d24}
+button{margin-top:18px;width:100%;padding:14px;border:0;border-radius:12px;background:var(--ok);
+ color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="ic" id="ic">&#128241;</div>
+  <h1 id="ttl">Connecting device...</h1>
+  <p id="msg">Please wait while this device connects to the POS.</p>
+  <div id="badge"></div>
+  <button id="go" style="display:none">Open</button>
+</div>
+<script>
+'use strict';
+function qp(k){var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search);return m?decodeURIComponent(m[1]):''}
+function api(a){
+  var x=new XMLHttpRequest();x.open('GET','/api.php?action='+a,false);
+  try{x.send()}catch(e){return {ok:false,message:'Cannot reach the POS computer'}}
+  try{return JSON.parse(x.responseText||'{}')}catch(e){return {ok:false,message:'Unexpected response'}}
+}
+var t=qp('t');
+if(!t){
+  document.getElementById('ic').textContent='\u26A0';
+  document.getElementById('ttl').textContent='Invalid link';
+  document.getElementById('msg').textContent='Scan the QR code shown on the POS screen.';
+}else{
+  var r=api('device-pair-claim&t='+encodeURIComponent(t));
+  if(!r.ok){
+    document.getElementById('ic').textContent='\u26A0';
+    document.getElementById('ttl').textContent='Could not connect';
+    document.getElementById('msg').textContent=r.message||'Please scan a fresh QR code from the POS.';
+    document.getElementById('badge').className='badge err';
+    document.getElementById('badge').textContent='Not connected';
+  }else{
+    document.getElementById('ic').textContent='\u2705';
+    document.getElementById('ttl').textContent='Device connected';
+    document.getElementById('msg').textContent='This device is now linked to the POS on this network.';
+    document.getElementById('badge').className='badge';
+    document.getElementById('badge').textContent=(r.role||'DEVICE')+' \u00b7 '+(r.device||'');
+    var b=document.getElementById('go');
+    b.style.display='block';b.textContent='Open '+(r.role==='WAITER'?'Order Taker':(r.role==='KDS'?'Kitchen Display':'POS'));
+    b.onclick=function(){location.href=r.redirect||'/index.html'};
+    setTimeout(function(){location.href=r.redirect||'/index.html'},1600);
+  }
+}
+</script>
+</body>
+</html>

@@ -953,3 +953,80 @@ aakhri 10 lines. Yeh output support ko bhej dein to wajah foran mil jayegi.
 ## Tested
 Package mein DIAGNOSE.bat + 6 tools ✓ pre-flight "APP_OK" ✓
 health-check: server ~0.7s mein HTTP 200 par detect ✓ PHP lint clean ✓
+
+---
+
+# V34 — Offline package ab business ke apne users + data ke saath
+
+## Masla
+Offline version mein sirf demo admin (`admin@urbanspoon.local`) banta tha.
+Business ke apne users local DB mein jate hi nahi the, is liye client
+apne asli credentials se login NahI kar sakta tha — aur software khali
+khulta tha (koi menu, tables, customers nahi).
+
+## Fix — FIRST-RUN SNAPSHOT
+Package banate waqt us business ka apna data bhi **sealed bundle ke andar**
+chala jata hai (plaintext kahin nahi):
+- **users + roles + user_roles + role_modules** — wahi credentials, wahi
+  permissions offline chalte hain (password hashes as-is, is liye same
+  password kaam karta hai).
+- **Master data**: menu_categories, menu_items, menu_item_variants,
+  printers + routes, inventory_categories/items, stock_balances,
+  stock_locations, payment_methods, units, floors, dining_tables,
+  customers + addresses, suppliers + items, recipes + ingredients,
+  expense_categories.
+- Child rows apne parents se filter hote hain (orphan rows nahi jatin).
+
+`bootstrap_offline.php` pehle run par yeh sab import karta hai —
+**idempotent**: jo row pehle se ho wo chhoR di jati hai, ek row fail ho to
+baqi chalti rehti hain.
+
+`ensure_default_admin.php` mein guard: agar business ke asli users mojood
+hon to demo admin **banta hi nahi**
+("DEFAULT_ADMIN_SKIPPED (business users already present)").
+
+## Tested (asli sealed package chala kar)
+snapshot: **imported=52** ✓ demo admin skipped ✓
+offline login `owner@royalgrill.pk` → **303 → index.html** ✓
+pos-boot: cashier "Ahmed Khan / Admin", brand "Royal Grill House",
+5 products, 5 categories, 9 tables, 3 customers ✓
+local + cloud regression ✓ PHP lint clean ✓
+
+---
+
+# V35 — Offline login dropdown + Tablet/Mobile QR pairing
+
+## 1. Login: user ab DROPDOWN se
+Offline version mein cashier ko naam type nahi karna parta — **"Select user"**
+dropdown aa jata hai (naam + role). Naya `users-list` endpoint sirf LOCAL
+node par kaam karta hai; **cloud par 403 "Not available"** (verify kiya) —
+is liye kisi doosre business ke users kabhi expose nahi hote.
+Ek hi user ho to wo khud select ho jata hai; password par focus chala jata hai.
+
+## 2. Business isolation (already, ab confirm)
+Package ka snapshot `tenant_id`/`site_id` se scope hota hai — jis restaurant
+ne download kiya sirf uska data jata hai. Har business apna alag package,
+apna sync token, apna sealed config.
+
+## 3. Tablet / Mobile pairing — QR se (aapki suggestion, implement ho gayi)
+Naya `paired_devices` table + `pair.html` page.
+- POS > System > **Connect Tablet / Mobile** > "Waiter Tablet" ya
+  "Kitchen Display" > QR screen par aa jata hai.
+- Server apne **LAN IPs** khud detect karke QR banata hai:
+  `http://192.168.x.x:8080/pair.html?t=<token>`
+- Tablet usi WiFi par QR scan kare → session ban jati hai → seedha
+  Order Taker khul jata hai. **Internet ki zaroorat nahi.**
+- Token **15 minute** valid (env `PAIR_TOKEN_MINUTES`), one-tap "New Code".
+- **Connected Devices** list + **Revoke** — kisi bhi device ka access foran
+  band.
+- Roles: WAITER → Order Taker, KDS → Kitchen Display, CASHIER → POS,
+  MANAGER → Dashboard.
+
+## Tested
+cloud `users-list` → 403 (isolation) ✓ offline `users-list` → mode local,
+"Ahmed Khan | owner | Admin" ✓
+pairing: token + LAN URL bana ✓ tablet ne scan kiya → claim ok
+(role WAITER, redirect Order Taker) ✓ tablet ne Order Taker page 200 aur
+pos-boot (5 products, user Ahmed Khan) liya ✓
+offline install: 12 steps, snapshot import, demo admin skipped ✓
+local + cloud regression ✓ PHP lint clean ✓

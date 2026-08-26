@@ -204,6 +204,50 @@ $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_u
  'sync'=>['enabled'=>true,'token'=>(string)$t['sync_token'],'endpoint'=>$base.'/api.php','interval'=>30,
           'push_tables'=>['ui_records','orders','order_items','payments','inventory_items','stock_transactions','stock_transaction_lines','stock_balances','suppliers','customers','customer_addresses','menu_categories','menu_items','menu_item_variants','recipes','recipe_ingredients','expenses','cashier_shifts','reservations','riders','promotions','printers','floors','dining_tables','stock_adjustments','kitchen_tickets','kitchen_ticket_items','goods_receipts','goods_receipt_items','notification_queue','fiscal_invoices'],
           'pull_tables'=>['menu_categories','menu_items','menu_item_variants','inventory_items','units','payment_methods','printers','floors','dining_tables','customers','suppliers','promotions']]];
+/* ---- FIRST-RUN SNAPSHOT ----
+   Offline package ke saath is business ka apna data bhi jata hai (sealed):
+   users/roles (taake wahi credentials offline chalein), menu, inventory,
+   tables, customers, suppliers, recipes waghera. Warna offline version
+   khali kholti thi aur sirf default admin se login hota tha. */
+$snapTables=[
+  ['units',null],
+  ['roles','tenant'],['role_modules',null],
+  ['users','tenant'],['user_roles',null],
+  ['payment_methods','site'],['stock_locations','site'],
+  ['printers','site'],['menu_categories','site'],['menu_category_printer_routes','site'],
+  ['menu_items','site'],['menu_item_variants','site'],
+  ['inventory_categories','site'],['inventory_items','site'],['stock_balances','site'],
+  ['floors','site'],['dining_tables','site'],
+  ['customers','tenant'],['customer_addresses',null],
+  ['suppliers','tenant'],['supplier_items',null],
+  ['recipes','site'],['recipe_ingredients',null],
+  ['expense_categories','tenant'],
+];
+$snap=[];$colCache=[];
+$hasCol=function(string $tb,string $c)use($p,&$colCache):bool{
+  if(!isset($colCache[$tb])){$q=$p->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$tb]);$colCache[$tb]=array_column($q->fetchAll(),'column_name');}
+  return in_array($c,$colCache[$tb],true);
+};
+$tblExists=function(string $tb)use($p):bool{$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$tb]);return (bool)$q->fetchColumn();};
+foreach($snapTables as $st){
+  [$tb,$scope]=$st;
+  if(!$tblExists($tb))continue;
+  try{
+    if($scope==='site'&&$hasCol($tb,'site_id')){$q=$p->prepare("SELECT * FROM `$tb` WHERE site_id=?");$q->execute([site_id()]);}
+    elseif($scope==='tenant'&&$hasCol($tb,'tenant_id')){$q=$p->prepare("SELECT * FROM `$tb` WHERE tenant_id=?");$q->execute([tenant_id()]);}
+    else{$q=$p->prepare("SELECT * FROM `$tb` LIMIT 5000");$q->execute();}
+    $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+    /* child tables ko parent ids se filter karo */
+    if($tb==='role_modules'&&!empty($snap['roles'])){$ids=array_column($snap['roles'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['role_id']??'',$ids,true)));}
+    if($tb==='user_roles'&&!empty($snap['users'])){$ids=array_column($snap['users'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['user_id']??'',$ids,true)));}
+    if($tb==='customer_addresses'&&!empty($snap['customers'])){$ids=array_column($snap['customers'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['customer_id']??'',$ids,true)));}
+    if($tb==='supplier_items'&&!empty($snap['suppliers'])){$ids=array_column($snap['suppliers'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['supplier_id']??'',$ids,true)));}
+    if($tb==='recipe_ingredients'&&!empty($snap['recipes'])){$ids=array_column($snap['recipes'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['recipe_id']??'',$ids,true)));}
+    if($tb==='menu_category_printer_routes'&&!empty($snap['menu_categories'])){$ids=array_column($snap['menu_categories'],'id');$rows=array_values(array_filter($rows,fn($r)=>in_array($r['category_id']??'',$ids,true)));}
+    if($rows)$snap[$tb]=$rows;
+  }catch(Throwable $e){}
+}
+$cfgArr['snapshot']=$snap;
 $built=OfflineBundler::build($root,$cfgArr);
 $tmp=tempnam(sys_get_temp_dir(),'aio');@unlink($tmp);$tmp.='.zip';
 $zip=new ZipArchive();
@@ -322,6 +366,72 @@ case 'qr-pending':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT id,table_name,
 case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtoupper((string)($d['action']??''));if(!in_array($act,['ACCEPTED','REJECTED'],true))fail('action required');
  $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
 case 'qr-session-close':needLogin();$d=body();$p=DB::pdo();$p->prepare("UPDATE qr_sessions SET status='CLOSED',closed_at=NOW(6) WHERE site_id=? AND table_name=? AND status='ACTIVE'")->execute([site_id(),(string)($d['table']??'')]);ok();
+/* ============ OFFLINE LOGIN: user dropdown ============ */
+case 'users-list':
+ /* Sirf LOCAL (offline) node par bina login ke - wahan ek hi business hota
+    hai aur cashier ko naam type karne ke bajaye list se chunna hota hai.
+    Cloud par yeh kabhi expose nahi hoti (business isolation). */
+ if(cfg('app.role')==='cloud')fail('Not available',403);
+ $p=DB::pdo();$q=$p->prepare("SELECT u.id,u.username,u.email,u.full_name,u.is_tenant_admin,
+     COALESCE((SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id LIMIT 1),'') role_name
+   FROM users u WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL ORDER BY u.is_tenant_admin DESC,u.full_name");
+ $q->execute([tenant_id()]);
+ $rows=array_map(fn($x)=>['login'=>($x['username']?:$x['email']),'name'=>$x['full_name'],
+   'role'=>($x['role_name']?:((int)$x['is_tenant_admin']?'Admin':'User'))],$q->fetchAll());
+ ok(['users'=>$rows,'mode'=>'local']);
+
+/* ============ DEVICE PAIRING (tablet / mobile over LAN) ============ */
+case 'device-pair-start':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ $d=body();$role=strtoupper((string)($d['role']??'WAITER'));
+ if(!in_array($role,['WAITER','CASHIER','KDS','MANAGER'],true))$role='WAITER';
+ $p=DB::pdo();$tok=bin2hex(random_bytes(16));$did=uuid();
+ $mins=(int)(getenv('PAIR_TOKEN_MINUTES')?:15);
+ $p->prepare("INSERT INTO paired_devices(id,tenant_id,site_id,device_name,device_role,pair_token,user_id,status,created_at,expires_at)
+   VALUES(?,?,?,?,?,?,?,'PENDING',NOW(6),DATE_ADD(NOW(6),INTERVAL ? MINUTE))")
+   ->execute([$did,tenant_id(),site_id(),(string)($d['name']??'Tablet'),$role,$tok,current_user()['id']??null,$mins]);
+ /* LAN addresses - tablet usi WiFi par in mein se kisi ek se connect karega */
+ $port=(int)($_SERVER['SERVER_PORT']??8080);
+ $ips=[];
+ if(function_exists('net_get_interfaces')){
+   foreach((net_get_interfaces()?:[]) as $if){
+     foreach(($if['unicast']??[]) as $u){
+       $a=$u['address']??'';
+       if($a&&filter_var($a,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)&&$a!=='127.0.0.1'&&strpos($a,'169.254.')!==0)$ips[]=$a;
+     }
+   }
+ }
+ if(!$ips){$h=@gethostbyname(@gethostname());if($h&&filter_var($h,FILTER_VALIDATE_IP)&&$h!=='127.0.0.1')$ips[]=$h;}
+ $ips=array_values(array_unique($ips));
+ $urls=[];foreach($ips as $ip)$urls[]='http://'.$ip.':'.$port.'/pair.html?t='.$tok;
+ if(!$urls)$urls[]=rtrim((string)cfg('app.base_url'),'/').'/pair.html?t='.$tok;
+ ok(['token'=>$tok,'role'=>$role,'expires_min'=>$mins,'urls'=>$urls,'ips'=>$ips,'port'=>$port]);
+
+case 'device-pair-claim':
+ $p=DB::pdo();$tok=(string)($_GET['t']??($_POST['t']??''));
+ if($tok==='')fail('Pairing code required',400);
+ $q=$p->prepare("SELECT *, (expires_at > NOW(6)) alive FROM paired_devices WHERE pair_token=? LIMIT 1");
+ $q->execute([$tok]);$dev=$q->fetch();
+ if(!$dev)fail('Pairing code valid nahi - POS se naya QR banayein',401);
+ if($dev['status']==='REVOKED')fail('Yeh device revoke ho chuka hai',403);
+ if($dev['status']==='PENDING'&&!(int)$dev['alive'])fail('Pairing code ka waqt khatam - POS se naya QR banayein',401);
+ /* device ko us user ki session mil jati hai jisne QR banaya (role-limited) */
+ $uq=$p->prepare("SELECT * FROM users WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL");
+ $uq->execute([$dev['user_id']]);$u=$uq->fetch();
+ if(!$u)fail('Pairing user not found',401);
+ Auth::startSessionForUser($u);
+ $_SESSION['device_id']=$dev['id'];$_SESSION['device_role']=$dev['device_role'];
+ $p->prepare("UPDATE paired_devices SET status='ACTIVE',paired_at=COALESCE(paired_at,NOW(6)),last_seen_at=NOW(6),user_agent=? WHERE id=?")
+   ->execute([substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,255),$dev['id']]);
+ $land=['WAITER'=>'/restaurant_order_taker_tablet.html','CASHIER'=>'/restaurant_pos.html',
+        'KDS'=>'/kds.html','MANAGER'=>'/index.html'][$dev['device_role']]??'/index.html';
+ ok(['device'=>$dev['device_name'],'role'=>$dev['device_role'],'redirect'=>$land]);
+
+case 'device-list':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ $q=DB::pdo()->prepare("SELECT id,device_name,device_role,status,paired_at,last_seen_at FROM paired_devices WHERE site_id=? AND status<>'REVOKED' ORDER BY created_at DESC LIMIT 50");
+ $q->execute([site_id()]);ok(['devices'=>$q->fetchAll()]);
+case 'device-revoke':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ $d=body();DB::pdo()->prepare("UPDATE paired_devices SET status='REVOKED' WHERE id=? AND site_id=?")->execute([(string)($d['id']??''),site_id()]);ok();
+
 case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];$sg=$p2=DB::pdo()->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$sg->execute([tenant_id(),site_id()]);$sj=$sg->fetchColumn();$sd=$sj?(json_decode($sj,true)?:[]):[];$bb['settings']=['tax_cash'=>isset($sd['tax_cash'])?(float)$sd['tax_cash']:16.0,'tax_card'=>isset($sd['tax_card'])?(float)$sd['tax_card']:8.0,'service_charge'=>isset($sd['service_charge'])?(float)$sd['service_charge']:0.0];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
 $bb['brand']=['name'=>($br['display_name']?:($br['name']??'Restaurant')),'logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'','accent'=>$br['brand_accent']??''];
 $bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports')];

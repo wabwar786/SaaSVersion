@@ -1,5 +1,12 @@
 <?php
 declare(strict_types=1);require_once dirname(__DIR__).'/src/bootstrap.php';
+/* OFFLINE_SKIP_GUARD: agar is tenant ke asli users pehle se mojood hain
+   (offline package ke snapshot se), to demo admin banane ki zaroorat nahi. */
+try{
+  $__q=\Aio\DB::pdo()->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");
+  $__q->execute([tenant_id()]);
+  if((int)$__q->fetchColumn()>0){ echo "DEFAULT_ADMIN_SKIPPED (business users already present)\n"; return; }
+}catch(\Throwable $e){}
 use Aio\DB;use Aio\Services\UserService;
 $p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE'");$q->execute([tenant_id()]);if((int)$q->fetchColumn()>0){echo "ADMIN_READY\n";exit;}
 $role=$p->prepare("SELECT id FROM roles WHERE tenant_id=? AND name='Owner / Admin' LIMIT 1");$role->execute([tenant_id()]);$roleId=$role->fetchColumn();

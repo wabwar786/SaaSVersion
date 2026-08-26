@@ -42,5 +42,42 @@ if (!$has('sites', $sid)) {
     echo "  site created\n";
 }
 
+/* ---------- FIRST-RUN SNAPSHOT IMPORT ----------
+   Package ke saath aayi hui business data (users/roles/menu/inventory/
+   tables/customers/suppliers/recipes) local DB mein daalo. Idempotent:
+   jo row pehle se hai use chhoR diya jata hai. */
+$snap = $cfg['snapshot'] ?? [];
+if ($snap) {
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $imported = 0; $skipped = 0;
+    foreach ($snap as $table => $rows) {
+        if (!is_array($rows) || !$rows) continue;
+        // sirf wahi columns jo is DB mein mojood hain
+        try {
+            $cq = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");
+            $cq->execute([$table]);
+            $cols = array_column($cq->fetchAll(), 'column_name');
+            if (!$cols) continue;
+        } catch (\Throwable $e) { continue; }
+
+        foreach ($rows as $row) {
+            $data = array_intersect_key((array)$row, array_flip($cols));
+            if (!isset($data['id'])) continue;
+            try {
+                $ex = $pdo->prepare("SELECT COUNT(*) FROM `$table` WHERE id=?");
+                $ex->execute([$data['id']]);
+                if ((int)$ex->fetchColumn()) { $skipped++; continue; }
+                $names = array_keys($data);
+                $sql = "INSERT INTO `$table` (`" . implode('`,`', $names) . "`) VALUES ("
+                     . implode(',', array_fill(0, count($names), '?')) . ")";
+                $pdo->prepare($sql)->execute(array_values($data));
+                $imported++;
+            } catch (\Throwable $e) { /* ek row fail ho to baqi chalti rahe */ }
+        }
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+    echo "  snapshot: imported={$imported} existing={$skipped}\n";
+}
+
 Platform::ensureSiteDefaults($pdo, $tid, $sid);
 echo "OFFLINE_BOOTSTRAP_READY tenant={$slug} site={$sname}\n";

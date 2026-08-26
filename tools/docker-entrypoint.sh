@@ -34,6 +34,7 @@ php scripts/migrate_bridge.php   || echo "[boot] bridge migrate skipped"
 php scripts/migrate_menu_image.php || echo "[boot] menu image migrate skipped"
 php scripts/migrate_branding.php  || echo "[boot] branding migrate skipped"
 php scripts/migrate_qr_orders.php || echo "[boot] qr orders migrate skipped"
+php scripts/migrate_devices.php   || echo "[boot] devices migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
