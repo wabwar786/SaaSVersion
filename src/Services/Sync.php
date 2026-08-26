@@ -185,11 +185,19 @@ final class Sync
         // TENANT SCOPE: cloud par pull sirf usi tenant ki rows deta hai jo
         // token se authenticate hua. Warna ek node doosron ka data parh leta.
         $scope = $GLOBALS['sync_tenant_id'] ?? null;
+        $site  = $GLOBALS['sync_site_id'] ?? null;
+        $cols  = self::columns($table);
         $args  = [$since];
         $where = "`$ts` > ?";
-        if ($scope && in_array('tenant_id', self::columns($table), true)) {
+        if ($scope && in_array('tenant_id', $cols, true)) {
             $where .= " AND tenant_id = ?";
             $args[] = $scope;
+        }
+        // Branch scope: multi-branch business mein ek branch ko doosri
+        // branch ka transactional data neeche nahi aana chahiye.
+        if ($site && in_array('site_id', $cols, true)) {
+            $where .= " AND site_id = ?";
+            $args[] = $site;
         }
         $sql = "SELECT * FROM `$table` WHERE $where ORDER BY `$ts` ASC LIMIT $limit";
         $q = DB::pdo()->prepare($sql);
@@ -207,35 +215,67 @@ final class Sync
      *   authenticate hua uska id. Har incoming row par FORCE hota hai —
      *   ek node doosre tenant ka data likh hi nahi sakta.
      */
-    public static function applyRows(string $table, array $rows, ?string $forceTenantId = null): int
+    /**
+     * Rows ko is DB mein daalta/update karta hai.
+     *
+     * @param string|null $forceTenantId Cloud par: token se authenticate hue
+     *   tenant ka id. Har row par FORCE hota hai — ek node doosre tenant ka
+     *   data likh hi nahi sakta.
+     * @param bool $lastWriteWins Pull (cloud -> local) ke liye true: agar
+     *   local row zyada nayi hai to use overwrite NahI kiya jata, warna
+     *   abhi kaata gaya bill purani cloud copy se mit jata.
+     */
+    public static function applyRows(string $table, array $rows, ?string $forceTenantId = null, bool $lastWriteWins = false): int
     {
         if (!$rows || !self::tableExists($table)) return 0;
-        $cols = self::columns($table);
-        $pdo = DB::pdo();
+        $cols      = self::columns($table);
+        $pdo       = DB::pdo();
         $hasTenant = in_array('tenant_id', $cols, true);
+        $ts        = self::tsColumn($table);
 
-        return (int) DB::tx(function (PDO $pdo) use ($table, $rows, $cols, $forceTenantId, $hasTenant) {
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-            $applied = 0;
-            foreach ($rows as $row) {
-                // keep only real columns of the target table
-                $data = array_intersect_key($row, array_flip($cols));
-                if (!isset($data['id'])) continue;
-                // TENANT LOCK: incoming tenant_id ko trust nahi karte
-                if ($forceTenantId !== null && $hasTenant) $data['tenant_id'] = $forceTenantId;
+        $applied = 0; $skipped = 0; $failed = 0; $lastErr = '';
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+        foreach ($rows as $row) {
+            $data = array_intersect_key((array)$row, array_flip($cols));
+            if (!isset($data['id'])) continue;
+            if ($forceTenantId !== null && $hasTenant) $data['tenant_id'] = $forceTenantId;
+
+            try {
+                // Last-write-wins: local copy nayi ho to chhoR do
+                if ($lastWriteWins && $ts && !empty($data[$ts])) {
+                    $q = $pdo->prepare("SELECT `$ts` FROM `$table` WHERE id=? LIMIT 1");
+                    $q->execute([$data['id']]);
+                    $localTs = $q->fetchColumn();
+                    if ($localTs !== false && \strtotime((string)$localTs) > \strtotime((string)$data[$ts])) {
+                        $skipped++; continue;
+                    }
+                }
                 $keys = array_keys($data);
-                $ph = implode(',', array_fill(0, count($keys), '?'));
-                $set = implode(',', array_map(fn($k) => "`$k`=VALUES(`$k`)",
-                        array_filter($keys, fn($k) => $k !== 'id')));
-                $sql = "INSERT INTO `$table` (`" . implode('`,`', $keys) . "`) VALUES ($ph)";
+                $ph   = implode(',', array_fill(0, count($keys), '?'));
+                $set  = implode(',', array_map(fn($k) => "`$k`=VALUES(`$k`)",
+                            array_filter($keys, fn($k) => $k !== 'id')));
+                $sql  = "INSERT INTO `$table` (`" . implode('`,`', $keys) . "`) VALUES ($ph)";
                 if ($set !== '') $sql .= " ON DUPLICATE KEY UPDATE $set";
                 $pdo->prepare($sql)->execute(array_values($data));
                 $applied++;
+            } catch (\Throwable $e) {
+                // Ek row ka masla (misal duplicate bill number) poori batch
+                // ko na rokay — baqi rows chalti rahen.
+                $failed++; $lastErr = \substr($e->getMessage(), 0, 160);
             }
-            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-            return $applied;
-        });
+        }
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+
+        if ($failed > 0) {
+            self::$lastRowErrors[$table] = "$failed row(s) skipped: $lastErr";
+        }
+        self::$lastSkipped += $skipped;
+        return $applied;
     }
+
+    /** @var array<string,string> per-table row errors (diagnostics) */
+    public static array $lastRowErrors = [];
+    public static int $lastSkipped = 0;
 
     /* ------------------------- watermark state ------------------------- */
 
@@ -441,7 +481,8 @@ final class Sync
             ]);
             $rows = $resp['rows'] ?? [];
             if ($rows) {
-                self::applyRows($table, $rows);
+                // pull = cloud se aayi rows; local nayi copy ko na mitao
+                self::applyRows($table, $rows, null, true);
                 $ts = self::tsColumn($table) ?: 'updated_at';
                 $maxWm = $resp['watermark'] ?? (end($rows)[$ts] ?? $since);
                 self::setWatermark($scope, $maxWm, 'OK', null, count($rows));

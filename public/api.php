@@ -52,19 +52,22 @@ function syncToken(){ syncTenant(); }
    tables kabhi nahi (warna token leak = account takeover). */
 function syncTableAllowed(string $table): bool {
   static $allow=[
-    /* users/roles: offline node par banaye gaye staff cloud tak pohanchte hain.
-       Tenant lock upar lag chuka hai, aur platform_users/tenants yahan
-       shamil NahI - yani account takeover mumkin nahi. */
+    /* Poora software sync hota hai. platform_users/tenants yahan NahI —
+       wo platform-level hain aur tenant lock ke bawajood block rehte hain. */
     'users','user_roles','roles','role_modules','user_form_permissions','employee_profiles',
-    'ui_records','orders','order_items','order_payments','payments','order_item_voids',
-    'inventory_items','inventory_categories','stock_movements','stock_transactions','stock_transaction_lines',
-    'stock_balances','stock_adjustments','stock_locations','units','suppliers','supplier_items','customers',
-    'customer_addresses','menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
-    'recipes','recipe_ingredients','expenses','expense_categories','cashier_shifts','shift_cash_movements',
-    'reservations','riders','delivery_orders','promotions','printers','devices','employee_profiles',
-    'floors','dining_tables','kitchen_tickets','kitchen_ticket_items','notification_queue',
-    'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items','payment_methods',
-    'qr_orders','qr_sessions','fiscal_invoices','shift_handovers','cashier_shifts','shift_cash_movements','paired_devices'];
+    'orders','order_items','payments','order_payments','order_item_voids',
+    'kitchen_tickets','kitchen_ticket_items','qr_orders','qr_sessions',
+    'cashier_shifts','shift_cash_movements','shift_handovers','fiscal_invoices',
+    'menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
+    'recipes','recipe_ingredients',
+    'inventory_categories','inventory_items','stock_transactions','stock_transaction_lines',
+    'stock_balances','stock_adjustments','stock_movements','stock_locations','units',
+    'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items',
+    'customers','customer_addresses','suppliers','supplier_items',
+    'expenses','expense_categories','reservations','riders','delivery_orders',
+    'promotions','printers','floors','dining_tables','payment_methods',
+    'paired_devices','notification_queue','devices','ui_records',
+  ];
   return in_array($table,$allow,true);
 }function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
 function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
@@ -216,24 +219,42 @@ $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_u
    'batch'=>300,
    'interval'=>30,'interval_minutes'=>2,
           'push_tables'=>[
-            /* staff: offline banaye gaye users/roles cloud tak jate hain */
-            'users','user_roles','roles','role_modules','employee_profiles',
-            /* sales */
-            'orders','order_items','payments','order_item_voids','kitchen_tickets','kitchen_ticket_items',
-            'cashier_shifts','shift_cash_movements','shift_handovers','qr_orders','qr_sessions',
-            /* catalogue */
+            /* SAB kuch upar jata hai. Har table par updated_at maujood hai
+               (migrate_sync_columns.php), warna sync khamoshi se skip kar
+               deti thi - isi wajah se local aur live figures alag the. */
+            'users','user_roles','roles','role_modules','user_form_permissions','employee_profiles',
+            'orders','order_items','payments','order_payments','order_item_voids',
+            'kitchen_tickets','kitchen_ticket_items','qr_orders','qr_sessions',
+            'cashier_shifts','shift_cash_movements','shift_handovers','fiscal_invoices',
             'menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
             'recipes','recipe_ingredients',
-            /* inventory */
             'inventory_categories','inventory_items','stock_transactions','stock_transaction_lines',
-            'stock_balances','stock_adjustments','goods_receipts','goods_receipt_items',
-            /* people & setup */
-            'customers','customer_addresses','suppliers','supplier_items','expenses','expense_categories',
-            'reservations','riders','delivery_orders','promotions','printers','floors','dining_tables',
-            'payment_methods','stock_locations','paired_devices','notification_queue','fiscal_invoices',
-            'ui_records',
+            'stock_balances','stock_adjustments','stock_movements','stock_locations','units',
+            'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items',
+            'customers','customer_addresses','suppliers','supplier_items',
+            'expenses','expense_categories','reservations','riders','delivery_orders',
+            'promotions','printers','floors','dining_tables','payment_methods',
+            'paired_devices','notification_queue','devices','ui_records',
           ],
-          'pull_tables'=>['menu_categories','menu_items','menu_item_variants','inventory_items','units','payment_methods','printers','floors','dining_tables','customers','suppliers','promotions']]];
+          'pull_tables'=>[
+            /* TWO-WAY: jo kuch cloud par bane (ya doosre device se aaye) wo
+               bhi is branch par utar aata hai. Local nayi copy ko overwrite
+               nahi kiya jata (last-write-wins). Server side par yeh sirf
+               isi tenant + isi branch tak mehdood hai. */
+            'roles','role_modules','users','user_roles','user_form_permissions','employee_profiles',
+            'menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
+            'recipes','recipe_ingredients',
+            'inventory_categories','inventory_items','stock_locations','units',
+            'stock_transactions','stock_transaction_lines','stock_balances','stock_adjustments',
+            'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items',
+            'customers','customer_addresses','suppliers','supplier_items',
+            'expenses','expense_categories','promotions','printers','floors','dining_tables',
+            'payment_methods','reservations','riders','delivery_orders',
+            'orders','order_items','payments','order_payments','order_item_voids',
+            'kitchen_tickets','kitchen_ticket_items','qr_orders','qr_sessions',
+            'cashier_shifts','shift_cash_movements','shift_handovers','fiscal_invoices',
+            'paired_devices','devices','stock_movements','notification_queue','ui_records',
+          ]]];
 /* ---- FIRST-RUN SNAPSHOT ----
    Offline package ke saath is business ka apna data bhi jata hai (sealed):
    users/roles (taake wahi credentials offline chalein), menu, inventory,
@@ -648,7 +669,8 @@ case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
  $n=Sync::applyRows($tbl,$d['rows']??[],$stid);ok(['applied'=>$n]);
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
- $GLOBALS['sync_tenant_id']=$stid;$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+ $GLOBALS['sync_tenant_id']=$stid;
+ $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
 case 'sync-diagnose':needLogin();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
  if(cfg('app.role')==='cloud')ok(['checks'=>[['step'=>'Mode','ok'=>true,'detail'=>'This is the cloud server - offline nodes push data here.']]]);

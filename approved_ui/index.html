@@ -48,6 +48,23 @@
 .mix .cell b{display:block;margin-top:3px;font-family:var(--display);font-weight:800;font-size:16px}
 @media(max-width:1100px){.quick{grid-template-columns:repeat(3,1fr)}.dash-hero{grid-template-columns:1fr}}
 @media(max-width:560px){.quick{grid-template-columns:1fr 1fr}.hero-side{grid-template-columns:1fr 1fr}.hero h2{font-size:23px}}
+
+/* ---- cloud sync panel ---- */
+.syncHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.syncActions{display:flex;gap:8px;align-items:center}
+.syncPill{padding:5px 12px;border-radius:999px;font-size:11.5px;font-weight:800}
+.sp-ok{background:#eaf6ef;color:#0f7a3d}
+.sp-warn{background:#fdf4e9;color:#b3541e}
+.sp-bad{background:#fdecec;color:#c02a37}
+.syncGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.syncBox{border:1px solid var(--line,#e2eae5);border-radius:11px;padding:10px 12px}
+.syncBox small{display:block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;opacity:.65;margin-bottom:4px}
+.syncBox b{font-size:15px;font-weight:800}
+.syncRow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line,#eef3f0);font-size:12.5px}
+.syncRow:last-child{border-bottom:0}
+.syncRow .ic{width:20px;flex:none}
+.syncRow small{display:block;opacity:.7;font-size:11px;word-break:break-word}
+.syncFix{background:#fdecec;border:1px solid #f3c3c7;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -82,6 +99,22 @@
           <div class="htile"><span>Kitchen printers</span><b>5 / 5</b><small>All responding</small></div>
           <div class="htile"><span>Signup requests</span><b id="heroReq">0</b><small>Awaiting approval</small></div>
         </div>
+      </section>
+
+      <section class="card" id="syncCard" style="display:none;margin-bottom:16px">
+        <div class="syncHead">
+          <div>
+            <h3 style="margin:0;font-size:15px">Cloud Synchronization</h3>
+            <div class="muted" id="syncSub" style="font-size:12px;margin-top:3px">Checking...</div>
+          </div>
+          <div class="syncActions">
+            <span class="syncPill" id="syncPill">checking</span>
+            <button class="btn sec" id="syncCheck">Check</button>
+            <button class="btn" id="syncGo">Sync now</button>
+          </div>
+        </div>
+        <div class="syncGrid" id="syncGrid"></div>
+        <div id="syncDiagBox" style="display:none;margin-top:12px"></div>
       </section>
 
       <div class="kpis">
@@ -152,7 +185,113 @@
 </div>
 <div class="scrim" id="scrim"></div>
 
-<script src="shared_store.js"></script>
+<script src="shared_store.js">
+/* ================= CLOUD SYNC PANEL (admin dashboard) ================= */
+(function(){
+  'use strict';
+  var $$=function(id){return document.getElementById(id)};
+  var card=$$('syncCard'); if(!card)return;
+  var busy=false, state=null;
+
+  function xhr(action,payload,cb){
+    var x=new XMLHttpRequest();
+    x.open(payload?'POST':'GET','/api.php?action='+action,true);
+    x.setRequestHeader('Accept','application/json');
+    if(payload){x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-CSRF-Token',window.APP_CSRF||'')}
+    x.timeout=60000;
+    x.onload=function(){var j={ok:false,message:'Server error'};try{j=JSON.parse(x.responseText||'{}')}catch(e){}cb(j)};
+    x.onerror=function(){cb({ok:false,message:'Network error'})};
+    x.ontimeout=function(){cb({ok:false,message:'Request timed out'})};
+    try{x.send(payload?JSON.stringify(payload):null)}catch(e){cb({ok:false,message:'Request failed'})}
+  }
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function ago(ts){
+    if(!ts)return 'never';
+    var t=new Date(String(ts).replace(' ','T')).getTime(); if(isNaN(t))return 'never';
+    var m=Math.floor((Date.now()-t)/60000);
+    if(m<1)return 'just now'; if(m<60)return m+' min ago';
+    var h=Math.floor(m/60); return h<24?(h+' hr ago'):(Math.floor(h/24)+' days ago');
+  }
+  function paint(){
+    if(!state)return;
+    card.style.display='';
+    var pill=$$('syncPill'), sub=$$('syncSub'), grid=$$('syncGrid');
+    if(state.role==='cloud'){
+      pill.className='syncPill sp-ok'; pill.textContent='cloud server';
+      sub.textContent='This is the online server. Branch computers push their data here automatically.';
+      grid.innerHTML='';
+      $$('syncGo').style.display='none'; $$('syncCheck').style.display='none';
+      return;
+    }
+    if(busy){ pill.className='syncPill sp-warn'; pill.textContent='syncing...'; }
+    else if(!state.enabled){ pill.className='syncPill sp-bad'; pill.textContent='sync off'; }
+    else if(!state.cloud_online){ pill.className='syncPill sp-bad'; pill.textContent='cloud offline'; }
+    else if(state.pending>0){ pill.className='syncPill sp-warn'; pill.textContent=state.pending+' waiting'; }
+    else { pill.className='syncPill sp-ok'; pill.textContent='up to date'; }
+
+    sub.textContent = state.enabled
+      ? (state.cloud_online ? ('Connected to '+(state.cloud_url||'cloud')+' - runs automatically every 2 minutes.')
+                            : 'Cloud not reachable right now. Data is safe locally and uploads automatically when the internet returns.')
+      : (state.reason||'Sync is disabled in this installation.');
+
+    grid.innerHTML=
+      '<div class="syncBox"><small>Last sync</small><b>'+esc(ago(state.last_run))+'</b></div>'+
+      '<div class="syncBox"><small>Waiting to upload</small><b>'+(state.pending||0)+' rows</b></div>'+
+      '<div class="syncBox"><small>Cloud</small><b>'+(state.cloud_online?'Online':'Not reachable')+'</b></div>'+
+      '<div class="syncBox"><small>Mode</small><b>Branch computer</b></div>'+
+      (state.last_error?('<div class="syncBox" style="grid-column:1/-1;border-color:#f3c3c7"><small>Last error</small><b style="font-size:12px;font-weight:600">'+esc(state.last_error)+'</b></div>'):'');
+  }
+  function refresh(cb){ xhr('sync-state',null,function(r){ if(r.ok&&r.sync){state=r.sync;paint();} if(cb)cb(r); }); }
+  function runSync(manual){
+    if(busy||!state||state.role==='cloud')return;
+    if(!state.enabled){ if(manual)showDiag(); return; }
+    busy=true;paint();
+    xhr('sync-run',{},function(r){
+      busy=false;
+      if(!r.ok&&manual){ showDiag(); }
+      refresh();
+      if(r.ok&&manual){
+        var n=0; for(var k in (r.pushed||{})) n+=r.pushed[k];
+        var sub=$$('syncSub');
+        if(sub)sub.textContent = n? ('Sync complete - '+n+' records uploaded to the cloud.')
+                                  : 'Sync complete - everything was already up to date.';
+      }
+    });
+  }
+  function fixHint(f){
+    var st=(f.step||'').toLowerCase(), d=(f.detail||'').toLowerCase();
+    if(st.indexOf('configuration')>=0||st.indexOf('cloud url')>=0)
+      return 'This installation has no cloud settings. Download a fresh offline package from the online portal and install it again.';
+    if(st.indexOf('ssl')>=0) return 'HTTPS certificates were not found. Download a fresh package (certificates are included) or run INSTALL_OFFLINE.bat again.';
+    if(st.indexOf('dns')>=0) return 'The internet is on but the server name could not be resolved. Check WiFi/DNS, or try a mobile hotspot.';
+    if(st.indexOf('connection')>=0) return 'Cannot reach the server. Usually Windows Firewall or antivirus is blocking php.exe - allow it. An office proxy can also block it.';
+    if(st.indexOf('token')>=0) return 'The cloud rejected this installation token. Download the offline package again from the portal.';
+    if(st.indexOf('cloud response')>=0) return 'The server replied with an error. Try again shortly; if it continues, send this report to support.';
+    return 'Send this report to support.';
+  }
+  function showDiag(){
+    var box=$$('syncDiagBox'); box.style.display=''; box.innerHTML='<div class="muted">Running checks...</div>';
+    xhr('sync-diagnose',null,function(r){
+      var checks=(r.ok&&r.checks)?r.checks:[{step:'Request',ok:false,detail:(r.message||'Check failed')}];
+      var first=null;
+      var h=checks.map(function(c){
+        if(!c.ok&&!first)first=c;
+        return '<div class="syncRow"><div class="ic">'+(c.ok?'\u2705':'\u274C')+'</div>'
+          +'<div><b>'+esc(c.step)+'</b><small>'+esc(c.detail)+'</small></div></div>';
+      }).join('');
+      if(first)h+='<div class="syncFix"><b>What to do</b><br>'+esc(fixHint(first))+'</div>';
+      box.innerHTML=h;
+    });
+  }
+  $$('syncGo').onclick=function(){runSync(true)};
+  $$('syncCheck').onclick=showDiag;
+
+  refresh();
+  setInterval(refresh,30000);
+  setInterval(function(){ if(state&&state.role!=='cloud'&&state.enabled)runSync(false); },120000);
+})();
+
+</script>
 <script src="live_store.js"></script>
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="dashboard"></script>

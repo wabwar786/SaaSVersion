@@ -287,7 +287,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v32';
+var VERSION='POS v33';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -602,23 +602,12 @@ function renderStrip(){
     +'<span id="ctx" class="ctx"></span>'
     +'<button class="tb" id="newBillBtn" style="padding:3px 10px;font-size:11px">+ New Bill (F1)</button>'
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali &mdash; "+ New Item" se banayein</span>':'')
-    +'<span class="sb" id="syncChip" title="Cloud sync status" style="cursor:pointer">&#9729; checking...</span>'
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
   var b=$('#sClose'); if(b)b.onclick=function(e){e.preventDefault();closeShift()};
   var d=$('#sDiag'); if(d)d.onclick=function(e){e.preventDefault();showDiagnostics()};
   var nb=$('#newBillBtn'); if(nb)nb.onclick=onNewBill;
-  /* Sync chip: offline/off ho to wajah dikhao, warna foran sync chalao */
-  var sc=$('#syncChip');
-  if(sc){
-    sc.onclick=function(){
-      var st=SYNC.state;
-      if(st&&st.role!=='cloud'&&(!st.enabled||!st.cloud_online))syncDiagnose();
-      else syncNow(true);
-    };
-    paintSync();
-  }
   renderCtx();
 }
 

@@ -98,7 +98,7 @@ Step 4 'Creating database schema and business setup...'
 $rootFwd = $root -replace '\\', '/'
 $scripts = @(
   'install_schema','migrate_platform','migrate_sync','migrate_bridge',
-  'migrate_menu_image','migrate_branding','migrate_qr_orders','migrate_devices','migrate_shifts',
+  'migrate_menu_image','migrate_branding','migrate_qr_orders','migrate_devices','migrate_shifts','migrate_sync_columns',
   'seed_platform_modules','bootstrap_offline','seed_roles','ensure_default_admin'
 )
 $failed = 0

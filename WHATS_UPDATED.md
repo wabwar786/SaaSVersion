@@ -1223,3 +1223,100 @@ mein khula (POS freeze nahi hua) → ❌ Connection par ruka aur firewall
 wala hal dikhaya ✓
 Wrong token: ❌ "Token accepted — Rejected: Invalid sync token" ✓
 Probe cache: call 1 live, call 2-3 cached ✓ PHP lint clean · 44 pages OK
+
+---
+
+# V40 — COMPLETE SYNC: har table, har record (asli sabab mil gaya)
+
+## Jar par masla: 23 tables kabhi sync hoti hi nahi thin
+Sync engine watermark ke liye `updated_at` (ya `created_at`) column parhta
+hai. Jis table mein yeh column NahI, `tsColumn()` `null` de deta tha aur wo
+table **khamoshi se skip** ho jati thi — na error, na warning.
+
+Audit se nikla ke **23 tables ka koi timestamp column hi nahi tha**, jin
+mein sab se aham **`payments`** hai. Yani bills to upar chale jate the
+magar unki payments nahi — isi liye aap ka local dashboard 30,508 aur live
+14,195 dikha raha tha. Saath in ka bhi yehi haal tha:
+`stock_transactions`, `stock_transaction_lines`, `stock_adjustments`,
+`kitchen_tickets`, `kitchen_ticket_items`, `user_roles`, `role_modules`,
+`customer_addresses`, `recipe_ingredients`, `supplier_items`,
+`payment_methods`, `floors`, `units`, `stock_locations`,
+`expense_categories`, `goods_receipt_items`, `fiscal_invoices`,
+`notification_queue`, `delivery_orders`, `qr_sessions`,
+`menu_category_printer_routes`, `user_form_permissions`.
+
+**Fix:** nayi `migrate_sync_columns.php` har syncable table par
+`updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE
+CURRENT_TIMESTAMP(6)` add karti hai, purani rows ko `created_at` se
+backfill karti hai, aur us table ka watermark reset kar deti hai taake
+poora purana data ek dafa upar chala jaye. Cloud par chalti hai to
+**34 tables** theek hui. Boot par khud chalti hai (cloud + offline dono).
+
+## Ab har cheez sync hoti hai (56 tables)
+Push list aur server whitelist dono mukammal: sales (orders, order_items,
+payments, voids, kitchen tickets, shifts, handovers, QR orders, fiscal
+invoices), catalogue (menu, variants, recipes, printer routes), inventory
+(items, transactions, lines, balances, adjustments, GRN, PO, units,
+locations), people & setup (customers, addresses, suppliers, expenses,
+reservations, riders, delivery, promotions, printers, floors, tables,
+payment methods, devices), aur staff (users, roles, role_modules,
+permissions). `platform_users`/`tenants` phir bhi block hain.
+
+## Sync ab admin dashboard par (POS se hata diya)
+POS strip se chip nikal di — cashier ka is se koi taluq nahi.
+**Dashboard par poora "Cloud Synchronization" card**: status pill (up to
+date / N waiting / cloud offline / sync off), last sync, waiting rows,
+cloud online, aur error. **Sync now** aur **Check** (step-by-step
+diagnosis + "What to do") buttons. Background par 2 minute par khud chalta
+hai — POS par bhi wahi loop chalta rehta hai (bina kuch dikhaye).
+
+## PROOF
+Offline node par 3 bills kaate (PKR 6,000) → Sync → **150 rows pushed**:
+orders 3, order_items 3, **payments 3**, kitchen_tickets 3,
+cashier_shifts 1, menu_items 7, users 3 → pending **0**.
+Cloud DB par teeno bills **apni payments ke saath** mojood ✓
+(Cloud ka total is se zyada isliye hai ke us par pehle se online kaate
+gaye 5 bills bhi hain — wo local par nahi aate; transactions upar jate
+hain, neeche master data aati hai.)
+
+PHP lint clean · 44 pages OK · dashboard JS clean
+
+---
+
+# V41 — TWO-WAY sync: har table, dono taraf
+
+## Aap ke dono sawal
+**1. Users sync hote hain?** Haan — ab dono taraf. Test: offline par banaya
+"Offline Cashier" cloud ki list mein aa gaya; cloud par banaya "Cloud
+Manager" local login dropdown mein aa gaya. `users`, `user_roles`, `roles`,
+`role_modules`, `user_form_permissions`, `employee_profiles` — sab.
+
+**2. Sync sirf local se online tha?** Bilkul — yahi masla tha. Pehle
+**pull sirf 12 master tables** ka tha (menu, items, suppliers waghera).
+Cloud par bana koi order, shift, user ya stock entry local par **kabhi nahi
+aata tha**. Ab **push 56 = pull 56** — dono lists bilkul barabar, koi table
+push-only nahi.
+
+## Do-tarfa sync mehfooz banane ke liye 3 cheezein
+1. **Last-write-wins**: pull par agar local row zyada nayi hai to use
+   overwrite NahI kiya jata — abhi kaata gaya bill purani cloud copy se
+   mit nahi sakta.
+2. **Per-row error isolation**: ek row ka masla (misal duplicate bill
+   number) poori batch ko nahi rokta; baqi rows chalti rehti hain aur
+   error diagnostics mein record hota hai. Pehle poora transaction fail
+   ho jata tha.
+3. **Branch scope**: pull request ab `site_id` bhejti hai aur server usi
+   branch ka data deta hai — multi-branch business mein ek branch ko
+   doosri branch ka transactional data nahi milta (tenant lock pehle se
+   tha).
+
+## PROOF
+CLOUD -> LOCAL: cloud par item banaya -> offline sync -> **300 rows pulled**
+-> item local POS grid mein mojood ✓
+LOCAL -> CLOUD: offline par user banaya -> sync -> users 2, user_roles 1
+pushed -> cloud user list mein mojood ✓
+CLOUD -> LOCAL (user): cloud par manager banaya -> sync -> users 1 pulled
+-> local login dropdown mein mojood ✓
+pending after sync: 0 · cloud online: true
+
+PHP lint clean · 44 pages OK
