@@ -2125,3 +2125,50 @@ Galat group → saaf list. Bina confirm → poori command. Logs purge bina backu
 ke chali (953 sync rows) ✓ Transactions purge bina backup ke ruki ✓
 `--before` ne sirf purani rows hatayin, aaj wali mehfooz ✓
 Browser: koi JS error nahi ✓ PHP lint clean · 44 pages OK
+
+---
+
+# V60 — "Request failed" ne wajah chhupa di thi
+
+## Masla
+Aap ne `reset a txn --confirm "a"` chalaya aur sirf **"Request failed"**
+aaya. Yeh message client ka default tha jab server ka jawab **JSON nahi**
+hota (PHP fatal, 500, ya timeout). Asli wajah kahin nazar hi nahi aati thi.
+
+Mere sandbox par bilkul yehi command kaamyab chalti hai
+(`Reset complete — 1 rows deleted`), aur `factoryReset` TXN 0.00s, FULL
+0.03s leta hai. Yani masla aap ke server par hai — aur us tak pohanchne ka
+koi zariya nahi tha.
+
+## Fix 1 — console ka jawab hamesha JSON
+`sa-console` ab:
+- `set_time_limit(180)`
+- `register_shutdown_function` — koi PHP fatal aaye to bhi **JSON** jawab
+  jata hai, message aur file:line ke saath
+- har Throwable catch ho kar console mein saaf likha jata hai
+
+## Fix 2 — client asli jawab dikhata hai
+Console ka apna fetch: agar jawab JSON na ho to
+`Server returned HTTP 500 (not JSON)` + response ka saaf-kiya hua matn,
+ya khali ho to *"Empty response — the command may have timed out."*
+Network fail ho to: *"Could not reach the server: …"*
+
+## Fix 3 — naya command: selftest
+Ab koi command fail ho to **`selftest`** ya **`selftest <slug>`** chalayein.
+Yeh sab kuch check karta hai:
+
+    OK   PHP version                8.3.6
+    OK   Time limit                 0s
+    OK   Database                   aio_cloud
+    OK   Table admin_backups        10 columns
+    OK   Table sync_state           7 columns      (…9 tables)
+    OK   FK toggle permission       allowed
+    OK   Wipeable tables            73 found
+    OK   Business royal-grill       Royal Grill
+    OK   Recent backup (1h)         7 found — reset allowed
+    OK   Data footprint             9 tables, 34 rows
+
+Koi table MISSING ho to wahin likha aata hai *"run the migrations"* — yani
+Railway par migration na chali ho to foran pata chal jata hai.
+
+PHP lint clean · 44 pages OK · console JS clean

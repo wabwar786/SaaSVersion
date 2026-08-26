@@ -96,6 +96,7 @@ final class AdminConsole
             switch ($cmd) {
                 case 'help':      return self::cmdHelp();
                 case 'version':   return self::cmdVersion();
+                case 'selftest':  return self::cmdSelftest($args[0] ?? '');
                 case 'list':
                 case 'ls':        return self::cmdList();
                 case 'info':      return self::cmdInfo($args[0] ?? '');
@@ -154,6 +155,7 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'query SELECT ...                  read-only, max 100 rows'],
             ['t' => 'h',  'v' => 'CONSOLE'],
             ['t' => 'k',  'v' => 'clear · version · help'],
+            ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh chalayein'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
         ]);
     }
@@ -170,6 +172,54 @@ final class AdminConsole
             ['t' => 'i', 'v' => 'PHP       ' . PHP_VERSION],
             ['t' => 'i', 'v' => 'Database  ' . (string)DB::pdo()->query('SELECT DATABASE()')->fetchColumn()],
         ]);
+    }
+
+    /**
+     * Server par sab kuch mojood hai ya nahi — jab koi command "Request
+     * failed" de to sab se pehle yehi chalayein.
+     */
+    private static function cmdSelftest(string $slug): array
+    {
+        $p = DB::pdo();
+        $out = [['t' => 'h', 'v' => 'CONSOLE SELF-TEST']];
+        $add = function (string $label, bool $ok, string $detail = '') use (&$out) {
+            $out[] = ['t' => $ok ? 'g' : 'e', 'v' => \sprintf('%s %-30s %s', $ok ? 'OK  ' : 'FAIL', $label, $detail)];
+        };
+
+        $add('PHP version', \version_compare(PHP_VERSION, '8.0', '>='), PHP_VERSION);
+        $add('Time limit', true, (string)\ini_get('max_execution_time') . 's');
+        try { $db = (string)$p->query('SELECT DATABASE()')->fetchColumn(); $add('Database', $db !== '', $db); }
+        catch (\Throwable $e) { $add('Database', false, $e->getMessage()); }
+
+        foreach (['admin_backups', 'admin_imports', 'admin_audit', 'sync_state',
+                  'sync_nodes', 'sync_activity', 'tenants', 'sites', 'users'] as $t) {
+            $add('Table ' . $t, (bool)AdminData::cols($t),
+                AdminData::cols($t) ? (count(AdminData::cols($t)) . ' columns') : 'MISSING — run the migrations');
+        }
+
+        try { $p->exec('SET FOREIGN_KEY_CHECKS=0'); $p->exec('SET FOREIGN_KEY_CHECKS=1');
+              $add('FK toggle permission', true, 'allowed'); }
+        catch (\Throwable $e) { $add('FK toggle permission', false, \substr($e->getMessage(), 0, 70)); }
+
+        try { $n = count(AdminData::wipeableTables()); $add('Wipeable tables', $n > 0, $n . ' found'); }
+        catch (\Throwable $e) { $add('Wipeable tables', false, \substr($e->getMessage(), 0, 70)); }
+
+        if ($slug !== '') {
+            try {
+                $t = self::tenant($slug);
+                $add('Business ' . $slug, true, (string)$t['name']);
+                $q = $p->prepare("SELECT COUNT(*) FROM admin_backups WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 HOUR)");
+                $q->execute([$t['id']]);
+                $b = (int)$q->fetchColumn();
+                $add('Recent backup (1h)', $b > 0, $b > 0 ? ($b . ' found — reset allowed')
+                    : 'none — run:  backup ' . $t['slug'] . ' full');
+                $fp = AdminData::footprint((string)$t['id']);
+                $add('Data footprint', true, count($fp) . ' tables, ' . \array_sum($fp) . ' rows');
+            } catch (\Throwable $e) { $add('Business ' . $slug, false, $e->getMessage()); }
+        } else {
+            $out[] = ['t' => 'd', 'v' => 'Tip: selftest <slug> — us business ke liye bhi check karega'];
+        }
+        return self::out($out);
     }
 
     private static function tenant(string $slug): array

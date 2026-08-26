@@ -1021,7 +1021,28 @@ case 'sa-factory-reset':needSuper();$d=body();
 
 case 'sa-console':needSuper();$d=body();
  $cmd=(string)($d['cmd']??'');
- ok(\Aio\Services\AdminConsole::run($cmd,(string)(Platform::superUser()['email']??'super')));
+ /* Console ka jawab HAMESHA JSON hona chahiye. Pehle koi PHP fatal ya
+    timeout aata to browser ko HTML/khali response milta aur wo sirf
+    "Request failed" dikhata — asli wajah kahin nazar hi nahi aati thi. */
+ @set_time_limit(180);
+ register_shutdown_function(function(){
+   $e=error_get_last();
+   if($e&&in_array($e['type'],[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR],true)){
+     if(!headers_sent())header('Content-Type: application/json');
+     echo json_encode(['ok'=>true,'lines'=>[
+       ['t'=>'e','v'=>'Server error: '.substr((string)$e['message'],0,300)],
+       ['t'=>'d','v'=>basename((string)$e['file']).':'.$e['line']],
+     ]]);
+   }
+ });
+ try{
+   ok(\Aio\Services\AdminConsole::run($cmd,(string)(Platform::superUser()['email']??'super')));
+ }catch(Throwable $e){
+   ok(['lines'=>[
+     ['t'=>'e','v'=>'Error: '.substr($e->getMessage(),0,300)],
+     ['t'=>'d','v'=>basename($e->getFile()).':'.$e->getLine()],
+   ]]);
+ }
 
 case 'sa-business-delete':needSuper();$d=body();
  $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');

@@ -362,6 +362,7 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
           <button data-cmd="sync">sync</button>
           <button data-cmd="audit">audit</button>
           <button data-cmd="purge ">purge &lt;slug&gt; transactions</button>
+          <button data-cmd="selftest">selftest</button>
           <button data-cmd="tables">tables</button>
           <button data-cmd="query SELECT ">query SELECT …</button>
         </div>
@@ -794,6 +795,30 @@ function bizTag(b){
     out.appendChild(d);
     out.scrollTop=out.scrollHeight;
   }
+  /* Alag fetch: HTTP status aur raw jawab dikhata hai, taake "Request failed"
+     jaisa be-maani message dobara na aaye. */
+  async function consoleApi(cmd){
+    var res;
+    try{
+      res=await fetch('/api.php?action=sa-console',{method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json',
+                 'X-CSRF-Token':(window.APP_CSRF||CSRF||'')},
+        body:JSON.stringify({cmd:cmd})});
+    }catch(e){
+      return {ok:true,lines:[{t:'e',v:'Could not reach the server: '+(e&&e.message?e.message:'network error')}]};
+    }
+    var txt='';
+    try{txt=await res.text()}catch(e){}
+    try{ return JSON.parse(txt); }
+    catch(e){
+      var out=[{t:'e',v:'Server returned HTTP '+res.status+' (not JSON)'}];
+      var clean=(txt||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+      if(clean)out.push({t:'d',v:clean.slice(0,300)});
+      else out.push({t:'d',v:'Empty response — the command may have timed out on the server.'});
+      return {ok:true,lines:out};
+    }
+  }
+
   function banner(){
     line('Platform Console — Wabwar Software House','h');
     line('Type "help" to see what you can do. Commands run on the server.','d');
@@ -805,7 +830,7 @@ function bizTag(b){
     line('> '+cmd,'p');
     if(cmd==='clear'){out.innerHTML='';banner();return}
     busy=true; inp.disabled=true;
-    var r=await api('sa-console',{cmd:cmd});
+    var r=await consoleApi(cmd);
     busy=false; inp.disabled=false; inp.focus();
     if(!r||!r.ok){line(r&&r.message?r.message:'Command failed','e');return}
     (r.lines||[]).forEach(function(l){line(l.v,l.t)});
