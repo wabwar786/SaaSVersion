@@ -5,6 +5,10 @@
 # folder (runtime\mariadb), keeps its data in data\mysql, and only
 # listens on 127.0.0.1.
 #
+# Any MySQL/MariaDB already installed on the PC (XAMPP, WAMP, Workbench,
+# MySQL Server service) is IGNORED on purpose - this package runs its own
+# server on port 3307 with its own data folder.
+#
 # If vendor\mariadb.zip ships with the package, no internet is needed.
 # ============================================================
 param(
@@ -14,6 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
+. (Join-Path $PSScriptRoot 'download_helper.ps1')
 
 $RuntimeDir = Join-Path $Root 'runtime\mariadb'
 $DataDir    = Join-Path $Root 'data\mysql'
@@ -60,7 +65,6 @@ if (-not $mysqld) {
     Say 'Bundled database found (no internet required).' 'Green'
     $zip = $VendorZip
   } else {
-    Say 'Downloading portable database (one time, about 90 MB)...'
     $zip = Join-Path $env:TEMP 'db-portable.zip'
     $urls = @(
       'https://archive.mariadb.org/mariadb-10.11.8/winx64-packages/mariadb-10.11.8-winx64.zip',
@@ -68,18 +72,14 @@ if (-not $mysqld) {
     )
     $ok = $false
     foreach ($u in $urls) {
-      try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $u -OutFile $zip -UseBasicParsing -TimeoutSec 900
-        $ok = $true; break
-      } catch { Say 'Download source unavailable, trying next...' 'DarkYellow' }
+      try { Get-FileWithProgress -Url $u -Destination $zip -Label 'Database'; $ok = $true; break }
+      catch { Say 'Download source unavailable, trying next...' 'DarkYellow' }
     }
     if (-not $ok) {
       Say 'Database download failed. Check your internet connection,' 'Red'
       Say 'or place vendor\mariadb.zip next to this package.' 'Red'
       exit 1
     }
-    Say 'Download complete.' 'Green'
   }
 
   Dots 'Extracting'

@@ -69,27 +69,24 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
-# Locate php.exe: this package first, then whatever the resolver reported, then PATH.
+# Use ONLY the private PHP inside this package. Any PHP installed on the PC
+# (XAMPP / WAMP / Laragon / Workbench bundles) is deliberately ignored.
 $phpExe = $null
-$local = Get-ChildItem -Path $root -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
-         Select-Object -First 1
-if ($local) { $phpExe = $local.FullName }
-
-if (-not $phpExe) {
-  foreach ($l in ($phpOut | ForEach-Object { "$_" })) {
-    $t = $l.Trim()
-    if ($t.ToLower().EndsWith('php.exe') -and (Test-Path $t)) { $phpExe = $t; break }
-  }
+foreach ($l in ($phpOut | ForEach-Object { "$_" })) {
+  $t = "$l".Trim()
+  if ($t.ToLower().EndsWith('php.exe') -and (Test-Path $t)) { $phpExe = $t }
 }
 if (-not $phpExe) {
-  $cmd = Get-Command php.exe -ErrorAction SilentlyContinue
-  if ($cmd) { $phpExe = $cmd.Source }
+  $local = Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
+           Select-Object -First 1
+  if ($local) { $phpExe = $local.FullName }
 }
 if (-not $phpExe -or -not (Test-Path $phpExe)) {
-  Bad 'php.exe could not be located. Please download the package again.'
+  Bad 'The private PHP runtime could not be located.'
+  Bad 'Delete the runtime\php folder and run this setup again.'
   exit 1
 }
-Good "PHP ready."
+$phpIni = Join-Path (Split-Path $phpExe) 'php.ini'
 
 # ---------- 3) portable database ----------
 Step 3 'Preparing portable database...'
@@ -107,11 +104,11 @@ $scripts = @(
 $failed = 0
 foreach ($s in $scripts) {
   $code = "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); SealedApp::run('scripts/$s.php');"
-  $out = & "$phpExe" -r $code 2>&1
+  $out = & "$phpExe" -c "$phpIni" -r $code 2>&1
   if ($LASTEXITCODE -ne 0) {
     $failed++
     Bad "Step failed: $s"
-    $out | Select-Object -Last 3 | ForEach-Object { Bad "  $_" }
+    $out | Select-Object -First 3 | ForEach-Object { Bad "  $_" }
   }
 }
 if ($failed -gt 0) { Bad "$failed setup step(s) failed. Setup cannot continue."; exit 1 }

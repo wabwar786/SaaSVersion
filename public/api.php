@@ -245,10 +245,17 @@ foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c
 foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
-foreach(['resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1'] as $ps){
+foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1'] as $ps){
   if(is_file($root.'/tools/'.$ps))$zip->addFile($root.'/tools/'.$ps,'tools/'.$ps);
 }
-$zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('vendor');$zip->addEmptyDir('storage/logs');
+$zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('storage/logs');
+/* Agar server par vendor/php.zip ya vendor/mariadb.zip mojood hain to unhe
+   package mein bhej do - phir customer ke PC par kuch download NahI hoga. */
+$anyVendor=false;
+foreach(['php.zip','mariadb.zip'] as $vf){
+  if(is_file($root.'/vendor/'.$vf)){$zip->addFile($root.'/vendor/'.$vf,'vendor/'.$vf);$anyVendor=true;}
+}
+if(!$anyVendor)$zip->addEmptyDir('vendor');
 $zip->addFromString('OFFLINE_README.txt',
  "SMARTPOS - OFFLINE VERSION\n".str_repeat('=',52)."\n\n"
  ."Business : ".$t['dn']."\nBranch   : ".$siteName."\n"

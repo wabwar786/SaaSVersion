@@ -44,11 +44,12 @@ Say 'Starting local database...' 'Cyan'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1"
 if ($LASTEXITCODE -ne 0) { Say 'The local database did not start.' 'Red'; exit 1 }
 
-$php = Get-ChildItem -Path $root -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-$phpExe = if ($php) { $php.FullName } else { (Get-Command php.exe -ErrorAction SilentlyContinue).Source }
-if (-not $phpExe -or -not (Test-Path $phpExe)) {
-  Say 'PHP was not found. Please run INSTALL_OFFLINE.bat first.' 'Red'; exit 1
-}
+# Private PHP only - never the one installed on the PC.
+$php = Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
+       Select-Object -First 1
+if (-not $php) { Say 'PHP was not found. Please run INSTALL_OFFLINE.bat first.' 'Red'; exit 1 }
+$phpExe = $php.FullName
+$phpIni = Join-Path (Split-Path $phpExe) 'php.ini'
 
 $port = 0
 for ($p = 8080; $p -lt 8120; $p++) {
@@ -59,7 +60,7 @@ if ($port -eq 0) { Say 'No free port available (8080-8119).' 'Red'; exit 1 }
 
 Say "Starting the software on http://localhost:$port ..." 'Cyan'
 $srv = Start-Process -FilePath $phpExe `
-        -ArgumentList "-S","127.0.0.1:$port","-t","public","public/router.php" `
+        -ArgumentList "-c","$phpIni","-S","127.0.0.1:$port","-t","public","public/router.php" `
         -WorkingDirectory $root -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 2
 Start-Process "http://localhost:$port/login.html"

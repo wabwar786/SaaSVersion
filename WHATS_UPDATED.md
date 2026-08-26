@@ -866,3 +866,53 @@ app.info mein poori company info ✓ shipped files: sirf 2 .bat + 6 folders ✓
 PS scripts: braces balanced, non-English strings 0 ✓
 sealed package: 93 tables + 11 setup steps ✓ login 303 → POS v28 →
 pos-boot (4 cats, 8 tables) ✓ PHP lint clean ✓
+
+---
+
+# V32 — Offline setup: isolation, openssl fix, download progress
+
+## 1. "Step failed" (11 steps) ka asli sabab
+Installer PC par mojood **kisi bhi** php.exe ko utha leta tha. Aapke case
+mein purane folder ka PHP mila jismein **openssl extension load nahi** thi —
+sealed bundle openssl se decrypt hota hai, is liye har step crash hua
+(boot.php line 38).
+
+**Fix:**
+- `resolve_php.ps1` poora naya: PHP ab **sirf is package ke andar**
+  (`runtime\php`) rehta hai. System PHP (XAMPP/WAMP/Laragon/Workbench) ko
+  jaan-boojh kar **ignore** kiya jata hai.
+- php.ini har setup par khud likhi jati hai (openssl, mbstring, pdo_mysql,
+  mysqli, curl, fileinfo, zip, gd) aur php.exe ke saath bhi copy hoti hai.
+- Har PHP call ab `-c <php.ini>` ke saath chalti hai — koi doosri ini
+  interfere nahi kar sakti.
+- Setup se pehle **extension verification**: openssl/mbstring/pdo_mysql/zlib
+  na mile to saaf message, aage nahi barhta.
+- `boot.php` mein bhi guard: openssl na ho to
+  "PHP 'openssl' extension is required but not enabled."
+
+## 2. Mojooda MySQL / Workbench / XAMPP se koi taluq nahi
+Database pehle se apne port **3307** par apne `data\mysql` folder ke saath
+chalta tha; ab yeh dono scripts mein saaf likha bhi hai. System ka MySQL
+service, uska data, uska port (3306) — sab bilkul chhua nahi jata.
+
+## 3. Download progress (percentage)
+Naya `tools/download_helper.ps1` — stream-based downloader jo live
+percentage, MB/MB aur speed dikhata hai:
+`PHP runtime : 42%  (38.1 / 90.4 MB at 4.2 MB/s)`
+PHP aur database dono isi se download hote hain. `oooooo` waali bars
+khatam.
+
+## 4. Pehle se mojood file dobara download nahi hogi
+- `vendor\php.zip` aur `vendor\mariadb.zip` — agar package ke saath aayen to
+  **kuch download nahi hota**, seedha extract.
+- Server par `vendor/` mein yeh files rakh dein to har generated package
+  mein khud chali jayengi (`vendor/README.txt` mein links diye hain).
+- Package ke andar PHP/DB pehle se extracted ho to setup unhe use karta hai,
+  dobara download nahi karta.
+
+## Tested
+Package: `smartpos_by_wabwar-royal-grill.zip` ✓ tools mein 5 scripts ✓
+shipped scripts mein non-English strings 0 ✓
+sealed install: 93 tables + 11 steps sab pass ✓
+login 303 → POS v28 → pos-boot (4 cats, 8 tables) ✓
+openssl-missing simulation → saaf English message ✓ PHP lint clean ✓

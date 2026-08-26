@@ -96,7 +96,12 @@ final class SealedApp
         $keyPath  = $root.'/runtime/app.key';
         if (!is_file($blobPath) || !is_file($keyPath)) {
             http_response_code(500);
-            exit('Installation kharab hai: package dobara download karein.');
+            exit('Installation is damaged. Please download the package again.');
+        }
+        if (!function_exists('openssl_decrypt')) {
+            http_response_code(500);
+            exit("PHP 'openssl' extension is required but not enabled.\n"
+               . "Delete the runtime\\php folder and run INSTALL_OFFLINE.bat again.");
         }
         $blob = file_get_contents($blobPath);
         $k1   = file_get_contents($keyPath);
@@ -104,14 +109,14 @@ final class SealedApp
 
         if (!hash_equals(hex2bin(SEALED_INTEGRITY), hash_hmac('sha256', $blob, $key, true))) {
             http_response_code(500);
-            exit('Files tabdeel ki gayi hain. Package dobara download karein.');
+            exit('Application files have been modified. Please download the package again.');
         }
         if (substr($blob, 0, 5) !== 'AIOS1') { exit('Bad package.'); }
         $nonce = substr($blob, 5, 12);
         $tag   = substr($blob, 17, 16);
         $enc   = substr($blob, 33);
         $plain = openssl_decrypt($enc, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
-        if ($plain === false) { exit('Package decrypt nahi ho saka.'); }
+        if ($plain === false) { exit('The package could not be opened.'); }
 
         self::$files = unserialize(gzinflate($plain)) ?: [];
         self::$ready = true;
