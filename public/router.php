@@ -45,7 +45,9 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';</script>'
      .'<script src="/db_api.js?b=v14"></script>';
 // DB-first hydration only on authenticated app pages (source of truth = DB).
-if(!in_array($name,$publicPages,true) && Auth::user()){
+// db_boot POS par NahI chahiye: POS khud pos-boot se hydrate hota hai, aur
+// db_boot ki 2 synchronous XHRs page load ko slow karti thin.
+if(!in_array($name,$publicPages,true) && Auth::user() && $name!=='restaurant_pos.html'){
   $head.='<script src="/db_boot.js?b=v16"></script>';
 }
 // SIRF pehla </head> replace hota hai. str_replace HAR occurrence badal deta

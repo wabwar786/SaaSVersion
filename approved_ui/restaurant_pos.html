@@ -68,6 +68,10 @@ button{cursor:pointer;border:0;background:none}
 .imgb:hover{background:#fff;transform:scale(1.1)}
 .imgprev{height:170px;border:1px solid var(--l);border-radius:12px;background:var(--bg);display:grid;place-items:center;overflow:hidden}
 .imgprev img{width:100%;height:100%;object-fit:cover}
+.imgres{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:190px;overflow:auto}
+.imgcell{border:2px solid var(--l);border-radius:9px;overflow:hidden;height:66px;padding:0;background:var(--bg)}
+.imgcell img{width:100%;height:100%;object-fit:cover;display:block}
+.imgcell.on{border-color:var(--ok);box-shadow:0 0 0 2px rgba(15,122,61,.2)}
 .pc{font-size:9px;color:var(--ink3);font-weight:600;letter-spacing:.2px;text-transform:uppercase;opacity:.85}
 .pp{font-size:13px;font-weight:800;color:var(--ok)}
 .pp small{font-size:9px;font-weight:700;color:var(--ink3)}
@@ -102,25 +106,24 @@ button{cursor:pointer;border:0;background:none}
 .strip .ctx span b{color:#0f7a3d!important}
 .strip .ctx .chg{cursor:pointer;color:#15221b!important}
 .strip .ctx .chg:hover{border-color:#e23744;color:#e23744!important}
-.thead{display:grid;grid-template-columns:60px 1fr 68px 74px;gap:6px;padding:8px 12px;background:#fbfdfc;border-bottom:1px solid var(--l);font-size:9px;font-weight:800;color:var(--ink3);letter-spacing:.4px}
-.thead span:nth-child(3),.thead span:nth-child(4){text-align:right}
+.thead{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 12px;background:#fbfdfc;border-bottom:1px solid var(--l);font-size:9px;font-weight:800;color:var(--ink3);letter-spacing:.4px}
+.thead span:nth-child(2){text-align:right}
 .thead{color:#8b9a92}
 .items{flex:1;overflow:auto}
-.ci{display:grid;grid-template-columns:60px 1fr 68px 74px;gap:6px;padding:12px;border-bottom:1px solid var(--l);align-items:center;cursor:pointer;transition:.12s}
+.ci{display:grid;grid-template-columns:1fr auto;gap:8px;padding:11px 12px;border-bottom:1px solid var(--l);align-items:center;cursor:pointer;transition:.12s}
 .ci:hover{background:#f7fbf9}
 .ciq{display:flex;align-items:center;border:1px solid var(--l);border-radius:6px;overflow:hidden}
 .ciq button{width:18px;height:24px;font-weight:800;color:var(--ink2);font-size:12px}
 .ciq button:hover{background:var(--bg);color:var(--brand)}
 .ciq span{flex:1;text-align:center;font-weight:800;font-size:11px}
 .cid{min-width:0}
-.cid b{font-size:12.5px;font-weight:700;display:block;line-height:1.35;color:#15221b;word-break:break-word}
-.cid small{font-size:9.5px;color:var(--ink2);display:block;margin-top:1px}
-.cir{text-align:right;font-size:11px;font-weight:600;color:#7b8a82;white-space:nowrap;align-self:center}
-.cit{text-align:right;font-size:14px;font-weight:800;color:#15221b;white-space:nowrap;align-self:center;display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.cid b{font-size:13px;font-weight:800;display:block;line-height:1.3;color:#15221b!important;word-break:break-word}
+.cid small{font-size:11px;color:#6d7c74!important;display:block;margin-top:3px;white-space:pre}
+.cit{text-align:right;font-size:14.5px;font-weight:800;color:#15221b!important;white-space:nowrap;display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .cit{font-weight:800}
 .cix{color:var(--brand);font-size:16px;font-weight:800;margin-left:5px;line-height:1}
 .cix:hover{color:#a5121d}
-.sent{color:var(--ok);font-weight:800}
+.sent{color:#0f7a3d!important;font-weight:800}
 .cempty{padding:46px 18px;text-align:center;color:var(--ink3);font-size:11.5px}
 .qrow{display:flex;gap:5px;padding:7px 12px;border-top:1px solid var(--l);flex-wrap:wrap}
 .qrow button{flex:1;min-width:66px;padding:6px;border:1px solid var(--l);border-radius:7px;font-weight:700;font-size:10.5px}
@@ -258,7 +261,7 @@ textarea.inp{min-height:62px;resize:vertical}
   </main>
 
   <aside class="right">
-    <div class="thead"><span>QTY</span><span>DESCRIPTION</span><span>RATE</span><span>TOTAL</span></div>
+    <div class="thead"><span>DESCRIPTION</span><span>AMOUNT</span></div>
     <div class="items" id="cart"></div>
     <div class="tot">
       <div class="tr"><span class="lb">Subtotal</span><span id="tSub">PKR 0</span></div>
@@ -278,7 +281,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v24';
+var VERSION='POS v25';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -309,7 +312,7 @@ function qfmt(q){return (Number(q)%1)?Number(q).toFixed(3).replace(/0+$/,'').rep
 var BOOT={products:[],categories:[],customers:[],tables:[],printers:{}};
 var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
-var HOLD='held_bills', holds=[], lastBill=null;
+var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
 var curTable='', curCustId='walkin', curCustName='Walk-in Customer', curCustPhone='';
 var SET={tax_cash:16,tax_card:8,service_charge:0};
 var payMethod='Cash';
@@ -553,6 +556,9 @@ function imageModal(id){
       +'<button id="ipAuto">&#128269; Auto fetch</button>'
       +'<button id="ipShuffle">&#127922; Another photo</button>'
       +'<button id="ipGoogle">&#127760; Google Images</button></div>'
+    +'<label class="f">Search photos</label><div class="selrow"><input class="inp" id="ipQ" value="'+esc(p.name)+'" placeholder="Item name">'
+    +'<button class="tb" id="ipSearch" style="flex:none">Search</button></div>'
+    +'<div id="ipRes" style="margin:9px 0"></div>'
     +'<label class="f">Image URL</label><input class="inp" id="ipUrl" value="'+esc(url.indexOf('data:')===0?'':url)+'" placeholder="https://...">'
     +'<label class="f" style="margin-top:10px">Ya apni file upload karein (max ~300KB)</label>'
     +'<input class="inp" id="ipFile" type="file" accept="image/*">'
@@ -571,6 +577,26 @@ function imageModal(id){
     window.open('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(p.name+' food'),'_blank');
     toast('Google Images khul gaya - picture par right-click > Copy image address, phir URL box mein paste karein');
   };
+  /* SEARCH: server se image results, grid mein se pick karein */
+  function runSearch(){
+    var q=(ov.querySelector('#ipQ').value||p.name||'').trim();
+    var box=ov.querySelector('#ipRes');
+    box.innerHTML='<div class="cempty">Searching...</div>';
+    var r=api('menu-image-search&q='+encodeURIComponent(q));
+    if(!r.ok||!r.images||!r.images.length){box.innerHTML='<div class="cempty">Koi result nahi mila</div>';return}
+    box.innerHTML='<div class="imgres">'+r.images.map(function(im,i){
+      return '<button class="imgcell" data-pick="'+i+'" title="'+esc(im.title||'')+'"><img src="'+esc(im.thumb)+'" loading="lazy" onerror="this.parentNode.style.display=\'none\'"></button>';
+    }).join('')+'</div>';
+    window.__ipRes=r.images;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'),function(b){b.onclick=function(){
+      var im=window.__ipRes[b.dataset.pick];setUrl(im.url||im.thumb);
+      Array.prototype.forEach.call(box.querySelectorAll('.imgcell'),function(c){c.classList.remove('on')});
+      b.classList.add('on');
+    }});
+  }
+  ov.querySelector('#ipSearch').onclick=runSearch;
+  ov.querySelector('#ipQ').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();runSearch()}};
+  runSearch();
   ov.querySelector('#ipUrl').oninput=function(){url=this.value.trim();var im=ov.querySelector('#ipImg');im.style.visibility='visible';im.src=url};
   ov.querySelector('#ipFile').onchange=function(){
     var f=this.files&&this.files[0]; if(!f)return;
@@ -711,20 +737,17 @@ function renderCart(){
   var c=$('#cart');
   if(!cart.length)c.innerHTML='<div class="cempty">Cart khali hai<br>item par click karke add karein</div>';
   else c.innerHTML=cart.map(function(l,i){
-    return '<div class="ci" data-i="'+i+'" title="Row par click = calculator">'
-      +'<div class="ciq"><button data-cd="'+i+'">-</button><span>'+qfmt(l.qty)+'</span><button data-cu="'+i+'">+</button></div>'
-      +'<div class="cid"><b>'+esc(l.name)+'</b><small>'
-      +(l.sentQty>0?'<span class="sent">Sent: '+qfmt(l.sentQty)+'</span> ':'')
-      +(l.note?esc(l.note):(l.sentQty>0?'':'&nbsp;'))+'</small></div>'
-      +'<div class="cir">'+money(l.price)+'</div>'
+    return '<div class="ci" data-i="'+i+'" title="Click = quantity calculator">'
+      +'<div class="cid"><b>'+esc(l.name)+'</b>'
+      +'<small>'+qfmt(l.qty)+' x '+Math.round(l.price).toLocaleString()
+      +(l.sentQty>0?'<span class="sent">   sent:'+qfmt(l.sentQty)+'</span>':'')
+      +(l.note?('   '+esc(l.note)):'')+'</small></div>'
       +'<div class="cit"><span>'+money(l.qty*l.price)+'</span><button class="cix" data-cx="'+i+'">&times;</button></div></div>';
   }).join('');
-  Array.prototype.forEach.call(c.querySelectorAll('[data-cu]'),function(b){b.onclick=function(e){e.stopPropagation();cart[b.dataset.cu].qty++;renderCart()}});
-  Array.prototype.forEach.call(c.querySelectorAll('[data-cd]'),function(b){b.onclick=function(e){e.stopPropagation();var i=b.dataset.cd,l=cart[i];l.qty--;if(l.qty<=0)cart.splice(i,1);renderCart()}});
   Array.prototype.forEach.call(c.querySelectorAll('[data-cx]'),function(b){b.onclick=function(e){e.stopPropagation();removeLine(b.dataset.cx)}});
-  /* poori row par kahin bhi click -> calculator */
+  /* qty sirf calculator se badalti hai - poori row par click */
   Array.prototype.forEach.call(c.querySelectorAll('.ci'),function(row){row.onclick=function(e){
-    if(e.target.closest('[data-cu],[data-cd],[data-cx]'))return;
+    if(e.target.closest('[data-cx]'))return;
     var i=row.dataset.i;
     calculator(cart[i].name,cart[i].qty,function(v){cart[i].qty=v;renderCart()});
   }});
@@ -848,6 +871,7 @@ $('#chargeBtn').onclick=function(){
     var r=api('pos-finalize',payload({payment_code:pay,received_amount:rcv}));
     if(!r.ok){if(btn){btn.disabled=false;btn.textContent='Complete Payment'}toast(r.message||'Bill save nahi hua');return}
     ov.remove();
+    if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
     var info={billNo:r.bill_no||billNo,mode:mode,table:curTable,t:t,pay:pay,rcv:rcv,at:new Date().toLocaleString()};
     lastBill=info;
     /* AUTO PRINT + background par naya bill */
@@ -932,15 +956,27 @@ function printNode(node){
 }
 function waSend(kind,lines,info){
   var cust={phone:curCustPhone};
+  var billForPdf=(info&&info.billNo)||billNo;
   var ov=modal('<div class="dh"><h3>Send on WhatsApp</h3><p>Bill summary customer ko bhejein.</p></div>'
     +'<div class="db"><label class="f">Phone (with country code)</label>'
-    +'<input class="inp" id="waNo" value="'+esc((cust.phone||'').replace(/[^0-9]/g,'')||'92')+'"></div>'
-    +'<div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="waGo">Open WhatsApp</button></div>');
+    +'<input class="inp" id="waNo" value="'+esc((cust.phone||'').replace(/[^0-9]/g,'')||'92')+'">'
+    +'<div class="box"><b style="font-size:11.5px">Bill PDF</b>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Proper PDF invoice server par generate hoti hai. Apni WhatsApp API isi link ko attachment ke tor par bhej sakti hai.</div>'
+    +'<div class="selrow"><input class="inp" id="waPdf" readonly value="'+esc(location.origin+'/api.php?action=bill-pdf&bill='+billForPdf)+'">'
+    +'<button class="tb" id="waCopy" style="flex:none">Copy</button>'
+    +'<button class="tb" id="waOpen" style="flex:none">Open PDF</button></div></div></div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="waGo">Open WhatsApp</button></div>');
+  ov.querySelector('#waCopy').onclick=function(){
+    var el=ov.querySelector('#waPdf');el.select();
+    if(navigator.clipboard)navigator.clipboard.writeText(el.value);
+    toast('PDF link copy ho gaya');
+  };
+  ov.querySelector('#waOpen').onclick=function(){window.open(ov.querySelector('#waPdf').value,'_blank')};
   ov.querySelector('#waGo').onclick=function(){
     var t=(info&&info.t)||totals();
-    var txt=((BOOT.site&&BOOT.site.name)||'Urban Spoon')+'\n'+(kind==='KOT'?'Kitchen Ticket':'Invoice')+' #'+((info&&info.billNo)||billNo)+'\n'
+    var txt=((BOOT.site&&BOOT.site.name)||'Urban Spoon')+'\n'+(kind==='KOT'?'Kitchen Ticket':'Invoice')+' #'+billForPdf+'\n'
       +lines.map(function(l){return qfmt(l.qty)+' x '+l.name+' = '+money(l.qty*l.price)}).join('\n')
-      +'\nTotal: '+money(t.grand)+'\nShukriya!';
+      +'\nTotal: '+money(t.grand)+'\nPDF: '+ov.querySelector('#waPdf').value+'\nShukriya!';
     var no=(ov.querySelector('#waNo').value||'').replace(/[^0-9]/g,'');
     window.open('https://wa.me/'+no+'?text='+encodeURIComponent(txt),'_blank');
     ov.remove();
@@ -952,7 +988,7 @@ function newBill(next,skipFlow){
   cart=[];disc={type:'flat',value:0};preQty={};
   if(!next){var n=api('pos-next-bill');next=n.ok?n.next:1}
   billNo=String(next||1).padStart(4,'0');
-  curTable='';curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';
+  curTable='';curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';curHoldId='';
   mode='Dine In';orderTax=taxPct('Cash');payMethod='Cash';billStarted=false;
   renderCart();
   if(!skipFlow)newBillFlow();
@@ -973,9 +1009,11 @@ function loadHolds(){
 function holdCurrent(silent){
   if(!cart.length){if(!silent)toast('Cart khali hai');return false}
   var t=totals();
-  var r=api('records-save',{module:HOLD,data:{billNo:billNo,mode:mode,table:curTable,
-    total:t.grand,lines:cart.length,at:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-    cart:JSON.stringify(cart),cust:curCustId,custName:curCustName,custPhone:curCustPhone}});
+  var d={billNo:billNo,mode:mode,table:curTable,total:t.grand,lines:cart.length,
+    at:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
+    cart:JSON.stringify(cart),cust:curCustId,custName:curCustName,custPhone:curCustPhone};
+  if(curHoldId)d.id=curHoldId;      /* wahi record update ho, naya na bane */
+  var r=api('records-save',{module:HOLD,data:d});
   if(!r.ok){toast(r.message||'Hold failed');return false}
   loadHolds();newBill();
   if(!silent)toast('Bill hold kar diya');
@@ -993,12 +1031,12 @@ $('#holdsBtn').onclick=function(){
   var hb=ov.querySelector('#hNow'); if(hb)hb.onclick=function(){if(holdCurrent())ov.remove()};
   Array.prototype.forEach.call(ov.querySelectorAll('[data-res]'),function(b){b.onclick=function(){
     var h=holds[this.dataset.res];
+    curHoldId=h.id;                 /* hold record zinda rehta hai jab tak bill clear na ho */
     try{cart=JSON.parse(h.cart||'[]')}catch(e){cart=[]}
     billNo=h.billNo;mode=h.mode||'Dine In';curTable=h.table||'';
     curCustId=h.cust||'walkin';curCustName=h.custName||'Walk-in Customer';curCustPhone=h.custPhone||'';
     billStarted=true;
-    api('records-delete',{module:HOLD,id:h.id});
-    ov.remove();loadHolds();renderCart();toast('Bill #'+billNo+' resumed');
+    ov.remove();loadHolds();renderCart();toast('Bill #'+billNo+' resumed (hold list mein maujood rahega)');
   }});
 };
 $('#dupBtn').onclick=function(){
@@ -1237,12 +1275,22 @@ function showDiagnostics(){
       +' &middot; '+esc(x.cat)+' &middot; active:'+x.is_active+' pos:'+x.is_pos
       +(x.site_id!==d.site_id?' <span style="color:var(--brand)">(doosri branch!)</span>':'')+'</div>'}).join('')
     ||'<div class="cempty">Koi menu item nahi</div>';
+  /* RAW sample: agar name khali aaye to yahan foran nazar aa jayega */
+  var rb=api('pos-boot'), rawHtml='';
+  if(rb.ok&&rb.boot&&rb.boot.products&&rb.boot.products.length){
+    var sp=rb.boot.products[0];
+    rawHtml='<div class="box"><b style="font-size:11px">pos-boot ka pehla product (raw)</b>'
+      +'<pre style="font-size:10.5px;white-space:pre-wrap;margin-top:6px">'+esc(JSON.stringify({id:sp.id,name:sp.name,cat:sp.cat,price:sp.price,img:String(sp.img).slice(0,60)},null,1))+'</pre>'
+      +'<div style="font-size:11px;margin-top:5px">name field: <b style="color:'+(sp.name?'var(--ok)':'var(--brand)')+'">'
+      +(sp.name?('OK - "'+esc(sp.name)+'"'):'KHALI! Menu page se item ka naam dubara save karein')+'</b></div></div>';
+  }
   var tip='';
   if(d.menu_items_pos_visible===0&&d.stranded_ui_records_menu>0)tip='Items purane format (ui_records) mein hain - service redeploy karein.';
   else if(d.menu_items_pos_visible===0&&d.menu_items_other_sites>0)tip='Items doosri branch mein bane hain.';
   else if(d.menu_items_pos_visible===0)tip='Is branch mein koi POS-visible item nahi - "+ New Item" se banayein.';
   var ov=modal('<div class="dh"><h3>POS Diagnostics</h3><p>Seedhe database se</p></div><div class="db">'+h
     +(tip?'<div class="box" style="border-color:#f0c98a;background:var(--warnbg)"><b>Kya karein:</b> '+esc(tip)+'</div>':'')
+    +rawHtml
     +'<div class="box"><b style="font-size:11px">Recent menu items</b><div style="margin-top:6px">'+items+'</div></div></div>'
     +'<div class="df"><button class="sec" data-x>Close</button><button class="go" id="cpy">Copy Report</button></div>',true);
   ov.querySelector('#cpy').onclick=function(){

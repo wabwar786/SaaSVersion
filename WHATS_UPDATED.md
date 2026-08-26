@@ -536,3 +536,41 @@ Table 21 ✓ rate 11px grey / total 14px bold ✓ svc quick 3/5/8/10% +
 50/100/200/300 → PKR 100 ✓ tax edit → method picker → 5% Card ✓ KOT 1st
 "NEW ORDER", 2nd "RUNNING ORDER" ✓ auto image url loremflickr ✓ Google
 Images button ✓ page errors 0 ✓
+
+---
+
+# V25 — POS: new bill-row design, image search, PDF, holds, speed
+
+1. **Naya cart row design** (aapke sketch ke mutabiq): pehli line item ka
+   naam (bold), doosri line `1 x 560   sent:2`, right par bara **AMOUNT**,
+   aur laal ×. Header ab DESCRIPTION | AMOUNT. **Qty ke +/- buttons hata
+   diye** — quantity sirf row par click karke **calculator** se badalti hai.
+2. **Image search ab server se**: naya `menu-image-search` endpoint
+   (Openverse API, koi key nahi; na chale to keyword-photo fallback).
+   Picture modal mein search box + **result grid** — thumbnail par click
+   karke pick karein. Saath Google Images button, URL paste aur upload
+   pehle ki tarah maujood.
+3. **WhatsApp par asli PDF**: naya `bill-pdf` endpoint jo server par
+   proper PDF invoice banata hai (`src/Services/Pdf.php` — dependency-free
+   PDF writer, koi composer package nahi). WhatsApp modal mein PDF ka
+   direct link + Copy + Open buttons — aap apni WhatsApp API se yehi link
+   attachment ke tor par bhej sakte hain.
+4. **Item-name masla**: Diagnostics modal mein ab **raw pos-boot sample**
+   dikhta hai — pehle product ka `name` field, aur saaf verdict
+   ("name field: OK" ya "KHALI!"). Is se ek nazar mein pata chal jayega ke
+   masla data mein hai ya display mein. Card par naam par explicit color +
+   inline style pehle se hai.
+5. **Hold bills fix**: resume karne par hold record **delete NahI hota** —
+   bill hold list mein maujood rehta hai jab tak payment complete na ho.
+   Payment hote hi hold khud clear ho jata hai. Dobara hold karne par wahi
+   record update hota hai (duplicate nahi bante).
+6. **Speed**: `posBoot` har product par 3 alag queries chala raha tha (20
+   items = 60 queries). Ab teeno windows **ek grouped query** se aati hain
+   (~21ms). POS page par `db_boot.js` ki 2 extra synchronous XHRs bhi band
+   (POS khud hydrate hota hai). **Load-to-first-item ab ~316ms.**
+
+## Browser-tested
+row "Playwright Tikka | 1 x 999 | PKR 999 | x" ✓ +/- removed ✓ row-click
+calculator → 3 x 999 ✓ image grid 8 results + pick ✓ PDF link generate +
+asli PDF (header %PDF-1.4, lines verified) ✓ hold resume → count wahi (4)
+✓ payment → (3) ✓ diagnostics raw sample "name field: OK" ✓ 0 page errors ✓
