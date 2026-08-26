@@ -79,7 +79,11 @@ foreach ($rows as $r) {
         }
 
         if ($collide) {
-            $pdo->prepare("DELETE FROM platform_modules WHERE id=?")->execute([$old]);
+            /* V62.3 — YAHAN PEHLE `DELETE FROM platform_modules` tha. Agar
+               role_modules / user_module_access par FK ON DELETE CASCADE ho
+               to wo ek DELETE SAARI permission rows uda deti. Migration ko
+               kabhi destructive nahi hona chahiye — ab sirf inactive. */
+            $pdo->prepare("UPDATE platform_modules SET is_active=0 WHERE id=?")->execute([$old]);
             $merged++;
         } else {
             $pdo->prepare("UPDATE platform_modules SET id=? WHERE id=?")->execute([$new, $old]);
@@ -96,14 +100,9 @@ foreach ($rows as $r) {
 }
 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
-/* Duplicate rows saaf: agar kisi key ke do entries reh gaye hon */
-try {
-    $pdo->exec("DELETE pm FROM platform_modules pm
-                JOIN platform_modules keep
-                  ON keep.module_key = pm.module_key AND keep.id < pm.id
-                 WHERE pm.id <> keep.id AND pm.id NOT IN
-                       (SELECT module_id FROM (SELECT DISTINCT module_id FROM role_modules) x)");
-} catch (\Throwable $e) {}
+/* V62.3 — yahan pehle ek blanket `DELETE pm FROM platform_modules ...`
+   tha. Hata diya gaya: duplicate rows ab sirf is_active=0 hoti hain.
+   Ek migration ka kaam data ko theek karna hai, mitana nahi. */
 
 /* Ab in tables ki rows dobara sync honi chahiyen — watermark reset */
 try {

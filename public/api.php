@@ -1115,7 +1115,14 @@ case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg
  $st->execute([$id,tenant_id(),$mod]);
  if($st->rowCount()<1)fail('Record nahi mila (ya pehle hi delete ho chuka hai). Screen refresh karein.');
  ok(['result'=>'DELETED','message'=>'Record delete ho gaya.']);
-case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??'')))fail('Invalid platform credentials',401);$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
+case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??''))){
+ /* V62.3 — "Invalid platform credentials" bilkul be-maani tha: user ko
+    pata hi nahi chalta tha ke aage kya karna hai. Hifazat ke liye hum
+    ab bhi nahi batate ke email galat thi ya password, magar rasta zaroor
+    batate hain. */
+ $n=0;try{$n=(int)DB::pdo()->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn();}catch(Throwable $e){}
+ fail('Email ya password ghalat hai.'.($n?(' Is server par '.$n.' platform account maujood hai. Password bhool gaye hain to server par chalayein:  php scripts/reset_super_admin.php'):' Is server par koi active platform account hi nahi - chalayein:  php scripts/reset_super_admin.php --email="<email>" --password="<pass>" --create'),401);
+}$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
 case 'sa-logout':Platform::superLogout();ok();
 case 'sa-me':$u=Platform::superUser();ok(['user'=>$u?['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]:null]);
 case 'sa-plans':needSuper();ok(['plans'=>DB::pdo()->query("SELECT id,name,price,billing_cycle FROM subscription_plans WHERE is_active=1 ORDER BY price")->fetchAll()]);

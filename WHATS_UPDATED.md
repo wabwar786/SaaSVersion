@@ -2595,3 +2595,80 @@ neeche saaf hidayat.
 3. Node par dashboard -> **Check** -> "Module IDs match" sabz hona chahiye.
 4. Node par **Sync now**.
 5. Cloud console par tasdeeq: `permissions royal-grill`
+
+---
+
+# V62.3 — Super admin login, aur ek khatarnak migration
+
+## Kya waqai hua tha
+
+`/session-diagnostics.php` ne tasveer saaf kar di:
+
+    verdict            : OK
+    cookie_matches_id  : true
+    restaurant_user    : counter1@gmail.com     <- restaurant login CHAL RAHA hai
+    super_admin        : null                   <- sirf platform login fail
+
+Yani session, CSRF aur restaurant login sab theek the. Sirf **super
+admin ka password match nahi kar raha tha** — `superLogin()` ka
+`password_verify()` false de raha tha.
+
+`Platform::ensureSuperUser()` account SIRF tab banata hai jab
+`platform_users` mein ek bhi SUPER row **na ho**. Row maujood ho aur
+password bhool jaye (ya `sa-password-change` se badal chuka ho) to
+wapas aane ka **koi rasta hi nahi tha**.
+
+## Fix 1 — `scripts/reset_super_admin.php`
+
+    php scripts/reset_super_admin.php
+        -> maujooda platform accounts ki list
+
+    php scripts/reset_super_admin.php --email="you@x.com" --password="NayaPass@123"
+        -> password reset + status ACTIVE + role SUPER
+
+    ... --create
+        -> us email ka account na ho to naya bana deta hai
+
+`status='ACTIVE'` bhi set karta hai: `superLogin()` sirf ACTIVE rows
+dekhta hai, is liye SUSPENDED account bilkul "ghalat password" jaisa
+lagta tha.
+
+## Fix 2 — "Invalid platform credentials" ab rasta batata hai
+
+Wo message be-maani tha. Ab (hifazat ke liye yeh phir bhi nahi batata
+ke email ghalat thi ya password):
+
+    Email ya password ghalat hai. Is server par 1 platform account
+    maujood hai. Password bhool gaye hain to server par chalayein:
+    php scripts/reset_super_admin.php
+
+Aur agar koi ACTIVE platform account hai hi nahi, to `--create` wali
+poori command bana kar deta hai.
+
+## Fix 3 — V62.2 ki migration KHATARNAK thi (mera bug)
+
+`scripts/migrate_module_ids.php` merge path par yeh chalati thi:
+
+    DELETE FROM platform_modules WHERE id=?
+
+aur aakhir mein ek blanket `DELETE pm FROM platform_modules ...`.
+
+Agar `role_modules.module_id` ya `user_module_access.module_id` par
+`ON DELETE CASCADE` FK ho, to wo ek DELETE **saari permission rows uda
+deti**. Har non-admin user ke modules khatam, aur `router.php` har page
+par 403 "Access denied" — jo bilkul "login nahi ho raha" jaisa lagta hai.
+
+**Ab yeh migration kabhi DELETE nahi karti.** Duplicate rows sirf
+`is_active=0` hoti hain. Ek migration ka kaam data theek karna hai,
+mitana nahi.
+
+## Testing — is dafa ASAL mein chala
+
+Is round mein sandbox par PHP install ho gaya, is liye:
+
+    php -l  (har PHP file)          -> 0 errors
+    php tools/check_pages.php       -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+Abhi bhi NahI chala (MySQL sandbox mein socket auth par atak gaya):
+`tools/sync_suite.py`, `tools/reset_verify.py`.
