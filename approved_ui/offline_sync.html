@@ -102,7 +102,10 @@
     setTimeout(function(){
       var r=window.DBApi.req('sync-run');
       b.disabled=false;b.textContent='Sync now';
-      if(r&&r.ok){toast(r.skipped?'Local-only mode (no cloud URL set)':'Sync complete');}
+      if(r&&r.ok){
+        var pushed=(r.push&&r.push.rows)||r.pushed||0, pulled=(r.pull&&r.pull.rows)||r.pulled||0;
+        toast(r.skipped?'Nothing to sync right now':('Sync complete - pushed '+pushed+', pulled '+pulled));
+      } else { toast((r&&r.message)?r.message:'Sync failed'); }
       else{toast('Sync failed: '+((r&&r.message)||'unknown'));}
       refresh();
     },50);

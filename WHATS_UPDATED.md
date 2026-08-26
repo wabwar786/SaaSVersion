@@ -1090,3 +1090,48 @@ Test: offline-banaya user `sync-push` se cloud par pohancha ✓
 scripts** parse OK · page-guard OK · saari PowerShell scripts balanced ·
 14 cloud endpoints OK · offline package: 13 setup steps, snapshot import,
 demo admin skip, login 303, dropdown mein 3 users.
+
+---
+
+# V37 — SYNC FIX: offline ka data ab live par aata hai
+
+## Do asli bugs (dono mile aur fix hue)
+
+**Bug 1 — config key mismatch.** Offline package `sync.endpoint` likhta tha,
+magar sync engine `sync.cloud_api_url` parhta hai. Is liye
+`Sync::enabled()` hamesha FALSE rehta tha aur har sync
+**"Local-only mode (no cloud URL set)"** par ruk jati thi — sync kabhi
+chali hi nahi.
+Fix: package ab `cloud_api_url` likhta hai, aur engine dono keys accept
+karta hai (`endpoint` ya `app.cloud_url` se bhi resolve kar leta hai) —
+is liye purane installs bhi theek ho jate hain.
+
+**Bug 2 — double /api.php.** URL `.../api.php` + `/api.php?action=...`
+ban jata tha → cloud **HTTP 302** deta tha. Ab endpoint builder dono
+suraton (base URL ya poora api.php) ko sahi handle karta hai.
+
+## Behtar error messages
+- `Sync::statusReason()` — saaf wajah: sync off / cloud URL missing /
+  token missing.
+- `sync-status` ab role, cloud_url aur reason bhi deta hai.
+- Cloud par "Sync now" dabane par ab saaf message: "Yeh cloud server hai —
+  sync offline node se chalti hai."
+- HTTP error mein ab server ka jawab bhi shamil hota hai (sirf code nahi).
+- Offline Sync page ab pushed/pulled rows dikhata hai, "Local-only" nahi.
+
+## Live par bhi user dropdown
+Cloud login par bhi ab **dropdown** aata hai — lekin sirf **usi business ke
+users** jiska client link (`?b=slug`) use hua ho. Bina slug ke list nahi
+milti ("Business link ke baghair user list available nahi").
+Test: royal-grill link → 3 users · grill-two link → sirf uska 1 user ·
+bina slug → 403.
+
+## PROOF (end-to-end)
+Offline package install → offline mein item **"LIVE-SYNC-PROOF" (777)**
+banaya → Sync now → pushed: users 3, roles 9, menu_categories 5,
+menu_items 6 ... → **cloud DB mein row mojood** aur **cloud POS grid mein
+item nazar aa raha hai** ✓
+Auto-sync loop har 2 minute background mein yehi karta hai.
+
+## Regression
+PHP lint clean · 44 pages OK · local node OK · cloud endpoints OK

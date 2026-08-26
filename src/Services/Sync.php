@@ -18,7 +18,29 @@ final class Sync
     /** Column existence cache per table. */
     private static array $colCache = [];
 
-    private static function cfg(): array { return $GLOBALS['config']['sync'] ?? []; }
+    private static function cfg(): array
+    {
+        $c = $GLOBALS['config']['sync'] ?? [];
+        /* Backward-compatible: kuch configs mein 'endpoint' likha hota hai
+           aur kuch mein 'cloud_api_url'. Dono chalne chahiye. */
+        if (empty($c['cloud_api_url'])) {
+            if (!empty($c['endpoint']))      $c['cloud_api_url'] = $c['endpoint'];
+            elseif (!empty($GLOBALS['config']['app']['cloud_url'])) {
+                $c['cloud_api_url'] = rtrim((string)$GLOBALS['config']['app']['cloud_url'], '/') . '/api.php';
+            }
+        }
+        return $c;
+    }
+
+    /** UI ke liye: sync kyun band hai, saaf wajah. */
+    public static function statusReason(): string
+    {
+        $c = self::cfg();
+        if (empty($c['enabled']))       return 'Sync is turned off in the configuration.';
+        if (empty($c['cloud_api_url'])) return 'Cloud URL is not set in this installation.';
+        if (empty($c['token']))         return 'Sync token is missing - download the offline package again.';
+        return '';
+    }
 
     public static function enabled(): bool
     {
@@ -191,13 +213,29 @@ final class Sync
         return [$code, (string) $res];
     }
 
+    /** cloud_api_url ya to base URL ho sakta hai ya seedha .../api.php —
+     *  dono suraton mein sahi endpoint banao (pehle /api.php/api.php ban
+     *  jata tha aur cloud 302 return karta tha). */
+    private static function endpoint(string $action): string
+    {
+        $c = self::cfg();
+        $base = \rtrim((string)($c['cloud_api_url'] ?? ''), '/');
+        if ($base === '') return '';
+        if (\substr($base, -8) !== '/api.php') $base .= '/api.php';
+        return $base . '?action=' . $action;
+    }
+
     private static function post(string $action, array $body): array
     {
         $c = self::cfg();
-        $url = \rtrim($c['cloud_api_url'], '/') . '/api.php?action=' . $action;
+        $url = self::endpoint($action);
         $headers = ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? '')];
         [$code, $res] = self::httpPost($url, $headers, \json_encode($body, JSON_UNESCAPED_UNICODE), 6, 45);
-        if ($code !== 200) throw new \RuntimeException("Cloud HTTP $code");
+        if ($code !== 200) {
+            $hint = \trim(\strip_tags((string)$res));
+            if ($hint !== '') $hint = ' - ' . \substr($hint, 0, 120);
+            throw new \RuntimeException("Cloud HTTP $code$hint");
+        }
         $j = \json_decode($res, true);
         if (!\is_array($j) || empty($j['ok'])) throw new \RuntimeException($j['message'] ?? 'Cloud rejected sync');
         return $j;
@@ -209,7 +247,7 @@ final class Sync
         if (!self::enabled()) return false;
         try {
             $c = self::cfg();
-            [$code] = self::httpPost(\rtrim($c['cloud_api_url'], '/') . '/api.php?action=sync-ping', ['Content-Type: application/json'], '{}', 4, 8);
+            [$code] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 4, 8);
             return $code === 200;
         } catch (\Throwable $e) { return false; }
     }

@@ -206,7 +206,15 @@ $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_u
                  'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi'],
  'db'=>['host'=>'127.0.0.1','port'=>3307,'database'=>'aio_local','username'=>'root','password'=>'','charset'=>'utf8mb4'],
  'tenant'=>['id'=>(string)$t['id'],'slug'=>(string)$t['slug'],'site_id'=>site_id(),'site_name'=>(string)$siteName],
- 'sync'=>['enabled'=>true,'token'=>(string)$t['sync_token'],'endpoint'=>$base.'/api.php','interval'=>30,'interval_minutes'=>2,
+ 'sync'=>[
+   'enabled'=>true,
+   'token'=>(string)$t['sync_token'],
+   /* Sync engine yehi key parhta hai - pehle sirf 'endpoint' likha jata tha
+      is liye offline node hamesha "Local-only mode" mein rehta tha. */
+   'cloud_api_url'=>$base.'/api.php',
+   'endpoint'=>$base.'/api.php',
+   'batch'=>300,
+   'interval'=>30,'interval_minutes'=>2,
           'push_tables'=>[
             /* staff: offline banaye gaye users/roles cloud tak jate hain */
             'users','user_roles','roles','role_modules','employee_profiles',
@@ -393,7 +401,12 @@ case 'users-list':
  /* Sirf LOCAL (offline) node par bina login ke - wahan ek hi business hota
     hai aur cashier ko naam type karne ke bajaye list se chunna hota hai.
     Cloud par yeh kabhi expose nahi hoti (business isolation). */
- if(cfg('app.role')==='cloud')fail('Not available',403);
+ /* CLOUD: sirf tab jab client-link (?b=slug) se tenant resolve ho chuka ho —
+    yani sirf USI restaurant ke users. Bina slug ke koi list nahi milti. */
+ if(cfg('app.role')==='cloud'){
+   $lt=(string)($_SESSION['login_tenant_id']??'');
+   if($lt==='')fail('Business link ke baghair user list available nahi',403);
+ }
  $p=DB::pdo();$q=$p->prepare("SELECT u.id,u.username,u.email,u.full_name,u.is_tenant_admin,
      COALESCE((SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id LIMIT 1),'') role_name
    FROM users u WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL ORDER BY u.is_tenant_admin DESC,u.full_name");
@@ -629,8 +642,17 @@ case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
-case 'sync-run':needLogin();ok(Sync::run());
-case 'sync-status':needLogin();ok(['status'=>Sync::status()]);
+case 'sync-run':needLogin();
+ if(cfg('app.role')==='cloud')fail('Yeh cloud server hai - sync offline node se chalti hai. Yahan sirf status dekha ja sakta hai.',400);
+ $why=Sync::statusReason();
+ if($why!=='')fail($why,400);
+ ok(Sync::run());
+case 'sync-status':needLogin();
+ $st=Sync::status();
+ $st['role']=cfg('app.role');
+ $st['reason']=(cfg('app.role')==='cloud')?'This is the cloud server. Offline nodes push data here.':Sync::statusReason();
+ $st['cloud_url']=(string)(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''));
+ ok(['status'=>$st]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
 case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
 case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));if(ModuleBridge::handles($mod)){try{ModuleBridge::delete($mod,$id);}catch(Throwable $e){fail($e->getMessage());}ok(['bridged'=>true]);}DB::pdo()->prepare("UPDATE ui_records SET deleted=1,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$id,tenant_id()]);ok();
