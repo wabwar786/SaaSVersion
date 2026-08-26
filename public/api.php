@@ -218,7 +218,16 @@ $loaderSrc=str_replace("declare(strict_types=1);",
   $loaderSrc);
 $loader=$loaderSrc;
 $zip->addFromString('runtime/boot.php',$loader);
-$zip->addFromString('runtime/app.info',json_encode(['name'=>(string)$t['dn'],'branch'=>$siteName,'industry'=>(string)($t['industry_code']?:'RESTAURANT')]));
+$zip->addFromString('runtime/app.info',json_encode([
+  'name'=>(string)$t['dn'],'branch'=>$siteName,
+  'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
+  'product'=>getenv('APP_PRODUCT')?:'SmartPOS',
+  'company'=>getenv('APP_COMPANY')?:'Wabwar Software House',
+  'version'=>getenv('APP_VERSION')?:'1.0.0',
+  'phone'=>getenv('APP_PHONE')?:'+92 300 0000000',
+  'website'=>getenv('APP_WEBSITE')?:'https://wabwar.com',
+  'email'=>getenv('APP_EMAIL')?:'support@wabwar.com',
+]));
 /* --- entry stubs (sirf yeh readable hain) --- */
 $stub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';\nSealedApp::boot(dirname(__DIR__));\nreturn SealedApp::run('".$rel."');\n";};
 foreach(['api.php','router.php','index.php','login-submit.php','logout.php'] as $e){
@@ -241,22 +250,33 @@ foreach(['resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_of
 }
 $zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('vendor');$zip->addEmptyDir('storage/logs');
 $zip->addFromString('OFFLINE_README.txt',
- "OFFLINE VERSION - ".$t['dn']."\n".str_repeat('=',52)."\n\n"
- ."INSTALL (ek dafa):\n"
- ."  1) Yeh ZIP kisi bhi folder mein extract karein (misal: C:\\".preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug']).")\n"
- ."  2) INSTALL_OFFLINE.bat par double-click karein.\n"
- ."     - PHP aur MariaDB dono package ke andar set ho jate hain\n"
- ."     - Windows par kuch bhi INSTALL nahi hota\n"
- ."  3) Desktop par bane shortcut se software chalayein.\n\n"
- ."Branch  : ".$siteName."\nCloud   : ".$base."\n"
- ."Database: portable MariaDB, 127.0.0.1:3307 (sirf is PC par)\n\n"
- ."Internet na ho tab bhi POS chalta rahega. Net aate hi data khud sync ho jata hai.\n"
- ."Uninstall: bas yeh folder delete kar dein (registry/services mein kuch nahi jata).\n");
+ "SMARTPOS - OFFLINE VERSION\n".str_repeat('=',52)."\n\n"
+ ."Business : ".$t['dn']."\nBranch   : ".$siteName."\n"
+ ."Company  : Wabwar Software House\nCloud    : ".$base."\n\n"
+ ."SETUP (one time)\n"
+ ."  1) Extract this ZIP into any folder, for example:\n"
+ ."     C:\\smartpos_by_wabwar\n"
+ ."  2) Double click INSTALL_OFFLINE.bat\n"
+ ."     - PHP and the database are prepared inside this folder\n"
+ ."     - Nothing is installed on Windows\n"
+ ."  3) Start the software from the Desktop shortcut.\n\n"
+ ."DAILY USE\n"
+ ."  Open the Desktop shortcut. The software runs even without\n"
+ ."  internet; data syncs to the cloud automatically once you are\n"
+ ."  back online.\n\n"
+ ."DATABASE\n"
+ ."  Portable database on 127.0.0.1:3307 (this PC only).\n\n"
+ ."UNINSTALL\n"
+ ."  Simply delete this folder. No Windows services or registry\n"
+ ."  entries are created.\n\n"
+ ."SUPPORT\n"
+ ."  Website : https://wabwar.com\n  Email   : support@wabwar.com\n");
 $zip->close();
 $data=file_get_contents($tmp);@unlink($tmp);
 while(ob_get_level())ob_end_clean();
 header('Content-Type: application/zip');
-header('Content-Disposition: attachment; filename="'.preg_replace('/[^A-Za-z0-9_-]/','',(string)$t['slug']).'-offline.zip"');
+$pkgName='smartpos_by_wabwar-'.preg_replace('/[^A-Za-z0-9_-]/','',(string)$t['slug']);
+header('Content-Disposition: attachment; filename="'.$pkgName.'.zip"');
 header('Content-Length: '.strlen($data));
 echo $data;exit;
 /* ============ QR TABLE ORDERING (session-based) ============ */

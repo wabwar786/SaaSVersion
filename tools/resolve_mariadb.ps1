@@ -1,19 +1,19 @@
 # ============================================================
-# resolve_mariadb.ps1 — PORTABLE MariaDB for the offline package.
+# resolve_mariadb.ps1 - PORTABLE database for the offline package.
 #
-# Maqsad: customer ke PC par kuch INSTALL na ho. MariaDB ka portable
-# ZIP package ke andar (runtime\mariadb) rehta hai, apna data directory
-# (data\mysql) rakhta hai, aur sirf 127.0.0.1 par sunta hai.
+# Nothing is installed on Windows. The database lives inside this
+# folder (runtime\mariadb), keeps its data in data\mysql, and only
+# listens on 127.0.0.1.
 #
-# Agar package ke saath MariaDB pehle se bundled hai (vendor\mariadb.zip)
-# to internet ki bhi zaroorat nahi.
+# If vendor\mariadb.zip ships with the package, no internet is needed.
 # ============================================================
 param(
   [string]$Root = (Split-Path -Parent $PSScriptRoot),
-  [int]$Port = 3307,           # 3306 se alag: kisi mojooda MySQL se takkar na ho
+  [int]$Port = 3307,
   [switch]$StopServer
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference    = 'SilentlyContinue'
 
 $RuntimeDir = Join-Path $Root 'runtime\mariadb'
 $DataDir    = Join-Path $Root 'data\mysql'
@@ -21,7 +21,8 @@ $VendorZip  = Join-Path $Root 'vendor\mariadb.zip'
 $PidFile    = Join-Path $Root 'data\mariadb.pid'
 $PortFile   = Join-Path $Root 'data\mariadb.port'
 
-function Say($m,$c='Gray'){ Write-Host "  $m" -ForegroundColor $c }
+function Say($m,$c='Gray'){ Write-Host "      $m" -ForegroundColor $c }
+function Dots($m){ Write-Host "      $m" -NoNewline -ForegroundColor Gray }
 
 function Get-MysqldPath {
   if (-not (Test-Path $RuntimeDir)) { return $null }
@@ -45,22 +46,22 @@ if ($StopServer) {
     if ($procId) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
     Remove-Item $PidFile -ErrorAction SilentlyContinue
   }
-  Say 'Portable MariaDB rok diya gaya.' 'Yellow'
+  Say 'Local database stopped.' 'Yellow'
   exit 0
 }
 
-# ---------- 1) EXTRACT (agar pehle se nahi) ----------
+# ---------- 1) EXTRACT ----------
 $mysqld = Get-MysqldPath
 if (-not $mysqld) {
   New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
-
   $zip = $null
+
   if (Test-Path $VendorZip) {
-    Say 'Bundled MariaDB mil gaya (internet ki zaroorat nahi).' 'Green'
+    Say 'Bundled database found (no internet required).' 'Green'
     $zip = $VendorZip
   } else {
-    Say 'MariaDB portable download ho raha hai (ek dafa, ~90MB)...' 'Cyan'
-    $zip = Join-Path $env:TEMP 'mariadb-portable.zip'
+    Say 'Downloading portable database (one time, about 90 MB)...'
+    $zip = Join-Path $env:TEMP 'db-portable.zip'
     $urls = @(
       'https://archive.mariadb.org/mariadb-10.11.8/winx64-packages/mariadb-10.11.8-winx64.zip',
       'https://downloads.mariadb.com/MariaDB/mariadb-10.11.8/winx64-packages/mariadb-10.11.8-winx64.zip'
@@ -71,37 +72,45 @@ if (-not $mysqld) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $u -OutFile $zip -UseBasicParsing -TimeoutSec 900
         $ok = $true; break
-      } catch { Say "Download nakaam: $u" 'DarkYellow' }
+      } catch { Say 'Download source unavailable, trying next...' 'DarkYellow' }
     }
     if (-not $ok) {
-      throw "MariaDB download nahi ho saka. Internet check karein, ya vendor\mariadb.zip package ke saath rakhein."
+      Say 'Database download failed. Check your internet connection,' 'Red'
+      Say 'or place vendor\mariadb.zip next to this package.' 'Red'
+      exit 1
     }
+    Say 'Download complete.' 'Green'
   }
 
-  Say 'Extract ho raha hai...' 'Cyan'
-  Expand-Archive -Path $zip -DestinationPath $RuntimeDir -Force
-  if ($zip -ne $VendorZip) { Remove-Item $zip -ErrorAction SilentlyContinue }
+  Dots 'Extracting'
+  $job = Start-Job -ScriptBlock {
+    param($z,$d)
+    $ProgressPreference = 'SilentlyContinue'
+    Expand-Archive -Path $z -DestinationPath $d -Force
+  } -ArgumentList $zip, $RuntimeDir
+  while ($job.State -eq 'Running') { Write-Host '.' -NoNewline -ForegroundColor Gray; Start-Sleep -Seconds 2 }
+  Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
+  Remove-Job $job -Force -ErrorAction SilentlyContinue
+  Write-Host ' done.' -ForegroundColor Green
 
+  if ($zip -ne $VendorZip) { Remove-Item $zip -ErrorAction SilentlyContinue }
   $mysqld = Get-MysqldPath
-  if (-not $mysqld) { throw 'MariaDB extract to hua magar mysqld.exe nahi mila.' }
+  if (-not $mysqld) { Say 'Database files could not be extracted.' 'Red'; exit 1 }
 }
 $BinDir = Split-Path $mysqld
 
-# ---------- 2) INITIALIZE DATA DIR (pehli dafa) ----------
+# ---------- 2) INITIALIZE ----------
 if (-not (Test-Path (Join-Path $DataDir 'mysql'))) {
-  Say 'Local database pehli dafa banayi ja rahi hai...' 'Cyan'
+  Say 'Creating the local database for the first time...'
   New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
   $install = Join-Path $BinDir 'mariadb-install-db.exe'
   if (-not (Test-Path $install)) { $install = Join-Path $BinDir 'mysql_install_db.exe' }
-  if (Test-Path $install) {
-    & $install "--datadir=$DataDir" 2>&1 | Out-Null
-  } else {
-    & $mysqld "--initialize-insecure" "--datadir=$DataDir" 2>&1 | Out-Null
-  }
-  if (-not (Test-Path (Join-Path $DataDir 'mysql'))) { throw 'Database initialize nahi ho saki.' }
+  if (Test-Path $install) { & $install "--datadir=$DataDir" 2>&1 | Out-Null }
+  else { & $mysqld "--initialize-insecure" "--datadir=$DataDir" 2>&1 | Out-Null }
+  if (-not (Test-Path (Join-Path $DataDir 'mysql'))) { Say 'Database could not be initialized.' 'Red'; exit 1 }
 }
 
-# ---------- 3) my.ini (localhost-only, koi network exposure nahi) ----------
+# ---------- 3) CONFIG (localhost only) ----------
 $IniPath = Join-Path $Root 'runtime\my.ini'
 @"
 [mysqld]
@@ -109,7 +118,6 @@ datadir=$($DataDir -replace '\\','/')
 port=$Port
 bind-address=127.0.0.1
 skip-name-resolve
-skip-networking=0
 max_connections=60
 innodb_buffer_pool_size=256M
 innodb_flush_log_at_trx_commit=2
@@ -118,23 +126,21 @@ character-set-server=utf8mb4
 collation-server=utf8mb4_unicode_ci
 "@ | Set-Content -Path $IniPath -Encoding ASCII
 
-# ---------- 4) START (agar chal nahi raha) ----------
+# ---------- 4) START ----------
 $alive = $false
-try {
-  $c = New-Object Net.Sockets.TcpClient
-  $c.Connect('127.0.0.1', $Port); $alive = $true; $c.Close()
-} catch { $alive = $false }
+try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $Port); $alive = $true; $c.Close() } catch { $alive = $false }
 
 if (-not $alive) {
-  Say "Portable MariaDB start ho raha hai (port $Port)..." 'Cyan'
-  $p = Start-Process -FilePath $mysqld -ArgumentList "--defaults-file=`"$IniPath`"" `
-        -WindowStyle Hidden -PassThru
+  Dots "Starting local database on port $Port"
+  $p = Start-Process -FilePath $mysqld -ArgumentList "--defaults-file=`"$IniPath`"" -WindowStyle Hidden -PassThru
   $p.Id | Set-Content $PidFile -Encoding ASCII
   for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Milliseconds 500
+    if ($i % 4 -eq 0) { Write-Host '.' -NoNewline -ForegroundColor Gray }
     try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $Port); $c.Close(); $alive = $true; break } catch {}
   }
-  if (-not $alive) { throw "MariaDB start nahi hua. runtime\my.ini aur data\mysql check karein." }
+  Write-Host ''
+  if (-not $alive) { Say 'The local database did not start.' 'Red'; exit 1 }
 }
 $Port | Set-Content $PortFile -Encoding ASCII
 
@@ -144,5 +150,5 @@ if (-not (Test-Path $mysqlExe)) { $mysqlExe = Join-Path $BinDir 'mariadb.exe' }
 & $mysqlExe --protocol=tcp --host=127.0.0.1 --port=$Port -u root `
    -e "CREATE DATABASE IF NOT EXISTS aio_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>&1 | Out-Null
 
-Say "Portable MariaDB tayyar (127.0.0.1:$Port, database: aio_local)" 'Green'
+Say "Local database ready (127.0.0.1:$Port)." 'Green'
 exit 0

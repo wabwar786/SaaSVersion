@@ -824,3 +824,45 @@ login 303 → POS v28 page → shared.css 200 → pos-boot (4 cats, 8 tables) �
 shift open ✓ item create ✓ **bill finalize netSales 800** ✓
 pages: qr 200, menu 200, inventory 200, kds 200 ✓
 cloud + local regression ✓ PHP lint clean ✓
+
+---
+
+# V31 — Offline installer: English, branding, PowerShell fix
+
+## 1. PowerShell error fix (setup crash)
+`The expression after '&' ... was not valid` — installer `php.exe` sirf
+`$root\runtime` mein dhoondta tha. Aapke case mein PHP kisi purane folder
+se resolve hua tha, is liye variable khali reh gaya aur `& $phpExe` fail
+ho gaya. Ab teen fallbacks: (a) poore package mein `php.exe` search,
+(b) resolver ki output se path, (c) system PATH. Na mile to saaf message.
+Har setup step ka exit code bhi check hota hai — chup-chaap fail nahi hota.
+
+## 2. Sab messages ENGLISH
+`install_offline.ps1`, `start_offline.ps1`, `resolve_mariadb.ps1`,
+`resolve_php.ps1`, dono `.bat` files aur `OFFLINE_README.txt` — sab English.
+(Verify: leftover non-English strings = 0.)
+
+## 3. Naming
+Download filename ab **`smartpos_by_wabwar-<business-slug>.zip`**.
+Product name **SmartPOS**, README mein suggested folder
+`C:\smartpos_by_wabwar`.
+
+## 4. Progress bars saaf
+`$ProgressPreference='SilentlyContinue'` har script mein — wo lambi
+`oooooo` waali PowerShell progress-bars khatam. Ab humari apni saaf
+`Extracting....... done.` line aati hai.
+
+## 5. Company info banner
+Setup ke aakhir mein aur software start hone se pehle:
+Business / Branch / Product / Company / Version / Contact number /
+Website / Email. Values `runtime/app.info` se aati hain; server par env se
+override ho sakti hain: `APP_PRODUCT, APP_COMPANY, APP_VERSION, APP_PHONE,
+APP_WEBSITE, APP_EMAIL` (defaults: SmartPOS / Wabwar Software House /
+1.0.0 / +92 300 0000000 / https://wabwar.com / support@wabwar.com).
+
+## Tested
+Content-Disposition: `smartpos_by_wabwar-royal-grill.zip` ✓
+app.info mein poori company info ✓ shipped files: sirf 2 .bat + 6 folders ✓
+PS scripts: braces balanced, non-English strings 0 ✓
+sealed package: 93 tables + 11 setup steps ✓ login 303 → POS v28 →
+pos-boot (4 cats, 8 tables) ✓ PHP lint clean ✓

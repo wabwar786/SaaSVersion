@@ -1,44 +1,124 @@
 # ============================================================
-# install_offline.ps1 — one-time setup for the offline package
-#   • PHP + MariaDB resolve/check (windows_bootstrap.ps1 reuse)
-#   • local DB create + schema + tenant stamp from config/offline.php
-#   • Desktop shortcut ("<Business> POS")
+# install_offline.ps1 - One time setup for the offline package
+#   1) Verify the sealed package
+#   2) Prepare a private PHP runtime (nothing installed on Windows)
+#   3) Prepare the portable database
+#   4) Create the database schema and business setup
+#   5) Create a Desktop shortcut
 # ============================================================
 $ErrorActionPreference = 'Stop'
+$ProgressPreference    = 'SilentlyContinue'   # hide noisy progress bars
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-Write-Host "[1/5] Package check kar rahe hain..." -ForegroundColor Cyan
+function Line { Write-Host ("=" * 60) -ForegroundColor DarkGray }
+function Step($n, $m) { Write-Host "[$n/5] $m" -ForegroundColor Cyan }
+function Info($m) { Write-Host "      $m" -ForegroundColor Gray }
+function Good($m) { Write-Host "      $m" -ForegroundColor Green }
+function Bad($m)  { Write-Host "      $m" -ForegroundColor Red }
+
+# ---------- product / company info ----------
+$product = 'SmartPOS'
+$company = 'Wabwar Software House'
+$version = '1.0.0'
+$phone   = '+92 300 0000000'
+$website = 'https://wabwar.com'
+$email   = 'support@wabwar.com'
+$bizName = 'SmartPOS'
+$branch  = ''
+
+if (Test-Path "$root\runtime\app.info") {
+  try {
+    $info = Get-Content "$root\runtime\app.info" -Raw | ConvertFrom-Json
+    if ($info.name)    { $bizName = $info.name }
+    if ($info.branch)  { $branch  = $info.branch }
+    if ($info.product) { $product = $info.product }
+    if ($info.company) { $company = $info.company }
+    if ($info.version) { $version = $info.version }
+    if ($info.phone)   { $phone   = $info.phone }
+    if ($info.website) { $website = $info.website }
+    if ($info.email)   { $email   = $info.email }
+  } catch {}
+}
+
+Write-Host ''
+Line
+Write-Host "       $product - ONE TIME SETUP" -ForegroundColor Green
+Line
+Write-Host ''
+Info 'This setup prepares PHP and the local database, creates the'
+Info 'database, and adds a Desktop shortcut. Nothing is installed on'
+Info 'Windows - everything stays inside this folder.'
+Write-Host ''
+
+# ---------- 1) package check ----------
+Step 1 'Verifying package...'
 if (-not (Test-Path "$root\runtime\app.sealed")) {
-  Write-Host "Package adhoora hai (runtime\app.sealed nahi mili). Portal se dobara download karein." -ForegroundColor Red
+  Bad 'Package is incomplete (runtime\app.sealed not found).'
+  Bad 'Please download the offline version again from the portal.'
+  exit 1
+}
+Good 'Package verified.'
+
+# ---------- 2) PHP runtime ----------
+Step 2 'Preparing PHP runtime...'
+$phpOut = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
+if ($LASTEXITCODE -ne 0) {
+  Bad 'PHP runtime could not be prepared.'
+  $phpOut | Select-Object -Last 5 | ForEach-Object { Bad "$_" }
   exit 1
 }
 
-# business ka naam (sirf shortcut ke liye) — baqi sab sealed config mein hai
-$bizName = 'Restaurant POS'
-if (Test-Path "$root\runtime\app.info") {
-  try { $info = Get-Content "$root\runtime\app.info" -Raw | ConvertFrom-Json; if ($info.name) { $bizName = $info.name } } catch {}
+# Locate php.exe: this package first, then whatever the resolver reported, then PATH.
+$phpExe = $null
+$local = Get-ChildItem -Path $root -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
+         Select-Object -First 1
+if ($local) { $phpExe = $local.FullName }
+
+if (-not $phpExe) {
+  foreach ($l in ($phpOut | ForEach-Object { "$_" })) {
+    $t = $l.Trim()
+    if ($t.ToLower().EndsWith('php.exe') -and (Test-Path $t)) { $phpExe = $t; break }
+  }
 }
+if (-not $phpExe) {
+  $cmd = Get-Command php.exe -ErrorAction SilentlyContinue
+  if ($cmd) { $phpExe = $cmd.Source }
+}
+if (-not $phpExe -or -not (Test-Path $phpExe)) {
+  Bad 'php.exe could not be located. Please download the package again.'
+  exit 1
+}
+Good "PHP ready."
 
-Write-Host "[2/5] PHP runtime tayyar kar rahe hain (system par kuch install nahi hoga)..." -ForegroundColor Cyan
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1"
-if ($LASTEXITCODE -ne 0) { Write-Host "PHP runtime tayyar nahi ho saka." -ForegroundColor Red; exit 1 }
-
-Write-Host "[3/5] Portable MariaDB tayyar kar rahe hain..." -ForegroundColor Cyan
+# ---------- 3) portable database ----------
+Step 3 'Preparing portable database...'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1"
-if ($LASTEXITCODE -ne 0) { Write-Host "Portable database tayyar nahi ho saka." -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Bad 'Portable database could not be prepared.'; exit 1 }
 
-Write-Host "[4/5] Database schema aur business setup..." -ForegroundColor Cyan
-$php = Get-ChildItem -Path "$root\runtime" -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $php) { $php = Get-Command php -ErrorAction SilentlyContinue }
-$phpExe = if ($php.FullName) { $php.FullName } else { $php.Source }
-foreach ($s in @('install_schema','migrate_platform','migrate_sync','migrate_bridge',
-                 'migrate_menu_image','migrate_branding','migrate_qr_orders',
-                 'seed_platform_modules','bootstrap_offline','seed_roles','ensure_default_admin')) {
-  & $phpExe -r "require '$($root -replace '\\','/')/runtime/boot.php'; SealedApp::boot('$($root -replace '\\','/')'); SealedApp::run('scripts/$s.php');" 2>&1 | Out-Null
+# ---------- 4) schema + business setup ----------
+Step 4 'Creating database schema and business setup...'
+$rootFwd = $root -replace '\\', '/'
+$scripts = @(
+  'install_schema','migrate_platform','migrate_sync','migrate_bridge',
+  'migrate_menu_image','migrate_branding','migrate_qr_orders',
+  'seed_platform_modules','bootstrap_offline','seed_roles','ensure_default_admin'
+)
+$failed = 0
+foreach ($s in $scripts) {
+  $code = "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); SealedApp::run('scripts/$s.php');"
+  $out = & "$phpExe" -r $code 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    $failed++
+    Bad "Step failed: $s"
+    $out | Select-Object -Last 3 | ForEach-Object { Bad "  $_" }
+  }
 }
+if ($failed -gt 0) { Bad "$failed setup step(s) failed. Setup cannot continue."; exit 1 }
+Good 'Database is ready.'
 
-Write-Host "[5/5] Desktop shortcut bana rahe hain..." -ForegroundColor Cyan
+# ---------- 5) desktop shortcut ----------
+Step 5 'Creating Desktop shortcut...'
 $desktop = [Environment]::GetFolderPath('Desktop')
 $lnkPath = Join-Path $desktop ("$bizName.lnk")
 $ws = New-Object -ComObject WScript.Shell
@@ -50,7 +130,23 @@ $sc.Description      = "$bizName - Offline POS"
 $icon = Join-Path $root 'public\assets\app.ico'
 if (Test-Path $icon) { $sc.IconLocation = $icon }
 $sc.Save()
+Good "Shortcut created on Desktop: $bizName"
 
-Write-Host ""
-Write-Host "Setup mukammal! Desktop par '$bizName' shortcut maujood hai." -ForegroundColor Green
+# ---------- summary ----------
+Write-Host ''
+Line
+Write-Host '  SETUP COMPLETE' -ForegroundColor Green
+Line
+Write-Host ''
+Write-Host "  Business       : $bizName" -ForegroundColor White
+if ($branch) { Write-Host "  Branch         : $branch" -ForegroundColor White }
+Write-Host "  Product        : $product" -ForegroundColor White
+Write-Host "  Company        : $company" -ForegroundColor White
+Write-Host "  Version        : $version" -ForegroundColor White
+Write-Host "  Contact number : $phone"   -ForegroundColor White
+Write-Host "  Website        : $website" -ForegroundColor White
+Write-Host "  Email          : $email"   -ForegroundColor White
+Write-Host ''
+Write-Host '  Start the software from the Desktop shortcut.' -ForegroundColor Cyan
+Write-Host ''
 exit 0

@@ -234,7 +234,7 @@ function Install-PrivatePhp {
         )
         $ok=$false
         foreach($u in $urls) {
-            Write-Host "Downloading private PHP runtime..."
+            Write-Host "Downloading private PHP runtime (one time)..."
             Write-Host $u
             if(Download-WithFallback $u $PackageZip){$ok=$true;break}
         }
@@ -294,7 +294,7 @@ Then run START_RESTAURANT.bat again.
     return $true
 }
 
-Step "Checking for existing PHP"
+Step "Checking PHP runtime"
 
 $found=$false
 foreach($candidate in (Existing-PhpCandidates)) {
