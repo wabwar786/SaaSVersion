@@ -1814,3 +1814,43 @@ Suite `tools/sync_suite.py` mein shamil hai — aainda kisi bhi tabdeeli ke
 baad chala kar poora sync ek command mein verify kiya ja sakta hai.
 
 PHP lint clean · 44 pages OK · dashboard + POS JS clean · local node OK
+
+---
+
+# V54 — Aap ke `users` masle ka ASLI sabab
+
+## Message
+`users: 1 row(s) rejected by cloud - table does not exist on the cloud
+database` — halanke `users` table cloud par yaqeenan mojood hai.
+
+## Sabab
+`Sync::columns()` schema ka naam **config se** leta tha:
+
+    $db = $GLOBALS['config']['db']['database'];
+    SELECT ... FROM information_schema.columns WHERE table_schema = $db
+
+Railway (aur aam managed hosting) par config ka database naam us schema se
+**mukhtalif** ho sakta hai jis se connection asal mein bana hota hai —
+env variable alag ho, ya alias ho. Us soorat mein `information_schema`
+**khali** lautata hai, `tableExists()` false ho jata hai, aur **har** table
+"cloud par mojood nahi" keh kar reject ho jati hai.
+
+Aap ke log mein sirf `users` isliye nazar aa rahi thi ke us waqt sirf usi
+ke paas bhejne ko naya data tha. Baqi tables ka bhi yahi anjaam hota.
+
+Ghaur talab: V53 se pehle yeh masla **khamoshi** se hota tha (sirf
+"rejected by cloud", koi wajah nahi). V53 ne wajah dikha di, aur usi se
+asli bug pakra gaya.
+
+## Fix
+`columns()` ab teen tarah se schema dhoondta hai:
+1. `WHERE table_schema = DATABASE()` — asli connection ka schema
+2. config wala naam (fallback)
+3. `SHOW COLUMNS FROM table` (aakhri koshish)
+
+## Tested
+Cloud config mein jaan boojh kar `'database' => 'wrong_db_name_xyz'` kiya:
+push phir bhi kaamyab — `{"ok":true,"applied":1}` aur row cloud DB mein
+mojood ✓ (pehle "table does not exist" aata)
+Poori suite fresh node par: **28/28 passed** ✓
+PHP lint clean · 44 pages OK · local node OK

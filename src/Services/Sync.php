@@ -236,13 +236,45 @@ final class Sync
     private static function columns(string $table): array
     {
         if (isset(self::$colCache[$table])) return self::$colCache[$table];
-        $db = $GLOBALS['config']['db']['database'];
-        $q = DB::pdo()->prepare(
-            "SELECT column_name FROM information_schema.columns
-              WHERE table_schema=? AND table_name=?"
-        );
-        $q->execute([$db, $table]);
-        $cols = array_column($q->fetchAll(PDO::FETCH_ASSOC), 'column_name');
+        /* Schema ka naam ASLI connection se lo, config se nahi.
+           Railway/managed hosting par config ka database naam aksar us
+           schema se mukhtalif hota hai jis se connection bana hota hai
+           (misal env alag, ya alias). Us soorat mein information_schema
+           khali lautata tha, tableExists() false ho jata tha aur har
+           table "cloud par mojood nahi" keh kar reject ho jati thi. */
+        $cols = [];
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT column_name FROM information_schema.columns
+                  WHERE table_schema = DATABASE() AND table_name = ?"
+            );
+            $q->execute([$table]);
+            $cols = array_column($q->fetchAll(PDO::FETCH_ASSOC), 'column_name');
+        } catch (\Throwable $e) { $cols = []; }
+
+        if (!$cols) {
+            // Fallback: config wala naam bhi try kar lo
+            try {
+                $db = (string)($GLOBALS['config']['db']['database'] ?? '');
+                if ($db !== '') {
+                    $q = DB::pdo()->prepare(
+                        "SELECT column_name FROM information_schema.columns
+                          WHERE table_schema = ? AND table_name = ?"
+                    );
+                    $q->execute([$db, $table]);
+                    $cols = array_column($q->fetchAll(PDO::FETCH_ASSOC), 'column_name');
+                }
+            } catch (\Throwable $e) {}
+        }
+        if (!$cols) {
+            // Aakhri koshish: seedha table se poochho
+            try {
+                foreach (DB::pdo()->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $cols[] = $r['Field'] ?? ($r['field'] ?? null);
+                }
+                $cols = array_values(array_filter($cols));
+            } catch (\Throwable $e) { $cols = []; }
+        }
         return self::$colCache[$table] = $cols;
     }
 
