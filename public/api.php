@@ -19,7 +19,49 @@ function shift_report(array $sh, ?string $until): array {
 }
 function pos_bill_guard(array $d):string{$bill=ltrim((string)($d['bill_no']??''),'#');$p=DB::pdo();if($bill!==''){$q=$p->prepare("SELECT order_status FROM orders WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1");$q->execute([site_id(),today(),$bill]);$st=$q->fetchColumn();if($st===false||$st==='OPEN')return $bill;}return (string)\Aio\Services\PageData::nextBill();}
 function needLogin(){if(!Auth::user())fail('Login required',401);}function needSuper(){if(!Platform::superUser())fail('Super admin login required',401);}
-function syncToken(){$t=$_SERVER['HTTP_X_SYNC_TOKEN']??'';$want=(string)(cfg('sync.token')?:'');if($want===''||!hash_equals($want,(string)$t))fail('Invalid sync token',401);}function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
+/* ============================================================
+   SYNC AUTH — ab PER-TENANT.
+   Pehle sirf ek GLOBAL token check hota tha: leaked token se koi bhi
+   kisi bhi tenant ki rows push/pull kar sakta tha (platform_users
+   samet). Ab token tenants.sync_token se match hota hai aur us tenant
+   ka scope request par lock ho jata hai.
+   ============================================================ */
+function syncTenant(){
+  static $t=null; if($t!==null)return $t;
+  $tok=(string)($_SERVER['HTTP_X_SYNC_TOKEN']??'');
+  if($tok===''||strlen($tok)<16)fail('Invalid sync token',401);
+  try{
+    $q=DB::pdo()->prepare("SELECT id,slug,status FROM tenants WHERE sync_token IS NOT NULL AND sync_token=? LIMIT 1");
+    $q->execute([$tok]);
+    $row=$q->fetch();
+  }catch(Throwable $e){ $row=null; }
+  if($row){
+    if(($row['status']??'')==='SUSPENDED')fail('Business suspended - sync band hai',403);
+    $_SESSION['sync_tenant_id']=$row['id'];
+    return $t=$row['id'];
+  }
+  /* Local (single-tenant) node ke liye config token — sirf tab jab
+     app cloud mode mein NA ho. */
+  $want=(string)(cfg('sync.token')?:'');
+  if(cfg('app.role')!=='cloud' && $want!=='' && hash_equals($want,$tok)) return $t=tenant_id();
+  fail('Invalid sync token',401);
+}
+function syncToken(){ syncTenant(); }
+
+/* Sirf yahi tables sync ho sakti hain. users/platform_users/roles jaisi
+   tables kabhi nahi (warna token leak = account takeover). */
+function syncTableAllowed(string $table): bool {
+  static $allow=['ui_records','orders','order_items','order_payments','payments','order_item_voids',
+    'inventory_items','inventory_categories','stock_movements','stock_transactions','stock_transaction_lines',
+    'stock_balances','stock_adjustments','stock_locations','units','suppliers','supplier_items','customers',
+    'customer_addresses','menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
+    'recipes','recipe_ingredients','expenses','expense_categories','cashier_shifts','shift_cash_movements',
+    'reservations','riders','delivery_orders','promotions','printers','devices','employee_profiles',
+    'floors','dining_tables','kitchen_tickets','kitchen_ticket_items','notification_queue',
+    'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items','payment_methods',
+    'qr_orders','qr_sessions','fiscal_invoices'];
+  return in_array($table,$allow,true);
+}function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
 function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
 function applyUser(string $id,array $d,bool $create=false,?string $requestId=null):string{$p=DB::pdo();$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;$perm=$d['permissions']??[];if($create){return UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'','phone'=>$d['phone']??'','password'=>$d['password']?:'1234','role_id'=>$role,'modules'=>$mods,'is_admin'=>($d['role']??'')==='Owner / Admin','form_permissions'=>[]],$requestId);}return DB::tx(function($p)use($id,$d,$role,$mods){$p->prepare("UPDATE users SET full_name=?,email=?,phone=?,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$d['name'],$d['email'],$d['phone']??'',$id,tenant_id()]);if(!empty($d['password'])){[$h,$a]=UserService::passwordHash($d['password']);$p->prepare("UPDATE users SET password_hash=?,password_algo=? WHERE id=?")->execute([$h,$a,$id]);}$p->prepare("DELETE FROM user_roles WHERE user_id=?")->execute([$id]);$p->prepare("DELETE FROM user_module_access WHERE user_id=?")->execute([$id]);if($role)$p->prepare("INSERT INTO user_roles(id,user_id,role_id,site_id,assigned_by) VALUES(?,?,?,?,?)")->execute([uuid(),$id,$role,site_id(),current_user()['id']??null]);foreach($mods as $m)$p->prepare("INSERT INTO user_module_access(id,user_id,site_id,module_id,access_mode) VALUES(?,?,?,?, 'ALLOW')")->execute([uuid(),$id,site_id(),$m]);return$id;});}
 try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-ping','sa-login'],true))csrf_json();switch($a){
@@ -146,45 +188,69 @@ if(!$out){try{$ctx2=stream_context_create(['http'=>['timeout'=>6,'header'=>"User
 if(!$out){$kw=strtolower(preg_replace('/[^a-z0-9 ]/i','',$q));$kw=implode(',',array_slice(preg_split('/\s+/',trim($kw))?:['food'],0,3));for($i=0;$i<8;$i++){$u='https://loremflickr.com/400/300/'.rawurlencode($kw?:'food').',food?lock='.(1000+$i);$out[]=['thumb'=>$u,'url'=>$u,'title'=>$q];}}
 ok(['images'=>array_slice($out,0,12),'source'=>$src]);
 case 'offline-package':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager offline version download kar sakta hai',403);
-$p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
+$p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
 if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
 $root=dirname(__DIR__);
+require_once $root.'/tools/build_offline_bundle.php';
+$base=rtrim((string)cfg('app.base_url'),'/');
+/* Config seal ke andar jata hai - sync token plaintext disk par NahI */
+$cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_url'=>'http://localhost:8080',
+                 'cloud_url'=>$base,'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
+                 /* helpers.php local mode mein yahi keys parhta hai */
+                 'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi'],
+ 'db'=>['host'=>'127.0.0.1','port'=>3307,'database'=>'aio_local','username'=>'root','password'=>'','charset'=>'utf8mb4'],
+ 'tenant'=>['id'=>(string)$t['id'],'slug'=>(string)$t['slug'],'site_id'=>site_id(),'site_name'=>(string)$siteName],
+ 'sync'=>['enabled'=>true,'token'=>(string)$t['sync_token'],'endpoint'=>$base.'/api.php','interval'=>30,
+          'push_tables'=>['ui_records','orders','order_items','payments','inventory_items','stock_transactions','stock_transaction_lines','stock_balances','suppliers','customers','customer_addresses','menu_categories','menu_items','menu_item_variants','recipes','recipe_ingredients','expenses','cashier_shifts','reservations','riders','promotions','printers','floors','dining_tables','stock_adjustments','kitchen_tickets','kitchen_ticket_items','goods_receipts','goods_receipt_items','notification_queue','fiscal_invoices'],
+          'pull_tables'=>['menu_categories','menu_items','menu_item_variants','inventory_items','units','payment_methods','printers','floors','dining_tables','customers','suppliers','promotions']]];
+$built=OfflineBundler::build($root,$cfgArr);
 $tmp=tempnam(sys_get_temp_dir(),'aio');@unlink($tmp);$tmp.='.zip';
 $zip=new ZipArchive();
 if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)fail('ZIP banane mein masla');
-$skipDirs=['.git','storage/logs','storage/sessions','node_modules','docs','.github'];
-$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::SELF_FIRST);
-foreach($it as $f){
-  $abs=$f->getPathname();$rel=ltrim(str_replace('\\','/',substr($abs,strlen($root))),'/');
-  if($rel==='')continue;
-  foreach($skipDirs as $sd){if(strpos($rel,$sd)===0)continue 2;}
-  if(substr($rel,-4)==='.zip')continue;
-  if($f->isDir()){$zip->addEmptyDir($rel);}else{$zip->addFile($abs,$rel);}
+/* --- SEALED core --- */
+$zip->addFromString('runtime/app.sealed',$built['blob']);
+$zip->addFromString('runtime/app.key',$built['k1']);
+$loaderSrc=OfflineBundler::loader('','');
+/* defines ko declare(strict_types) ke BAAD daalo, warna PHP fatal */
+$loaderSrc=str_replace("declare(strict_types=1);",
+  "declare(strict_types=1);\ndefine('SEALED_K2','".bin2hex($built['k2'])."');\ndefine('SEALED_INTEGRITY','".bin2hex($built['integrity'])."');",
+  $loaderSrc);
+$loader=$loaderSrc;
+$zip->addFromString('runtime/boot.php',$loader);
+/* --- entry stubs (sirf yeh readable hain) --- */
+$stub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';\nSealedApp::boot(dirname(__DIR__));\nreturn SealedApp::run('".$rel."');\n";};
+foreach(['api.php','router.php','index.php','login-submit.php','logout.php'] as $e){
+  if(is_file($root.'/public/'.$e))$zip->addFromString('public/'.$e,$stub('public/'.$e));
 }
-/* --- is business ka apna offline config (stamped) --- */
-$base=rtrim((string)cfg('app.base_url'),'/');
-$cfg="<?php\n// AUTO-GENERATED offline config for: ".addslashes((string)$t['dn'])."\n"
- ."// Is file ko haath se edit na karein - dobara download kar lein.\n"
- ."return [\n"
- ."  'app' => ['role'=>'local','name'=>'".addslashes((string)$t['dn'])."','debug'=>false,\n"
- ."            'base_url'=>'http://localhost:8080',\n"
- ."            'cloud_url'=>'".addslashes($base)."'],\n"
- ."  'db'  => ['host'=>'127.0.0.1','port'=>3306,'database'=>'aio_local',\n"
- ."            'username'=>'root','password'=>'','charset'=>'utf8mb4'],\n"
- ."  'tenant' => ['id'=>'".addslashes((string)$t['id'])."','slug'=>'".addslashes((string)$t['slug'])."',\n"
- ."               'site_id'=>'".addslashes((string)site_id())."','site_name'=>'".addslashes((string)$siteName)."'],\n"
- ."  'sync' => ['enabled'=>true,'token'=>'".addslashes((string)$t['sync_token'])."',\n"
- ."             'endpoint'=>'".addslashes($base)."/api.php','interval'=>30],\n"
- ."];\n";
-$zip->addFromString('config/offline.php',$cfg);
+/* --- assets/UI (yeh chhupane ki cheez nahi) --- */
+foreach([['approved_ui','approved_ui'],['public/assets','public/assets']] as $pair){
+  $srcDir=$root.'/'.$pair[0]; if(!is_dir($srcDir))continue;
+  $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir,FilesystemIterator::SKIP_DOTS));
+  foreach($it as $f){if(!$f->isFile())continue;$zip->addFile($f->getPathname(),$pair[1].'/'.ltrim(str_replace('\\','/',substr($f->getPathname(),strlen($srcDir))),'/'));}
+}
+foreach(glob($root.'/public/*.js') as $j)$zip->addFile($j,'public/'.basename($j));
+foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c));
+foreach(glob($root.'/public/*.html') as $h)$zip->addFile($h,'public/'.basename($h));
+/* --- launchers --- */
+foreach(['START_RESTAURANT.bat','INSTALL_OFFLINE.bat','RUN_SERVER_DEBUG.bat'] as $b){
+  if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
+}
+foreach(glob($root.'/tools/*.ps1') as $ps)$zip->addFile($ps,'tools/'.basename($ps));
+foreach(glob($root.'/docs/*.sql') as $sqlf)$zip->addFile($sqlf,'docs/'.basename($sqlf));
+$zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('vendor');$zip->addEmptyDir('storage/logs');
 $zip->addFromString('OFFLINE_README.txt',
- "OFFLINE VERSION - ".$t['dn']."\n".str_repeat('=',50)."\n\n"
- ."1) ZIP ko C:\\".preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug'])." mein extract karein.\n"
- ."2) INSTALL_OFFLINE.bat par double-click karein (ek dafa).\n"
- ."3) Desktop par bana shortcut khol kar software chalayein.\n\n"
- ."Branch: ".$siteName."\nCloud: ".$base."\n"
- ."Internet na ho tab bhi POS chalta rahega; net aate hi data khud sync ho jayega.\n");
+ "OFFLINE VERSION - ".$t['dn']."\n".str_repeat('=',52)."\n\n"
+ ."INSTALL (ek dafa):\n"
+ ."  1) Yeh ZIP kisi bhi folder mein extract karein (misal: C:\\".preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug']).")\n"
+ ."  2) INSTALL_OFFLINE.bat par double-click karein.\n"
+ ."     - PHP aur MariaDB dono package ke andar set ho jate hain\n"
+ ."     - Windows par kuch bhi INSTALL nahi hota\n"
+ ."  3) Desktop par bane shortcut se software chalayein.\n\n"
+ ."Branch  : ".$siteName."\nCloud   : ".$base."\n"
+ ."Database: portable MariaDB, 127.0.0.1:3307 (sirf is PC par)\n\n"
+ ."Internet na ho tab bhi POS chalta rahega. Net aate hi data khud sync ho jata hai.\n"
+ ."Uninstall: bas yeh folder delete kar dein (registry/services mein kuch nahi jata).\n");
 $zip->close();
 $data=file_get_contents($tmp);@unlink($tmp);
 while(ob_get_level())ob_end_clean();
@@ -194,7 +260,6 @@ header('Content-Length: '.strlen($data));
 echo $data;exit;
 /* ============ QR TABLE ORDERING (session-based) ============ */
 case 'qr-tables':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);$p=DB::pdo();$q=$p->prepare("SELECT id,display_name,table_code FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$q->execute([site_id()]);$base=rtrim((string)cfg('app.base_url'),'/');$rows=[];foreach($q->fetchAll() as $t){$rows[]=['id'=>$t['id'],'name'=>$t['display_name'],'url'=>$base.'/qr.html?t='.rawurlencode((string)$t['id']).'&s='.rawurlencode(site_id())];}ok(['tables'=>$rows,'base'=>$base]);
-/* Scan: har scan par NAYI session banti hai jo sirf N minute chalti hai */
 case 'qr-start':$p=DB::pdo();$tid=(string)($_GET['t']??'');$sid=(string)($_GET['s']??'');if($tid===''||$sid==='')fail('Invalid QR');
  $tq=$p->prepare("SELECT dt.id,dt.display_name,dt.tenant_id,dt.site_id FROM dining_tables dt WHERE dt.id=? AND dt.site_id=? AND dt.is_active=1");$tq->execute([$tid,$sid]);$t=$tq->fetch();if(!$t)fail('QR valid nahi',404);
  $mins=(int)(getenv('QR_SESSION_MINUTES')?:90);
@@ -207,7 +272,6 @@ case 'qr-start':$p=DB::pdo();$tid=(string)($_GET['t']??'');$sid=(string)($_GET['
  ok(['token'=>$tok,'table'=>$t['display_name'],'expires_min'=>$mins,'menu'=>$items,
      'brand'=>['name'=>$br['n']??'Restaurant','logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'']]);
 case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok==='')fail('Session token required',401);
- /* expiry ka faisla DB ke apne clock par (PHP/MySQL timezone alag ho sakte hain) */
  $sq=$p->prepare("SELECT *, (expires_at > NOW(6)) AS alive FROM qr_sessions WHERE token=? LIMIT 1");$sq->execute([$tok]);$ses=$sq->fetch();
  if(!$ses)fail('Session valid nahi - QR dobara scan karein',401);
  if($ses['status']!=='ACTIVE')fail('Yeh session band ho chuki hai - QR dobara scan karein',401);
@@ -314,8 +378,12 @@ if($page==='customers.html'){
 }
 ok(['row'=>$row]);
 case 'sync-ping':ok(['role'=>cfg('app.role'),'time'=>date('c')]);
-case 'sync-push':syncToken();$d=body();$n=Sync::applyRows((string)($d['table']??''),$d['rows']??[]);ok(['applied'=>$n]);
-case 'sync-pull':syncToken();$d=body();$t=(string)($d['table']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
+ if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
+ $n=Sync::applyRows($tbl,$d['rows']??[],$stid);ok(['applied'=>$n]);
+case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
+ if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
+ $GLOBALS['sync_tenant_id']=$stid;$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
 case 'sync-run':needLogin();ok(Sync::run());
 case 'sync-status':needLogin();ok(['status'=>Sync::status()]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);

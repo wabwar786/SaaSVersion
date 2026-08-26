@@ -65,9 +65,18 @@ final class Sync
         if (!self::tableExists($table)) return [];
         $ts = self::tsColumn($table);
         if (!$ts) return [];
-        $sql = "SELECT * FROM `$table` WHERE `$ts` > ? ORDER BY `$ts` ASC LIMIT $limit";
+        // TENANT SCOPE: cloud par pull sirf usi tenant ki rows deta hai jo
+        // token se authenticate hua. Warna ek node doosron ka data parh leta.
+        $scope = $GLOBALS['sync_tenant_id'] ?? null;
+        $args  = [$since];
+        $where = "`$ts` > ?";
+        if ($scope && in_array('tenant_id', self::columns($table), true)) {
+            $where .= " AND tenant_id = ?";
+            $args[] = $scope;
+        }
+        $sql = "SELECT * FROM `$table` WHERE $where ORDER BY `$ts` ASC LIMIT $limit";
         $q = DB::pdo()->prepare($sql);
-        $q->execute([$since]);
+        $q->execute($args);
         return $q->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -76,19 +85,27 @@ final class Sync
      * Runs with FK checks off inside a transaction — source data is trusted.
      * Returns number of rows applied.
      */
-    public static function applyRows(string $table, array $rows): int
+    /**
+     * @param string|null $forceTenantId Cloud par: jo tenant token se
+     *   authenticate hua uska id. Har incoming row par FORCE hota hai —
+     *   ek node doosre tenant ka data likh hi nahi sakta.
+     */
+    public static function applyRows(string $table, array $rows, ?string $forceTenantId = null): int
     {
         if (!$rows || !self::tableExists($table)) return 0;
         $cols = self::columns($table);
         $pdo = DB::pdo();
+        $hasTenant = in_array('tenant_id', $cols, true);
 
-        return (int) DB::tx(function (PDO $pdo) use ($table, $rows, $cols) {
+        return (int) DB::tx(function (PDO $pdo) use ($table, $rows, $cols, $forceTenantId, $hasTenant) {
             $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
             $applied = 0;
             foreach ($rows as $row) {
                 // keep only real columns of the target table
                 $data = array_intersect_key($row, array_flip($cols));
                 if (!isset($data['id'])) continue;
+                // TENANT LOCK: incoming tenant_id ko trust nahi karte
+                if ($forceTenantId !== null && $hasTenant) $data['tenant_id'] = $forceTenantId;
                 $keys = array_keys($data);
                 $ph = implode(',', array_fill(0, count($keys), '?'));
                 $set = implode(',', array_map(fn($k) => "`$k`=VALUES(`$k`)",

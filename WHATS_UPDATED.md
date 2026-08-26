@@ -723,3 +723,61 @@ customer: QR page branding "Royal Grill House", Table 1, timer 89:58, menu
 cashier: badge (2) → pending row → Accept → cart mein "Gulab Jamun 2 x 250"
 → badge (1) ✓ · expired session → order reject ✓ · System modal: Offline /
 QR / Template buttons ✓ template 80mm save ✓ 9 QR cards ✓ page errors 0 ✓
+
+---
+
+# V29 — Sync Security + Portable MariaDB + SEALED Offline Package
+
+## 1. Per-tenant sync token + table whitelist (SECURITY)
+Pehle sirf ek **global** `SYNC_TOKEN` tha: leaked hone par koi bhi kisi bhi
+tenant ka data push/pull kar sakta tha — `platform_users` samet (yani super
+admin account bana lena).
+- `syncTenant()`: token ab `tenants.sync_token` se match hota hai aur
+  request usi tenant par **lock** ho jati hai. Suspended business ka sync
+  band. Local single-tenant node ke liye config token sirf non-cloud mode
+  mein chalta hai.
+- `syncTableAllowed()`: 48 safe tables ki **whitelist**. `users`, `roles`,
+  `platform_users`, `tenants` waghera kabhi sync nahi ho sakte.
+- `Sync::applyRows(..., $forceTenantId)`: har incoming row par `tenant_id`
+  **force** hota hai — incoming value trust nahi ki jati.
+- `Sync::changedRows()`: pull bhi tenant-scoped.
+
+**Tested:** ghalat token → reject ✓ · `platform_users` push → 403 ✓ ·
+doosre tenant ki row push → row apne hi tenant par force ("FORCED to my
+tenant (SAFE)") ✓ · allowed table + apne tenant ka pull ✓
+
+## 2. Portable MariaDB (customer PC par kuch install nahi)
+`tools/resolve_mariadb.ps1` — MariaDB portable package ke andar
+(`runtime/mariadb`), apna `data/mysql`, **port 3307**, sirf 127.0.0.1.
+`vendor/mariadb.zip` rakh dein to internet ki bhi zaroorat nahi. PHP pehle
+se auto-resolve hota tha. Installer ab: PHP → MariaDB → schema+migrations →
+`bootstrap_offline.php` (tenant/site/roles/admin/defaults) → Desktop
+shortcut. Uninstall = folder delete (koi service/registry nahi).
+
+## 3. SEALED package (developer-proof)
+`tools/build_offline_bundle.php`:
+- Saara PHP (`src/`, `public/`, `scripts/`) + config **AES-256-GCM**
+  encrypted `runtime/app.sealed` mein. Comments/whitespace stripped.
+- Package mein **koi `src/` nahi, koi `config/` nahi** — sirf 4 chhote
+  stubs + loader. **Sync token plaintext mein kahin nahi** (grep se verify).
+- `sealed://` stream wrapper — `require`/autoload bina badle chalte hain
+  (include paths build par rewrite hote hain).
+- Key do hisson mein (`runtime/app.key` + loader), aur **HMAC integrity**:
+  ek byte badalne par app chalna band → "Files tabdeel ki gayi hain".
+
+**Tested (asli sealed package chala kar):**
+readable php = sirf 5 stub files ✓ src/config = 0 ✓ token plaintext = nahi ✓
+schema 93 tables ✓ 7 migrations + modules + tenant bootstrap + roles + admin ✓
+HTTP: login 303 → POS v28 page → pos-boot (4 cats, 8 tables) ✓
+shift open ✓ item create ✓ **bill finalize (netSales 900)** ✓ qr.html 200 ✓
+tamper test: blob badla → app band, restore → 200 ✓
+
+## Imandarana note
+PHP interpreted hai — yeh sealing casual copying/editing rokti hai aur
+tampering foran pakarti hai, lekin determined reverse-engineering ke khilaf
+100% guarantee sirf ionCube/SourceGuardian jaisa commercial encoder deta hai.
+
+## Regression
+cloud: client login ✓ pos-boot ✓ qr-pending ✓ qr-tables ✓ pos-diagnostics ✓
+pos-settings ✓ menu bridge ✓ store-state ✓ · local node ✓ ·
+PHP lint 77 files clean ✓ · page guard 43 files OK ✓
