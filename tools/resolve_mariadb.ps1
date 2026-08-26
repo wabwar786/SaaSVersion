@@ -132,7 +132,9 @@ try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $Port); $al
 
 if (-not $alive) {
   Dots "Starting local database on port $Port"
-  $p = Start-Process -FilePath $mysqld -ArgumentList "--defaults-file=`"$IniPath`"" -WindowStyle Hidden -PassThru
+  # quoted argument string - folder names with spaces/brackets safe
+  $dbArgs = '--defaults-file="{0}"' -f $IniPath
+  $p = Start-Process -FilePath $mysqld -ArgumentList $dbArgs -WindowStyle Hidden -PassThru
   $p.Id | Set-Content $PidFile -Encoding ASCII
   for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Milliseconds 500

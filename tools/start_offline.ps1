@@ -95,8 +95,13 @@ if ($port -eq 0) { Bad 'No free port available (8080-8119).'; Read-Host 'Press E
 
 # ---------- 5) start the web server ----------
 Say "Starting the software on http://localhost:$port ..." 'Cyan'
+# NOTE: Start-Process does NOT quote arguments automatically. If the folder
+# name contains spaces or brackets - e.g. "smartpos_by_wabwar-a (1)" - an
+# unquoted path breaks apart and PHP reports "Could not open input file".
+# So we build one properly quoted argument string.
+$phpArgs = '-c "{0}" -S 127.0.0.1:{1} -t "public" "public/router.php"' -f $phpIni, $port
 $srv = Start-Process -FilePath $phpExe `
-        -ArgumentList @('-c', $phpIni, '-S', "127.0.0.1:$port", '-t', 'public', 'public/router.php') `
+        -ArgumentList $phpArgs `
         -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
@@ -129,6 +134,17 @@ if (-not $up) {
   Read-Host 'Press Enter to close'; exit 1
 }
 
+# ---------- background auto-sync (cloud <-> local) ----------
+$syncArgs = '-c "{0}" "scripts/sync_loop.php"' -f $phpIni
+$syncLog  = Join-Path $logDir 'sync.log'
+$sync = $null
+try {
+  $sync = Start-Process -FilePath $phpExe -ArgumentList $syncArgs `
+          -WorkingDirectory $root -NoNewWindow -PassThru `
+          -RedirectStandardOutput $syncLog -RedirectStandardError $syncLog
+  Say 'Auto-sync started (runs in the background).' 'DarkGray'
+} catch { Say 'Auto-sync could not start (data will sync when it does).' 'DarkYellow' }
+
 Start-Process "http://localhost:$port/login.html"
 
 Write-Host ''
@@ -138,5 +154,6 @@ Write-Host ''
 
 try { Wait-Process -Id $srv.Id } finally {
   Stop-Process -Id $srv.Id -ErrorAction SilentlyContinue
+  if ($sync) { Stop-Process -Id $sync.Id -Force -ErrorAction SilentlyContinue }
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1" -StopServer | Out-Null
 }

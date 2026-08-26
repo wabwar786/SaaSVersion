@@ -1030,3 +1030,63 @@ pairing: token + LAN URL bana ✓ tablet ne scan kiya → claim ok
 pos-boot (5 products, user Ahmed Khan) liya ✓
 offline install: 12 steps, snapshot import, demo admin skipped ✓
 local + cloud regression ✓ PHP lint clean ✓
+
+---
+
+# V36 — Offline shifts, per-user modules, live sync, stability
+
+## 1. Offline mein "Download Offline Version" nahi
+Button ab sirf cloud portal par dikhta hai (`can.offline_download`), aur
+server bhi offline node par 403 deta hai — verify kiya:
+"Offline version sirf online portal se download hoti hai".
+
+## 2. Har counter ki apni shift
+`cashier_shifts` mein `counter_name` add. Ab:
+- Shift **user-scoped** hai — `shift-current` sirf apni shift deta hai,
+  saath "open_shifts" list (kaun kaun se counter chal rahe hain).
+- Ek user ki ek waqt mein **ek hi shift**: dobara open par
+  "Aap ki shift S-... pehle se open hai."
+- **Ek counter par ek hi cashier**: doosre ne wahi counter chuna to
+  "Counter 1 par <naam> ki shift (S-...) open hai."
+- Shift gate mein ab **Counter** field bhi hai.
+
+## 3. Cash clear kiye baghair agli opening nahi
+`cash_cleared` + `cleared_amount` columns. Close modal mein checkbox
+"Cash drawer clear kar diya". Clear na ho to agli shift open par block:
+"Pichli shift S-... ka cash clear nahi hua" — aur wahin **"Clear Cash Now"**
+button de diya jata hai (naya `shift-clear-cash` endpoint).
+
+## 4. Shift transfer + handover record
+Naya `shift_handovers` table aur `shift-transfer` endpoint. Close modal mein
+**Transfer Shift** button: agla cashier chunein, counted cash + handed cash
+dalein → purani shift close (cash cleared, "Handover to <naam>"), **nayi
+shift handed cash ke saath khud open**, aur handover ka poora record.
+Test: Ahmed → Bilal, expected 5000 / counted 5200 / **variance +200** /
+handed 5200 → nayi shift S-260826-80F2 ✓ record bhi bana ✓
+
+## 5. Sirf assigned modules dikhte hain
+`pos-boot` ab `can.modules` bhejta hai aur naya `my-modules` endpoint bhi.
+POS par: menu module na ho to "+ New Item" gayab, void na ho to Void Logs,
+settings na ho to System. Server-side enforcement `Auth::canModule()` mein
+pehle se thi (feature flags + role) — ab UI bhi match karti hai.
+
+## 6. Live sync — ab sach mein hota hai
+**Wajah:** `users` (aur bohat si tables) push list mein thin hi nahi, aur
+offline launcher koi sync loop start nahi karta tha.
+- Server whitelist mein ab `users, user_roles, roles, role_modules,
+  employee_profiles, cashier_shifts, shift_handovers, paired_devices`
+  waghera shamil (tenant-lock upar lagta hai; **platform_users abhi bhi
+  blocked** — verify kiya).
+- Package ke push list mein ab **46 tables** (staff, sales, catalogue,
+  inventory, people, setup).
+- **Auto-sync loop** ab launcher se background mein chalta hai
+  (`sync_loop.php`, har **2 minute**), log `storage\logs\sync.log`.
+  Software band karne par loop bhi band.
+Test: offline-banaya user `sync-push` se cloud par pohancha ✓
+`platform_users` push → 403 ✓
+
+## 7. Stability sweep
+79 PHP files lint clean · saari standalone JS clean · **44 pages ke inline
+scripts** parse OK · page-guard OK · saari PowerShell scripts balanced ·
+14 cloud endpoints OK · offline package: 13 setup steps, snapshot import,
+demo admin skip, login 303, dropdown mein 3 users.

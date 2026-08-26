@@ -51,7 +51,12 @@ function syncToken(){ syncTenant(); }
 /* Sirf yahi tables sync ho sakti hain. users/platform_users/roles jaisi
    tables kabhi nahi (warna token leak = account takeover). */
 function syncTableAllowed(string $table): bool {
-  static $allow=['ui_records','orders','order_items','order_payments','payments','order_item_voids',
+  static $allow=[
+    /* users/roles: offline node par banaye gaye staff cloud tak pohanchte hain.
+       Tenant lock upar lag chuka hai, aur platform_users/tenants yahan
+       shamil NahI - yani account takeover mumkin nahi. */
+    'users','user_roles','roles','role_modules','user_form_permissions','employee_profiles',
+    'ui_records','orders','order_items','order_payments','payments','order_item_voids',
     'inventory_items','inventory_categories','stock_movements','stock_transactions','stock_transaction_lines',
     'stock_balances','stock_adjustments','stock_locations','units','suppliers','supplier_items','customers',
     'customer_addresses','menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
@@ -59,7 +64,7 @@ function syncTableAllowed(string $table): bool {
     'reservations','riders','delivery_orders','promotions','printers','devices','employee_profiles',
     'floors','dining_tables','kitchen_tickets','kitchen_ticket_items','notification_queue',
     'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items','payment_methods',
-    'qr_orders','qr_sessions','fiscal_invoices'];
+    'qr_orders','qr_sessions','fiscal_invoices','shift_handovers','cashier_shifts','shift_cash_movements','paired_devices'];
   return in_array($table,$allow,true);
 }function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
 function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
@@ -187,7 +192,7 @@ if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
 if(!$out){try{$ctx2=stream_context_create(['http'=>['timeout'=>6,'header'=>"User-Agent: SaaSVersion-POS\r\n"]]);$raw2=@file_get_contents('https://api.openverse.org/v1/images/?q='.rawurlencode($q.' food').'&page='.$page.'&page_size=12',false,$ctx2);if($raw2){$j2=json_decode($raw2,true);foreach(($j2['results']??[]) as $r){if(!empty($r['thumbnail'])||!empty($r['url']))$out[]=['thumb'=>$r['thumbnail']??$r['url'],'url'=>$r['url']??$r['thumbnail'],'title'=>$r['title']??''];}}}catch(Throwable $e){}}
 if(!$out){$kw=strtolower(preg_replace('/[^a-z0-9 ]/i','',$q));$kw=implode(',',array_slice(preg_split('/\s+/',trim($kw))?:['food'],0,3));for($i=0;$i<8;$i++){$u='https://loremflickr.com/400/300/'.rawurlencode($kw?:'food').',food?lock='.(1000+$i);$out[]=['thumb'=>$u,'url'=>$u,'title'=>$q];}}
 ok(['images'=>array_slice($out,0,12),'source'=>$src]);
-case 'offline-package':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager offline version download kar sakta hai',403);
+case 'offline-package':needLogin();if(cfg('app.role')!=='cloud')fail('Offline version sirf online portal se download hoti hai',403);if(!Auth::isManager())fail('Sirf Admin/Manager offline version download kar sakta hai',403);
 $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
 if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
@@ -201,8 +206,25 @@ $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_u
                  'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi'],
  'db'=>['host'=>'127.0.0.1','port'=>3307,'database'=>'aio_local','username'=>'root','password'=>'','charset'=>'utf8mb4'],
  'tenant'=>['id'=>(string)$t['id'],'slug'=>(string)$t['slug'],'site_id'=>site_id(),'site_name'=>(string)$siteName],
- 'sync'=>['enabled'=>true,'token'=>(string)$t['sync_token'],'endpoint'=>$base.'/api.php','interval'=>30,
-          'push_tables'=>['ui_records','orders','order_items','payments','inventory_items','stock_transactions','stock_transaction_lines','stock_balances','suppliers','customers','customer_addresses','menu_categories','menu_items','menu_item_variants','recipes','recipe_ingredients','expenses','cashier_shifts','reservations','riders','promotions','printers','floors','dining_tables','stock_adjustments','kitchen_tickets','kitchen_ticket_items','goods_receipts','goods_receipt_items','notification_queue','fiscal_invoices'],
+ 'sync'=>['enabled'=>true,'token'=>(string)$t['sync_token'],'endpoint'=>$base.'/api.php','interval'=>30,'interval_minutes'=>2,
+          'push_tables'=>[
+            /* staff: offline banaye gaye users/roles cloud tak jate hain */
+            'users','user_roles','roles','role_modules','employee_profiles',
+            /* sales */
+            'orders','order_items','payments','order_item_voids','kitchen_tickets','kitchen_ticket_items',
+            'cashier_shifts','shift_cash_movements','shift_handovers','qr_orders','qr_sessions',
+            /* catalogue */
+            'menu_categories','menu_items','menu_item_variants','menu_category_printer_routes',
+            'recipes','recipe_ingredients',
+            /* inventory */
+            'inventory_categories','inventory_items','stock_transactions','stock_transaction_lines',
+            'stock_balances','stock_adjustments','goods_receipts','goods_receipt_items',
+            /* people & setup */
+            'customers','customer_addresses','suppliers','supplier_items','expenses','expense_categories',
+            'reservations','riders','delivery_orders','promotions','printers','floors','dining_tables',
+            'payment_methods','stock_locations','paired_devices','notification_queue','fiscal_invoices',
+            'ui_records',
+          ],
           'pull_tables'=>['menu_categories','menu_items','menu_item_variants','inventory_items','units','payment_methods','printers','floors','dining_tables','customers','suppliers','promotions']]];
 /* ---- FIRST-RUN SNAPSHOT ----
    Offline package ke saath is business ka apna data bhi jata hai (sealed):
@@ -432,15 +454,97 @@ case 'device-list':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',4
 case 'device-revoke':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
  $d=body();DB::pdo()->prepare("UPDATE paired_devices SET status='REVOKED' WHERE id=? AND site_id=?")->execute([(string)($d['id']??''),site_id()]);ok();
 
+case 'my-modules':needLogin();$u=Auth::user();ok(['modules'=>($u['modules']??[]),'admin'=>!empty($u['is_tenant_admin']),'manager'=>Auth::isManager(),'name'=>$u['full_name']??'']);
 case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];$sg=$p2=DB::pdo()->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$sg->execute([tenant_id(),site_id()]);$sj=$sg->fetchColumn();$sd=$sj?(json_decode($sj,true)?:[]):[];$bb['settings']=['tax_cash'=>isset($sd['tax_cash'])?(float)$sd['tax_cash']:16.0,'tax_card'=>isset($sd['tax_card'])?(float)$sd['tax_card']:8.0,'service_charge'=>isset($sd['service_charge'])?(float)$sd['service_charge']:0.0];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
 $bb['brand']=['name'=>($br['display_name']?:($br['name']??'Restaurant')),'logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'','accent'=>$br['brand_accent']??''];
-$bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports')];
+$bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports'),'offline_download'=>(cfg('app.role')==='cloud'),'modules'=>(Auth::user()['modules']??[])];
 $bb['cashier']=['name'=>$bu['full_name']??'Cashier','role'=>Auth::isManager()?(!empty($bu['is_tenant_admin'])?'Admin':'Manager'):'Cashier'];ok(['boot'=>$bb]);
-case 'shift-current':needLogin();$q=DB::pdo()->prepare("SELECT id,shift_no,business_date,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id()]);ok(['shift'=>$q->fetch()?:null]);
-case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id FROM cashier_shifts WHERE site_id=? AND status='OPEN' LIMIT 1");$q->execute([site_id()]);if($q->fetchColumn())fail('A shift is already open. Close it first.');$sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));$p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,opened_at,opening_cash,status) VALUES(?,?,?,?,CURDATE(),?,NOW(6),?,'OPEN')")->execute([$sid,tenant_id(),site_id(),$no,current_user()['id']??null,(float)($d['opening_cash']??0)]);ok(['id'=>$sid,'shift_no'=>$no]);
-case 'shift-preview':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id()]);$sh=$q->fetch();if(!$sh)fail('No open shift.');ok(['report'=>shift_report($sh,null)]);
-case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id()]);$sh=$q->fetch();if(!$sh)fail('No open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,updated_at=NOW(6) WHERE id=?")->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');ok(['report'=>$rep]);
-case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note FROM cashier_shifts WHERE site_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id()]);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');ok(['report'=>$rep]);
+case 'shift-current':needLogin();
+ /* Har cashier ki apni shift: sirf isi user ki open shift return hoti hai. */
+ $q=DB::pdo()->prepare("SELECT id,shift_no,business_date,opening_cash,opened_at,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");
+ $q->execute([site_id(),current_user()['id']??'']);
+ $mine=$q->fetch()?:null;
+ $oq=DB::pdo()->prepare("SELECT cs.id,cs.shift_no,cs.counter_name,u.full_name cashier FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN'");
+ $oq->execute([site_id()]);
+ ok(['shift'=>$mine,'open_shifts'=>$oq->fetchAll()]);
+case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$uid=current_user()['id']??'';
+ /* 1) Isi user ki koi shift pehle se open? */
+ $q=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
+ $q->execute([site_id(),$uid]);
+ if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' pehle se open hai. Pehle usay close karein.');
+ /* 2) Isi counter par kisi aur ki shift open? (do cashier ek counter par nahi) */
+ $counter=trim((string)($d['counter']??''))?:'Counter 1';
+ $c=$p->prepare("SELECT cs.shift_no,u.full_name FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN' AND cs.counter_name=? LIMIT 1");
+ $c->execute([site_id(),$counter]);
+ if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') open hai. Pehle wo close ya transfer ho.');
+ /* 3) Pichli shift ka cash clear hua? */
+ $lc=$p->prepare("SELECT shift_no,cash_cleared FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
+ $lc->execute([site_id(),$uid]);
+ if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear nahi hua. Pehle usay clear karein.'); }
+ $sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));
+ $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
+   VALUES(?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")
+   ->execute([$sid,tenant_id(),site_id(),$no,$uid,$counter,($_SESSION['device_id']??null),(float)($d['opening_cash']??0)]);
+ ok(['id'=>$sid,'shift_no'=>$no,'counter'=>$counter]);
+
+case 'shift-users':needLogin();
+ /* Transfer ke liye: isi branch ke wo users jinke paas POS access hai */
+ $q=DB::pdo()->prepare("SELECT DISTINCT u.id,u.full_name FROM users u WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND u.id<>? ORDER BY u.full_name");
+ $q->execute([tenant_id(),current_user()['id']??'']);ok(['users'=>$q->fetchAll()]);
+
+case 'shift-clear-cash':needLogin();$d=body();$p=DB::pdo();$sid=(string)($d['shift_id']??'');
+ $q=$p->prepare("SELECT * FROM cashier_shifts WHERE id=? AND site_id=? AND status='CLOSED' LIMIT 1");$q->execute([$sid,site_id()]);
+ $sh=$q->fetch(); if(!$sh)fail('Closed shift nahi mili');
+ if((int)$sh['cash_cleared'])ok(['already'=>true]);
+ $amt=(float)($d['amount']??$sh['actual_cash']);
+ $p->prepare("UPDATE cashier_shifts SET cash_cleared=1,cleared_amount=?,updated_at=NOW(6) WHERE id=?")->execute([$amt,$sid]);
+ ok(['cleared'=>$amt,'shift_no'=>$sh['shift_no']]);
+
+case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$uid=current_user()['id']??'';
+ $toUser=(string)($d['to_user_id']??'');if($toUser==='')fail('Naya cashier select karein');
+ $q=$p->prepare("SELECT * FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");
+ $q->execute([site_id(),$uid]);$sh=$q->fetch(); if(!$sh)fail('Aap ki koi open shift nahi');
+ $uq=$p->prepare("SELECT id,full_name FROM users WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL");
+ $uq->execute([$toUser,tenant_id()]);$nu=$uq->fetch(); if(!$nu)fail('Naya cashier valid nahi');
+ $oc=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
+ $oc->execute([site_id(),$toUser]);
+ if($x=$oc->fetchColumn())fail($nu['full_name'].' ki shift '.$x.' pehle se open hai.');
+ $rep=shift_report($sh,null);
+ $counted=(float)($d['counted_cash']??$rep['expected_cash']);
+ $handed=(float)($d['handed_cash']??$counted);
+ /* purani shift close + cash cleared (handover se) */
+ $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',
+    close_note=?,cash_cleared=1,cleared_amount=?,handover_to=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([$rep['expected_cash'],$counted,$counted-$rep['expected_cash'],
+              'Handover to '.$nu['full_name'].((string)($d['note']??'')!==''?(' - '.$d['note']):''),
+              $handed,$toUser,$sh['id']]);
+ /* nayi shift: handed cash hi opening banti hai */
+ $nid=uuid();$nno='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$nid),0,4));
+ $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,opened_at,opening_cash,status)
+   VALUES(?,?,?,?,CURDATE(),?,?,NOW(6),?,'OPEN')")
+   ->execute([$nid,tenant_id(),site_id(),$nno,$toUser,$sh['counter_name']?:'Counter 1',$handed]);
+ /* handover record */
+ $p->prepare("INSERT INTO shift_handovers(id,tenant_id,site_id,from_shift_id,to_shift_id,from_user_id,to_user_id,counter_name,
+     expected_cash,counted_cash,variance_amount,handed_cash,note,created_at)
+   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(6))")
+   ->execute([uuid(),tenant_id(),site_id(),$sh['id'],$nid,$uid,$toUser,$sh['counter_name']?:'Counter 1',
+              $rep['expected_cash'],$counted,$counted-$rep['expected_cash'],$handed,(string)($d['note']??'')]);
+ $rep['actual_cash']=$counted;$rep['variance']=$counted-$rep['expected_cash'];
+ $rep['closed_at']=date('Y-m-d H:i');$rep['handed_to']=$nu['full_name'];$rep['handed_cash']=$handed;$rep['new_shift']=$nno;
+ ok(['report'=>$rep,'new_shift_no'=>$nno,'to'=>$nu['full_name']]);
+
+case 'shift-handovers':needLogin();
+ $q=DB::pdo()->prepare("SELECT h.*,fu.full_name from_name,tu.full_name to_name FROM shift_handovers h
+   LEFT JOIN users fu ON fu.id=h.from_user_id LEFT JOIN users tu ON tu.id=h.to_user_id
+   WHERE h.site_id=? ORDER BY h.created_at DESC LIMIT 50");
+ $q->execute([site_id()]);ok(['handovers'=>$q->fetchAll()]);
+
+case 'shift-preview':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No open shift.');ok(['report'=>shift_report($sh,null)]);
+case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('Aap ki koi open shift nahi.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
+ $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');ok(['report'=>$rep]);
+case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
+ $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
 case 'menu-category-create':needLogin();if(!Auth::isManager())fail('Category create sirf Admin/Manager kar sakta hai',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,is_active) VALUES(?,?,?,?,?,1,1,1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
 case 'menu-item-rate':needLogin();if(!Auth::isManager())fail('Rate change sirf Admin/Manager kar sakta hai',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
 case 'pos-table-create':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tables'))fail('Permission denied',403);$d=body();$nm=trim((string)($d['name']??''));if($nm==='')fail('Table name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$nm]);if($q->fetchColumn())fail('Table already exists');$f=$p->prepare("SELECT id FROM floors WHERE site_id=? AND is_active=1 ORDER BY sort_order LIMIT 1");$f->execute([site_id()]);$fid=$f->fetchColumn();if(!$fid){$fid=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,'Main Floor',1,1)")->execute([$fid,tenant_id(),site_id()]);}$tid=uuid();$code=strtoupper(substr(preg_replace('/[^A-Za-z0-9]/','',$nm),0,10))?:('T'.substr(str_replace('-','',$tid),0,4));$p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,'SQUARE','AVAILABLE',1)")->execute([$tid,tenant_id(),site_id(),$fid,$code,$nm,(int)($d['seats']??4)]);ok(['id'=>$tid,'name'=>$nm]);
