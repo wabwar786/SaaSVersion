@@ -51,10 +51,25 @@ php scripts/migrate_shifts.php    || echo "[boot] shifts migrate skipped"
 php scripts/migrate_sync_columns.php || echo "[boot] sync columns migrate skipped"
 php scripts/migrate_sync_log.php    || echo "[boot] sync log migrate skipped"
 php scripts/migrate_delete_support.php || echo "[boot] delete support migrate skipped"
+php scripts/migrate_print_rule_default.php || echo "[boot] print_rule migrate skipped"
 php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
+
+# --- Platform (super admin) login: bina shell ke reset karne ka rasta ---
+#     Railway par shell nahi hai to CLI ki zaroorat nahi: service ki
+#     Variables mein SUPER_ADMIN_EMAIL aur SUPER_ADMIN_PASSWORD daal kar
+#     redeploy karein. Reset hone ke BAAD dono variables hata dein --
+#     warna password har deploy par dobara set hota rahega.
+if [ -n "${SUPER_ADMIN_EMAIL:-}" ] && [ -n "${SUPER_ADMIN_PASSWORD:-}" ]; then
+  echo "[boot] SUPER_ADMIN_EMAIL mila - platform login reset kiya ja raha hai"
+  php scripts/reset_super_admin.php --email="$SUPER_ADMIN_EMAIL" --password="$SUPER_ADMIN_PASSWORD" --create || true
+  echo "[boot] REMINDER: ab SUPER_ADMIN_EMAIL aur SUPER_ADMIN_PASSWORD variables hata dein"
+else
+  # Sirf list (koi password nahi) - taake log se pata chale kaunsi email chahiye
+  php scripts/reset_super_admin.php 2>/dev/null | head -12 || true
+fi
 
 # --- Apache PEHLE start hota hai taake Railway ka healthcheck foran pass ho.
 #     (Pehle sab migrations ke baad start hota tha; collation ka column-level

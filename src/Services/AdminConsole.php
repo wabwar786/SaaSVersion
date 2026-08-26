@@ -164,6 +164,11 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
             ['t' => 'k',  'v' => 'permissions <slug>  — har user ke modules aur unka zariya'],
             ['t' => 'k',  'v' => 'clear · version · help'],
+            ['t' => 'i',  'v' => ''],
+            ['t' => 'd',  'v' => 'purge groups: transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs'],
+            ['t' => 'd',  'v' => 'reset/purge se pehle 1 ghante ke andar backup lazmi hai (logs/sync ke ilawa).'],
+            ['t' => 'd',  'v' => '--confirm mein business ka POORA NAAM chahiye, slug nahi. <slug> ke brackets na likhein.'],
+            ['t' => 'd',  'v' => 'Poori tafseel: docs/CONSOLE_COMMANDS.md'],
             ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh chalayein'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
         ]);

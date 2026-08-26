@@ -2672,3 +2672,23 @@ Is round mein sandbox par PHP install ho gaya, is liye:
 
 Abhi bhi NahI chala (MySQL sandbox mein socket auth par atak gaya):
 `tools/sync_suite.py`, `tools/reset_verify.py`.
+
+## V62.3a — Railway par shell ke baghair super admin reset
+
+`railway run` aur `railway shell` **aap ke apne computer** par chalte
+hain, Railway ke container par nahi — yeh sab se aam ghalti hai.
+Container ke andar `railway ssh` chahiye.
+
+Magar CLI setup ke baghair bhi rasta hona chahiye. Ab `docker-entrypoint.sh`
+mein:
+
+    SUPER_ADMIN_EMAIL     = super@admin.local
+    SUPER_ADMIN_PASSWORD  = <naya password>
+
+Yeh dono Railway ki service Variables mein daal kar redeploy karein —
+boot par login khud reset ho jata hai. **Reset ke baad dono variables
+hata dein**, warna har deploy par password dobara set hota rahega.
+
+Agar yeh variables set na hon, to boot par sirf platform accounts ki
+LIST log mein chhap jati hai (koi password nahi) — taake pata chale ke
+login kis email se karna hai.

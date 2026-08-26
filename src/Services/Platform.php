@@ -204,7 +204,7 @@ final class Platform
         // Starter menu categories + printer routes.
         if (!$count("SELECT COUNT(*) FROM menu_categories WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL")) {
             $ci = $pdo->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,?,1)");
-            $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,is_active) VALUES(?,?,?,?,?,1,1,1)");
+            $ri = $pdo->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)");
             foreach (['Pakistani','Fast Food','BBQ','Beverages'] as $i => $c) {
                 $cid=\uuid(); $ci->execute([$cid,$tenantId,$siteId,$c,'•',$i+1]);
                 if ($printerId) $ri->execute([\uuid(),$tenantId,$siteId,$cid,$printerId]);
