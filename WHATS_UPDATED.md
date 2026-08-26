@@ -781,3 +781,46 @@ tampering foran pakarti hai, lekin determined reverse-engineering ke khilaf
 cloud: client login ✓ pos-boot ✓ qr-pending ✓ qr-tables ✓ pos-diagnostics ✓
 pos-settings ✓ menu bridge ✓ store-state ✓ · local node ✓ ·
 PHP lint 77 files clean ✓ · page guard 43 files OK ✓
+
+---
+
+# V30 — Offline package fixes (UI sealed, schema built-in, installer)
+
+## 1. approved_ui customer ko nahi jati
+Saari UI (HTML/JS/CSS jo `approved_ui/` mein hai) ab **seal ke andar** hai.
+Router unhe sealed bundle se serve karta hai. Package mein `approved_ui/`
+folder **hai hi nahi**.
+
+## 2. docs/ (database schema) bhi built-in
+`docs/*.sql` ab sealed bundle ka hissa hai; `install_schema.php` seal se
+parhti hai. Package mein `docs/` folder nahi jata.
+**Ab shipped folders sirf:** `public/` (browser-facing js/css/assets +
+4 stub php), `runtime/`, `tools/` (4 scripts), `data/`, `storage/`,
+`vendor/` — aur 2 .bat files.
+
+## 3. INSTALL_OFFLINE.bat ka error
+`config\offline.php nahi mili` — kyunki V29 se config sealed ho chuki hai
+magar installer purani jagah dhoond raha tha. Ab installer
+`runtime/app.sealed` check karta hai aur business ka naam
+`runtime/app.info` se leta hai (sirf display name, koi secret nahi).
+
+## 4. START_RESTAURANT.bat ka "database check failed"
+Wo purana launcher installed MySQL maangta tha. Ab **`START_OFFLINE.bat`**
++ `tools/start_offline.ps1`: portable MariaDB start (port 3307) → private
+PHP se local server (free port 8080+) → browser khud khul jata hai →
+window band karne par DB bhi band. Desktop shortcut ab isi par point karta
+hai. Purane launchers package se hata diye gaye.
+
+## 5. Chupa hua bug pakra
+Sealed bundle mein `__DIR__` = `sealed://...` hota hai, is liye router ka
+`$static=__DIR__.'/'.$name` static files ko sealed path bana raha tha —
+CSS/JS 302 aur **login-submit fail**. Ab build par yeh `APP_ROOT.'/public/'`
+ban jata hai. (Isi tarah ek greedy path-rewrite rule bhi hataya gaya.)
+
+## Tested (asli sealed package chala kar)
+shipped: approved_ui 0, docs 0, src 0, config 0 ✓ · app.info sahi ✓
+schema seal se 93 tables ✓ · 7 migrations + bootstrap + roles + admin ✓
+login 303 → POS v28 page → shared.css 200 → pos-boot (4 cats, 8 tables) ✓
+shift open ✓ item create ✓ **bill finalize netSales 800** ✓
+pages: qr 200, menu 200, inventory 200, kds 200 ✓
+cloud + local regression ✓ PHP lint clean ✓

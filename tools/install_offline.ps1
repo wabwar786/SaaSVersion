@@ -8,16 +8,17 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-Write-Host "[1/4] Configuration parh rahe hain..." -ForegroundColor Cyan
-if (-not (Test-Path "$root\config\offline.php")) {
-  Write-Host "config\offline.php nahi mili. Portal se dobara download karein." -ForegroundColor Red
+Write-Host "[1/5] Package check kar rahe hain..." -ForegroundColor Cyan
+if (-not (Test-Path "$root\runtime\app.sealed")) {
+  Write-Host "Package adhoora hai (runtime\app.sealed nahi mili). Portal se dobara download karein." -ForegroundColor Red
   exit 1
 }
 
-# business name nikalo (shortcut ke naam ke liye)
-$cfgTxt = Get-Content "$root\config\offline.php" -Raw
+# business ka naam (sirf shortcut ke liye) — baqi sab sealed config mein hai
 $bizName = 'Restaurant POS'
-if ($cfgTxt -match "'name'\s*=>\s*'([^']+)'") { $bizName = $Matches[1] }
+if (Test-Path "$root\runtime\app.info") {
+  try { $info = Get-Content "$root\runtime\app.info" -Raw | ConvertFrom-Json; if ($info.name) { $bizName = $info.name } } catch {}
+}
 
 Write-Host "[2/5] PHP runtime tayyar kar rahe hain (system par kuch install nahi hoga)..." -ForegroundColor Cyan
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1"
@@ -42,7 +43,7 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $lnkPath = Join-Path $desktop ("$bizName.lnk")
 $ws = New-Object -ComObject WScript.Shell
 $sc = $ws.CreateShortcut($lnkPath)
-$sc.TargetPath       = Join-Path $root 'START_RESTAURANT.bat'
+$sc.TargetPath       = Join-Path $root 'START_OFFLINE.bat'
 $sc.WorkingDirectory = $root
 $sc.WindowStyle      = 7
 $sc.Description      = "$bizName - Offline POS"

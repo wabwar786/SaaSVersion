@@ -43,7 +43,16 @@ final class OfflineBundler
                 $sources[self::rel($root, $abs)] = self::rewritePaths(self::strip(file_get_contents($abs)));
             }
         }
-        // 3) config (sync token yahin hai — plaintext disk par nahi jayega)
+        // 3) approved UI (HTML/JS/CSS) — yeh bhi customer ko raw nahi milti;
+        //    router inhe seal ke andar se serve karta hai.
+        foreach (self::walk($root.'/approved_ui') as $abs) {
+            $sources[self::rel($root, $abs)] = file_get_contents($abs);
+        }
+        // 4) schema / seed SQL — database structure bhi built-in
+        foreach (glob($root.'/docs/*.sql') as $abs) {
+            $sources['docs/'.basename($abs)] = file_get_contents($abs);
+        }
+        // 5) config (sync token yahin hai — plaintext disk par nahi jayega)
         $sources['config/offline.php'] = "<?php return ".var_export($configArray, true).";\n";
 
         $blobPlain = gzdeflate(serialize($sources), 9);
@@ -150,7 +159,12 @@ final class SealedStream
     }
     public function stream_stat(): array { return ['size' => strlen($this->data), 'mode' => 0100444]; }
     public function stream_set_option($o, $a1, $a2): bool { return false; }
-    public function url_stat($p, $f): array { $rel = substr($p, strlen('sealed://')); $x = $GLOBALS['__sealed_files'][$rel] ?? ''; return ['size' => strlen($x), 'mode' => 0100444]; }
+    public function url_stat($p, $f)
+    {
+        $rel = substr($p, strlen('sealed://'));
+        if (!isset($GLOBALS['__sealed_files'][$rel])) return false;
+        return ['size' => strlen($GLOBALS['__sealed_files'][$rel]), 'mode' => 0100444];
+    }
 }
 PHPCODE
         ;
@@ -197,12 +211,13 @@ PHPCODE
             "\$file = 'sealed://src/' . str_replace('\\\\', '/', \$relative) . '.php';\n    if (isset(\$GLOBALS['__sealed_files'][substr(\$file,9)])) require \$file;",
             $code
         );
+        // router.php: static files disk se (js/css/img aur php stubs)
+        $code = str_replace("\$static=__DIR__.'/'.\$name;", "\$static=APP_ROOT.'/public/'.\$name;", $code);
         $map = [
             "dirname(__DIR__).'/src/"        => "'sealed://src/",
             "dirname(__DIR__) . '/src/"      => "'sealed://src/",
             "__DIR__.'/../src/"              => "'sealed://src/",
             "__DIR__ . '/../src/"            => "'sealed://src/",
-            "__DIR__.'/'"                    => "'sealed://src/'",
             "__DIR__ . '/helpers.php'"       => "'sealed://src/helpers.php'",
             "__DIR__.'/helpers.php'"         => "'sealed://src/helpers.php'",
             "dirname(__DIR__).'/config/"     => "'sealed://config/",
@@ -211,9 +226,9 @@ PHPCODE
         ];
         $code = strtr($code, $map);
         // data files (schema/seed) asli disk se aati hain
-        $code = str_replace("dirname(__DIR__).'/docs/", "APP_ROOT.'/docs/", $code);
+        $code = str_replace("dirname(__DIR__).'/docs/", "'sealed://docs/", $code);
         $code = str_replace("dirname(__DIR__).'/storage/", "APP_ROOT.'/storage/", $code);
-        $code = str_replace("dirname(__DIR__).'/approved_ui/", "APP_ROOT.'/approved_ui/", $code);
+        $code = str_replace("dirname(__DIR__).'/approved_ui/", "'sealed://approved_ui/", $code);
         $code = str_replace("dirname(__DIR__).'/public/", "APP_ROOT.'/public/", $code);
         return $code;
     }

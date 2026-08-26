@@ -218,26 +218,27 @@ $loaderSrc=str_replace("declare(strict_types=1);",
   $loaderSrc);
 $loader=$loaderSrc;
 $zip->addFromString('runtime/boot.php',$loader);
+$zip->addFromString('runtime/app.info',json_encode(['name'=>(string)$t['dn'],'branch'=>$siteName,'industry'=>(string)($t['industry_code']?:'RESTAURANT')]));
 /* --- entry stubs (sirf yeh readable hain) --- */
 $stub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';\nSealedApp::boot(dirname(__DIR__));\nreturn SealedApp::run('".$rel."');\n";};
 foreach(['api.php','router.php','index.php','login-submit.php','logout.php'] as $e){
   if(is_file($root.'/public/'.$e))$zip->addFromString('public/'.$e,$stub('public/'.$e));
 }
-/* --- assets/UI (yeh chhupane ki cheez nahi) --- */
-foreach([['approved_ui','approved_ui'],['public/assets','public/assets']] as $pair){
+/* --- sirf browser-facing static assets disk par (UI HTML ab seal mein hai) --- */
+foreach([['public/assets','public/assets']] as $pair){
   $srcDir=$root.'/'.$pair[0]; if(!is_dir($srcDir))continue;
   $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($srcDir,FilesystemIterator::SKIP_DOTS));
   foreach($it as $f){if(!$f->isFile())continue;$zip->addFile($f->getPathname(),$pair[1].'/'.ltrim(str_replace('\\','/',substr($f->getPathname(),strlen($srcDir))),'/'));}
 }
 foreach(glob($root.'/public/*.js') as $j)$zip->addFile($j,'public/'.basename($j));
 foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c));
-foreach(glob($root.'/public/*.html') as $h)$zip->addFile($h,'public/'.basename($h));
 /* --- launchers --- */
-foreach(['START_RESTAURANT.bat','INSTALL_OFFLINE.bat','RUN_SERVER_DEBUG.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
-foreach(glob($root.'/tools/*.ps1') as $ps)$zip->addFile($ps,'tools/'.basename($ps));
-foreach(glob($root.'/docs/*.sql') as $sqlf)$zip->addFile($sqlf,'docs/'.basename($sqlf));
+foreach(['resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1'] as $ps){
+  if(is_file($root.'/tools/'.$ps))$zip->addFile($root.'/tools/'.$ps,'tools/'.$ps);
+}
 $zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('vendor');$zip->addEmptyDir('storage/logs');
 $zip->addFromString('OFFLINE_README.txt',
  "OFFLINE VERSION - ".$t['dn']."\n".str_repeat('=',52)."\n\n"
