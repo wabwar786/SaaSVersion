@@ -70,6 +70,37 @@ function syncToken(){ syncTenant(); }
    tables kabhi nahi (warna token leak = account takeover). */
 
 /* Cloud par record: kis branch se kaun si table, kitni rows aayin/gayin. */
+/* Har sync request par node ka heartbeat.
+   PEHLE: activity sirf tab likhi jati thi jab rows>0. Jo node connect to
+   hota tha magar uske paas bhejne ko kuch naya nahi hota, wo cloud par
+   NAZAR HI NAHI AATA THA - dashboard "no branch computer yet" dikhata
+   rehta tha. Ab connection khud record hoti hai. */
+function syncNodeSeen(string $tid,string $action=''):void{
+  static $done=false; if($done)return; $done=true;
+  try{
+    $p=DB::pdo();
+    $ip=substr((string)($_SERVER['HTTP_X_FORWARDED_FOR']??$_SERVER['REMOTE_ADDR']??'unknown'),0,64);
+    $ip=trim(explode(',',$ip)[0]);
+    $site=(string)($GLOBALS['sync_site_id']??'');
+    $ver=substr((string)($_SERVER['HTTP_X_NODE_BUILD']??''),0,40);
+    $code=substr((string)($_SERVER['HTTP_X_NODE_CODE']??''),0,40);
+    $q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND machine_fingerprint=? LIMIT 1");
+    $q->execute([$tid,$ip]);
+    if($id=$q->fetchColumn()){
+      $p->prepare("UPDATE sync_nodes SET last_seen_at=NOW(6),status='ACTIVE',
+                     app_version=COALESCE(NULLIF(?,''),app_version),
+                     node_code=COALESCE(NULLIF(?,''),node_code),
+                     site_id=COALESCE(NULLIF(?,''),site_id) WHERE id=?")
+        ->execute([$ver,$code,$site,$id]);
+    }else{
+      $p->prepare("INSERT INTO sync_nodes(id,tenant_id,site_id,node_type,node_code,machine_fingerprint,
+                     last_seen_at,app_version,status,created_at)
+                   VALUES(?,?,?,'OFFLINE_NODE',?,?,NOW(6),?,'ACTIVE',NOW(6))")
+        ->execute([uuid(),$tid,$site?:null,$code?:null,$ip,$ver?:null]);
+    }
+  }catch(Throwable $e){}
+}
+
 function syncLogEnsure():void{
   static $done=false; if($done)return; $done=true;
   try{
@@ -713,6 +744,7 @@ if($page==='customers.html'){
 }
 ok(['row'=>$row]);
 case 'sync-ping':
+ try{ $pt=syncTenant(); syncNodeSeen($pt); }catch(Throwable $e){}
  /* Build version bhi bhejo: offline node compare kar ke bata sakay ke
     cloud par purana build chal raha hai (warna ghanton confusion hoti hai). */
  $bv='unknown';
@@ -725,7 +757,7 @@ case 'sync-ping':
    60-90 second le leta tha aur browser timeout kar deta tha.
    Ab poora sync 2-3 requests mein.
    ============================================================ */
-case 'sync-pull-bulk':$stid=syncTenant();$d=body();
+case 'sync-pull-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
  $GLOBALS['sync_tenant_id']=$stid;$GLOBALS['sync_site_id']=(string)($d['site_id']??'');
  $want=is_array($d['tables']??null)?$d['tables']:[];
@@ -746,7 +778,7 @@ case 'sync-pull-bulk':$stid=syncTenant();$d=body();
  }
  ok(['tables'=>$out,'more'=>$more,'total'=>$got]);
 
-case 'sync-push-bulk':$stid=syncTenant();$d=body();
+case 'sync-push-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
  $GLOBALS['sync_site_id']=(string)($d['site_id']??'');
  $sets=is_array($d['tables']??null)?$d['tables']:[];
@@ -756,11 +788,15 @@ case 'sync-push-bulk':$stid=syncTenant();$d=body();
    if(!syncTableAllowed($tbl)){$out[$tbl]=['error'=>'not allowed','applied'=>0,'sent'=>is_array($rows)?count($rows):0];continue;}
    $rows=is_array($rows)?$rows:[];
    try{
-     Sync::$lastConflicts=[];
+     Sync::$lastConflicts=[];unset(Sync::$lastRowErrors[$tbl]);
      $n=Sync::applyRows($tbl,$rows,$stid);
      $conf=Sync::$lastConflicts;
+     /* Asli wajah bhi wapas bhejo. Pehle sirf gina jata tha ke kitni rows
+        na chalin - kyun nahi chalin, wo cloud ke andar hi reh jata tha aur
+        node par "X row(s) not accepted" jaisa be-maani message aata tha. */
      $out[$tbl]=['applied'=>$n,'sent'=>count($rows),'conflicts'=>count($conf),
-                 'conflict_detail'=>array_slice($conf,0,3)];
+                 'conflict_detail'=>array_slice($conf,0,3),
+                 'row_error'=>Sync::$lastRowErrors[$tbl]??null];
      if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
      if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
    }catch(Throwable $e){
@@ -769,7 +805,7 @@ case 'sync-push-bulk':$stid=syncTenant();$d=body();
  }
  ok(['tables'=>$out]);
 
-case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
+case 'sync-push':$stid=syncTenant();syncNodeSeen($stid);$d=body();$tbl=(string)($d['table']??'');
  if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
  Sync::$lastConflicts=[];
  $sent=count($d['rows']??[]);
@@ -778,8 +814,9 @@ case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
  if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
  if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
  ok(['applied'=>$n,'sent'=>$sent,'conflicts'=>count($conf),
-     'conflict_detail'=>array_slice($conf,0,5)]);
-case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
+     'conflict_detail'=>array_slice($conf,0,5),
+     'row_error'=>Sync::$lastRowErrors[$tbl]??null]);
+case 'sync-pull':$stid=syncTenant();syncNodeSeen($stid);$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;
  $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;
@@ -796,7 +833,10 @@ case 'sync-log':needLogin();syncLogEnsure();
    $sq=$p->prepare("SELECT COUNT(*) transfers,COALESCE(SUM(rows_count),0) rows_total,MAX(created_at) last_at
                       FROM sync_activity WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)");
    $sq->execute([tenant_id()]);
-   ok(['role'=>'cloud','activity'=>$rows,'today'=>$sq->fetch()]);
+   $nq=$p->prepare("SELECT node_code,machine_fingerprint ip,app_version,last_seen_at,status
+                      FROM sync_nodes WHERE tenant_id=? ORDER BY last_seen_at DESC LIMIT 10");
+   $nq->execute([tenant_id()]);
+   ok(['role'=>'cloud','activity'=>$rows,'today'=>$sq->fetch(),'nodes'=>$nq->fetchAll()]);
  }
  ok(['role'=>'local','runs'=>Sync::runLog($lim)]);
 case 'sync-diagnose':needLogin();
@@ -815,11 +855,13 @@ case 'sync-state':needLogin();
    $has=false;$last=null;$nodes=0;
    try{
      $p=DB::pdo();
+     /* Node ka connect hona hi kaafi hai - rows bhejna zaroori nahi */
+     $nq=$p->prepare("SELECT COUNT(*) c, MAX(last_seen_at) last FROM sync_nodes WHERE tenant_id=? AND status<>'REVOKED'");
+     $nq->execute([tenant_id()]);
+     if($nr=$nq->fetch()){ $nodes=(int)$nr['c']; $has=$nodes>0; $last=$nr['last']; }
      $q=$p->prepare("SELECT COUNT(*) c, MAX(created_at) last FROM sync_activity WHERE tenant_id=?");
      $q->execute([tenant_id()]);
-     if($r=$q->fetch()){ $has=((int)$r['c'])>0; $last=$r['last']; }
-     $nq=$p->prepare("SELECT COUNT(DISTINCT node_ip) FROM sync_activity WHERE tenant_id=? AND node_ip IS NOT NULL");
-     $nq->execute([tenant_id()]);$nodes=(int)$nq->fetchColumn();
+     if($r=$q->fetch()){ if((int)$r['c']>0){ $has=true; if(!$last||$r['last']>$last)$last=$r['last']; } }
      $dq=$p->prepare("SELECT COUNT(*) t, COALESCE(SUM(rows_count),0) r FROM sync_activity
                         WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)");
      $dq->execute([tenant_id()]);

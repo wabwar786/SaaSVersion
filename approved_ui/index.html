@@ -390,6 +390,16 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
           +'<div class="syncBox"><small>Rows received (24h)</small><b>'+(t.rows_total||0)+'</b></div>'
           +'<div class="syncBox"><small>Last activity</small><b style="font-size:12px">'+esc(fmtTime(t.last_at))+'</b></div>'
           +'</div>';
+        var nd=r.nodes||[];
+        if(nd.length){
+          h+='<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;opacity:.7;'
+            +'text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Connected branch computers</div>'
+            +nd.map(function(n){
+              return '<div class="syncRow"><div class="ic">&#128187;</div>'
+                +'<div style="flex:1"><b>'+esc(n.node_code||'Branch')+'</b> &middot; '+esc(n.ip||'')
+                +'<small>build '+esc(n.app_version||'unknown')+' &middot; last seen '+esc(fmtTime(n.last_seen_at))+'</small></div></div>';
+            }).join('')+'</div>';
+        }
         h+= a.length
           ? ('<div style="margin-top:12px;max-height:320px;overflow:auto">'+a.map(function(x){
               var bad=(x.status==='FAILED');

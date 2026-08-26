@@ -1654,3 +1654,81 @@ local build V49 · cloud build V49 · **Build match: "Both on V49"** ·
 **Bulk sync support: OK** · sync **0.46s** (371 push + 484 pull) ok=true
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V50 — "No offline installation has connected yet" ka asli sabab
+
+## Bug
+Cloud par activity **sirf tab** likhi jati thi jab rows > 0:
+
+    if($n>0) syncActivityLog(...);
+
+Aap ka node cloud se **connect ho raha tha**, ping kaamyab, token qubool —
+magar us waqt bhejne ko kuch **naya nahi** tha (ya sab kuch conflict par
+ruk gaya tha). Nateeja: cloud par ek bhi row na likhi gayi, aur dashboard
+kehta raha *"No offline installation has connected yet."*
+
+Yani cloud "connection" aur "data transfer" mein farq hi nahi karta tha.
+
+## Fix — node heartbeat
+- Har authenticated sync request (ping / push / pull / bulk) par
+  **`syncNodeSeen()`** node ko `sync_nodes` mein record karta hai:
+  node code (L1/L2), IP, **app build**, last seen.
+- Node har request mein apni pehchan bhejta hai:
+  `X-Node-Build`, `X-Node-Code` headers. `cloudOnline()` ka ping bhi ab
+  token ke saath jata hai taake heartbeat ban sake.
+- `has_offline_node` ab **`sync_nodes`** par mabni hai — rows bheje baghair
+  bhi node nazar aata hai.
+- Cloud dashboard par naya section **"Connected branch computers"**:
+  har node ka code, IP, build aur last seen.
+- Cloud card par **"Server build"** box bhi (V49 ke handshake ke saath
+  mil kar dono taraf ka version ek nazar mein).
+
+## Tested (cloud log bilkul khali kar ke, aap jaisa halat)
+Node ne sirf `cloudOnline()` ping kiya — koi row nahi bheji:
+  sync_nodes: **L1 | 127.0.0.1 | V50 build | ACTIVE** ✓
+Cloud dashboard: header tile **"1 branch"**, pill **"1 branch computer"**,
+boxes [Server build V50 · Branch computers 1 · Last activity 10:49:57 ·
+Received 0 rows · Transfers 0] ✓
+View log: **"CONNECTED BRANCH COMPUTERS — 💻 L1 · 127.0.0.1 · build V50 ·
+last seen ..."** ✓ page errors 0
+
+PHP lint clean · 44 pages OK
+
+---
+
+# V51 — "X row(s) not accepted by cloud" — ab wajah bhi milegi, aur sync atkega nahi
+
+## Aap ke log ne do kharabiyan dikhayin
+
+**1. Cloud asli wajah wapas hi nahi bhejta tha.**
+`sync-push-bulk` sirf `applied` aur `conflicts` lautata tha. Agar row
+duplicate ke ilawa kisi aur wajah se fail hoti (data too long, invalid
+value, missing column) to wo error **cloud ke andar hi reh jata tha** aur
+node par be-maani message aata: *"1 row(s) not accepted by cloud"*.
+**Fix:** cloud ab `row_error` bhi wapas bhejta hai — poora SQL error.
+Ab log mein aisa likha aayega:
+`payments: 1 row(s) rejected by cloud - SQLSTATE[22001]: String data, right truncated...`
+
+**2. Sync hamesha usi jagah atka rehta tha.**
+Aap ke log mein wahi 6 tables (users, orders, order_items, payments,
+kitchen_tickets, kitchen_ticket_items) har run mein dobara fail ho rahi
+thin — 3:47 se 3:52 tak. Wajah: V48 mein maine sirf *duplicate key* wale
+case ko "permanent" mana tha. Baqi har failure par watermark ruk jata tha,
+to wahi rows hamesha retry hoti rahin aur peeche ka poora data bhi ruka
+raha.
+**Fix — retry limit:** har table ka apna counter (`sync_retries`).
+3 nakaam koshishon ke baad wo rows **quarantine** ho jati hain
+(`sync_activity` mein status REJECTED + poori wajah), watermark aage barh
+jata hai, aur baqi data behta rehta hai. Kaamyabi par counter reset.
+Duplicate-key wala case pehli hi dafa permanent maana jata hai (dobara
+kabhi qubool nahi hoga).
+
+## Tested (asli sealed package)
+Duplicate user: run 1 mein error, run 2-5 **saaf** (atka nahi) ✓
+Data-too-long payment: run 1-3 mein **asli SQL error** nazar aaya,
+run 4-5 saaf, row quarantine mein
+`payments | 1 | REJECTED | ... SQLSTATE[22001]: String data, right truncat...` ✓
+
+PHP lint clean · 44 pages OK

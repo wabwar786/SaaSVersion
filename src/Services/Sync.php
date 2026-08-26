@@ -63,8 +63,11 @@ final class Sync
 
         $build = '';
         try {
+            $cc = self::cfg();
             [$code, $body] = self::httpPost(self::endpoint('sync-ping'),
-                ['Content-Type: application/json'], '{}', 4, 12);
+                ['Content-Type: application/json', 'X-Sync-Token: ' . ($cc['token'] ?? ''),
+                 'X-Node-Build: ' . self::localBuild(),
+                 'X-Node-Code: '  . (string)($GLOBALS['config']['app']['node_code'] ?? '')], '{}', 4, 12);
             if ($code === 200) {
                 $j = \json_decode((string)$body, true);
                 $build = (string)($j['build'] ?? '');
@@ -151,7 +154,10 @@ final class Sync
         else { $add('Connection', false, "Cannot reach $host:$port - $es (errno $en). Firewall/antivirus ya proxy check karein."); return $out; }
 
         try {
-            [$code, $res] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 6, 15);
+            $cx = self::cfg();
+            [$code, $res] = self::httpPost(self::endpoint('sync-ping'),
+                ['Content-Type: application/json', 'X-Sync-Token: ' . ($cx['token'] ?? ''),
+                 'X-Node-Build: ' . self::localBuild()], '{}', 6, 15);
             $j = \json_decode((string)$res, true);
             $add('Cloud response', $code === 200, $code === 200
                 ? ('HTTP 200 - server role: ' . (string)($j['role'] ?? '?'))
@@ -364,7 +370,8 @@ final class Sync
             } catch (\Throwable $e) {
                 // Ek row ka masla (misal duplicate bill number) poori batch
                 // ko na rokay — baqi rows chalti rahen.
-                $failed++; $lastErr = \substr($e->getMessage(), 0, 160);
+                $failed++;
+                $lastErr = \substr(\preg_replace('/\s+/', ' ', $e->getMessage()) ?? '', 0, 220);
             }
         }
         $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
@@ -513,7 +520,9 @@ final class Sync
     {
         $c = self::cfg();
         $url = self::endpoint($action);
-        $headers = ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? '')];
+        $headers = ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? ''),
+                    'X-Node-Build: ' . self::localBuild(),
+                    'X-Node-Code: '  . (string)($GLOBALS['config']['app']['node_code'] ?? '')];
         [$code, $res] = self::httpPost($url, $headers, \json_encode($body, JSON_UNESCAPED_UNICODE), 6, 45);
         if ($code !== 200) {
             $hint = \trim(\strip_tags((string)$res));
@@ -563,7 +572,11 @@ final class Sync
     {
         if (!self::enabled()) { self::$lastError = self::statusReason(); return false; }
         try {
-            [$code, $body] = self::httpPost(self::endpoint('sync-ping'), ['Content-Type: application/json'], '{}', 4, 10);
+            $c = self::cfg();
+            [$code, $body] = self::httpPost(self::endpoint('sync-ping'),
+                ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? ''),
+                 'X-Node-Build: ' . self::localBuild(),
+                 'X-Node-Code: '  . (string)($GLOBALS['config']['app']['node_code'] ?? '')], '{}', 4, 10);
             if ($code === 200) { self::$lastError = ''; return true; }
             self::$lastError = "Cloud replied HTTP $code";
             return false;
@@ -629,6 +642,7 @@ final class Sync
                 }
                 if ($applied >= $sent) {
                     self::setWatermark("push:$table", $meta[$table]['wm'], 'OK', null, $sent);
+                    self::clearRetry("push:$table");
                     continue;
                 }
                 /* Kuch rows qubool nahi huin. Agar sabab duplicate key hai to
@@ -636,17 +650,30 @@ final class Sync
                    rok dene se sync HAMESHA usi jagah atka rehta (aap ke
                    "2 rows to upload" ki wajah). Is liye: aage barh jao,
                    magar conflict ko permanently record kar do. */
+                $detail = (string)($r['row_error'] ?? '');
                 $why = $conf > 0
-                    ? ($conf . ' row(s) rejected by cloud - duplicate number already used by another device')
-                    : (($sent - $applied) . ' row(s) not accepted by cloud');
+                    ? ($conf . ' row(s) rejected - number already used by another device')
+                    : (($sent - $applied) . ' row(s) rejected by cloud'
+                       . ($detail !== '' ? (' - ' . $detail) : ''));
                 self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $why];
                 foreach (($r['conflict_detail'] ?? []) as $cd) self::$lastConflicts[] = $cd;
 
-                if ($conf > 0 && ($applied + $conf) >= $sent) {
-                    self::setWatermark("push:$table", $meta[$table]['wm'], 'PARTIAL', $why, $applied);
-                    self::quarantine($table, $conf, $why);
+                /* Kuch masle dobara koshish se hal ho jate hain (network,
+                   parent row abhi nahi pohanchi). Kuch kabhi hal nahi hote
+                   (duplicate key, kharab data). Pehle inhen alag nahi kiya
+                   jata tha, is liye sync HAMESHA usi jagah atka rehta tha —
+                   aap ke log mein wahi 6 tables baar baar. Ab: 3 koshishon
+                   ke baad aage barh jao aur un rows ko quarantine kar do. */
+                $tries = self::bumpRetry("push:$table");
+                $permanent = ($conf > 0 && ($applied + $conf) >= $sent);
+                if ($permanent || $tries >= 3) {
+                    $note = $permanent ? $why : ($why . ' (gave up after ' . $tries . ' attempts)');
+                    self::setWatermark("push:$table", $meta[$table]['wm'], 'PARTIAL', $note, $applied);
+                    self::quarantine($table, $sent - $applied, $note);
+                    self::clearRetry("push:$table");
                 } else {
-                    self::setWatermark("push:$table", $meta[$table]['since'], 'ERROR', $why, $applied);
+                    self::setWatermark("push:$table", $meta[$table]['since'], 'ERROR',
+                        $why . ' (attempt ' . $tries . ' of 3)', $applied);
                 }
             }
             if (self::$abortedReason !== '') break;
@@ -667,6 +694,30 @@ final class Sync
         }
         if ($cur) $chunks[] = $cur;
         return $chunks;
+    }
+
+    /** Lagatar nakaam koshishon ki ginti (scope ke against). */
+    private static function bumpRetry(string $scope): int
+    {
+        try {
+            $p = DB::pdo();
+            $p->exec("CREATE TABLE IF NOT EXISTS sync_retries (
+                scope VARCHAR(120) NOT NULL PRIMARY KEY,
+                tries INT NOT NULL DEFAULT 0,
+                updated_at DATETIME(6) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $p->prepare("INSERT INTO sync_retries(scope,tries,updated_at) VALUES(?,1,NOW(6))
+                         ON DUPLICATE KEY UPDATE tries=tries+1, updated_at=NOW(6)")->execute([$scope]);
+            $q = $p->prepare("SELECT tries FROM sync_retries WHERE scope=?");
+            $q->execute([$scope]);
+            return (int)$q->fetchColumn();
+        } catch (\Throwable $e) { return 3; }
+    }
+
+    private static function clearRetry(string $scope): void
+    {
+        try { DB::pdo()->prepare("DELETE FROM sync_retries WHERE scope=?")->execute([$scope]); }
+        catch (\Throwable $e) {}
     }
 
     /** Jo rows cloud ne hamesha ke liye reject kar din — record rakho. */
