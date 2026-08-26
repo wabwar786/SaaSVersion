@@ -54,7 +54,7 @@ if ($snap) {
         if (!is_array($rows) || !$rows) continue;
         // sirf wahi columns jo is DB mein mojood hain
         try {
-            $cq = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");
+            $cq = $pdo->prepare("SELECT column_name AS column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");
             $cq->execute([$table]);
             $cols = array_column($cq->fetchAll(), 'column_name');
             if (!$cols) continue;

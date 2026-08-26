@@ -36,7 +36,7 @@ catch (\Throwable $e) { echo "  note(db-default): ".substr($e->getMessage(),0,12
 //    id/FK columns bhi convert ho jaate hain; MariaDB kisi table par mana
 //    kare to skip+log, crash nahi).
 $q = $pdo->prepare(
-    "SELECT table_name, table_collation FROM information_schema.tables
+    "SELECT table_name AS table_name, table_collation AS table_collation FROM information_schema.tables
       WHERE table_schema=? AND table_type='BASE TABLE' AND table_collation<>?"
 );
 $q->execute([$db, $target]);

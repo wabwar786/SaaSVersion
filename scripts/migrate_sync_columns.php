@@ -43,7 +43,7 @@ $exists = function (string $t) use ($pdo): bool {
     $q->execute([$t]); return (bool)$q->fetchColumn();
 };
 $cols = function (string $t) use ($pdo): array {
-    $q = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");
+    $q = $pdo->prepare("SELECT column_name AS column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");
     $q->execute([$t]); return array_column($q->fetchAll(), 'column_name');
 };
 

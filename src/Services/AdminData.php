@@ -49,10 +49,10 @@ final class AdminData
         if (isset($cache[$t])) return $cache[$t];
         try {
             $q = DB::pdo()->prepare(
-                "SELECT column_name FROM information_schema.columns
+                "SELECT column_name AS c FROM information_schema.columns
                   WHERE table_schema = DATABASE() AND table_name = ?");
             $q->execute([$t]);
-            return $cache[$t] = array_column($q->fetchAll(PDO::FETCH_ASSOC), 'column_name');
+            return $cache[$t] = array_column($q->fetchAll(PDO::FETCH_ASSOC), 'c');
         } catch (\Throwable $e) { return $cache[$t] = []; }
     }
 
@@ -159,14 +159,14 @@ final class AdminData
     {
         try {
             $q = DB::pdo()->query(
-                "SELECT table_name, GROUP_CONCAT(column_name) cols
+                "SELECT table_name AS t, GROUP_CONCAT(column_name) AS cols
                    FROM information_schema.columns
                   WHERE table_schema = DATABASE()
                     AND column_name IN ('tenant_id','site_id')
                   GROUP BY table_name ORDER BY table_name");
             $out = [];
             foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $t = (string)$r['table_name'];
+                $t = (string)$r['t'];
                 if (in_array($t, self::NEVER_WIPE, true)) continue;
                 if (str_ends_with($t, '_bk') || str_ends_with($t, '_backup')) continue;
                 $cols = explode(',', (string)$r['cols']);

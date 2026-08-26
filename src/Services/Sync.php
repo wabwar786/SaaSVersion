@@ -245,7 +245,7 @@ final class Sync
         $cols = [];
         try {
             $q = DB::pdo()->prepare(
-                "SELECT column_name FROM information_schema.columns
+                "SELECT column_name AS column_name FROM information_schema.columns
                   WHERE table_schema = DATABASE() AND table_name = ?"
             );
             $q->execute([$table]);
@@ -258,7 +258,7 @@ final class Sync
                 $db = (string)($GLOBALS['config']['db']['database'] ?? '');
                 if ($db !== '') {
                     $q = DB::pdo()->prepare(
-                        "SELECT column_name FROM information_schema.columns
+                        "SELECT column_name AS column_name FROM information_schema.columns
                           WHERE table_schema = ? AND table_name = ?"
                     );
                     $q->execute([$db, $table]);

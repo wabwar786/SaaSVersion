@@ -1,5 +1,13 @@
 <?php
-declare(strict_types=1);require_once dirname(__DIR__).'/src/bootstrap.php';
+declare(strict_types=1);
+/* API ka jawab HAMESHA saaf JSON hona chahiye.
+   Aap ke server par MySQL 8 ke "Undefined array key" warnings seedhe
+   response mein chhap gaye aur poora JSON kharab kar diya — browser ko
+   sirf "Request failed" dikha. Warnings log mein jayen, response mein nahi. */
+@ini_set('display_errors', '0');
+@ini_set('log_errors', '1');
+error_reporting(E_ALL);
+require_once dirname(__DIR__).'/src/bootstrap.php';
 use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){fail('Security token expired. Refresh the screen and try again.',419);}}}
@@ -356,7 +364,7 @@ $snapTables=[
 ];
 $snap=[];$colCache=[];
 $hasCol=function(string $tb,string $c)use($p,&$colCache):bool{
-  if(!isset($colCache[$tb])){$q=$p->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$tb]);$colCache[$tb]=array_column($q->fetchAll(),'column_name');}
+  if(!isset($colCache[$tb])){$q=$p->prepare("SELECT column_name AS column_name FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$tb]);$colCache[$tb]=array_column($q->fetchAll(),'column_name');}
   return in_array($c,$colCache[$tb],true);
 };
 $tblExists=function(string $tb)use($p):bool{$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$tb]);return (bool)$q->fetchColumn();};

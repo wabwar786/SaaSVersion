@@ -2172,3 +2172,41 @@ Koi table MISSING ho to wahin likha aata hai *"run the migrations"* — yani
 Railway par migration na chali ho to foran pata chal jata hai.
 
 PHP lint clean · 44 pages OK · console JS clean
+
+---
+
+# V61 — MySQL 8 vs MariaDB: information_schema ke column names
+
+## Aap ke selftest ne asli bug pakar diya
+
+    Server returned HTTP 200 (not JSON)
+    Warning: Undefined array key "table_name" in AdminData.php on line 169
+
+**Sabab:** MySQL 8 `information_schema` ke column names **UPPERCASE**
+(`TABLE_NAME`, `COLUMN_NAME`) lautata hai; MariaDB lowercase. Mera saara
+code lowercase maan raha tha. Aap ka Railway MySQL 8 par hai, mera sandbox
+MariaDB par — is liye mere yahan sab theek chalta raha aur aap ke yahan
+`wipeableTables()` **khali/kharab** aata tha.
+
+Isi ek farq se:
+- `reset` / `delete` / `purge` — "Request failed"
+- warnings seedhe response mein chhap kar JSON tor dete the
+
+## Fix 1 — har query ab explicit lowercase alias
+`SELECT table_name AS t`, `SELECT column_name AS c` waghera. Ab jawab
+dono databases par ek jaisa aata hai. Files: `AdminData.php`, `Sync.php`,
+`api.php`, `migrate_sync_columns.php`, `migrate_collation.php`,
+`bootstrap_offline.php`.
+Audit chalaya — **sab queries case-safe** ✓
+
+## Fix 2 — warnings ab response mein nahi jatin
+`api.php` ke shuru mein: `display_errors=0`, `log_errors=1`.
+Koi PHP warning aaye to log mein jayegi, JSON kharab nahi karegi.
+Yehi wajah thi ke ek chhoti si warning poore console ko tor deti thi.
+
+## Tested
+`selftest royal-grill` — poora OK ✓
+`footprint royal-grill` — 9 tables ✓
+`reset royal-grill txn --confirm "Royal Grill"` — saaf JSON ✓
+`purge royal-grill logs --confirm "Royal Grill"` — saaf JSON ✓
+Sync suite **34/34** · PHP lint clean · 44 pages OK
