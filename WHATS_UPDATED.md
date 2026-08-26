@@ -2004,3 +2004,72 @@ Browser (Lahore Karahi House, FULL): menu 1→0, orders 1→0, inventory 1→0,
 **users 1→1 (admin salamat)** ✓
 Backup → download → FULL reset → import se master data wapis ✓
 Sync suite regression: **34/34 passed** · PHP lint clean · 44 pages OK
+
+---
+
+# V58 — Complete business delete + Command Console
+
+## 1. Business delete ab waqai poora delete
+Pehle koi mukammal delete tha hi nahi. Ab `AdminData::deleteBusiness()`:
+- **73 tenant-scoped tables** (information_schema se khud nikali gayi, hardcoded list nahi)
+- platform-level rows bhi: sync_activity, sync_nodes, sync_runs, sync_cursors,
+  admin_backups/imports/audit, subscription_payments, tenant_subscriptions,
+  site_modules, site_settings, **sites**, **organizations**, signup_requests
+- aakhir mein khud **tenants** row
+
+Yani business ka naam-o-nishan tak nahi bachta. Factory reset se aage — wahan
+admin login bachta hai, yahan wo bhi nahi.
+
+**Hifazat:** business ka **poora naam type** karna lazmi (`confirm_name`), aur har
+delete audit log mein jata hai.
+
+**Tested (asli API se business bana kar):** 13 tables mein 38 rows → delete →
+39 rows from 14 tables → **AFTER: 0 tables, tenants 0, sites 0** ✓
+
+## 2. Command Console — naya screen
+Super admin mein **Command Console** (sidebar → System). Asli terminal:
+dark screen, `>` prompt, Up/Down arrow se purani commands, quick-command chips.
+
+**Commands:**
+
+    BUSINESSES
+      list                              sab businesses
+      info <slug>                       tafseel + counts
+      users <slug>                      staff accounts
+      footprint <slug>                  kis table mein kitna data hai
+      suspend <slug> | activate <slug>
+    DATA
+      backup <slug> [full|master]       file download shuru
+      reset <slug> [txn|full] --confirm "<name>"
+      delete <slug> --confirm "<name>"
+    MONITORING
+      nodes                             branch computers
+      sync [slug]                       transfer activity
+      audit [slug]                      super-admin actions
+    DATABASE
+      tables                            tenant-scoped tables
+      query SELECT ...                  read-only, max 100 rows
+    CONSOLE
+      clear · version · help
+
+**Hifazatein (sab server par, browser mein nahi):**
+- `reset` / `delete` bina `--confirm "<exact name>"` chalti hi nahi
+- galat naam par: *"Confirmation does not match. Expected: …"*
+- `reset` se pehle **1 ghante ke andar backup** lazmi
+- `query` sirf SELECT/SHOW/DESCRIBE — INSERT/UPDATE/DELETE/DROP block
+- bina LIMIT wali query par khud `LIMIT 100`
+- har amal audit log mein
+
+**Tested (browser):**
+  `delete grill-two` → "needs confirmation" ✓
+  `delete grill-two --confirm "Wrong Name"` → "does not match. Expected: Grill Two" ✓
+  `reset grill-two full --confirm "Grill Two"` → "Take a backup first" ✓
+  `query DELETE FROM tenants` → "Only SELECT / SHOW / DESCRIBE are allowed" ✓
+  `delete grill-two --confirm "Grill Two"` → poora saaf, tenants row 0 ✓
+
+## Chhoti baat
+`mb_strlen` hata di — Railway image par mbstring nahi hai, console har command
+par crash kar jata.
+
+## Regression
+Sync suite **34/34** · reset verifier CLEAN · PHP lint clean · 44 pages OK

@@ -43,7 +43,7 @@ final class AdminData
 
     /* ------------------------------------------------------------------ */
 
-    private static function cols(string $t): array
+    public static function cols(string $t): array
     {
         static $cache = [];
         if (isset($cache[$t])) return $cache[$t];
@@ -262,6 +262,101 @@ final class AdminData
 
         return ['deleted' => $out, 'total' => array_sum(array_filter($out, fn($n) => $n > 0)),
                 'kept_admin' => $adminId];
+    }
+
+    /* ------------------------------ DELETE ---------------------------- */
+
+    /**
+     * Business ko poori tarah mita do — har table se, tenant row samet.
+     * Factory reset se aage: yahan admin login bhi nahi bachta.
+     *
+     * @return array{deleted:array<string,int>,total:int}
+     */
+    public static function deleteBusiness(string $tenantId): array
+    {
+        $pdo   = DB::pdo();
+        $sites = self::siteIds($tenantId);
+        $out   = [];
+
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+
+        // 1) har wo table jismein tenant_id / site_id hai
+        foreach (self::wipeableTables() as $t) {
+            $name = $t['name'];
+            try {
+                if ($t['key'] === 'tenant_id') {
+                    $st = $pdo->prepare("DELETE FROM `$name` WHERE tenant_id = ?");
+                    $st->execute([$tenantId]);
+                } else {
+                    if (!$sites) continue;
+                    $in = implode(',', array_fill(0, count($sites), '?'));
+                    $st = $pdo->prepare("DELETE FROM `$name` WHERE site_id IN ($in)");
+                    $st->execute($sites);
+                }
+                if ($st->rowCount() > 0) $out[$name] = $st->rowCount();
+            } catch (\Throwable $e) { $out[$name] = -1; }
+        }
+
+        // 2) platform-level rows jo isi business ke hain
+        foreach ([
+            'sync_activity', 'sync_nodes', 'sync_runs', 'sync_conflicts',
+            'sync_inbox', 'sync_outbox', 'sync_cursors',
+            'admin_backups', 'admin_imports', 'admin_audit',
+            'subscription_payments', 'tenant_subscriptions',
+            'site_modules', 'site_settings', 'sites', 'organizations',
+        ] as $name) {
+            try {
+                if (!self::cols($name)) continue;
+                $st = $pdo->prepare("DELETE FROM `$name` WHERE tenant_id = ?");
+                $st->execute([$tenantId]);
+                if ($st->rowCount() > 0) $out[$name] = ($out[$name] ?? 0) + $st->rowCount();
+            } catch (\Throwable $e) {}
+        }
+
+        // 3) signup requests (email se bandhi)
+        try {
+            $e = $pdo->prepare("SELECT owner_email FROM tenants WHERE id = ?");
+            $e->execute([$tenantId]);
+            $mail = (string)$e->fetchColumn();
+            if ($mail !== '' && self::cols('signup_requests')) {
+                $st = $pdo->prepare("DELETE FROM signup_requests WHERE email = ?");
+                $st->execute([$mail]);
+                if ($st->rowCount() > 0) $out['signup_requests'] = $st->rowCount();
+            }
+        } catch (\Throwable $e) {}
+
+        // 4) aakhir mein khud tenant
+        try {
+            $st = $pdo->prepare("DELETE FROM tenants WHERE id = ?");
+            $st->execute([$tenantId]);
+            if ($st->rowCount() > 0) $out['tenants'] = $st->rowCount();
+        } catch (\Throwable $e) { $out['tenants'] = -1; }
+
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+        return ['deleted' => $out, 'total' => array_sum(array_filter($out, fn($n) => $n > 0))];
+    }
+
+    /** Kisi bhi business ka data kitni tables mein bikhra hai. */
+    public static function footprint(string $tenantId): array
+    {
+        $sites = self::siteIds($tenantId);
+        $out = [];
+        foreach (self::wipeableTables() as $t) {
+            try {
+                if ($t['key'] === 'tenant_id') {
+                    $q = DB::pdo()->prepare("SELECT COUNT(*) FROM `{$t['name']}` WHERE tenant_id = ?");
+                    $q->execute([$tenantId]);
+                } else {
+                    if (!$sites) continue;
+                    $in = implode(',', array_fill(0, count($sites), '?'));
+                    $q = DB::pdo()->prepare("SELECT COUNT(*) FROM `{$t['name']}` WHERE site_id IN ($in)");
+                    $q->execute($sites);
+                }
+                $n = (int)$q->fetchColumn();
+                if ($n > 0) $out[$t['name']] = $n;
+            } catch (\Throwable $e) {}
+        }
+        return $out;
     }
 
     /* ------------------------------- IMPORT --------------------------- */

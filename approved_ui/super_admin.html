@@ -89,6 +89,36 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
 .dash-split{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
 @media(max-width:1100px){.dash-split{grid-template-columns:1fr}}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+/* ---------- command console ---------- */
+.term{background:#14120f;border:1px solid #2b2723;border-radius:var(--r-lg);overflow:hidden;
+  box-shadow:var(--sh);display:flex;flex-direction:column;height:calc(100vh - 210px);min-height:420px}
+.term-bar{display:flex;align-items:center;gap:8px;padding:9px 13px;background:#1d1a16;border-bottom:1px solid #2b2723}
+.term-bar .dot{width:10px;height:10px;border-radius:50%}
+.term-bar .t{color:#8b847c;font-size:11.5px;font-weight:600;margin-left:6px;letter-spacing:.3px}
+.term-bar .spacer{flex:1}
+.term-bar button{background:none;border:1px solid #35302a;color:#8b847c;border-radius:6px;
+  padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
+.term-bar button:hover{color:#e8e3dc;border-color:#4a443c}
+.term-out{flex:1;overflow:auto;padding:14px 15px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12.5px;line-height:1.62;color:#d6d0c8;white-space:pre-wrap;word-break:break-word}
+.term-out .l-p{color:#7fb3e0}
+.term-out .l-h{color:#e8b563;font-weight:700}
+.term-out .l-i{color:#d6d0c8}
+.term-out .l-d{color:#7d766d}
+.term-out .l-g{color:#7fd18f}
+.term-out .l-w{color:#e8b563}
+.term-out .l-e{color:#ef8271}
+.term-out .l-k{color:#a8d7c2}
+.term-in{display:flex;align-items:center;gap:9px;padding:11px 15px;border-top:1px solid #2b2723;background:#1a1713}
+.term-in span{color:#7fd18f;font-family:ui-monospace,monospace;font-size:13px;font-weight:700}
+.term-in input{flex:1;background:none;border:0;color:#e8e3dc;font-family:ui-monospace,monospace;
+  font-size:13px;height:auto;padding:0}
+.term-in input:focus{outline:none;box-shadow:none;border:0}
+.term-tips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.term-tips button{background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:5px 12px;font-size:11.5px;font-weight:600;color:var(--ink-2);cursor:pointer;font-family:ui-monospace,monospace}
+.term-tips button:hover{border-color:var(--brand);color:var(--brand-ink);background:var(--brand-soft)}
 </style>
 </head>
 <body>
@@ -131,6 +161,7 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
     </div>
     <div class="side-group">
       <h4>System</h4>
+      <button class="side-link" data-nav="console"><span class="i">▶</span> Command Console</button>
       <button class="side-link" data-nav="audit"><span class="i">≣</span> Audit Log</button>
       <button class="side-link" data-nav="health"><span class="i">✓</span> Health</button>
       <button class="side-link" data-nav="account"><span class="i">⚙</span> Account</button>
@@ -301,6 +332,40 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
         </div>
       </section>
 
+      <!-- ---------- COMMAND CONSOLE ---------- -->
+      <section class="sec" data-sec="console">
+        <div class="pagehead"><div><h2>Command Console</h2>
+          <p class="lead">Type a command to inspect, back up, reset or delete a business</p></div></div>
+        <div class="term">
+          <div class="term-bar">
+            <span class="dot" style="background:#ef8271"></span>
+            <span class="dot" style="background:#e8b563"></span>
+            <span class="dot" style="background:#7fd18f"></span>
+            <span class="t">platform-console</span>
+            <span class="spacer"></span>
+            <button id="termHelp">help</button>
+            <button id="termClear">clear</button>
+          </div>
+          <div class="term-out" id="termOut"></div>
+          <div class="term-in">
+            <span>&gt;</span>
+            <input id="termIn" autocomplete="off" spellcheck="false" placeholder="type a command, or 'help'">
+          </div>
+        </div>
+        <div class="term-tips">
+          <button data-cmd="list">list</button>
+          <button data-cmd="info ">info &lt;slug&gt;</button>
+          <button data-cmd="users ">users &lt;slug&gt;</button>
+          <button data-cmd="footprint ">footprint &lt;slug&gt;</button>
+          <button data-cmd="backup ">backup &lt;slug&gt; full</button>
+          <button data-cmd="nodes">nodes</button>
+          <button data-cmd="sync">sync</button>
+          <button data-cmd="audit">audit</button>
+          <button data-cmd="tables">tables</button>
+          <button data-cmd="query SELECT ">query SELECT …</button>
+        </div>
+      </section>
+
       <!-- ---------- AUDIT ---------- -->
       <section class="sec" data-sec="audit">
         <div class="pagehead"><div><h2>Audit Log</h2>
@@ -378,6 +443,7 @@ var TITLES={dash:['Dashboard','Platform overview'],
   create:['Create Business','New tenant setup'],
   backup:['Backup & Reset','Download data, then wipe safely'],
   import:['Import Data','Load master data from a backup file'],
+  console:['Command Console','Run platform commands'],
   audit:['Audit Log','Super-admin actions'],
   health:['Platform Health','Database diagnostics'],
   account:['Account','Super admin password']};
@@ -391,6 +457,7 @@ function nav(sec){
   if(sec==='dash')loadDash();
   if(sec==='biz')loadBiz();
   if(sec==='sync')loadSync();
+  if(sec==='console'){setTimeout(function(){var i=$('termIn');if(i)i.focus()},60);}
   if(sec==='audit')loadAudit();
   if(sec==='health')checkHealth();
   if(sec==='backup'||sec==='import')fillBizSelects();
@@ -711,6 +778,73 @@ function bizTag(b){
   if(b.expired)return '<span class="tag warn">Expired</span>';
   return '<span class="tag ok">Active</span>';
 }
+
+
+/* ===================== COMMAND CONSOLE ===================== */
+(function(){
+  var out=$('termOut'), inp=$('termIn');
+  if(!out||!inp)return;
+  var hist=[], hpos=-1, busy=false;
+
+  function line(text,type){
+    var d=document.createElement('div');
+    d.className='l-'+(type||'i');
+    d.textContent=text;
+    out.appendChild(d);
+    out.scrollTop=out.scrollHeight;
+  }
+  function banner(){
+    line('Platform Console — Wabwar Software House','h');
+    line('Type "help" to see what you can do. Commands run on the server.','d');
+    line('','i');
+  }
+
+  async function exec(cmd){
+    if(busy)return;
+    line('> '+cmd,'p');
+    if(cmd==='clear'){out.innerHTML='';banner();return}
+    busy=true; inp.disabled=true;
+    var r=await api('sa-console',{cmd:cmd});
+    busy=false; inp.disabled=false; inp.focus();
+    if(!r||!r.ok){line(r&&r.message?r.message:'Command failed','e');return}
+    (r.lines||[]).forEach(function(l){line(l.v,l.t)});
+    line('','i');
+    /* backup command file download shuru karti hai */
+    if(r.download){window.location.href=r.download;}
+    /* business list badal gayi ho to console ke bahar bhi taza karo */
+    if(r.refresh){loadBiz();}
+  }
+
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      var v=inp.value.trim();
+      if(!v)return;
+      hist.push(v); hpos=hist.length;
+      inp.value='';
+      exec(v);
+    } else if(e.key==='ArrowUp'){
+      if(hpos>0){hpos--;inp.value=hist[hpos];e.preventDefault()}
+    } else if(e.key==='ArrowDown'){
+      if(hpos<hist.length-1){hpos++;inp.value=hist[hpos]}
+      else {hpos=hist.length;inp.value=''}
+      e.preventDefault();
+    }
+  });
+  $('termClear').onclick=function(){out.innerHTML='';banner();inp.focus()};
+  $('termHelp').onclick=function(){exec('help')};
+  Array.prototype.forEach.call(document.querySelectorAll('.term-tips button'),function(b){
+    b.onclick=function(){
+      var c=this.dataset.cmd||'';
+      if(c.slice(-1)===' '){inp.value=c;inp.focus()}
+      else{inp.value='';exec(c)}
+    };
+  });
+  out.parentNode.addEventListener('click',function(e){
+    if(e.target.closest('.term-bar'))return;
+    inp.focus();
+  });
+  banner();
+})();
 
 /* ===================== BOOT ===================== */
 function show(view){$('loginView').classList.toggle('hide',view!=='login');

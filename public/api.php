@@ -1019,6 +1019,21 @@ case 'sa-factory-reset':needSuper();$d=body();
  ok(['mode'=>$mode,'deleted'=>$res['deleted'],'total'=>$res['total'],
      'tables'=>count($res['deleted']),'kept_admin'=>$res['kept_admin']]);
 
+case 'sa-console':needSuper();$d=body();
+ $cmd=(string)($d['cmd']??'');
+ ok(\Aio\Services\AdminConsole::run($cmd,(string)(Platform::superUser()['email']??'super')));
+
+case 'sa-business-delete':needSuper();$d=body();
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $p=DB::pdo();$q=$p->prepare("SELECT name,slug FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
+ if(!$t)fail('Business not found',404);
+ if(trim((string)($d['confirm_name']??''))!==trim((string)$t['name']))
+   fail('Type the exact business name to confirm: '.$t['name'],422);
+ $r=\Aio\Services\AdminData::deleteBusiness($tid);
+ \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),null,'DELETE_BUSINESS',
+   $t['name'].' ('.$t['slug'].') - '.$r['total'].' rows from '.count($r['deleted']).' tables');
+ ok(['deleted'=>$r['deleted'],'total'=>$r['total'],'tables'=>count($r['deleted'])]);
+
 case 'sa-import-inspect':needSuper();
  $raw=file_get_contents('php://input');
  $d=json_decode($raw,true);
