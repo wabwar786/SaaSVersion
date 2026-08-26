@@ -27,6 +27,7 @@ foreach (array_slice($argv, 1) as $a) {
 $email = trim((string)($args['email'] ?? ''));
 $pass  = (string)($args['password'] ?? '');
 $create = isset($args['create']);
+$once   = isset($args['once']);   // boot ke liye: ek hi dafa lagta hai
 
 $pdo = DB::pdo();
 
@@ -44,6 +45,49 @@ if ($email === '' || $pass === '') {
     return;
 }
 if (strlen($pass) < 8) { echo "ERROR: password kam az kam 8 characters ka hona chahiye.\n"; return; }
+
+/* ------------------------------------------------------------------
+   --once : DEPLOY PAR PASSWORD DOBARA DOBARA SET NA HO.
+
+   Pehle entrypoint har boot par yeh reset chala deta tha. Matlab jab
+   tak SUPER_ADMIN_* variables Railway mein pade rehte, HAR upload par
+   password wapas usi par chala jata tha — chahe user ne beech mein
+   Account screen se badal liya ho. Deploy ko data (khaas kar
+   credentials) kabhi nahi chhoona chahiye.
+
+   Ab ek marker rakha jata hai. Wahi email+password dobara aaye to
+   kuch nahi hota. Value badlein to phir se lag jata hai (yehi maqsad
+   hai). Marker mein password NahI, sirf uska hash jata hai.
+   ------------------------------------------------------------------ */
+if ($once) {
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS boot_markers (
+            marker_key  VARCHAR(64)  NOT NULL PRIMARY KEY,
+            marker_val  VARCHAR(190) NOT NULL,
+            applied_at  DATETIME(6)  NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $fp = hash('sha256', strtolower(trim($email)) . '|' . $pass);
+        $q  = $pdo->prepare("SELECT marker_val FROM boot_markers WHERE marker_key='super_admin_reset'");
+        $q->execute();
+        $seen = (string)($q->fetchColumn() ?: '');
+
+        if ($seen === $fp) {
+            echo "SKIPPED: yeh reset pehle hi lag chuka hai - password ko haath nahi lagaya.\n";
+            echo "         (SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD variables ab hata dein.)\n";
+            return;
+        }
+        $pdo->prepare("INSERT INTO boot_markers(marker_key,marker_val,applied_at)
+                       VALUES('super_admin_reset',?,NOW(6))
+                       ON DUPLICATE KEY UPDATE marker_val=VALUES(marker_val), applied_at=NOW(6)")
+            ->execute([$fp]);
+    } catch (\Throwable $e) {
+        /* Marker na bane to reset bhi na karein - warna wahi purana
+           masla ke har deploy par password badalta rahe. */
+        echo "SKIPPED: boot marker nahi likha ja saka (" . substr($e->getMessage(), 0, 90) . ")\n";
+        return;
+    }
+}
 
 $q = $pdo->prepare("SELECT id FROM platform_users WHERE LOWER(email)=LOWER(?) LIMIT 1");
 $q->execute([$email]);

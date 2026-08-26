@@ -58,14 +58,17 @@ php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 # --- Platform (super admin) login: bina shell ke reset karne ka rasta ---
-#     Railway par shell nahi hai to CLI ki zaroorat nahi: service ki
-#     Variables mein SUPER_ADMIN_EMAIL aur SUPER_ADMIN_PASSWORD daal kar
-#     redeploy karein. Reset hone ke BAAD dono variables hata dein --
-#     warna password har deploy par dobara set hota rahega.
+#     Railway par shell na ho to service ki Variables mein
+#     SUPER_ADMIN_EMAIL aur SUPER_ADMIN_PASSWORD daal kar redeploy karein.
+#
+#     `--once` LAZMI hai. Pehle yeh HAR boot par chalta tha, yani jab tak
+#     variables Railway mein pade rehte, har upload par password wapas
+#     usi par chala jata tha -- chahe user ne Account screen se badal
+#     liya ho. Deploy ko data (khaas kar credentials) kabhi nahi chhoona
+#     chahiye. Ab marker ki wajah se ek hi dafa lagta hai.
 if [ -n "${SUPER_ADMIN_EMAIL:-}" ] && [ -n "${SUPER_ADMIN_PASSWORD:-}" ]; then
-  echo "[boot] SUPER_ADMIN_EMAIL mila - platform login reset kiya ja raha hai"
-  php scripts/reset_super_admin.php --email="$SUPER_ADMIN_EMAIL" --password="$SUPER_ADMIN_PASSWORD" --create || true
-  echo "[boot] REMINDER: ab SUPER_ADMIN_EMAIL aur SUPER_ADMIN_PASSWORD variables hata dein"
+  php scripts/reset_super_admin.php --once --create \
+      --email="$SUPER_ADMIN_EMAIL" --password="$SUPER_ADMIN_PASSWORD" || true
 else
   # Sirf list (koi password nahi) - taake log se pata chale kaunsi email chahiye
   php scripts/reset_super_admin.php 2>/dev/null | head -12 || true
