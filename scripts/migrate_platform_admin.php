@@ -32,7 +32,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS admin_imports (
   rows_updated INT NOT NULL DEFAULT 0,
   rows_skipped INT NOT NULL DEFAULT 0,
   status ENUM('OK','PARTIAL','FAILED','ROLLED_BACK') NOT NULL DEFAULT 'OK',
-  error_text VARCHAR(500) NULL,
+  error_text TEXT NULL,
   created_by VARCHAR(120) NULL,
   created_at DATETIME(6) NOT NULL,
   KEY ix_ai_tenant (tenant_id, created_at)

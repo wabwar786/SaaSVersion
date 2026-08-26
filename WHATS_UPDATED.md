@@ -1949,3 +1949,58 @@ FULL reset: sab 0 → **import** se master data wapis (menu 9, customers 2),
 orders 0 hi rahe ✓
 Audit log: IMPORT / FACTORY_RESET / BACKUP sab record ✓
 Sync suite regression: **34/34 passed** · PHP lint clean · 44 pages OK
+
+---
+
+# V57 — Factory Reset ab waqai "factory" reset, aur console ka design theek
+
+## 1. Factory reset adhoora tha (asli bug)
+`AdminData` mein tables ki **hardcoded list** thi — 47 tables. Database
+mein tenant/site se bandhi **86 tables** hain, yani **48 tables reset se
+chhoot rahi thin**: users, user_roles, user_module_access, devices,
+paired_devices, loyalty_accounts, refunds, stock_batches, stock_transfers,
+journal_entries, order_status_history, printer_jobs, modifier_groups,
+site_settings, tax_profiles waghera. Isi liye "reset" ke baad bhi
+restaurant ka data mojood rehta tha.
+
+**Fix:** ab list nahi — `wipeableTables()` **information_schema se khud**
+har wo table nikalta hai jis mein `tenant_id` ya `site_id` ho (73 tables),
+aur sirf platform-level tables chhoRta hai (tenants, sites, plans,
+subscriptions, sync logs, admin logs).
+
+**FULL mode ka matlab ab waqai yeh hai:** sab kuch mit jata hai, **sirf
+admin login bacha rehta hai** — uska user record, uska role aur us role ke
+modules. Uske baad branch defaults (payment methods, floors, tables, units,
+locations) dobara seed ho jate hain taake owner foran kaam shuru kar sake:
+apne users banaye, items banaye, aur zero se chale.
+
+**TXN mode** pehle ki tarah: sirf transactions, master data aur staff
+mehfooz.
+
+## 2. Console ka design
+Pichli dafa maine `.card` / `.inp` / `.tablewrap` jaisi classes use ki
+thin jo `shared.css` mein **hain hi nahi** — is liye panels bay-border,
+tables nange aur inputs be-style nazar aa rahe the. Ab poora markup asli
+design system par: `.panel` / `.panel-head` / `.panel-body` /
+`.table-wrap` / `.table` / `.field` / `.form-grid` / `.t-main` / `.t-sub`.
+
+Saath:
+- KPI grid ab **4 × 2** (pehle 5+3 mein bad-shakal toot raha tha)
+- Renewals/payments panels **1.35fr : 1fr** aur tareekh/raqam `nowrap` —
+  pehle "2026-09-25" do lines mein toot raha tha
+- Header ka build pill ab asli build dikhata hai (**V57**). `sync-ping`
+  bina token ke 401 de raha tha, is liye pill hamesha "—" tha.
+
+## 3. Ek aur bug
+Import ka `error_text` column VARCHAR(500) tha aur lambi error list us se
+barh jati thi — poora import **fail** ho jata tha
+(*"Data too long for column 'error_text'"*). Ab column TEXT hai aur value
+bhi truncate hoti hai.
+
+## Tested
+Factory reset verifier (`tools/reset_verify.py`) — har tenant-scoped table
+ginta hai: **"FACTORY RESET CLEAN — only admin login + defaults remain"** ✓
+Browser (Lahore Karahi House, FULL): menu 1→0, orders 1→0, inventory 1→0,
+**users 1→1 (admin salamat)** ✓
+Backup → download → FULL reset → import se master data wapis ✓
+Sync suite regression: **34/34 passed** · PHP lint clean · 44 pages OK

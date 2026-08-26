@@ -3,6 +3,7 @@ namespace Aio\Services;
 
 use Aio\DB;
 use PDO;
+use Aio\Services\Platform;
 
 /**
  * AdminData — Super Admin ke data tools.
@@ -138,40 +139,129 @@ final class AdminData
 
     /* ---------------------------- FACTORY RESET ----------------------- */
 
+    /** Reset par kabhi na chhui jane wali tables (platform-level). */
+    private const NEVER_WIPE = [
+        'tenants', 'sites', 'organizations',
+        'platform_users', 'platform_modules', 'plans',
+        'tenant_subscriptions', 'subscription_payments', 'signup_requests',
+        'admin_audit', 'admin_backups', 'admin_imports',
+        'sync_nodes', 'sync_activity', 'sync_runs', 'sync_state', 'sync_cursors',
+        'migration_state', 'sync_retries',
+    ];
+
     /**
-     * @param string $mode 'TXN' (sirf transactions) | 'FULL' (master bhi)
-     * @return array<string,int> table => deleted rows
+     * Har wo table jo tenant ya site se bandhi hai — hardcoded list nahi.
+     * (Pehle 47 tables ki list thi aur 48 tables chhoot rahi thin, is liye
+     * "factory reset" ke baad bhi data reh jata tha.)
+     * @return array<int,array{name:string,key:string}>
+     */
+    public static function wipeableTables(): array
+    {
+        try {
+            $q = DB::pdo()->query(
+                "SELECT table_name, GROUP_CONCAT(column_name) cols
+                   FROM information_schema.columns
+                  WHERE table_schema = DATABASE()
+                    AND column_name IN ('tenant_id','site_id')
+                  GROUP BY table_name ORDER BY table_name");
+            $out = [];
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $t = (string)$r['table_name'];
+                if (in_array($t, self::NEVER_WIPE, true)) continue;
+                if (str_ends_with($t, '_bk') || str_ends_with($t, '_backup')) continue;
+                $cols = explode(',', (string)$r['cols']);
+                $out[] = ['name' => $t, 'key' => in_array('tenant_id', $cols, true) ? 'tenant_id' : 'site_id'];
+            }
+            return $out;
+        } catch (\Throwable $e) { return []; }
+    }
+
+    /**
+     * @param string $mode 'TXN'  = sirf transactions (master data mehfooz)
+     *                     'FULL' = sab kuch, sirf admin login bacha rehta hai
+     * @return array{deleted:array<string,int>,total:int,kept_admin:?string}
      */
     public static function factoryReset(string $tenantId, string $mode = 'TXN'): array
     {
         $pdo   = DB::pdo();
         $sites = self::siteIds($tenantId);
-        $tables = $mode === 'FULL'
-            ? array_merge(self::TXN_TABLES, self::MASTER_TABLES)
-            : self::TXN_TABLES;
 
+        // FULL par bhi admin login bachana hai — us ke ids pehle nikal lo
+        $adminId = null; $adminRoleIds = [];
+        if ($mode === 'FULL') {
+            try {
+                $a = $pdo->prepare(
+                    "SELECT id FROM users
+                      WHERE tenant_id = ? AND status='ACTIVE' AND deleted_at IS NULL
+                      ORDER BY is_tenant_admin DESC, created_at ASC LIMIT 1");
+                $a->execute([$tenantId]);
+                $adminId = $a->fetchColumn() ?: null;
+                if ($adminId) {
+                    $r = $pdo->prepare("SELECT role_id FROM user_roles WHERE user_id = ?");
+                    $r->execute([$adminId]);
+                    $adminRoleIds = array_column($r->fetchAll(PDO::FETCH_ASSOC), 'role_id');
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $keepTxnSafe = $mode === 'TXN' ? self::MASTER_TABLES : [];
         $out = [];
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        foreach ($tables as $t) {
-            $cols = self::cols($t);
-            if (!$cols) continue;
+
+        foreach (self::wipeableTables() as $t) {
+            $name = $t['name'];
+            if ($keepTxnSafe && in_array($name, $keepTxnSafe, true)) continue;
+            // TXN mode mein staff/roles/settings bhi mehfooz
+            if ($mode === 'TXN' && in_array($name, [
+                'users','user_roles','roles','role_modules','user_form_permissions',
+                'user_module_access','user_site_access','employee_profiles',
+                'site_settings','site_modules','tax_profiles','fiscal_settings',
+                'document_sequences','modifier_groups','modifier_options','accounts',
+            ], true)) continue;
+
             try {
-                if (in_array('tenant_id', $cols, true)) {
-                    $st = $pdo->prepare("DELETE FROM `$t` WHERE tenant_id = ?");
-                    $st->execute([$tenantId]);
-                } elseif (in_array('site_id', $cols, true) && $sites) {
-                    $in = implode(',', array_fill(0, count($sites), '?'));
-                    $st = $pdo->prepare("DELETE FROM `$t` WHERE site_id IN ($in)");
-                    $st->execute($sites);
-                } else { continue; }
-                if ($st->rowCount() > 0) $out[$t] = $st->rowCount();
-            } catch (\Throwable $e) { $out[$t] = -1; }
+                $where = $t['key'] === 'tenant_id' ? 'tenant_id = ?' : 'site_id IN (' .
+                         implode(',', array_fill(0, max(1, count($sites)), '?')) . ')';
+                $args  = $t['key'] === 'tenant_id' ? [$tenantId] : ($sites ?: ['-']);
+
+                // admin login bachao
+                if ($mode === 'FULL' && $name === 'users' && $adminId) {
+                    $where .= ' AND id <> ?'; $args[] = $adminId;
+                }
+                if ($mode === 'FULL' && $name === 'user_roles' && $adminId) {
+                    $where .= ' AND user_id <> ?'; $args[] = $adminId;
+                }
+                if ($mode === 'FULL' && $name === 'roles' && $adminRoleIds) {
+                    $where .= ' AND id NOT IN (' . implode(',', array_fill(0, count($adminRoleIds), '?')) . ')';
+                    $args = array_merge($args, $adminRoleIds);
+                }
+                if ($mode === 'FULL' && $name === 'role_modules' && $adminRoleIds) {
+                    $where .= ' AND role_id NOT IN (' . implode(',', array_fill(0, count($adminRoleIds), '?')) . ')';
+                    $args = array_merge($args, $adminRoleIds);
+                }
+
+                $st = $pdo->prepare("DELETE FROM `$name` WHERE $where");
+                $st->execute($args);
+                if ($st->rowCount() > 0) $out[$name] = $st->rowCount();
+            } catch (\Throwable $e) { $out[$name] = -1; }
         }
-        // sync watermarks bhi reset — warna cloud purana data dobara nahi bhejta
+
+        // sync watermarks reset — warna purana data dobara nahi behta
         try { $pdo->exec("DELETE FROM sync_state WHERE scope LIKE 'push:%' OR scope LIKE 'pull:%'"); }
         catch (\Throwable $e) {}
         $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-        return $out;
+
+        // FULL ke baad business chalne laayak rehna chahiye:
+        // roles + branch defaults dobara bana do
+        if ($mode === 'FULL') {
+            try {
+                $site = $sites[0] ?? null;
+                if ($site) Platform::ensureSiteDefaults($pdo, $tenantId, $site);
+            } catch (\Throwable $e) {}
+        }
+
+        return ['deleted' => $out, 'total' => array_sum(array_filter($out, fn($n) => $n > 0)),
+                'kept_admin' => $adminId];
     }
 
     /* ------------------------------- IMPORT --------------------------- */

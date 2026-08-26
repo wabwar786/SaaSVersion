@@ -6,70 +6,61 @@
 <title>Platform Console — SmartPOS</title>
 <link rel="stylesheet" href="shared.css">
 <style>
-/* ---- console-only additions on top of the shared design system ---- */
+/* ---------- console-only additions on top of shared.css ---------- */
 .login-wrap{min-height:100vh;display:grid;place-items:center;background:var(--bg);padding:24px}
 .login-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
   box-shadow:var(--sh-lg);padding:34px 30px;width:100%;max-width:400px}
 .login-card .mark{width:46px;height:46px;border-radius:12px;background:var(--ink);color:#fff;
   display:grid;place-items:center;font-weight:800;font-size:19px;margin-bottom:16px;font-family:var(--display)}
 .login-card h1{font-family:var(--display);font-size:20px;margin:0 0 4px}
-.login-card p{color:var(--muted);font-size:13px;margin:0 0 20px}
+.login-card .lead{color:var(--muted);font-size:13px;margin:0 0 20px}
 
-.side-brand{padding:18px 18px 14px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:center}
-.side-brand .m{width:36px;height:36px;border-radius:10px;background:var(--ink);color:#fff;
+.side-brand{padding:16px 16px 14px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:center}
+.side-brand .m{width:36px;height:36px;border-radius:10px;background:var(--ink);color:#fff;flex:none;
   display:grid;place-items:center;font-weight:800;font-family:var(--display)}
-.side-brand b{font-family:var(--display);font-size:14px;display:block;line-height:1.2}
-.side-brand small{color:var(--muted);font-size:11px}
-.side-group{padding:14px 12px 4px}
+.side-brand b{font-family:var(--display);font-size:14px;display:block;line-height:1.25}
+.side-brand small{color:var(--muted);font-size:11px;word-break:break-all}
+.side-group{padding:12px 10px 2px}
 .side-group h4{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);
   font-weight:800;padding:0 8px 6px;margin:0}
 .side-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r);
   color:var(--ink-2);font-size:13.5px;font-weight:600;cursor:pointer;border:0;background:none;width:100%;text-align:left}
 .side-link:hover{background:var(--surface-2);color:var(--ink)}
 .side-link.on{background:var(--brand-soft);color:var(--brand-ink)}
-.side-link .i{width:18px;text-align:center;opacity:.8}
-.side-link .badge{margin-left:auto;background:var(--brand);color:#fff;border-radius:999px;
-  font-size:10px;font-weight:800;padding:1px 7px}
+.side-link .i{width:18px;text-align:center;opacity:.75;font-size:13px}
 
 .sec{display:none}
 .sec.on{display:block}
-.pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-.pagehead h2{font-family:var(--display);font-size:19px;margin:0}
-.pagehead p{color:var(--muted);font-size:13px;margin:3px 0 0}
-.tools{display:flex;gap:8px;flex-wrap:wrap}
+.pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.pagehead h2{font-family:var(--display);font-size:18px;margin:0}
+.pagehead .lead{color:var(--muted);font-size:12.5px;margin:3px 0 0}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
-.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
-.dl dt{color:var(--muted)}
-.dl dd{margin:0;font-weight:600}
-
-.zone{border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;background:var(--surface)}
+.zone{border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;background:var(--surface);
+  box-shadow:var(--sh-sm)}
 .zone.danger{border-color:var(--danger-line);background:var(--danger-soft)}
-.zone.warn{border-color:var(--warn-line);background:var(--warn-soft)}
 .zone h3{font-family:var(--display);font-size:14.5px;margin:0 0 4px}
-.zone p{font-size:12.5px;color:var(--ink-2);margin:0 0 12px;line-height:1.6}
-.step{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.zone .lead{font-size:12.5px;color:var(--ink-2);margin:0 0 12px;line-height:1.6}
+.zone.danger .lead{color:#7a1a10}
+
+.step{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
 .step:last-child{border-bottom:0}
 .step .n{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;
-  font-weight:800;display:grid;place-items:center;flex:none}
+  font-weight:800;display:grid;place-items:center;flex:none;margin-top:1px}
 .step .n.done{background:var(--ok)}
+.step .n.bad{background:var(--danger)}
 .step b{font-size:13px;display:block}
 .step small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px;line-height:1.5}
 
 .drop{border:2px dashed var(--line-strong);border-radius:var(--r-lg);padding:26px;text-align:center;
-  background:var(--surface-2);cursor:pointer}
+  background:var(--surface-2);cursor:pointer;transition:.14s}
 .drop:hover{border-color:var(--brand);background:var(--brand-soft)}
 .drop b{display:block;font-size:14px;margin-bottom:3px}
 .drop small{color:var(--muted);font-size:12px}
 
-.biz-row{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);
-  border-radius:var(--r);margin-bottom:8px;background:var(--surface);cursor:pointer}
-.biz-row:hover{border-color:var(--brand-line);background:var(--brand-soft)}
-.biz-row.on{border-color:var(--brand);background:var(--brand-soft)}
-.biz-row .av{width:36px;height:36px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);
-  display:grid;place-items:center;font-weight:800;font-family:var(--display);flex:none}
-.biz-row b{font-size:13.5px;display:block}
-.biz-row small{color:var(--muted);font-size:11.5px}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13px;margin:0}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0;font-weight:600;word-break:break-all}
 
 .modal-ov{position:fixed;inset:0;background:rgba(27,25,23,.55);z-index:900;display:grid;place-items:center;padding:20px}
 .modal-box{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-lg);width:100%;
@@ -81,28 +72,37 @@
 .modal-box .mf{padding:14px 22px 18px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--line)}
 
 .toast-el{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
-  padding:12px 20px;border-radius:var(--r);font-weight:600;font-size:13px;opacity:0;transition:.25s;z-index:999;pointer-events:none;max-width:90vw}
+  padding:12px 20px;border-radius:var(--r);font-weight:600;font-size:13px;opacity:0;transition:.25s;
+  z-index:999;pointer-events:none;max-width:90vw}
 .toast-el.on{opacity:1}
-.mini{padding:5px 10px;font-size:12px}
 .muted{color:var(--muted)}
 .hide{display:none!important}
 pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);
-  padding:11px;font-size:11.5px;max-height:230px;overflow:auto;white-space:pre-wrap;margin:0}
+  padding:11px;font-size:11.5px;max-height:240px;overflow:auto;white-space:pre-wrap;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
+/* 8 KPIs = 2 saaf rows (auto-fit 5+3 mein tor deta tha) */
+.sec .kpis{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1200px){.sec .kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.sec .kpis{grid-template-columns:1fr}}
+/* tareekh aur raqam ek line mein */
+.table td.nw,.table th.nw{white-space:nowrap}
+.dash-split{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
+@media(max-width:1100px){.dash-split{grid-template-columns:1fr}}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-
 <!-- ===================== LOGIN ===================== -->
 <div class="login-wrap" id="loginView">
   <div class="login-card">
     <div class="mark">W</div>
     <h1>Platform Console</h1>
-    <p>Wabwar Software House — super admin access</p>
-    <label class="f">Email</label>
-    <input class="inp" id="saEmail" type="email" placeholder="super@admin.local" autocomplete="username">
-    <label class="f" style="margin-top:12px">Password</label>
-    <input class="inp" id="saPass" type="password" autocomplete="current-password">
-    <button class="btn primary" id="saLoginBtn" style="width:100%;margin-top:18px">Sign in</button>
+    <p class="lead">Wabwar Software House — super admin access</p>
+    <label class="field"><span>Email</span>
+      <input id="saEmail" type="email" placeholder="super@admin.local" autocomplete="username"></label>
+    <label class="field"><span>Password</span>
+      <input id="saPass" type="password" autocomplete="current-password"></label>
+    <button class="btn primary" id="saLoginBtn" style="width:100%;margin-top:8px">Sign in</button>
     <div id="loginMsg" style="margin-top:12px;font-size:12.5px;color:var(--danger)"></div>
   </div>
 </div>
@@ -151,20 +151,20 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <!-- ---------- DASHBOARD ---------- -->
       <section class="sec on" data-sec="dash">
         <div class="kpis" id="statCards"></div>
-        <div class="grid2" style="margin-top:16px">
-          <div class="card">
-            <div class="card-head"><h2>Renewals due (30 days)</h2></div>
-            <div class="tablewrap"><table>
-              <thead><tr><th>Business</th><th>Expiry</th><th>Days</th><th>Amount</th><th></th></tr></thead>
+        <div class="dash-split" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>Renewals due</h2><p>Next 30 days</p></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="table">
+              <thead><tr><th>Business</th><th class="nw">Expiry</th><th class="nw">Days</th><th class="num nw">Amount</th><th></th></tr></thead>
               <tbody id="renewRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-            </table></div>
+            </table></div></div>
           </div>
-          <div class="card">
-            <div class="card-head"><h2>Recent payments</h2></div>
-            <div class="tablewrap"><table>
-              <thead><tr><th>Business</th><th>Amount</th><th>Method</th><th>Date</th></tr></thead>
+          <div class="panel">
+            <div class="panel-head"><h2>Recent payments</h2><p>Latest subscription receipts</p></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="table">
+              <thead><tr><th>Business</th><th class="num nw">Amount</th><th class="nw">Method</th><th class="nw">Date</th></tr></thead>
               <tbody id="payRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
-            </table></div>
+            </table></div></div>
           </div>
         </div>
       </section>
@@ -172,70 +172,70 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <!-- ---------- SYNC MONITOR ---------- -->
       <section class="sec" data-sec="sync">
         <div class="kpis" id="syncStats"></div>
-        <div class="card" style="margin-top:16px">
-          <div class="card-head"><h2>Branch computers</h2>
-            <button class="btn sm" id="syncRefresh">Refresh</button></div>
-          <div class="tablewrap"><table>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>Branch computers</h2><p>Offline installations connected to this platform</p>
+            <div class="spacer"></div><button class="btn sm" id="syncRefresh">Refresh</button></div>
+          <div class="panel-body flush"><div class="table-wrap"><table class="table">
             <thead><tr><th>Business</th><th>Node</th><th>Build</th><th>Last seen</th><th>Status</th></tr></thead>
             <tbody id="nodeRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-          </table></div>
+          </table></div></div>
         </div>
-        <div class="card" style="margin-top:14px">
-          <div class="card-head"><h2>Rejected / failed transfers</h2></div>
-          <div id="syncFail"></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Rejected transfers</h2><p>Rows the cloud refused</p></div>
+          <div class="panel-body" id="syncFail"></div>
         </div>
       </section>
 
       <!-- ---------- BUSINESSES ---------- -->
       <section class="sec" data-sec="biz">
         <div class="pagehead">
-          <div><h2>All Businesses</h2><p>Every tenant on the platform</p></div>
+          <div><h2>All Businesses</h2><p class="lead">Every tenant on the platform</p></div>
           <div class="tools"><button class="btn sm" id="refreshBtn">Refresh</button></div>
         </div>
-        <div class="card">
-          <div class="tablewrap"><table>
-            <thead><tr><th>Business</th><th>Slug</th><th>Branches</th><th>Expiry</th><th>Status</th>
-            <th style="min-width:400px">Actions</th></tr></thead>
-            <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
-          </table></div>
-        </div>
+        <div class="panel"><div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead><tr><th>Business</th><th>Slug</th><th class="num">Branches</th><th>Expiry</th>
+            <th>Status</th><th style="min-width:380px">Actions</th></tr></thead>
+          <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+        </table></div></div></div>
       </section>
 
       <!-- ---------- CREATE ---------- -->
       <section class="sec" data-sec="create">
         <div class="pagehead"><div><h2>Create Business</h2>
-          <p>New tenant with its own branch, admin user and subscription</p></div></div>
-        <div class="card">
-          <div class="fg">
-            <div><label class="f">Business name</label><input class="inp" id="f_business_name" placeholder="Royal Grill"></div>
-            <div><label class="f">Industry</label><select class="inp" id="f_industry"><option value="RESTAURANT">Restaurant</option></select></div>
-            <div><label class="f">Branch name</label><input class="inp" id="f_branch_name" placeholder="Main Branch"></div>
-            <div><label class="f">Address</label><input class="inp" id="f_address"></div>
-            <div><label class="f">Owner name</label><input class="inp" id="f_owner_name"></div>
-            <div><label class="f">Owner email</label><input class="inp" id="f_owner_email" type="email"></div>
-            <div><label class="f">Owner phone</label><input class="inp" id="f_owner_phone"></div>
-            <div><label class="f">Plan</label><select class="inp" id="f_plan"></select></div>
-            <div><label class="f">Start date</label><input class="inp" id="f_start_date" type="date"></div>
-            <div><label class="f">Expiry date</label><input class="inp" id="f_expiry_date" type="date"></div>
-            <div><label class="f">Amount</label><input class="inp" id="f_amount" type="number"></div>
-            <div><label class="f">Payment method</label><select class="inp" id="f_payment_method">
-              <option>Cash</option><option>Bank</option><option>Card</option><option>Raast</option></select></div>
-            <div class="full"><label class="f">Payment reference</label><input class="inp" id="f_payment_reference"></div>
+          <p class="lead">New tenant with its own branch, admin user and subscription</p></div></div>
+        <div class="panel"><div class="panel-body">
+          <div class="form-grid">
+            <label class="field"><span>Business name</span><input id="f_business_name" placeholder="Royal Grill"></label>
+            <label class="field"><span>Industry</span><select id="f_industry"><option value="RESTAURANT">Restaurant</option></select></label>
+            <label class="field"><span>Branch name</span><input id="f_branch_name" placeholder="Main Branch"></label>
+            <label class="field"><span>Address</span><input id="f_address"></label>
+            <label class="field"><span>Owner name</span><input id="f_owner_name"></label>
+            <label class="field"><span>Owner email</span><input id="f_owner_email" type="email"></label>
+            <label class="field"><span>Owner phone</span><input id="f_owner_phone"></label>
+            <label class="field"><span>Plan</span><select id="f_plan"></select></label>
+            <label class="field"><span>Start date</span><input id="f_start_date" type="date"></label>
+            <label class="field"><span>Expiry date</span><input id="f_expiry_date" type="date"></label>
+            <label class="field"><span>Amount</span><input id="f_amount" type="number"></label>
+            <label class="field"><span>Payment method</span><select id="f_payment_method">
+              <option>Cash</option><option>Bank</option><option>Card</option><option>Raast</option></select></label>
+            <label class="field full"><span>Payment reference</span><input id="f_payment_reference"></label>
           </div>
-          <button class="btn primary" id="createBtn" style="margin-top:16px">Create business</button>
-        </div>
-        <div class="card hide" id="successCard" style="margin-top:14px;border-color:var(--ok-line);background:var(--ok-soft)">
-          <div class="card-head"><h2>Business created</h2></div>
-          <dl class="dl">
-            <dt>Business</dt><dd id="s_name"></dd>
-            <dt>Client link</dt><dd id="s_link"></dd>
-            <dt>Admin email</dt><dd id="s_email"></dd>
-            <dt>Password</dt><dd id="s_pass"></dd>
-            <dt>Sync token</dt><dd id="s_token" style="word-break:break-all;font-size:11px"></dd>
-          </dl>
-          <div class="tools" style="margin-top:12px">
-            <button class="btn sm" id="copyLink">Copy link</button>
-            <button class="btn sm" id="copyCreds">Copy credentials</button>
+          <button class="btn primary" id="createBtn">Create business</button>
+        </div></div>
+        <div class="panel hide" id="successCard" style="margin-top:14px">
+          <div class="panel-head"><h2>Business created</h2><p>Share these with the owner</p></div>
+          <div class="panel-body">
+            <dl class="dl">
+              <dt>Business</dt><dd id="s_name"></dd>
+              <dt>Client link</dt><dd id="s_link"></dd>
+              <dt>Admin email</dt><dd id="s_email"></dd>
+              <dt>Password</dt><dd id="s_pass"></dd>
+              <dt>Sync token</dt><dd id="s_token" style="font-size:11px"></dd>
+            </dl>
+            <div class="tools" style="margin-top:14px">
+              <button class="btn sm" id="copyLink">Copy link</button>
+              <button class="btn sm" id="copyCreds">Copy credentials</button>
+            </div>
           </div>
         </div>
       </section>
@@ -243,39 +243,39 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <!-- ---------- BACKUP & RESET ---------- -->
       <section class="sec" data-sec="backup">
         <div class="pagehead"><div><h2>Backup &amp; Factory Reset</h2>
-          <p>Download a business's data, then wipe it safely</p></div></div>
-        <div class="card">
-          <label class="f">Business</label>
-          <select class="inp" id="bkBiz" style="max-width:420px"></select>
-        </div>
+          <p class="lead">Download a business's data, then wipe it safely</p></div></div>
+        <div class="panel"><div class="panel-body">
+          <label class="field" style="max-width:440px;margin:0"><span>Business</span>
+            <select id="bkBiz"></select></label>
+        </div></div>
 
         <div class="grid2" style="margin-top:14px">
           <div class="zone">
             <h3>1 · Download backup</h3>
-            <p>Everything is written to one JSON file — menu, inventory, customers,
+            <p class="lead">Everything goes into one JSON file — menu, inventory, customers,
                suppliers, staff, and (in Full mode) orders, payments and shifts.
-               This same file can be imported back later.</p>
-            <label class="f">What to include</label>
-            <select class="inp" id="bkScope">
-              <option value="FULL">Full — master data + all transactions</option>
-              <option value="MASTER">Master data only — menu, items, customers, staff</option>
-            </select>
-            <button class="btn primary" id="bkGo" style="width:100%;margin-top:12px">Download backup file</button>
+               The same file can be imported back later.</p>
+            <label class="field"><span>What to include</span>
+              <select id="bkScope">
+                <option value="FULL">Full — master data + all transactions</option>
+                <option value="MASTER">Master data only — menu, items, customers, staff</option>
+              </select></label>
+            <button class="btn primary" id="bkGo" style="width:100%">Download backup file</button>
             <div id="bkList" style="margin-top:14px"></div>
           </div>
 
           <div class="zone danger">
             <h3>2 · Factory reset</h3>
-            <p><b>This deletes data permanently.</b> Only allowed within one hour of a
-               downloaded backup, and you must type the business name to confirm.</p>
-            <label class="f">What to delete</label>
-            <select class="inp" id="frMode">
-              <option value="TXN">Transactions only — keep menu, items, customers, staff</option>
-              <option value="FULL">Everything — also menu, items, customers, suppliers</option>
-            </select>
-            <label class="f" style="margin-top:10px">Type the business name to confirm</label>
-            <input class="inp" id="frConfirm" placeholder="exact business name">
-            <button class="btn danger" id="frGo" style="width:100%;margin-top:12px">Factory reset</button>
+            <p class="lead"><b>This deletes data permanently.</b> Allowed only within one hour
+               of a downloaded backup, and you must type the business name to confirm.</p>
+            <label class="field"><span>What to delete</span>
+              <select id="frMode">
+                <option value="TXN">Transactions only — keep menu, items, customers, staff</option>
+                <option value="FULL">Everything — start from zero, only the admin login stays</option>
+              </select></label>
+            <label class="field"><span>Type the business name to confirm</span>
+              <input id="frConfirm" placeholder="exact business name"></label>
+            <button class="btn danger" id="frGo" style="width:100%">Factory reset</button>
             <div id="frOut" style="margin-top:12px"></div>
           </div>
         </div>
@@ -284,53 +284,51 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <!-- ---------- IMPORT ---------- -->
       <section class="sec" data-sec="import">
         <div class="pagehead"><div><h2>Import Data</h2>
-          <p>Load master data from a SmartPOS backup file</p></div></div>
-        <div class="card">
-          <label class="f">Import into</label>
-          <select class="inp" id="imBiz" style="max-width:420px"></select>
-          <div class="drop" id="imDrop" style="margin-top:14px">
+          <p class="lead">Load master data from a SmartPOS backup file</p></div></div>
+        <div class="panel"><div class="panel-body">
+          <label class="field" style="max-width:440px"><span>Import into</span>
+            <select id="imBiz"></select></label>
+          <div class="drop" id="imDrop">
             <b>Choose a backup file</b>
             <small>The .json file downloaded from Backup &amp; Reset</small>
           </div>
           <input type="file" id="imFile" accept=".json,application/json" class="hide">
           <div id="imPreview" style="margin-top:14px"></div>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <div class="card-head"><h2>Import history</h2></div>
-          <div id="imList"></div>
+        </div></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Import history</h2></div>
+          <div class="panel-body" id="imList"></div>
         </div>
       </section>
 
       <!-- ---------- AUDIT ---------- -->
       <section class="sec" data-sec="audit">
         <div class="pagehead"><div><h2>Audit Log</h2>
-          <p>Every super-admin action on the platform</p></div>
+          <p class="lead">Every super-admin action on the platform</p></div>
           <div class="tools"><button class="btn sm" id="auditRefresh">Refresh</button></div></div>
-        <div class="card">
-          <div class="tablewrap"><table>
-            <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Business</th><th>Detail</th></tr></thead>
-            <tbody id="auditRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-          </table></div>
-        </div>
+        <div class="panel"><div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Business</th><th>Detail</th></tr></thead>
+          <tbody id="auditRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table></div></div></div>
       </section>
 
       <!-- ---------- HEALTH ---------- -->
       <section class="sec" data-sec="health">
         <div class="pagehead"><div><h2>Platform Health</h2>
-          <p>Database and schema diagnostics</p></div>
+          <p class="lead">Database and schema diagnostics</p></div>
           <div class="tools"><button class="btn sm" id="healthRefresh">Run checks</button></div></div>
-        <div class="card"><div id="healthBody" class="muted">Running…</div></div>
+        <div class="panel"><div class="panel-body" id="healthBody"><span class="muted">Running…</span></div></div>
       </section>
 
       <!-- ---------- ACCOUNT ---------- -->
       <section class="sec" data-sec="account">
-        <div class="pagehead"><div><h2>Account</h2><p>Super admin password</p></div></div>
-        <div class="card" style="max-width:460px">
-          <label class="f">Current password</label><input class="inp" id="pw_cur" type="password">
-          <label class="f" style="margin-top:10px">New password</label><input class="inp" id="pw_new" type="password">
-          <label class="f" style="margin-top:10px">Repeat new password</label><input class="inp" id="pw_new2" type="password">
-          <button class="btn primary" id="pwSave" style="margin-top:16px">Change password</button>
-        </div>
+        <div class="pagehead"><div><h2>Account</h2><p class="lead">Super admin password</p></div></div>
+        <div class="panel" style="max-width:470px"><div class="panel-body">
+          <label class="field"><span>Current password</span><input id="pw_cur" type="password"></label>
+          <label class="field"><span>New password</span><input id="pw_new" type="password"></label>
+          <label class="field"><span>Repeat new password</span><input id="pw_new2" type="password"></label>
+          <button class="btn primary" id="pwSave">Change password</button>
+        </div></div>
       </section>
 
     </div>
@@ -338,7 +336,6 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
 </div>
 
 <div class="toast-el" id="toast"></div>
-
 <script>
 'use strict';
 var $=function(id){return document.getElementById(id)};
@@ -417,16 +414,16 @@ async function loadDash(){
     var days=Number(x.days);
     var cls=days<0?'red':(days<=7?'amber':'green');
     var lbl=days<0?('Expired '+Math.abs(days)+'d'):(days+' days');
-    return '<tr><td><b>'+esc(x.name)+'</b><br><span class="muted">'+esc(x.slug)+'</span></td>'
-      +'<td>'+esc(x.expiry_date||'—')+'</td><td><span class="tag '+cls+'">'+lbl+'</span></td>'
-      +'<td>'+pkr(x.amount)+'</td>'
+    return '<tr><td><span class="t-main">'+esc(x.name)+'</span><span class="t-sub">'+esc(x.slug)+'</span></td>'
+      +'<td class="nw">'+esc(x.expiry_date||'—')+'</td><td class="nw"><span class="tag '+cls+'">'+lbl+'</span></td>'
+      +'<td class="num nw">'+pkr(x.amount)+'</td>'
       +'<td><button class="btn sm" onclick="bizRenew(\'' + x.id + '\')">Renew</button></td></tr>';
   }).join(''):'<tr><td colspan="5" class="muted">No renewals in the next 30 days</td></tr>';
 
   var pm=d.recent_payments||[];
   $('payRows').innerHTML=pm.length?pm.map(function(x){
-    return '<tr><td>'+esc(x.name)+'</td><td>'+pkr(x.amount)+'</td><td>'+esc(x.method||'')+'</td>'
-      +'<td>'+fmt(x.paid_at)+'</td></tr>';
+    return '<tr><td>'+esc(x.name)+'</td><td class="num nw">'+pkr(x.amount)+'</td>'
+      +'<td class="nw">'+esc(x.method||'')+'</td><td class="nw">'+fmt(x.paid_at)+'</td></tr>';
   }).join(''):'<tr><td colspan="4" class="muted">No payments yet</td></tr>';
 }
 
@@ -444,7 +441,7 @@ async function loadSync(){
   $('nodeRows').innerHTML=(r.nodes||[]).length?r.nodes.map(function(n){
     return '<tr><td><b>'+esc(n.business||'—')+'</b></td>'
       +'<td>'+esc(n.node_code||'—')+'<br><span class="muted">'+esc(n.ip||'')+'</span></td>'
-      +'<td>'+esc(n.app_version||'unknown')+'</td><td>'+fmt(n.last_seen_at)+'</td>'
+      +'<td class="nw">'+esc(n.app_version||'unknown')+'</td><td class="nw">'+fmt(n.last_seen_at)+'</td>'
       +'<td><span class="tag '+(n.status==='ACTIVE'?'green':'amber')+'">'+esc(n.status)+'</span></td></tr>';
   }).join(''):'<tr><td colspan="5" class="muted">No offline installation has connected yet</td></tr>';
 
@@ -467,9 +464,9 @@ async function loadBiz(){
   BIZ=r.businesses||[];window.__bizRows=BIZ;
   $('bizRows').innerHTML=BIZ.length?BIZ.map(function(b){
     var susp=(b.status||'')==='SUSPENDED';
-    return '<tr><td><b>'+esc(b.name)+'</b><br><span class="muted">'+esc(b.owner_email||'')+'</span></td>'
-      +'<td>'+esc(b.slug)+'</td><td>'+(b.branches||0)+'</td>'
-      +'<td>'+esc(b.expiry_date||'—')+'</td><td>'+bizTag(b)+'</td>'
+    return '<tr><td><span class="t-main">'+esc(b.name)+'</span><span class="t-sub">'+esc(b.owner_email||'')+'</span></td>'
+      +'<td>'+esc(b.slug)+'</td><td class="num">'+(b.branches||0)+'</td>'
+      +'<td class="nw">'+esc(b.expiry_date||'—')+'</td><td class="nw">'+bizTag(b)+'</td>'
       +'<td><div class="tools">'
       +'<button class="btn sm" onclick="copyText(\'' + (b.client_link||'') + '\')">Link</button>'
       +'<button class="btn sm" onclick="bizDetail(\'' + b.id + '\')">Detail</button>'
@@ -535,7 +532,7 @@ async function previewImport(){
       +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
       +skip.map(function(t){return '<span class="tag">'+esc(t.table)+' '+t.rows+'</span>'}).join('')+'</div>'):'')
     +'<label class="f" style="margin-top:14px">If a record already exists</label>'
-    +'<select class="inp" id="imMode"><option value="SKIP">Skip it (safest)</option>'
+    +'<select  id="imMode"><option value="SKIP">Skip it (safest)</option>'
     +'<option value="UPDATE">Overwrite with the file\'s version</option></select>'
     +'<button class="btn primary" id="imRun" style="width:100%;margin-top:12px">Import master data</button>'
     +'<div id="imOut" style="margin-top:12px"></div></div>';
@@ -566,7 +563,7 @@ async function loadAudit(){
   var r=await api('sa-audit');
   var a=(r.ok&&r.audit)?r.audit:[];
   $('auditRows').innerHTML=a.length?a.map(function(x){
-    return '<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.actor||'')+'</td>'
+    return '<tr><td class="nw">'+fmt(x.created_at)+'</td><td class="nw">'+esc(x.actor||'')+'</td>'
       +'<td><span class="tag">'+esc(x.action)+'</span></td><td>'+esc(x.business||'—')+'</td>'
       +'<td class="muted">'+esc(x.detail||'')+'</td></tr>';
   }).join(''):'<tr><td colspan="5" class="muted">No actions recorded yet</td></tr>';
@@ -584,11 +581,11 @@ async function bizBrand(id){
   const b=(window.__bizRows||[]).find(function(x){return x.id===id})||{};
   const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Naam, logo aur colors — login aur poore software par lagenge.</p>'
     +'<div class="grid" style="margin-top:14px">'
-    +'<div><label>Display Name</label><input id="brName" placeholder="'+(b.name||'')+'"></div>'
-    +'<div><label>Primary Color</label><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
-    +'<div><label>Accent Color</label><input id="brAccent" type="color" value="#ff5864" style="height:42px;padding:4px"></div>'
+    +'<div><label>Display Name</span><input id="brName" placeholder="'+(b.name||'')+'"></div>'
+    +'<div><label>Primary Color</span><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
+    +'<div><label>Accent Color</span><input id="brAccent" type="color" value="#ff5864" style="height:42px;padding:4px"></div>'
     +'</div>'
-    +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</label><input id="brFile" type="file" accept="image/*"></div>'
+    +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</span><input id="brFile" type="file" accept="image/*"></div>'
     +'<div id="brPrev" style="margin-top:12px;height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;overflow:hidden"><span class="muted">Logo preview</span></div>'
     +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="brSave">Save Branding</button>'
     +'<button class="btn sec" id="brClear">Remove Logo</button></div>');
@@ -641,8 +638,8 @@ async function bizWa(id){
   const w=r.wa||{};
   const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect karein aur events select karein.</p>'
     +'<div class="grid" style="margin-top:14px">'
-    +'<div style="grid-column:1/-1"><label>API Base URL</label><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
-    +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</label><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
+    +'<div style="grid-column:1/-1"><label>API Base URL</span><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
+    +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</span><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
     +'</div>'
     +'<div class="row" style="margin-top:12px"><button class="btn sec" id="waT">Test Connection</button><span id="waS" class="muted"></span></div>'
     +'<h3 style="margin-top:18px;font-size:15px">Events</h3>'

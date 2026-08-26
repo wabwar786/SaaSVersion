@@ -744,7 +744,10 @@ if($page==='customers.html'){
 }
 ok(['row'=>$row]);
 case 'sync-ping':
- try{ $pt=syncTenant(); syncNodeSeen($pt); }catch(Throwable $e){}
+ /* Token ho to node heartbeat; na ho (misal super admin console) to sirf
+    build info wapas — warna 401 aata tha aur console ka build pill khali
+    reh jata tha. */
+ if(!empty($_SERVER['HTTP_X_SYNC_TOKEN'])){ try{ $pt=syncTenant(); syncNodeSeen($pt); }catch(Throwable $e){} }
  /* Build version bhi bhejo: offline node compare kar ke bata sakay ke
     cloud par purana build chal raha hai (warna ghanton confusion hoti hai). */
  $bv='unknown';
@@ -1012,8 +1015,9 @@ case 'sa-factory-reset':needSuper();$d=body();
  if(!(int)$bq->fetchColumn())fail('Download a backup first - reset is only allowed within 1 hour of a backup.',422);
  $res=\Aio\Services\AdminData::factoryReset($tid,$mode);
  \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),$tid,'FACTORY_RESET',
-   $mode.' - '.array_sum(array_filter($res,fn($n)=>$n>0)).' rows deleted');
- ok(['mode'=>$mode,'deleted'=>$res,'total'=>array_sum(array_filter($res,fn($n)=>$n>0))]);
+   $mode.' - '.$res['total'].' rows deleted from '.count($res['deleted']).' tables');
+ ok(['mode'=>$mode,'deleted'=>$res['deleted'],'total'=>$res['total'],
+     'tables'=>count($res['deleted']),'kept_admin'=>$res['kept_admin']]);
 
 case 'sa-import-inspect':needSuper();
  $raw=file_get_contents('php://input');
@@ -1037,7 +1041,8 @@ case 'sa-import-run':needSuper();
               VALUES(?,?,?,'BACKUP',?,?,?,?,?,?,?,?,NOW(6))")
    ->execute([uuid(),$tid,$sid?:null,(string)($d['file_name']??'backup.json'),
               json_encode($r['per_table']),$r['inserted'],$r['updated'],$r['skipped'],
-              $r['errors']?'PARTIAL':'OK',$r['errors']?implode(' | ',$r['errors']):null,
+              $r['errors']?'PARTIAL':'OK',
+              $r['errors']?substr(implode(' | ',$r['errors']),0,480):null,
               (string)(Platform::superUser()['email']??'super')]);
  \Aio\Services\AdminData::audit((string)(Platform::superUser()['email']??'super'),$tid,'IMPORT',
    'inserted '.$r['inserted'].', updated '.$r['updated'].', skipped '.$r['skipped']);
