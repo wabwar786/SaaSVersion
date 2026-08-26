@@ -287,7 +287,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v30';
+var VERSION='POS v31';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -320,6 +320,65 @@ var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
 var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
 var CAN={manage:false};
+
+/* ============ CLOUD SYNC INDICATOR (live) ============
+   Strip par chip: kab last sync hua, kitni rows baqi hain, cloud online
+   hai ya nahi. Click par foran sync. Har 2 minute khud bhi chalti hai. */
+var SYNC={state:null,busy:false};
+function agoText(ts){
+  if(!ts)return 'never';
+  var t=new Date(String(ts).replace(' ','T')).getTime();
+  if(isNaN(t))return 'never';
+  var m=Math.floor((Date.now()-t)/60000);
+  if(m<1)return 'just now';
+  if(m<60)return m+' min ago';
+  var h=Math.floor(m/60); if(h<24)return h+' hr ago';
+  return Math.floor(h/24)+' d ago';
+}
+function paintSync(){
+  var el=$('#syncChip'); if(!el)return;
+  var s=SYNC.state;
+  if(!s){el.innerHTML='&#9729; checking...';el.style.background='';return}
+  if(s.role==='cloud'){el.innerHTML='&#9729; Cloud server';el.style.background='';return}
+  if(SYNC.busy){el.innerHTML='&#8635; Syncing...';el.style.background='#fdf4e9';return}
+  if(!s.enabled){
+    el.innerHTML='&#9888; Sync off';el.style.background='#fdecec';
+    el.title=s.reason||'Sync disabled';return;
+  }
+  if(!s.cloud_online){
+    el.innerHTML='&#9729; Offline'+(s.pending?(' &middot; '+s.pending+' pending'):'');
+    el.style.background='#fdf4e9';
+    el.title='Cloud reachable nahi - net aate hi khud sync ho jayega';return;
+  }
+  if(s.pending>0){
+    el.innerHTML='&#8635; '+s.pending+' to sync';el.style.background='#fdf4e9';
+    el.title='Click to sync now';return;
+  }
+  el.innerHTML='&#9729;&#10003; Synced &middot; '+agoText(s.last_run);
+  el.style.background='#eaf6ef';
+  el.title='Last sync: '+(s.last_run||'-')+(s.cloud_url?('\ncloud: '+s.cloud_url):'');
+}
+function refreshSync(){
+  var r=api('sync-state');
+  if(r.ok&&r.sync){SYNC.state=r.sync;paintSync();}
+}
+function syncNow(manual){
+  var s=SYNC.state;
+  if(s&&s.role==='cloud'){if(manual)toast('Yeh cloud server hai - sync offline node se chalti hai');return}
+  if(s&&!s.enabled){if(manual)toast(s.reason||'Sync is off');return}
+  if(SYNC.busy)return;
+  SYNC.busy=true;paintSync();
+  var r=api('sync-run',{});
+  SYNC.busy=false;
+  if(!r.ok){
+    if(manual)toast(r.message||'Sync failed');
+    if(SYNC.state){SYNC.state.last_error=r.message||'failed';}
+  }else if(manual){
+    var pushed=0;for(var k in (r.pushed||{}))pushed+=r.pushed[k];
+    toast('Sync complete'+(pushed?(' - '+pushed+' rows uploaded'):''));
+  }
+  refreshSync();
+}
 var PRINT={size:80,qr:true,footer:'Thank you! Visit again.'};
 try{var _pt=localStorage.getItem('aio_print_tpl');if(_pt)PRINT=JSON.parse(_pt)}catch(e){}
 
@@ -443,6 +502,9 @@ function boot(){
   applyRole();
   orderTax=taxPct('Cash');
   loadHolds(); loadQr(); setInterval(loadQr,20000); renderAll();
+  refreshSync();
+  setInterval(refreshSync,30000);           /* chip har 30s update */
+  setInterval(function(){syncNow(false)},120000);  /* auto sync har 2 min */
   if(!shift){openGate();return}
   if(!cart.length&&!billStarted)newBillFlow();
 }
@@ -472,6 +534,7 @@ function renderStrip(){
     +'<span id="ctx" class="ctx"></span>'
     +'<button class="tb" id="newBillBtn" style="padding:3px 10px;font-size:11px">+ New Bill (F1)</button>'
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali &mdash; "+ New Item" se banayein</span>':'')
+    +'<span class="sb" id="syncChip" title="Cloud sync status" style="cursor:pointer">&#9729; checking...</span>'
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
@@ -1382,6 +1445,8 @@ $('#sysBtn').onclick=function(){
     +'<div><label class="f">Card / Online Tax %</label><input class="inp" id="stCard" type="number" step="0.1" value="'+SET.tax_card+'"></div>'
     +'<div class="full"><label class="f">Default Service Charge %</label><input class="inp" id="stSvc" type="number" step="0.1" value="'+SET.service_charge+'"></div>'
     +'</div><button class="tb pri" id="stSave" style="margin-top:9px;width:100%">Save Tax Settings</button></div>'
+    +'<div class="box"><b style="font-size:11px">Cloud Sync</b><div id="syncBox" style="margin-top:6px"></div>'
+    +'<button class="tb" id="sysSync" style="width:100%;margin-top:8px">Sync Now</button></div>'
     +'<div class="box"><b style="font-size:11px">Connect Tablet / Mobile</b>'
     +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Tablet ya mobile ko isi WiFi par POS ke saath connect karein - QR scan karte hi device linked ho jata hai.</div>'
     +'<div class="qv" style="grid-template-columns:1fr 1fr"><button id="sysPairW">Waiter Tablet</button><button id="sysPairK">Kitchen Display</button></div></div>'
@@ -1404,6 +1469,28 @@ $('#sysBtn').onclick=function(){
   if(offBtn)offBtn.onclick=function(){
     toast('Offline package ban raha hai - thoda intezar karein');
     window.location.href='/api.php?action=offline-package';
+  };
+  function paintSyncBox(){
+    var s=SYNC.state||{};
+    function row(k,v,c){return '<div class="kv"><span>'+k+'</span><b'+(c?(' style="color:'+c+'"'):'')+'>'+esc(v)+'</b></div>'}
+    var h=row('Mode',s.role==='cloud'?'Cloud server':'Offline node');
+    if(s.role!=='cloud'){
+      h+=row('Sync',s.enabled?'Enabled':'Disabled',s.enabled?'var(--ok)':'var(--brand)');
+      h+=row('Cloud',s.cloud_online?'Online':'Not reachable',s.cloud_online?'var(--ok)':'var(--warn)');
+      h+=row('Last sync',agoText(s.last_run));
+      h+=row('Waiting to upload',(s.pending||0)+' rows',(s.pending>0)?'var(--warn)':'var(--ok)');
+      if(s.cloud_url)h+=row('Cloud URL',s.cloud_url);
+      if(s.reason)h+=row('Note',s.reason,'var(--brand)');
+      if(s.last_error)h+=row('Last error',s.last_error,'var(--brand)');
+    }
+    var box=ov.querySelector('#syncBox'); if(box)box.innerHTML=h;
+  }
+  refreshSync();paintSyncBox();
+  ov.querySelector('#sysSync').onclick=function(){
+    this.disabled=true;this.textContent='Syncing...';
+    syncNow(true);
+    this.disabled=false;this.textContent='Sync Now';
+    paintSyncBox();
   };
   ov.querySelector('#sysQr').onclick=function(){ov.remove();qrCodes()};
   ov.querySelector('#sysPairW').onclick=function(){ov.remove();pairDevice('WAITER','Waiter Tablet')};

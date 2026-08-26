@@ -336,7 +336,7 @@ $zip->addFromString('OFFLINE_README.txt',
  ."Company  : Wabwar Software House\nCloud    : ".$base."\n\n"
  ."SETUP (one time)\n"
  ."  1) Extract this ZIP into any folder, for example:\n"
- ."     C:\\smartpos_by_wabwar\n"
+ ."     C:\\SmartPOS\n"
  ."  2) Double click INSTALL_OFFLINE.bat\n"
  ."     - PHP and the database are prepared inside this folder\n"
  ."     - Nothing is installed on Windows\n"
@@ -359,7 +359,9 @@ $zip->close();
 $data=file_get_contents($tmp);@unlink($tmp);
 while(ob_get_level())ob_end_clean();
 header('Content-Type: application/zip');
-$pkgName='smartpos_by_wabwar-'.preg_replace('/[^A-Za-z0-9_-]/','',(string)$t['slug']);
+/* Unique naam: har download alag file. Windows "(1)" nahi lagata,
+   is liye folder ke naam mein space/brackets kabhi nahi aate. */
+$pkgName='SmartPOS_'.preg_replace('/[^A-Za-z0-9]/','',(string)$t['slug']).'_'.date('Ymd_Hi');
 header('Content-Disposition: attachment; filename="'.$pkgName.'.zip"');
 header('Content-Length: '.strlen($data));
 echo $data;exit;
@@ -642,6 +644,37 @@ case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+case 'sync-state':needLogin();
+ /* POS ke live indicator ke liye halka endpoint */
+ $role=cfg('app.role');
+ $out=['role'=>$role,'enabled'=>false,'reason'=>'','pending'=>0,'last_run'=>null,
+       'last_status'=>null,'last_error'=>null,'cloud_online'=>false,'cloud_url'=>''];
+ if($role==='cloud'){ $out['reason']='cloud'; ok(['sync'=>$out]); }
+ $out['enabled']=Sync::enabled();
+ $out['reason']=Sync::statusReason();
+ $out['cloud_url']=(string)(($GLOBALS['config']['sync']['cloud_api_url']??'')?:'');
+ try{
+   $p=DB::pdo();
+   $q=$p->query("SELECT MAX(last_run_at) lr, SUM(last_status='ERROR') errs FROM sync_state");
+   if($r=$q->fetch()){ $out['last_run']=$r['lr']; }
+   $e=$p->query("SELECT last_error FROM sync_state WHERE last_status='ERROR' AND last_error IS NOT NULL ORDER BY last_run_at DESC LIMIT 1");
+   if($x=$e->fetchColumn()) $out['last_error']=substr((string)$x,0,160);
+   /* kitni rows abhi bheji jani baqi hain */
+   $pending=0;
+   foreach((array)($GLOBALS['config']['sync']['push_tables']??[]) as $tb){
+     try{
+       $wq=$p->prepare("SELECT watermark FROM sync_state WHERE scope=? LIMIT 1");
+       $wq->execute(['push:'.$tb]); $wm=$wq->fetchColumn()?:'1970-01-01 00:00:00.000000';
+       $col=Sync::tsCol($tb); if(!$col)continue;
+       $cq=$p->prepare("SELECT COUNT(*) FROM `$tb` WHERE `$col` > ?");
+       $cq->execute([$wm]); $pending+=(int)$cq->fetchColumn();
+     }catch(Throwable $e2){}
+   }
+   $out['pending']=$pending;
+ }catch(Throwable $e){}
+ if($out['enabled'])$out['cloud_online']=Sync::cloudOnline();
+ ok(['sync'=>$out]);
+
 case 'sync-run':needLogin();
  if(cfg('app.role')==='cloud')fail('Yeh cloud server hai - sync offline node se chalti hai. Yahan sirf status dekha ja sakta hai.',400);
  $why=Sync::statusReason();

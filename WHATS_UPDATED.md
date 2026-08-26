@@ -1135,3 +1135,40 @@ Auto-sync loop har 2 minute background mein yehi karta hai.
 
 ## Regression
 PHP lint clean · 44 pages OK · local node OK · cloud endpoints OK
+
+---
+
+# V38 — Live sync indicator + unique package name
+
+## 1. POS par LIVE sync status (strip mein)
+Naya `sync-state` endpoint + POS strip par chip jo har 30 second update
+hota hai:
+- `☁✓ Synced · just now` — sab upload ho chuka (green)
+- `↻ 12 to sync` — itni rows abhi baqi (amber, **click = foran sync**)
+- `☁ Offline · 5 pending` — cloud abhi reachable nahi
+- `⚠ Sync off` — configuration ka masla (tooltip mein wajah)
+Tooltip mein last sync ka waqt aur cloud URL bhi.
+
+**Auto-sync ab browser se bhi**: POS khula ho to har **2 minute** khud sync
+chalata hai — background loop chale ya na chale, data upar jata rahega.
+
+## 2. System modal mein poori tafseel
+System & Settings > **Cloud Sync**: Mode (Offline node / Cloud server),
+Sync enabled, Cloud online/not reachable, Last sync, **Waiting to upload
+(rows)**, Cloud URL, aur koi error ho to wo bhi. Saath **Sync Now** button.
+
+## 3. Package ka naam ab unique
+Pehle har download ka naam aik jaisa tha, is liye Windows
+`smartpos_by_wabwar-a (1)` bana deta tha — aur us space/bracket se setup
+toot-ta tha. Ab: **`SmartPOS_<slug>_YYYYMMDD_HHMM.zip`**
+(misal `SmartPOS_royalgrill_20260826_1311.zip`). README mein folder
+suggestion bhi `C:\SmartPOS`.
+
+## Tested
+sync-state lifecycle: pending 37 → item banaya → 38 → sync → **0 pending**,
+cloud par item mojood ✓
+Browser: login dropdown (3 users) ✓ shift gate counter field ✓
+chip "↻ 1 to sync" → sync → **"☁✓ Synced · just now"**, toast
+"Sync complete - 2 rows uploaded" ✓
+System > Cloud Sync: Mode "Offline node", Sync "Enabled", Cloud "Online",
+Last sync "just now" ✓ page errors 0 ✓ PHP lint clean ✓
