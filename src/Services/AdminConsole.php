@@ -14,7 +14,7 @@ use PDO;
 final class AdminConsole
 {
     /** Jin commands ke liye --confirm "<business name>" lazmi hai. */
-    private const NEEDS_CONFIRM = ['reset', 'delete'];
+    private const NEEDS_CONFIRM = ['reset', 'delete', 'purge'];
 
     public static function run(string $line, string $actor): array
     {
@@ -35,9 +35,62 @@ final class AdminConsole
             } else { $args[] = $a; }
         }
 
-        if (in_array($cmd, self::NEEDS_CONFIRM, true) && ($flags['confirm'] ?? '') === '') {
-            return self::err('This command needs confirmation. Add: --confirm "<exact business name>"');
+        // Log se seekha: log ke placeholders <slug> waise hi type ho jate hain.
+        // Chupchaap saaf kar do aur bata do.
+        $hadBrackets = false;
+        foreach ($args as $i => $a) {
+            if (\strlen($a) > 2 && $a[0] === '<' && \substr($a, -1) === '>') {
+                $args[$i] = \substr($a, 1, -1); $hadBrackets = true;
+            }
         }
+
+        if (in_array($cmd, self::NEEDS_CONFIRM, true) && ($flags['confirm'] ?? '') === '') {
+            return self::needConfirm($cmd, $args, $hadBrackets);
+        }
+        if ($hadBrackets) {
+            // aage chalne do, magar user ko sahi shakal dikha do
+            $note = 'Note: < > sirf placeholders hain — bina brackets likhein.';
+            $r = self::dispatch($cmd, $args, $flags, $actor);
+            \array_unshift($r['lines'], ['t' => 'd', 'v' => $note]);
+            return $r;
+        }
+        return self::dispatch($cmd, $args, $flags, $actor);
+    }
+
+    /**
+     * Confirmation ki zaroorat par asli business ka naam dhoond kar
+     * **type karne laayak poori command** dikhate hain — pehle sirf
+     * "<exact business name>" likha aata tha jo koi ishara nahi deta tha.
+     */
+    private static function needConfirm(string $cmd, array $args, bool $hadBrackets): array
+    {
+        $slug = $args[0] ?? '';
+        $lines = [];
+        if ($hadBrackets) $lines[] = ['t' => 'd', 'v' => 'Note: < > sirf placeholders hain — bina brackets likhein.'];
+
+        $name = null;
+        if ($slug !== '') {
+            try { $t = self::tenant($slug); $name = (string)$t['name']; $slug = (string)$t['slug']; }
+            catch (\Throwable $e) {
+                $lines[] = ['t' => 'e', 'v' => $e->getMessage()];
+                $lines[] = ['t' => 'd', 'v' => "Type 'list' to see the exact slugs."];
+                return ['ok' => true, 'lines' => $lines];
+            }
+        }
+        $lines[] = ['t' => 'e', 'v' => 'This command deletes data, so it needs the business name to confirm.'];
+        if ($name !== null) {
+            $rest = ($cmd === 'reset') ? ' ' . (strtolower($args[1] ?? 'txn')) :
+                    (($cmd === 'purge') ? ' ' . (strtolower($args[1] ?? 'transactions')) : '');
+            $lines[] = ['t' => 'k', 'v' => 'Run:  ' . $cmd . ' ' . $slug . $rest . ' --confirm "' . $name . '"'];
+        } else {
+            $lines[] = ['t' => 'k', 'v' => 'Run:  ' . $cmd . ' <slug> --confirm "<business name>"'];
+            $lines[] = ['t' => 'd', 'v' => "Type 'list' to see the slugs and names."];
+        }
+        return ['ok' => true, 'lines' => $lines];
+    }
+
+    private static function dispatch(string $cmd, array $args, array $flags, string $actor): array
+    {
 
         try {
             switch ($cmd) {
@@ -51,6 +104,8 @@ final class AdminConsole
                 case 'backup':    return self::cmdBackup($args[0] ?? '', strtoupper($args[1] ?? 'FULL'), $actor);
                 case 'reset':     return self::cmdReset($args[0] ?? '', strtoupper($args[1] ?? 'TXN'), (string)$flags['confirm'], $actor);
                 case 'delete':    return self::cmdDelete($args[0] ?? '', (string)$flags['confirm'], $actor);
+                case 'purge':     return self::cmdPurge($args[0] ?? '', strtolower($args[1] ?? ''),
+                                      (string)($flags['before'] ?? ''), (string)$flags['confirm'], $actor);
                 case 'suspend':   return self::cmdStatus($args[0] ?? '', 'SUSPENDED', $actor);
                 case 'activate':  return self::cmdStatus($args[0] ?? '', 'ACTIVE', $actor);
                 case 'nodes':     return self::cmdNodes();
@@ -84,6 +139,12 @@ final class AdminConsole
             ['t' => 'd',  'v' => '                                  txn  = transactions only'],
             ['t' => 'd',  'v' => '                                  full = everything, only admin login stays'],
             ['t' => 'k',  'v' => 'delete <slug> --confirm "<name>"  remove the business completely'],
+            ['t' => 'h',  'v' => 'PURGE (selective)'],
+            ['t' => 'k',  'v' => 'purge <slug> <what> --confirm "<name>"'],
+            ['t' => 'd',  'v' => '  what: transactions | orders | shifts | stock | qr | expenses'],
+            ['t' => 'd',  'v' => '        logs | sync | all-logs'],
+            ['t' => 'k',  'v' => 'purge <slug> orders --before 2026-01-01 --confirm "<name>"'],
+            ['t' => 'd',  'v' => '  --before rakhne se sirf us tareekh se purana data jata hai'],
             ['t' => 'h',  'v' => 'MONITORING'],
             ['t' => 'k',  'v' => 'nodes                             branch computers'],
             ['t' => 'k',  'v' => 'sync [slug]                       transfer activity'],
@@ -254,6 +315,53 @@ final class AdminConsole
             $out[] = ['t' => 'i', 'v' => \sprintf('  %-32s %6d', $tbl, $n)];
         }
         if (count($r['deleted']) > 12) $out[] = ['t' => 'd', 'v' => '  … +' . (count($r['deleted']) - 12) . ' more tables'];
+        return self::out($out, ['refresh' => true]);
+    }
+
+    private static function cmdPurge(string $slug, string $what, string $before,
+                                     string $confirm, string $actor): array
+    {
+        $t = self::tenant($slug);
+        if ($what === '') {
+            return self::err('Usage: purge <slug> <transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs> --confirm "<name>"');
+        }
+        if (!AdminData::purgeTables($what)) {
+            return self::err('Unknown group "' . $what . '". Try: transactions, orders, shifts, stock, qr, expenses, logs, sync, all-logs');
+        }
+        if (trim($confirm) !== trim((string)$t['name'])) {
+            return self::err('Confirmation does not match. Expected: ' . $t['name']);
+        }
+        if ($before !== '' && !\preg_match('/^\d{4}-\d{2}-\d{2}$/', $before)) {
+            return self::err('--before needs a date like 2026-01-01');
+        }
+        // Business data mita rahe hain to backup lazmi. Logs mehez record
+        // hain — un ke liye backup ki shart nahi.
+        $isLogs = in_array($what, ['logs', 'sync', 'all-logs'], true);
+        if (!$isLogs) {
+            $q = DB::pdo()->prepare(
+                "SELECT COUNT(*) FROM admin_backups WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 HOUR)");
+            $q->execute([$t['id']]);
+            if (!(int)$q->fetchColumn()) {
+                return self::err('Take a backup first:  backup ' . $t['slug'] . ' full');
+            }
+        }
+
+        $r = AdminData::purge((string)$t['id'], $what, $before !== '' ? $before : null);
+        AdminData::audit($actor, (string)$t['id'], 'PURGE',
+            $what . ($before !== '' ? (' before ' . $before) : '') . ' - ' . $r['total'] . ' rows');
+
+        if ($r['total'] === 0) {
+            return self::out([['t' => 'w', 'v' => 'Nothing to purge — no matching rows.']]);
+        }
+        $out = [['t' => 'g', 'v' => 'Purged ' . $r['total'] . ' rows from ' . count($r['deleted']) . ' tables'
+            . ($before !== '' ? (' (older than ' . $before . ')') : '')]];
+        foreach ($r['deleted'] as $tbl => $n) {
+            $out[] = ['t' => 'i', 'v' => \sprintf('  %-32s %6d', $tbl, $n)];
+        }
+        if ($r['skipped']) {
+            $out[] = ['t' => 'd', 'v' => 'skipped (not in this database or no date column): '
+                . \implode(', ', \array_slice($r['skipped'], 0, 8))];
+        }
         return self::out($out, ['refresh' => true]);
     }
 

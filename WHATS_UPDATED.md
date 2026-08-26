@@ -2073,3 +2073,55 @@ par crash kar jata.
 
 ## Regression
 Sync suite **34/34** · reset verifier CLEAN · PHP lint clean · 44 pages OK
+
+---
+
+# V59 — Selective purge (transactions / logs) + behtar console messages
+
+## Naya command: purge
+`reset` sab kuch mita deta hai. Ab **chuni hui cheez** mitai ja sakti hai:
+
+    purge <slug> <what> --confirm "<name>"
+    purge <slug> orders --before 2026-01-01 --confirm "<name>"
+
+**Groups:**
+  transactions  orders + shifts + stock + qr + expenses (sab kuch)
+  orders        orders, order_items, payments, voids, kitchen tickets,
+                order_status_history, refunds, delivery, fiscal invoices
+  shifts        cashier_shifts, cash movements, handovers
+  stock         transactions, lines, balances, adjustments, batches,
+                counts, transfers, GRN, purchase orders
+  qr            qr_orders, qr_sessions
+  expenses      expenses, supplier_payments
+  logs          audit_logs, notification_queue, printer_jobs, background_jobs
+  sync          sync_activity, sync_runs, conflicts, inbox, outbox, cursors
+  all-logs      logs + sync
+
+`--before YYYY-MM-DD` se sirf us tareekh se **purana** data jata hai (jis
+table mein `business_date` / `created_at` / `opened_at` / `paid_at` ho).
+
+**Hifazat:** business data ke liye pehle backup lazmi (1 ghanta), naam se
+confirm lazmi. **Logs ke liye backup ki shart nahi** — wo mehez record hain.
+Transactions purge ke baad sync watermarks reset ho jate hain.
+
+## Console messages theek kiye
+Aap ne `reset <a> txn` chalaya aur sirf itna aaya:
+*"needs confirmation. Add: --confirm "<exact business name>""* — jis se
+pata hi nahi chalta ke asal mein kya type karna hai.
+
+Ab console **poori command bana kar deta hai**:
+
+    > reset <royal-grill> txn
+    Note: < > sirf placeholders hain — bina brackets likhein.
+    This command deletes data, so it needs the business name to confirm.
+    Run:  reset royal-grill txn --confirm "Royal Grill"
+
+- `<slug>` jaise angle brackets khud saaf ho jate hain (aur bata diya jata hai)
+- business ka asli naam DB se nikal kar command mein bhar diya jata hai
+- galat slug par: *"No business with slug 'x'. Type 'list' to see the exact slugs."*
+
+## Tested
+Galat group → saaf list. Bina confirm → poori command. Logs purge bina backup
+ke chali (953 sync rows) ✓ Transactions purge bina backup ke ruki ✓
+`--before` ne sirf purani rows hatayin, aaj wali mehfooz ✓
+Browser: koi JS error nahi ✓ PHP lint clean · 44 pages OK

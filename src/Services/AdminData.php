@@ -264,6 +264,97 @@ final class AdminData
                 'kept_admin' => $adminId];
     }
 
+    /* ------------------------------- PURGE ---------------------------- */
+
+    /** Purge ke groups — `purge <slug> <group>` command inhen use karta hai. */
+    public const PURGE_GROUPS = [
+        'orders'   => ['orders','order_items','payments','order_payments','order_item_voids',
+                       'order_status_history','online_order_details','refunds',
+                       'kitchen_tickets','kitchen_ticket_items','delivery_orders','fiscal_invoices'],
+        'shifts'   => ['cashier_shifts','shift_cash_movements','shift_handovers'],
+        'stock'    => ['stock_transactions','stock_transaction_lines','stock_balances',
+                       'stock_adjustments','stock_movements','stock_batches',
+                       'stock_count_sessions','stock_transfers',
+                       'goods_receipts','goods_receipt_items','purchase_orders','purchase_order_items'],
+        'qr'       => ['qr_orders','qr_sessions'],
+        'expenses' => ['expenses','supplier_payments'],
+        'logs'     => ['audit_logs','notification_queue','printer_jobs','background_jobs'],
+        'sync'     => ['sync_activity','sync_runs','sync_conflicts','sync_inbox','sync_outbox','sync_cursors'],
+    ];
+
+    /** 'transactions' = orders + shifts + stock + qr + expenses */
+    public static function purgeTables(string $group): array
+    {
+        $group = strtolower($group);
+        if ($group === 'transactions' || $group === 'txn') {
+            return array_merge(
+                self::PURGE_GROUPS['orders'], self::PURGE_GROUPS['shifts'],
+                self::PURGE_GROUPS['stock'],  self::PURGE_GROUPS['qr'],
+                self::PURGE_GROUPS['expenses']);
+        }
+        if ($group === 'all-logs') {
+            return array_merge(self::PURGE_GROUPS['logs'], self::PURGE_GROUPS['sync']);
+        }
+        return self::PURGE_GROUPS[$group] ?? [];
+    }
+
+    /**
+     * Chuni hui tables se is business ka data hatao, marzi ho to sirf ek
+     * tareekh se purana.
+     *
+     * @param string|null $before 'YYYY-MM-DD' — is se purani rows hi jayengi
+     * @return array{deleted:array<string,int>,total:int,skipped:array<int,string>}
+     */
+    public static function purge(string $tenantId, string $group, ?string $before = null): array
+    {
+        $tables = self::purgeTables($group);
+        if (!$tables) return ['deleted' => [], 'total' => 0, 'skipped' => []];
+
+        $pdo   = DB::pdo();
+        $sites = self::siteIds($tenantId);
+        $out = []; $skipped = [];
+
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+        foreach ($tables as $t) {
+            $cols = self::cols($t);
+            if (!$cols) { $skipped[] = $t; continue; }
+
+            $where = ''; $args = [];
+            if (in_array('tenant_id', $cols, true)) { $where = 'tenant_id = ?'; $args[] = $tenantId; }
+            elseif (in_array('site_id', $cols, true) && $sites) {
+                $where = 'site_id IN (' . implode(',', array_fill(0, count($sites), '?')) . ')';
+                $args = $sites;
+            } else { $skipped[] = $t; continue; }
+
+            // date filter — jo column mojood ho
+            if ($before !== null && $before !== '') {
+                $dateCol = null;
+                foreach (['business_date', 'created_at', 'opened_at', 'paid_at'] as $c) {
+                    if (in_array($c, $cols, true)) { $dateCol = $c; break; }
+                }
+                if ($dateCol === null) { $skipped[] = $t; continue; }
+                $where .= " AND `$dateCol` < ?";
+                $args[] = $before;
+            }
+
+            try {
+                $st = $pdo->prepare("DELETE FROM `$t` WHERE $where");
+                $st->execute($args);
+                if ($st->rowCount() > 0) $out[$t] = $st->rowCount();
+            } catch (\Throwable $e) { $skipped[] = $t; }
+        }
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+
+        // agar transactions gaye hain to watermark reset — warna cloud/node
+        // dobara nahi bhejte aur figures aadhe reh jate hain
+        if (in_array(strtolower($group), ['transactions', 'txn', 'orders'], true)) {
+            try { $pdo->exec("DELETE FROM sync_state WHERE scope LIKE 'push:%' OR scope LIKE 'pull:%'"); }
+            catch (\Throwable $e) {}
+        }
+
+        return ['deleted' => $out, 'total' => array_sum($out), 'skipped' => $skipped];
+    }
+
     /* ------------------------------ DELETE ---------------------------- */
 
     /**
