@@ -70,7 +70,20 @@ function syncToken(){ syncTenant(); }
    tables kabhi nahi (warna token leak = account takeover). */
 
 /* Cloud par record: kis branch se kaun si table, kitni rows aayin/gayin. */
+function syncLogEnsure():void{
+  static $done=false; if($done)return; $done=true;
+  try{
+    DB::pdo()->exec("CREATE TABLE IF NOT EXISTS sync_activity (
+      id CHAR(36) NOT NULL PRIMARY KEY, tenant_id CHAR(36) NULL, site_id CHAR(36) NULL,
+      run_id CHAR(36) NULL, direction ENUM('PUSH','PULL') NOT NULL, table_name VARCHAR(80) NOT NULL,
+      rows_count INT NOT NULL DEFAULT 0, status VARCHAR(20) NOT NULL DEFAULT 'OK',
+      note VARCHAR(300) NULL, node_ip VARCHAR(64) NULL, created_at DATETIME(6) NOT NULL,
+      KEY ix_sa_time (created_at), KEY ix_sa_tenant (tenant_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+  }catch(Throwable $e){}
+}
 function syncActivityLog(string $tid,string $dir,string $table,int $rows,string $note=''):void{
+  syncLogEnsure();
   try{
     DB::pdo()->prepare("INSERT INTO sync_activity (id,tenant_id,site_id,direction,table_name,rows_count,status,note,node_ip,created_at)
       VALUES (?,?,?,?,?,?,'OK',?,?,NOW(6))")
@@ -103,7 +116,7 @@ function syncTableAllowed(string $table): bool {
 }function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
 function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
 function applyUser(string $id,array $d,bool $create=false,?string $requestId=null):string{$p=DB::pdo();$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;$perm=$d['permissions']??[];if($create){return UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'','phone'=>$d['phone']??'','password'=>$d['password']?:'1234','role_id'=>$role,'modules'=>$mods,'is_admin'=>($d['role']??'')==='Owner / Admin','form_permissions'=>[]],$requestId);}return DB::tx(function($p)use($id,$d,$role,$mods){$p->prepare("UPDATE users SET full_name=?,email=?,phone=?,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$d['name'],$d['email'],$d['phone']??'',$id,tenant_id()]);if(!empty($d['password'])){[$h,$a]=UserService::passwordHash($d['password']);$p->prepare("UPDATE users SET password_hash=?,password_algo=? WHERE id=?")->execute([$h,$a,$id]);}$p->prepare("DELETE FROM user_roles WHERE user_id=?")->execute([$id]);$p->prepare("DELETE FROM user_module_access WHERE user_id=?")->execute([$id]);if($role)$p->prepare("INSERT INTO user_roles(id,user_id,role_id,site_id,assigned_by) VALUES(?,?,?,?,?)")->execute([uuid(),$id,$role,site_id(),current_user()['id']??null]);foreach($mods as $m)$p->prepare("INSERT INTO user_module_access(id,user_id,site_id,module_id,access_mode) VALUES(?,?,?,?, 'ALLOW')")->execute([uuid(),$id,site_id(),$m]);return$id;});}
-try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-ping','sa-login'],true))csrf_json();switch($a){
+try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-ping','sa-login'],true))csrf_json();switch($a){
 case 'current-user':
     $u=Auth::user();
     if(!$u) fail('Not logged in',401);
@@ -699,7 +712,63 @@ if($page==='customers.html'){
   $row=array_values($f);
 }
 ok(['row'=>$row]);
-case 'sync-ping':ok(['role'=>cfg('app.role'),'time'=>date('c')]);
+case 'sync-ping':
+ /* Build version bhi bhejo: offline node compare kar ke bata sakay ke
+    cloud par purana build chal raha hai (warna ghanton confusion hoti hai). */
+ $bv='unknown';
+ try{$vf=dirname(__DIR__).'/VERSION'; if(is_file($vf))$bv=trim((string)file_get_contents($vf));}catch(Throwable $e){}
+ ok(['role'=>cfg('app.role'),'time'=>date('c'),'build'=>$bv,
+     'features'=>['bulk_sync'=>true,'conflict_reject'=>true,'sync_log'=>true]]);
+/* ============================================================
+   BULK SYNC — pehle har table ke liye alag HTTP request jati thi
+   (56 pull + push = 60-110 requests har sync par). Internet par yeh
+   60-90 second le leta tha aur browser timeout kar deta tha.
+   Ab poora sync 2-3 requests mein.
+   ============================================================ */
+case 'sync-pull-bulk':$stid=syncTenant();$d=body();
+ if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
+ $GLOBALS['sync_tenant_id']=$stid;$GLOBALS['sync_site_id']=(string)($d['site_id']??'');
+ $want=is_array($d['tables']??null)?$d['tables']:[];
+ $limit=max(50,min(2000,(int)($d['limit']??300)));
+ $cap=max(500,min(20000,(int)($d['total_cap']??8000)));
+ $out=[];$got=0;$more=false;
+ foreach($want as $tbl=>$since){
+   $tbl=(string)$tbl;
+   if(!syncTableAllowed($tbl)){$out[$tbl]=['error'=>'not allowed'];continue;}
+   if($got>=$cap){$more=true;break;}
+   try{
+     $rows=Sync::changedRows($tbl,(string)$since,$limit);
+     $ts=Sync::tsCol($tbl);
+     $out[$tbl]=['rows'=>$rows,'watermark'=>($rows&&$ts)?end($rows)[$ts]:(string)$since,'count'=>count($rows)];
+     $got+=count($rows);
+     if($rows)syncActivityLog($stid,'PULL',$tbl,count($rows));
+   }catch(Throwable $e){$out[$tbl]=['error'=>substr($e->getMessage(),0,160)];}
+ }
+ ok(['tables'=>$out,'more'=>$more,'total'=>$got]);
+
+case 'sync-push-bulk':$stid=syncTenant();$d=body();
+ if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
+ $GLOBALS['sync_site_id']=(string)($d['site_id']??'');
+ $sets=is_array($d['tables']??null)?$d['tables']:[];
+ $out=[];
+ foreach($sets as $tbl=>$rows){
+   $tbl=(string)$tbl;
+   if(!syncTableAllowed($tbl)){$out[$tbl]=['error'=>'not allowed','applied'=>0,'sent'=>is_array($rows)?count($rows):0];continue;}
+   $rows=is_array($rows)?$rows:[];
+   try{
+     Sync::$lastConflicts=[];
+     $n=Sync::applyRows($tbl,$rows,$stid);
+     $conf=Sync::$lastConflicts;
+     $out[$tbl]=['applied'=>$n,'sent'=>count($rows),'conflicts'=>count($conf),
+                 'conflict_detail'=>array_slice($conf,0,3)];
+     if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
+     if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
+   }catch(Throwable $e){
+     $out[$tbl]=['error'=>substr($e->getMessage(),0,160),'applied'=>0,'sent'=>count($rows)];
+   }
+ }
+ ok(['tables'=>$out]);
+
 case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
  if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
  Sync::$lastConflicts=[];
@@ -716,7 +785,7 @@ case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;
  if($rows)syncActivityLog($stid,'PULL',$t,count($rows));
  ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
-case 'sync-log':needLogin();
+case 'sync-log':needLogin();syncLogEnsure();
  $p=DB::pdo();$lim=max(1,min(50,(int)($_GET['limit']??20)));
  if(cfg('app.role')==='cloud'){
    /* Cloud: is business ke branch computers se kya aaya */
@@ -756,6 +825,7 @@ case 'sync-state':needLogin();
      $dq->execute([tenant_id()]);
      if($d24=$dq->fetch()){ $out['transfers_24h']=(int)$d24['t']; $out['rows_24h']=(int)$d24['r']; }
    }catch(Throwable $e){}
+   $out['local_build']=Sync::localBuild();
    $out['has_offline_node']=$has;
    $out['nodes']=$nodes;
    $out['last_run']=$last;
@@ -787,6 +857,10 @@ case 'sync-state':needLogin();
    /* Session lock chhoR do: warna yeh request baqi POS calls ko block karti hai */
    if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
    $probe=Sync::cloudOnlineCached((int)($_GET['ttl']??60));
+   $out['local_build']=Sync::localBuild();
+   $cb=Sync::cloudBuild();$out['cloud_build']=$cb['build'];
+   $out['build_mismatch']=($cb['build']!==''&&$out['local_build']!=='unknown'
+       &&strtok($cb['build'],' ')!==strtok($out['local_build'],' '));
    $out['cloud_online']=$probe['online'];
    $out['probe_cached']=$probe['cached'];
    if(!$probe['online']&&$probe['error']!=='')$out['last_error']=substr($probe['error'],0,180);

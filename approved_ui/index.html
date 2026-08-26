@@ -227,7 +227,7 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
     x.open(payload?'POST':'GET','/api.php?action='+action,true);
     x.setRequestHeader('Accept','application/json');
     if(payload){x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-CSRF-Token',window.APP_CSRF||'')}
-    x.timeout=60000;
+    x.timeout=180000;   /* pehli sync bhaari ho sakti hai */
     x.onload=function(){var j={ok:false,message:'Server error'};try{j=JSON.parse(x.responseText||'{}')}catch(e){}cb(j)};
     x.onerror=function(){cb({ok:false,message:'Network error'})};
     x.ontimeout=function(){cb({ok:false,message:'Request timed out'})};
@@ -281,6 +281,7 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
         pill.className='syncPill sp-warn'; pill.textContent='no branch computer yet';
         sub.textContent='No offline installation has connected yet. Install the offline version on a branch computer and its activity will appear here automatically.';
         grid.innerHTML=
+          '<div class="syncBox"><small>Server build</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
           '<div class="syncBox"><small>Branch computers</small><b>0</b></div>'+
           '<div class="syncBox"><small>Last activity</small><b>never</b></div>'+
           '<div class="syncBox" style="grid-column:1/-1"><small>What to do</small>'+
@@ -291,6 +292,7 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
       pill.textContent=(state.nodes||1)+' branch computer'+((state.nodes||1)>1?'s':'');
       sub.textContent='Branch computers upload their data here automatically.';
       grid.innerHTML=
+        '<div class="syncBox"><small>Server build</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
         '<div class="syncBox"><small>Branch computers</small><b>'+(state.nodes||1)+'</b></div>'+
         '<div class="syncBox"><small>Last activity</small><b style="font-size:13px">'+esc(fmtTime(state.last_run))+'</b></div>'+
         '<div class="syncBox"><small>Received (24h)</small><b>'+(state.rows_24h||0)+' rows</b></div>'+
@@ -308,11 +310,18 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
                             : 'Cloud not reachable right now. Data is safe locally and uploads automatically when the internet returns.')
       : (state.reason||'Sync is disabled in this installation.');
 
+    var mism=state.build_mismatch;
     grid.innerHTML=
+      (mism?('<div class="syncFix" style="grid-column:1/-1;margin-top:0">'
+        +'<b>Version mismatch - sync fixes will not work</b><br>'
+        +'This computer: <b>'+esc(state.local_build||'?')+'</b> &nbsp;|&nbsp; Cloud server: <b>'+esc(state.cloud_build||'?')+'</b><br>'
+        +'Deploy the latest build to the cloud, then download the offline package again from '
+        +'POS &rarr; System &amp; Settings &rarr; Download Offline Version.</div>'):'')+
       '<div class="syncBox"><small>Last sync</small><b>'+esc(ago(state.last_run))+'</b></div>'+
       '<div class="syncBox"><small>Waiting to upload</small><b>'+(state.pending||0)+' rows</b></div>'+
       '<div class="syncBox"><small>Cloud</small><b>'+(state.cloud_online?'Online':'Not reachable')+'</b></div>'+
-      '<div class="syncBox"><small>Mode</small><b>Branch computer</b></div>'+
+      '<div class="syncBox"><small>This computer</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
+      '<div class="syncBox"><small>Cloud server</small><b style="font-size:13px'+(mism?';color:#c02a37':'')+'">'+esc(state.cloud_build||'-')+'</b></div>'+
       (state.last_error?('<div class="syncBox" style="grid-column:1/-1;border-color:#f3c3c7"><small>Last error</small><b style="font-size:12px;font-weight:600">'+esc(state.last_error)+'</b></div>'):'');
   }
   function refresh(cb){

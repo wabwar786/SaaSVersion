@@ -48,6 +48,11 @@ final class OfflineBundler
         foreach (self::walk($root.'/approved_ui') as $abs) {
             $sources[self::rel($root, $abs)] = file_get_contents($abs);
         }
+        // 3b) VERSION — taake offline node apna build jaan sake aur cloud
+        //     ke build se compare kar sake (version mismatch = confusion)
+        if (\is_file($root . '/VERSION')) {
+            $sources['VERSION'] = \file_get_contents($root . '/VERSION');
+        }
         // 4) schema / seed SQL — database structure bhi built-in
         foreach (glob($root.'/docs/*.sql') as $abs) {
             $sources['docs/'.basename($abs)] = file_get_contents($abs);

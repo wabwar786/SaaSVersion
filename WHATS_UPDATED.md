@@ -1563,3 +1563,94 @@ orders 2 + payments 2 pushed, table errors **none**, cloud par tamam bills
 saath saath mojood ✓ local node regression ✓
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V48 — Sync timeout, atka hua sync, aur khali cloud log
+
+Aap ke dono screenshots ka tajziya: teen alag masle mile, teeno fix.
+
+## 1. Timeout — sync 60-90 second le raha tha
+Wajah: har table ke liye **alag HTTP request** jati thi. 56 pull + push
+= 60-110 requests har sync par. Internet par yeh minute se ooper chala
+jata tha aur browser timeout kar deta tha.
+
+**Fix — bulk sync:** naye `sync-pull-bulk` aur `sync-push-bulk` endpoints.
+Ab poora sync **2-3 requests** mein. Payload 400 rows ke chunks mein
+bat-ta hai. Client timeout bhi 45s/60s se **180s** kar diya (pehli bhaari
+sync ke liye).
+
+  pehle : 60-90 sec (timeout)
+  ab    : **0.4 sec** pehli sync (371 push + 484 pull),
+          **0.04 sec** jab kuch naya na ho
+
+## 2. "2 rows to upload" hamesha atka rehna
+V47 mein maine watermark rok diya tha jab cloud kam rows le. Magar
+duplicate-key wali rows **kabhi qubool nahi hongi**, to sync hamesha usi
+jagah atka rehta tha — aap ka "2 rows not accepted by cloud" isi ka
+nateeja tha.
+
+**Fix — quarantine:** agar sab bachi hui rows *conflict* ki wajah se rukin
+to watermark aage barh jata hai (baqi data ruk-ta nahi), aur wo rows
+`sync_activity` mein **status REJECTED** ke saath permanently record ho
+jati hain. Agar wajah conflict na ho (network/server) to watermark pehle
+ki tarah rukta hai aur dobara koshish hoti hai.
+Test: conflict ke baad agli 3 syncs — pushed 0, errors 0 (atka nahi) ✓
+
+## 3. Cloud log khali ("no branch computer yet")
+Cloud par `sync_activity` table maujood nahi thi (migration nahi chali),
+aur logging chupchaap fail ho rahi thi. Ab `syncLogEnsure()` zaroorat parne
+par table **khud bana leti hai** — migration chale ya na chale, log kaam
+karega.
+
+## Conflict par data ab mehfooz
+Test: cloud par `clash@test.pk` (id X), offline par wahi email (id Y) →
+push → **1 row rejected**, cloud ka user **bilkul mehfooz**, local ka user
+quarantine log mein. Pehle ye khamoshi se overwrite ho jata tha.
+
+## Tested
+speed 0.4s / 0.04s ✓ · 5 lagatar syncs par 0 rows (settle) ✓ ·
+conflict reject + cloud data safe + quarantine record ✓ ·
+conflict ke baad sync atka nahi ✓ · PHP lint clean · 44 pages OK
+
+---
+
+# V49 — VERSION HANDSHAKE: ab confusion mumkin nahi
+
+## Aap ke screenshots ne kya sabit kiya
+Log mein `manual · 62867 ms` likha tha. V48 mein sync **0.4 second** leta
+hai. 62 second sirf purane per-table tareeqe se lagta hai — yani:
+
+  * aap ka **offline package purana** hai (V48 wala download nahi kiya)
+  * aur cloud bhi purana hai (warna log khali na hota)
+
+Yani meri pichli teen updates aap ke system par **chal hi nahi rahi thin**.
+Yeh meri kotahi thi ke maine yeh cheez software se check-able nahi banayi.
+Ab bana di:
+
+## Version handshake (naya)
+- `sync-ping` ab cloud ka **build** aur `features` (bulk_sync,
+  conflict_reject, sync_log) bhi wapas karta hai.
+- Offline package ke andar **VERSION** file seal ho kar jati hai.
+- Dashboard par do naye box: **"This computer"** aur **"Cloud server"** —
+  dono ka build saaf likha.
+- Match na kare to laal warning:
+  *"Version mismatch - sync fixes will not work. This computer: Vxx |
+  Cloud server: Vyy. Deploy the latest build to the cloud, then download
+  the offline package again."*
+- **Check** (diagnose) mein bhi do naye steps: **Build match** aur
+  **Bulk sync support** ("Cloud is on an older build - sync will be slow
+  and may time out").
+
+## DNS "curl 6" ka hal
+Aap ke log mein: *Could not resolve host: saasversion-production.up.railway.app
+(curl 6)*. Pehle ek hi koshish hoti thi aur poora sync gir jata tha. Ab
+transient errors (DNS, timeout, 502/503/504) par **3 koshishen** hoti hain
+(0.7s, 1.4s backoff). Cloud ka build bhi 5 minute cache hota hai taake har
+sync par extra request na jaye.
+
+## Tested
+local build V49 · cloud build V49 · **Build match: "Both on V49"** ·
+**Bulk sync support: OK** · sync **0.46s** (371 push + 484 pull) ok=true
+
+PHP lint clean · 44 pages OK

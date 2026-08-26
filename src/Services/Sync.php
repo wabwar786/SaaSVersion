@@ -21,6 +21,68 @@ final class Sync
     /** Aakhri connectivity error (diagnostics ke liye). */
     public static string $lastError = '';
 
+    /** Is installation ka build (VERSION file se). */
+    public static function localBuild(): string
+    {
+        static $v = null;
+        if ($v !== null) return $v;
+        $v = 'unknown';
+        try {
+            // Sealed package mein VERSION bundle ke andar hoti hai
+            if (isset($GLOBALS['__sealed_files']['VERSION'])) {
+                $t = (string)$GLOBALS['__sealed_files']['VERSION'];
+                if (\trim($t) !== '') return $v = \trim($t);
+            }
+            $root = \defined('APP_ROOT') ? APP_ROOT : \dirname(__DIR__, 2);
+            if (@\is_file($root . '/VERSION')) {
+                $t = @\file_get_contents($root . '/VERSION');
+                if ($t !== false && \trim($t) !== '') $v = \trim($t);
+            }
+        } catch (\Throwable $e) {}
+        return $v;
+    }
+
+    /**
+     * Cloud ka build. Dono taraf ka build match na kare to naye fixes
+     * aadhe adhoore chalte hain — UI ko saaf batana zaroori hai.
+     */
+    public static function cloudBuild(int $ttl = 300): array
+    {
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT last_error, TIMESTAMPDIFF(SECOND,last_run_at,NOW()) age
+                   FROM sync_state WHERE scope='cloud_build' LIMIT 1");
+            $q->execute();
+            if ($r = $q->fetch()) {
+                $age = (int)$r['age'];
+                if ($age >= 0 && $age < $ttl) {
+                    return ['build' => (string)($r['last_error'] ?? ''), 'cached' => true];
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        $build = '';
+        try {
+            [$code, $body] = self::httpPost(self::endpoint('sync-ping'),
+                ['Content-Type: application/json'], '{}', 4, 12);
+            if ($code === 200) {
+                $j = \json_decode((string)$body, true);
+                $build = (string)($j['build'] ?? '');
+                if (empty($j['features']['bulk_sync'])) $build .= ' (no bulk sync)';
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            DB::pdo()->prepare(
+                "INSERT INTO sync_state (scope,watermark,last_run_at,last_status,last_error)
+                 VALUES ('cloud_build','1970-01-01 00:00:00.000000',NOW(6),?,?)
+                 ON DUPLICATE KEY UPDATE last_run_at=NOW(6), last_status=VALUES(last_status), last_error=VALUES(last_error)"
+            )->execute([$build !== '' ? 'OK' : 'ERROR', $build]);
+        } catch (\Throwable $e) {}
+
+        return ['build' => $build, 'cached' => false];
+    }
+
     /** CA bundle: package ke saath aaya hua, warna system ka. */
     public static function caBundle(): string
     {
@@ -94,6 +156,19 @@ final class Sync
             $add('Cloud response', $code === 200, $code === 200
                 ? ('HTTP 200 - server role: ' . (string)($j['role'] ?? '?'))
                 : ("HTTP $code - " . \substr(\strip_tags((string)$res), 0, 120)));
+            if ($code === 200) {
+                $cb = (string)($j['build'] ?? '');
+                $lb = self::localBuild();
+                $same = ($cb !== '' && \strtok($cb, ' ') === \strtok($lb, ' '));
+                $add('Build match', $same,
+                    $same ? "Both on $lb"
+                          : "This computer: $lb  |  Cloud: " . ($cb !== '' ? $cb : 'unknown')
+                            . " - deploy the latest build to the cloud and re-download the offline package");
+                $add('Bulk sync support', !empty($j['features']['bulk_sync']),
+                    !empty($j['features']['bulk_sync'])
+                        ? 'Cloud supports fast bulk sync'
+                        : 'Cloud is on an older build - sync will be slow and may time out');
+            }
         } catch (\Throwable $e) {
             $add('Cloud response', false, $e->getMessage());
             return $out;
@@ -413,6 +488,29 @@ final class Sync
 
     private static function post(string $action, array $body): array
     {
+        // DNS/network kabhi kabhi ek lamhe ke liye fail hota hai (aap ke
+        // screenshot mein "Could not resolve host ... curl 6"). Pehle ek hi
+        // koshish hoti thi aur poora sync gir jata tha. Ab 3 koshishen.
+        $last = null;
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            try {
+                return self::postOnce($action, $body);
+            } catch (\Throwable $e) {
+                $last = $e;
+                $m = \strtolower($e->getMessage());
+                $transient = (\strpos($m, 'resolve') !== false || \strpos($m, 'timed out') !== false
+                    || \strpos($m, 'timeout') !== false || \strpos($m, 'connection reset') !== false
+                    || \strpos($m, 'http 502') !== false || \strpos($m, 'http 503') !== false
+                    || \strpos($m, 'http 504') !== false);
+                if (!$transient || $attempt === 3) break;
+                \usleep(700000 * $attempt);
+            }
+        }
+        throw $last ?: new \RuntimeException('Cloud request failed');
+    }
+
+    private static function postOnce(string $action, array $body): array
+    {
         $c = self::cfg();
         $url = self::endpoint($action);
         $headers = ['Content-Type: application/json', 'X-Sync-Token: ' . ($c['token'] ?? '')];
@@ -482,52 +580,109 @@ final class Sync
         $c = self::cfg();
         $batch = (int)($c['batch'] ?? 300);
         $summary = [];
-        foreach (($c['push_tables'] ?? []) as $table) {
-            $scope = "push:$table";
-            try {
-                $since = self::watermark($scope);
-                $rows = self::changedRows($table, $since, $batch);
-                if (!$rows) { $summary[$table] = 0; continue; }
-                $resp = self::post('sync-push', [
-                    'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
-                    'table' => $table,
-                    'rows' => $rows,
-                ]);
-                $sent    = count($rows);
-                $applied = isset($resp['applied']) ? (int)$resp['applied'] : $sent;
-                $ts = self::tsColumn($table);
-                $maxWm = end($rows)[$ts];
+        $payload = [];   // table => rows
+        $meta    = [];   // table => [since, maxWm, sent]
 
-                if ($applied < $sent) {
-                    /* Cloud ne kuch rows qubool NahI kin (aksar duplicate bill
-                       number). Pehle watermark phir bhi aage barh jata tha aur
-                       wo rows HAMESHA ke liye gum ho jati thin. Ab watermark
-                       wahin rukta hai aur wajah log mein aati hai. */
-                    $why = !empty($resp['conflicts'])
-                        ? ($resp['conflicts'] . ' row(s) rejected by cloud (duplicate number from another device)')
-                        : (($sent - $applied) . ' row(s) not accepted by cloud');
-                    self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $why];
-                    self::setWatermark($scope, $since, 'ERROR', $why, $applied);
-                } else {
-                    self::setWatermark($scope, $maxWm, 'OK', null, $sent);
-                }
-                $summary[$table] = $applied;
+        foreach (($c['push_tables'] ?? []) as $table) {
+            try {
+                $since = self::watermark("push:$table");
+                $rows  = self::changedRows($table, $since, $batch);
+                if (!$rows) { $summary[$table] = 0; continue; }
+                $ts = self::tsColumn($table);
+                $payload[$table] = $rows;
+                $meta[$table] = ['since' => $since, 'wm' => end($rows)[$ts], 'sent' => count($rows)];
             } catch (\Throwable $e) {
-                // Ek table ka masla baqi tables ko na rokay. Pehle poora
-                // sync yahin ruk jata tha aur pata bhi nahi chalta tha ke
-                // kaun si table thi.
-                $msg = \substr($e->getMessage(), 0, 200);
-                self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $msg];
-                self::setWatermark($scope, self::watermark($scope), 'ERROR', $msg, 0);
                 $summary[$table] = 0;
-                // Network hi na ho to aage koshish bekar — foran ruk jao
-                if (self::isFatalError($msg)) {
-                    self::$abortedReason = $msg;
-                    break;
-                }
+                self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table,
+                                        'error' => \substr($e->getMessage(), 0, 200)];
             }
         }
+        if (!$payload) return $summary;
+
+        // Ek request mein 400 rows tak ke chunks - warna bara payload timeout karta hai
+        foreach (self::chunkTables($payload, 400) as $chunk) {
+            try {
+                $resp = self::post('sync-push-bulk', [
+                    'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
+                    'tables'  => $chunk,
+                ]);
+            } catch (\Throwable $e) {
+                $msg = \substr($e->getMessage(), 0, 200);
+                foreach (\array_keys($chunk) as $t) {
+                    $summary[$t] = 0;
+                    self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $t, 'error' => $msg];
+                }
+                if (self::isFatalError($msg)) { self::$abortedReason = $msg; break; }
+                continue;
+            }
+            foreach ($chunk as $table => $rows) {
+                $r       = ($resp['tables'][$table] ?? []);
+                $sent    = (int)($r['sent'] ?? count($rows));
+                $applied = (int)($r['applied'] ?? 0);
+                $conf    = (int)($r['conflicts'] ?? 0);
+                $summary[$table] = $applied;
+
+                if (!empty($r['error'])) {
+                    self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => (string)$r['error']];
+                    self::setWatermark("push:$table", $meta[$table]['since'], 'ERROR', (string)$r['error'], 0);
+                    continue;
+                }
+                if ($applied >= $sent) {
+                    self::setWatermark("push:$table", $meta[$table]['wm'], 'OK', null, $sent);
+                    continue;
+                }
+                /* Kuch rows qubool nahi huin. Agar sabab duplicate key hai to
+                   dobara koshish se bhi kabhi qubool nahi hongi — watermark
+                   rok dene se sync HAMESHA usi jagah atka rehta (aap ke
+                   "2 rows to upload" ki wajah). Is liye: aage barh jao,
+                   magar conflict ko permanently record kar do. */
+                $why = $conf > 0
+                    ? ($conf . ' row(s) rejected by cloud - duplicate number already used by another device')
+                    : (($sent - $applied) . ' row(s) not accepted by cloud');
+                self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $why];
+                foreach (($r['conflict_detail'] ?? []) as $cd) self::$lastConflicts[] = $cd;
+
+                if ($conf > 0 && ($applied + $conf) >= $sent) {
+                    self::setWatermark("push:$table", $meta[$table]['wm'], 'PARTIAL', $why, $applied);
+                    self::quarantine($table, $conf, $why);
+                } else {
+                    self::setWatermark("push:$table", $meta[$table]['since'], 'ERROR', $why, $applied);
+                }
+            }
+            if (self::$abortedReason !== '') break;
+        }
         return $summary;
+    }
+
+    /** Payload ko rows ki tadaad ke hisab se chunks mein baanto. */
+    private static function chunkTables(array $payload, int $maxRows): array
+    {
+        $chunks = []; $cur = []; $n = 0;
+        foreach ($payload as $table => $rows) {
+            foreach (\array_chunk($rows, $maxRows) as $part) {
+                if ($n > 0 && $n + \count($part) > $maxRows) { $chunks[] = $cur; $cur = []; $n = 0; }
+                $cur[$table] = isset($cur[$table]) ? \array_merge($cur[$table], $part) : $part;
+                $n += \count($part);
+            }
+        }
+        if ($cur) $chunks[] = $cur;
+        return $chunks;
+    }
+
+    /** Jo rows cloud ne hamesha ke liye reject kar din — record rakho. */
+    private static function quarantine(string $table, int $count, string $why): void
+    {
+        try {
+            DB::pdo()->prepare(
+                "INSERT INTO sync_activity (id,tenant_id,site_id,direction,table_name,rows_count,status,note,created_at)
+                 VALUES (?,?,?,'PUSH',?,?,'REJECTED',?,NOW(6))"
+            )->execute([
+                \function_exists('uuid') ? uuid() : \bin2hex(\random_bytes(16)),
+                (string)($GLOBALS['config']['app']['tenant_id'] ?? ''),
+                (string)($GLOBALS['config']['app']['site_id'] ?? ''),
+                $table, $count, \substr($why, 0, 300),
+            ]);
+        } catch (\Throwable $e) {}
     }
 
     /** @var array<int,array{dir:string,table:string,error:string}> */
@@ -581,36 +736,49 @@ final class Sync
     {
         $c = self::cfg();
         $batch = (int)($c['batch'] ?? 300);
+        $tables = (array)($c['pull_tables'] ?? []);
         $summary = [];
-        foreach (($c['pull_tables'] ?? []) as $table) {
-            $scope = "pull:$table";
+        if (!$tables) return $summary;
+
+        // Saari tables ke watermarks ek hi request mein — pehle 56 alag
+        // HTTP requests jati thin (60-90 sec, browser timeout).
+        $want = [];
+        foreach ($tables as $t) { $want[$t] = self::watermark("pull:$t"); $summary[$t] = 0; }
+
+        foreach (\array_chunk($want, 20, true) as $slice) {
             try {
-                $since = self::watermark($scope);
-                $resp = self::post('sync-pull', [
+                $resp = self::post('sync-pull-bulk', [
                     'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
-                    'table' => $table,
-                    'since' => $since,
-                    'limit' => $batch,
+                    'tables'  => $slice,
+                    'limit'   => $batch,
                 ]);
-                $rows = $resp['rows'] ?? [];
-                if ($rows) {
-                    // pull = cloud se aayi rows; local nayi copy ko na mitao
-                    self::applyRows($table, $rows, null, true);
-                    $ts = self::tsColumn($table) ?: 'updated_at';
-                    $maxWm = $resp['watermark'] ?? (end($rows)[$ts] ?? $since);
-                    self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
-                }
-                $summary[$table] = count($rows);
             } catch (\Throwable $e) {
                 $msg = \substr($e->getMessage(), 0, 200);
-                self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table, 'error' => $msg];
-                self::setWatermark($scope, self::watermark($scope), 'ERROR', $msg, 0);
-                $summary[$table] = 0;
+                foreach (\array_keys($slice) as $t) {
+                    self::$tableErrors[] = ['dir' => 'PULL', 'table' => $t, 'error' => $msg];
+                }
                 if (self::isFatalError($msg)) { self::$abortedReason = $msg; break; }
+                continue;
+            }
+            foreach ($slice as $table => $since) {
+                $r = $resp['tables'][$table] ?? null;
+                if (!$r) continue;
+                if (!empty($r['error'])) {
+                    self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table, 'error' => (string)$r['error']];
+                    self::setWatermark("pull:$table", $since, 'ERROR', (string)$r['error'], 0);
+                    continue;
+                }
+                $rows = $r['rows'] ?? [];
+                if ($rows) {
+                    self::applyRows($table, $rows, null, true);
+                    self::setWatermark("pull:$table", (string)($r['watermark'] ?? $since), 'OK', null, \count($rows));
+                }
+                $summary[$table] = \count($rows);
             }
         }
         return $summary;
     }
+
 
 
     /** One full sync run (push then pull). Never throws to the caller. */
