@@ -50,6 +50,19 @@ function syncToken(){ syncTenant(); }
 
 /* Sirf yahi tables sync ho sakti hain. users/platform_users/roles jaisi
    tables kabhi nahi (warna token leak = account takeover). */
+
+/* Cloud par record: kis branch se kaun si table, kitni rows aayin/gayin. */
+function syncActivityLog(string $tid,string $dir,string $table,int $rows,string $note=''):void{
+  try{
+    DB::pdo()->prepare("INSERT INTO sync_activity (id,tenant_id,site_id,direction,table_name,rows_count,status,note,node_ip,created_at)
+      VALUES (?,?,?,?,?,?,'OK',?,?,NOW(6))")
+      ->execute([uuid(),$tid,(string)($GLOBALS['sync_site_id']??''),$dir,$table,$rows,
+                 $note!==''?substr($note,0,300):null,
+                 substr((string)($_SERVER['HTTP_X_FORWARDED_FOR']??$_SERVER['REMOTE_ADDR']??''),0,64)]);
+    if(random_int(1,50)===1)DB::pdo()->exec("DELETE FROM sync_activity WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+  }catch(Throwable $e){}
+}
+
 function syncTableAllowed(string $table): bool {
   static $allow=[
     /* Poora software sync hota hai. platform_users/tenants yahan NahI —
@@ -666,11 +679,29 @@ ok(['row'=>$row]);
 case 'sync-ping':ok(['role'=>cfg('app.role'),'time'=>date('c')]);
 case 'sync-push':$stid=syncTenant();$d=body();$tbl=(string)($d['table']??'');
  if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
- $n=Sync::applyRows($tbl,$d['rows']??[],$stid);ok(['applied'=>$n]);
+ $n=Sync::applyRows($tbl,$d['rows']??[],$stid);
+ if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
+ ok(['applied'=>$n]);
 case 'sync-pull':$stid=syncTenant();$d=body();$t=(string)($d['table']??'');
  if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;
- $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+ $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;
+ if($rows)syncActivityLog($stid,'PULL',$t,count($rows));
+ ok(['rows'=>$rows,'watermark'=>$wm,'count'=>count($rows)]);
+case 'sync-log':needLogin();
+ $p=DB::pdo();$lim=max(1,min(50,(int)($_GET['limit']??20)));
+ if(cfg('app.role')==='cloud'){
+   /* Cloud: is business ke branch computers se kya aaya */
+   $q=$p->prepare("SELECT direction,table_name,rows_count,status,note,node_ip,created_at
+                     FROM sync_activity WHERE tenant_id=? ORDER BY created_at DESC LIMIT $lim");
+   $q->execute([tenant_id()]);
+   $rows=$q->fetchAll();
+   $sq=$p->prepare("SELECT COUNT(*) transfers,COALESCE(SUM(rows_count),0) rows_total,MAX(created_at) last_at
+                      FROM sync_activity WHERE tenant_id=? AND created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)");
+   $sq->execute([tenant_id()]);
+   ok(['role'=>'cloud','activity'=>$rows,'today'=>$sq->fetch()]);
+ }
+ ok(['role'=>'local','runs'=>Sync::runLog($lim)]);
 case 'sync-diagnose':needLogin();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
  if(cfg('app.role')==='cloud')ok(['checks'=>[['step'=>'Mode','ok'=>true,'detail'=>'This is the cloud server - offline nodes push data here.']]]);
@@ -718,7 +749,7 @@ case 'sync-run':needLogin();
  if(cfg('app.role')==='cloud')fail('Yeh cloud server hai - sync offline node se chalti hai. Yahan sirf status dekha ja sakta hai.',400);
  $why=Sync::statusReason();
  if($why!=='')fail($why,400);
- ok(Sync::run());
+ ok(Sync::run('manual'));
 case 'sync-status':needLogin();
  $st=Sync::status();
  $st['role']=cfg('app.role');

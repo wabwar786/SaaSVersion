@@ -1320,3 +1320,89 @@ CLOUD -> LOCAL (user): cloud par manager banaya -> sync -> users 1 pulled
 pending after sync: 0 · cloud online: true
 
 PHP lint clean · 44 pages OK
+
+---
+
+# V42 — Synchronization LOG (dono taraf)
+
+Pehle sirf `sync_state` mein har table ka cumulative total tha — yeh nahi
+pata chalta tha ke **kab** sync hua, us pass mein **kaun si tables** gayin
+aur **kitni rows**. Cloud par to koi record hi nahi tha.
+
+## Do nayi tables
+- **`sync_runs`** (branch computer): har sync pass ka ek row — kab shuru,
+  kitni der (ms), kis ne chalaya (auto/manual), kitni rows upar/neeche,
+  kitni tables, status (OK / PARTIAL / ERROR), aur error text.
+  `detail_json` mein har table ka direction + rows.
+- **`sync_activity`** (cloud + branch): har table ke har transfer ka row —
+  direction, rows, kis branch/IP se, kab.
+
+Dono khud saaf hoti hain: **60 din** se purani entries hat jati hain.
+
+## Dashboard par "View log" button
+**Branch computer par:** aakhri 20 sync passes — waqt, trigger, duration,
+status pill, `⬆ upar / ⬇ neeche` rows, aur har pass ke andar **har table ka
+chip** (misal `⬆ orders 15`, `⬆ payments 10`, `⬇ menu_items 1`). Kuch
+transfer na hua ho to "Nothing to transfer - already up to date."
+
+**Cloud par:** 24 ghante ka summary (transfers, rows received, last
+activity) aur recent transfers ki list — kaun si table, kitni rows, **kis
+branch IP se**.
+
+## PROOF (asli output)
+Branch: `09:21:02 manual OK 367ms up=277 down=374` — role_modules 207,
+menu_items 8, users 5, orders 15, payments 10, kitchen_tickets 17 ...
+(47 tables)
+Cloud: `last 24h: transfers=61 rows=752` — PUSH cashier_shifts 6,
+qr_sessions 4, stock_transaction_lines 2, ui_records 8 ... from 127.0.0.1
+
+## Behtar diagnostics
+`sync-run` ab `run_id`, `skipped_rows` (last-write-wins se chhoRi gayi
+rows) aur `row_errors` (per-table) bhi deta hai. Agar kuch rows fail hon to
+status **PARTIAL** hota hai — pehle poora pass "OK" dikha deta tha.
+
+PHP lint clean · 44 pages OK
+
+---
+
+# V43 — Sync na ho to WAJAH bhi log mein
+
+## Sab se bara masla: ek table fail = poora sync khamosh maut
+`push()` / `pull()` mein koi try/catch nahi tha. Agar ek table par masla
+aata (network, token, duplicate row) to **loop wahin ruk jata** —
+baqi 55 tables kabhi try hi nahi hotin, aur log mein sirf ek generic error
+aata tha. Kaun si table ruki, kyun ruki — kuch pata nahi chalta tha.
+
+**Fix:** har table apne try/catch mein hai. Ek table ka masla baqi tables
+ko nahi rokta, us table ka `sync_state` `ERROR` ho jata hai (wajah ke
+saath), aur log mein wo table alag se **❌ Not synced** ke neeche naam +
+wajah ke saath aati hai.
+
+## Fatal errors par foran ruk jao (log ka shor khatam)
+Galat token par pehle **74 ek jaisi errors** log mein bhar jati thin.
+Ab network down / 401 / 403 / suspended / 5xx ko **fatal** samjha jata hai —
+sync foran rukti hai, ek saaf wajah ke saath. (Sirf 2 entries, 74 nahi.)
+
+## Aam aadmi ki zaban mein wajah
+`friendlyError()` technical error ko samajhne laayak jumle mein badalta
+hai, aur raw error bracket mein saath rehta hai:
+- invalid token → "The cloud rejected this installation (invalid sync
+  token). Download the offline package again from the portal."
+- connection refused → "Cannot reach the cloud server. Check the internet;
+  Windows Firewall or antivirus may be blocking php.exe."
+- certificate → "HTTPS certificate could not be verified. Download a fresh
+  package..."
+- DNS / timeout / 5xx / duplicate — sab ke apne jumle.
+
+## Dashboard log ab failures dikhata hai
+Har run ke andar do hisse: kamyab tables ke green/blue chips, aur uske
+neeche laal **"❌ Not synced (n)"** — har nakaam table ka naam aur wajah.
+Cloud log mein bhi FAILED entries laal aur note ke saath.
+
+## Tested (asli sealed package)
+WRONG TOKEN → ok=false, status=**ERROR**, reason: "The cloud rejected this
+installation (invalid sync token)...", failed tables **2** (74 nahi) ✓
+NETWORK DOWN → status=**ERROR**, reason: "Cannot reach the cloud server..." ✓
+HEALTHY → status=**OK**, up=347 down=444, failed tables **0** ✓
+
+PHP lint clean · 44 pages OK · dashboard JS clean

@@ -449,20 +449,82 @@ final class Sync
         $summary = [];
         foreach (($c['push_tables'] ?? []) as $table) {
             $scope = "push:$table";
-            $since = self::watermark($scope);
-            $rows = self::changedRows($table, $since, $batch);
-            if (!$rows) { $summary[$table] = 0; continue; }
-            self::post('sync-push', [
-                'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
-                'table' => $table,
-                'rows' => $rows,
-            ]);
-            $ts = self::tsColumn($table);
-            $maxWm = end($rows)[$ts];
-            self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
-            $summary[$table] = count($rows);
+            try {
+                $since = self::watermark($scope);
+                $rows = self::changedRows($table, $since, $batch);
+                if (!$rows) { $summary[$table] = 0; continue; }
+                self::post('sync-push', [
+                    'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
+                    'table' => $table,
+                    'rows' => $rows,
+                ]);
+                $ts = self::tsColumn($table);
+                $maxWm = end($rows)[$ts];
+                self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
+                $summary[$table] = count($rows);
+            } catch (\Throwable $e) {
+                // Ek table ka masla baqi tables ko na rokay. Pehle poora
+                // sync yahin ruk jata tha aur pata bhi nahi chalta tha ke
+                // kaun si table thi.
+                $msg = \substr($e->getMessage(), 0, 200);
+                self::$tableErrors[] = ['dir' => 'PUSH', 'table' => $table, 'error' => $msg];
+                self::setWatermark($scope, self::watermark($scope), 'ERROR', $msg, 0);
+                $summary[$table] = 0;
+                // Network hi na ho to aage koshish bekar — foran ruk jao
+                if (self::isFatalError($msg)) {
+                    self::$abortedReason = $msg;
+                    break;
+                }
+            }
         }
         return $summary;
+    }
+
+    /** @var array<int,array{dir:string,table:string,error:string}> */
+    public static array $tableErrors = [];
+    public static string $abortedReason = '';
+
+    /**
+     * Fatal = har table par wahi masla aayega, is liye foran ruk jao.
+     * (Network down, ya token/permission reject.) Warna log 70 ek jaisi
+     * errors se bhar jata hai aur asli baat chhup jati hai.
+     */
+    private static function isFatalError(string $m): bool
+    {
+        $m = \strtolower($m);
+        foreach (['unreachable', 'could not resolve', 'connection refused', 'timed out',
+                  'timeout', 'ssl', 'certificate', 'failed to open stream',
+                  'http 401', 'http 403', 'invalid sync token', 'suspended',
+                  'http 500', 'http 502', 'http 503'] as $n) {
+            if (\strpos($m, $n) !== false) return true;
+        }
+        return false;
+    }
+
+    /** Aam aadmi ke liye saaf wajah. */
+    public static function friendlyError(string $m): string
+    {
+        $l = \strtolower($m);
+        if (\strpos($l, 'invalid sync token') !== false || \strpos($l, 'http 401') !== false)
+            return 'The cloud rejected this installation (invalid sync token). Download the offline package again from the portal.';
+        if (\strpos($l, 'suspended') !== false)
+            return 'This business is suspended on the cloud. Contact support / renew the subscription.';
+        if (\strpos($l, 'http 403') !== false)
+            return 'The cloud refused this request (permission denied).';
+        if (\strpos($l, 'certificate') !== false || \strpos($l, 'ssl') !== false)
+            return 'HTTPS certificate could not be verified. Download a fresh package, or run INSTALL_OFFLINE.bat again.';
+        if (\strpos($l, 'could not resolve') !== false)
+            return 'Internet is on but the server name could not be resolved (DNS). Check WiFi or try a hotspot.';
+        if (\strpos($l, 'connection refused') !== false || \strpos($l, 'unreachable') !== false
+            || \strpos($l, 'failed to open stream') !== false)
+            return 'Cannot reach the cloud server. Check the internet; Windows Firewall or antivirus may be blocking php.exe.';
+        if (\strpos($l, 'timed out') !== false || \strpos($l, 'timeout') !== false)
+            return 'The cloud did not respond in time. Slow connection - it will retry automatically.';
+        if (\strpos($l, 'http 5') !== false)
+            return 'The cloud server returned an error. It will retry automatically; contact support if it continues.';
+        if (\strpos($l, 'duplicate') !== false)
+            return 'Some records clashed with existing ones and were skipped. Everything else synced.';
+        return $m;
     }
 
     public static function pull(): array
@@ -472,44 +534,165 @@ final class Sync
         $summary = [];
         foreach (($c['pull_tables'] ?? []) as $table) {
             $scope = "pull:$table";
-            $since = self::watermark($scope);
-            $resp = self::post('sync-pull', [
-                'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
-                'table' => $table,
-                'since' => $since,
-                'limit' => $batch,
-            ]);
-            $rows = $resp['rows'] ?? [];
-            if ($rows) {
-                // pull = cloud se aayi rows; local nayi copy ko na mitao
-                self::applyRows($table, $rows, null, true);
-                $ts = self::tsColumn($table) ?: 'updated_at';
-                $maxWm = $resp['watermark'] ?? (end($rows)[$ts] ?? $since);
-                self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
+            try {
+                $since = self::watermark($scope);
+                $resp = self::post('sync-pull', [
+                    'site_id' => $GLOBALS['config']['app']['site_id'] ?? null,
+                    'table' => $table,
+                    'since' => $since,
+                    'limit' => $batch,
+                ]);
+                $rows = $resp['rows'] ?? [];
+                if ($rows) {
+                    // pull = cloud se aayi rows; local nayi copy ko na mitao
+                    self::applyRows($table, $rows, null, true);
+                    $ts = self::tsColumn($table) ?: 'updated_at';
+                    $maxWm = $resp['watermark'] ?? (end($rows)[$ts] ?? $since);
+                    self::setWatermark($scope, $maxWm, 'OK', null, count($rows));
+                }
+                $summary[$table] = count($rows);
+            } catch (\Throwable $e) {
+                $msg = \substr($e->getMessage(), 0, 200);
+                self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table, 'error' => $msg];
+                self::setWatermark($scope, self::watermark($scope), 'ERROR', $msg, 0);
+                $summary[$table] = 0;
+                if (self::isFatalError($msg)) { self::$abortedReason = $msg; break; }
             }
-            $summary[$table] = count($rows);
         }
         return $summary;
     }
 
+
     /** One full sync run (push then pull). Never throws to the caller. */
-    public static function run(): array
+    public static function run(string $triggeredBy = 'auto'): array
     {
         if (!self::enabled()) {
             self::touchState('engine', 'LOCAL_ONLY', 'cloud_api_url not set — running local-only');
             return ['ok' => true, 'skipped' => true, 'reason' => 'local-only'];
         }
+        $runId = \function_exists('uuid') ? uuid() : \bin2hex(\random_bytes(16));
+        $t0 = \microtime(true);
+        self::$lastRowErrors = [];
+        self::$lastSkipped = 0;
+        self::$tableErrors = [];
+        self::$abortedReason = '';
+        self::logRunStart($runId, $triggeredBy);
+
         try {
             self::touchState('engine', 'SYNCING');
             $pushed = self::push();
             $pulled = self::pull();
-            $total = array_sum($pushed) + array_sum($pulled);
+            $total  = array_sum($pushed) + array_sum($pulled);
             self::touchState('engine', 'OK', null);
-            return ['ok' => true, 'pushed' => $pushed, 'pulled' => $pulled, 'total' => $total];
+
+            $problems = [];
+            foreach (self::$tableErrors as $te) $problems[] = $te['dir'].' '.$te['table'].': '.$te['error'];
+            foreach (self::$lastRowErrors as $tb => $er) $problems[] = $tb.': '.$er;
+
+            $status = $problems ? 'PARTIAL' : 'OK';
+            if (self::$abortedReason !== '') $status = 'ERROR';
+
+            $errText = self::$abortedReason
+                ? (self::friendlyError(self::$abortedReason) . '  [' . self::$abortedReason . ']')
+                : ($problems ? \implode(' | ', $problems) : null);
+            self::logRunEnd($runId, $t0, $pushed, $pulled, $status, $errText);
+
+            return ['ok' => empty(self::$abortedReason), 'run_id' => $runId,
+                    'pushed' => $pushed, 'pulled' => $pulled, 'total' => $total,
+                    'skipped_rows' => self::$lastSkipped,
+                    'table_errors' => self::$tableErrors,
+                    'row_errors' => self::$lastRowErrors,
+                    'message' => self::$abortedReason ? self::friendlyError(self::$abortedReason) : null,
+                    'raw_error' => self::$abortedReason ?: null];
         } catch (\Throwable $e) {
             self::touchState('engine', 'ERROR', $e->getMessage());
-            return ['ok' => false, 'message' => $e->getMessage()];
+            self::logRunEnd($runId, $t0, [], [], 'ERROR',
+                self::friendlyError($e->getMessage()) . '  [' . $e->getMessage() . ']');
+            return ['ok' => false, 'run_id' => $runId,
+                    'message' => self::friendlyError($e->getMessage()),
+                    'raw_error' => $e->getMessage()];
         }
+    }
+
+    /* ------------------------- run logging ------------------------- */
+
+    private static function logRunStart(string $runId, string $trigger): void
+    {
+        try {
+            DB::pdo()->prepare(
+                "INSERT INTO sync_runs (id,tenant_id,site_id,trigger_by,started_at,status)
+                 VALUES (?,?,?,?,NOW(6),'OK')"
+            )->execute([$runId,
+                (string)($GLOBALS['config']['app']['tenant_id'] ?? ''),
+                (string)($GLOBALS['config']['app']['site_id'] ?? ''),
+                \substr($trigger, 0, 40)]);
+        } catch (\Throwable $e) {}
+    }
+
+    private static function logRunEnd(string $runId, float $t0, array $pushed, array $pulled,
+                                      string $status, ?string $err): void
+    {
+        try {
+            $detail = [];
+            foreach ($pushed as $t => $n) if ($n > 0) $detail[] = ['dir' => 'PUSH', 'table' => $t, 'rows' => $n];
+            foreach ($pulled as $t => $n) if ($n > 0) $detail[] = ['dir' => 'PULL', 'table' => $t, 'rows' => $n];
+            // NAKAAM tables bhi log mein — warna pata hi nahi chalta ke
+            // kaun si table sync nahi hui aur kyun.
+            foreach (self::$tableErrors as $te) {
+                $detail[] = ['dir' => $te['dir'], 'table' => $te['table'], 'rows' => 0,
+                             'failed' => true, 'error' => $te['error']];
+            }
+            foreach (self::$lastRowErrors as $tb => $er) {
+                $detail[] = ['dir' => 'PUSH', 'table' => $tb, 'rows' => 0,
+                             'failed' => true, 'error' => $er];
+            }
+
+            DB::pdo()->prepare(
+                "UPDATE sync_runs SET finished_at=NOW(6), duration_ms=?, pushed_rows=?, pulled_rows=?,
+                        tables_touched=?, status=?, detail_json=?, error_text=? WHERE id=?"
+            )->execute([
+                (int)((\microtime(true) - $t0) * 1000),
+                (int)\array_sum($pushed), (int)\array_sum($pulled), \count($detail),
+                $status, \json_encode($detail), $err !== null ? \substr($err, 0, 400) : null, $runId,
+            ]);
+
+            // per-table activity (local side)
+            $ins = DB::pdo()->prepare(
+                "INSERT INTO sync_activity (id,tenant_id,site_id,run_id,direction,table_name,rows_count,status,note,created_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,NOW(6))");
+            foreach ($detail as $d) {
+                $ins->execute([
+                    \function_exists('uuid') ? uuid() : \bin2hex(\random_bytes(16)),
+                    (string)($GLOBALS['config']['app']['tenant_id'] ?? ''),
+                    (string)($GLOBALS['config']['app']['site_id'] ?? ''),
+                    $runId, $d['dir'], $d['table'], $d['rows'],
+                    !empty($d['failed']) ? 'FAILED' : 'OK',
+                    isset($d['error']) ? \substr((string)$d['error'], 0, 300) : null,
+                ]);
+            }
+            // purana log khud saaf: 60 din se purani entries hata do
+            DB::pdo()->exec("DELETE FROM sync_activity WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+            DB::pdo()->exec("DELETE FROM sync_runs WHERE started_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+        } catch (\Throwable $e) {}
+    }
+
+    /** Log for the dashboard: recent runs with their per-table detail. */
+    public static function runLog(int $limit = 20): array
+    {
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT id,trigger_by,started_at,finished_at,duration_ms,pushed_rows,pulled_rows,
+                        tables_touched,status,detail_json,error_text
+                   FROM sync_runs ORDER BY started_at DESC LIMIT $limit");
+            $q->execute();
+            $out = [];
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $r['detail'] = $r['detail_json'] ? (\json_decode((string)$r['detail_json'], true) ?: []) : [];
+                unset($r['detail_json']);
+                $out[] = $r;
+            }
+            return $out;
+        } catch (\Throwable $e) { return []; }
     }
 
     /** Status for the offline/sync screen. */

@@ -87,7 +87,7 @@ try {
 
     # C. Master data + sync tables (idempotent).
     Step "Preparing Restaurant master data"
-    foreach($script in @("seed_roles.php","seed_suppliers.php","seed_edge_node.php","seed_restaurant_demo.php","ensure_v13_login.php","migrate_sync.php","migrate_platform.php","migrate_bridge.php","migrate_collation.php","migrate_site_defaults.php","migrate_ui_menu.php","migrate_menu_image.php","migrate_branding.php","migrate_qr_orders.php","migrate_devices.php","migrate_shifts.php","migrate_sync_columns.php")) {
+    foreach($script in @("seed_roles.php","seed_suppliers.php","seed_edge_node.php","seed_restaurant_demo.php","ensure_v13_login.php","migrate_sync.php","migrate_platform.php","migrate_bridge.php","migrate_collation.php","migrate_site_defaults.php","migrate_ui_menu.php","migrate_menu_image.php","migrate_branding.php","migrate_qr_orders.php","migrate_devices.php","migrate_shifts.php","migrate_sync_columns.php","migrate_sync_log.php")) {
         $full=Join-Path $ProjectRoot ("scripts\"+$script)
         if(Test-Path $full){ & $PhpExe -c $PhpIni $full; if($LASTEXITCODE -ne 0){ throw "$script failed." } }
     }

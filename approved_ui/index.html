@@ -109,6 +109,7 @@
           </div>
           <div class="syncActions">
             <span class="syncPill" id="syncPill">checking</span>
+            <button class="btn sec" id="syncLog">View log</button>
             <button class="btn sec" id="syncCheck">Check</button>
             <button class="btn" id="syncGo">Sync now</button>
           </div>
@@ -221,6 +222,7 @@
       sub.textContent='This is the online server. Branch computers push their data here automatically.';
       grid.innerHTML='';
       $$('syncGo').style.display='none'; $$('syncCheck').style.display='none';
+      $$('syncGrid').innerHTML='';
       return;
     }
     if(busy){ pill.className='syncPill sp-warn'; pill.textContent='syncing...'; }
@@ -285,6 +287,86 @@
   }
   $$('syncGo').onclick=function(){runSync(true)};
   $$('syncCheck').onclick=showDiag;
+
+  /* ---- Synchronization log: kab, kaun si tables, kitni rows ---- */
+  function fmtTime(ts){
+    if(!ts)return '-';
+    var d=new Date(String(ts).replace(' ','T'));
+    return isNaN(d.getTime())?String(ts).slice(0,19):d.toLocaleString();
+  }
+  function showLog(){
+    var box=$$('syncDiagBox'); box.style.display='';
+    box.innerHTML='<div class="muted">Loading log...</div>';
+    xhr('sync-log&limit=20',null,function(r){
+      if(!r.ok){box.innerHTML='<div class="muted">'+esc(r.message||'Log not available')+'</div>';return}
+
+      if(r.role==='cloud'){
+        var t=r.today||{}, a=r.activity||[];
+        var h='<div class="syncGrid" style="margin-top:0">'
+          +'<div class="syncBox"><small>Transfers (24h)</small><b>'+(t.transfers||0)+'</b></div>'
+          +'<div class="syncBox"><small>Rows received (24h)</small><b>'+(t.rows_total||0)+'</b></div>'
+          +'<div class="syncBox"><small>Last activity</small><b style="font-size:12px">'+esc(fmtTime(t.last_at))+'</b></div>'
+          +'</div>';
+        h+= a.length
+          ? ('<div style="margin-top:12px;max-height:320px;overflow:auto">'+a.map(function(x){
+              var bad=(x.status==='FAILED');
+              return '<div class="syncRow"><div class="ic">'+(bad?'\u274C':(x.direction==='PUSH'?'\u2B06':'\u2B07'))+'</div>'
+                +'<div style="flex:1"><b'+(bad?' style="color:#c02a37"':'')+'>'+esc(x.table_name)+'</b> &middot; '+x.rows_count+' rows'
+                +'<small>'+esc(x.direction)+' &middot; '+esc(fmtTime(x.created_at))
+                +(x.node_ip?(' &middot; from '+esc(x.node_ip)):'')
+                +(x.note?('<br><span style="color:#c02a37">'+esc(x.note)+'</span>'):'')+'</small></div></div>';
+            }).join('')+'</div>')
+          : '<div class="muted" style="margin-top:12px">No branch computer has synced yet.</div>';
+        box.innerHTML=h;
+        return;
+      }
+
+      var runs=r.runs||[];
+      if(!runs.length){box.innerHTML='<div class="muted">No sync has run yet.</div>';return}
+      var h='<div style="max-height:360px;overflow:auto">';
+      runs.forEach(function(run,i){
+        var badge=run.status==='OK'?'sp-ok':(run.status==='PARTIAL'?'sp-warn':'sp-bad');
+        h+='<div style="border:1px solid var(--line,#e2eae5);border-radius:11px;padding:11px 12px;margin-bottom:9px">'
+          +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'
+          +'<div><b>'+esc(fmtTime(run.started_at))+'</b>'
+          +'<small style="display:block;opacity:.7;font-size:11px">'+esc(run.trigger_by||'auto')+' &middot; '
+          +(run.duration_ms!=null?(run.duration_ms+' ms'):'-')+'</small></div>'
+          +'<div style="text-align:right"><span class="syncPill '+badge+'">'+esc(run.status)+'</span>'
+          +'<small style="display:block;opacity:.75;font-size:11px;margin-top:4px">&#11014; '+(run.pushed_rows||0)
+          +' &nbsp; &#11015; '+(run.pulled_rows||0)+' rows</small></div></div>';
+        var det=run.detail||[];
+        var okd=det.filter(function(d){return !d.failed});
+        var bad=det.filter(function(d){return d.failed});
+        if(okd.length){
+          h+='<div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:5px">'
+            +okd.map(function(d){
+                return '<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;'
+                  +'background:'+(d.dir==='PUSH'?'#eaf6ef':'#eef3fb')+'">'
+                  +(d.dir==='PUSH'?'\u2B06':'\u2B07')+' '+esc(d.table)+' '+d.rows+'</span>';
+              }).join('')+'</div>';
+        }
+        if(bad.length){
+          /* Jo tables sync NAHI huin — naam aur wajah dono */
+          h+='<div style="margin-top:9px">'
+            +'<div style="font-size:11px;font-weight:800;color:#c02a37;margin-bottom:5px">'
+            +'\u274C Not synced ('+bad.length+')</div>'
+            +bad.map(function(d){
+                return '<div class="syncRow" style="border-bottom:0;padding:4px 0">'
+                  +'<div class="ic">'+(d.dir==='PUSH'?'\u2B06':'\u2B07')+'</div>'
+                  +'<div><b style="color:#c02a37">'+esc(d.table)+'</b>'
+                  +'<small>'+esc(d.error||'Unknown error')+'</small></div></div>';
+              }).join('')+'</div>';
+        }
+        if(!det.length && run.status==='OK'){
+          h+='<div class="muted" style="margin-top:7px;font-size:11.5px">Nothing to transfer - already up to date.</div>';
+        }
+        if(run.error_text)h+='<div class="syncFix" style="margin-top:8px">'+esc(run.error_text)+'</div>';
+        h+='</div>';
+      });
+      box.innerHTML=h+'</div>';
+    });
+  }
+  $$('syncLog').onclick=showLog;
 
   refresh();
   setInterval(refresh,30000);
