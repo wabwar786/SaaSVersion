@@ -63,6 +63,24 @@ Good 'Package verified.'
 # ---------- 2) PHP runtime ----------
 Step 2 'Preparing PHP runtime...'
 $phpOut = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
+
+# V64.1 — VCRUNTIME ka masla yahan pakra jata hai.
+# Purani Visual C++ runtime wale PC par php.exe chalta hi nahi, aur pehle
+# yahan sirf PowerShell ka RemoteException ka dhair chhapta tha jis se
+# customer ko kuch samajh nahi aata tha. Ab: saaf wajah + khud theek karne
+# ki koshish + ek dobara koshish.
+$phpText = ($phpOut | Out-String)
+if ($phpText -match 'VCRUNTIME140|not compatible with this PHP build') {
+  Bad 'Is computer par purani Visual C++ runtime hai (PHP ko nayi chahiye).'
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\fix_vcruntime.ps1"
+  if ($LASTEXITCODE -ne 0) {
+    Bad 'Setup rok diya gaya. Ooper likhi hidayat par amal karein.'
+    exit 1
+  }
+  $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
+  $phpText = ($phpOut | Out-String)
+}
+
 if ($LASTEXITCODE -ne 0) {
   Bad 'PHP runtime could not be prepared.'
   $phpOut | Select-Object -Last 5 | ForEach-Object { Bad "$_" }

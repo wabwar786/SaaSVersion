@@ -459,8 +459,8 @@ function pairDevice(role,label){
   var urls=r.urls||[];
   var body=urls.map(function(u,i){
     return '<div style="text-align:center;margin-bottom:14px">'
-      +'<img src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data='+encodeURIComponent(u)+'" '
-      +'style="width:230px;height:230px;border:1px solid var(--l);border-radius:12px" alt="" onerror="this.remove()">'
+      +'<img src="/api.php?action=qr&scale=6&data='+encodeURIComponent(u)+'" '
+      +'style="width:230px;height:230px;border:1px solid var(--l);border-radius:12px" alt="" onerror="qrFail(this)">'
       +'<div style="font-size:11px;color:var(--ink2);margin-top:6px;word-break:break-all">'+esc(u)+'</div></div>';
   }).join('')||'<div class="cempty">Network address nahi mila</div>';
   var ov=modal('<div class="dh"><h3>Connect '+esc(label)+'</h3>'
@@ -496,8 +496,8 @@ function qrCodes(){
   var tabs=r.tables||[];
   var body=tabs.length?'<div class="tgrid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">'+tabs.map(function(t){
     return '<div class="tcard" style="cursor:default"><b>'+esc(t.name)+'</b>'
-      +'<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(t.url)+'" '
-      +'style="width:100%;margin:7px 0;border-radius:8px" alt="" onerror="this.remove()">'
+      +'<img src="/api.php?action=qr&scale=5&data='+encodeURIComponent(t.url)+'" '
+      +'style="width:100%;margin:7px 0;border-radius:8px" alt="" onerror="qrFail(this)">'
       +'<small style="word-break:break-all;font-size:8.5px">'+esc(t.url)+'</small></div>';
   }).join('')+'</div>':'<div class="cempty">Koi table nahi</div>';
   var ov=modal('<div class="dh"><h3>Table QR Codes</h3><p>Print karke tables par lagayein. Har scan par nayi time-limited session banti hai.</p></div>'
@@ -650,7 +650,7 @@ function renderGrid(){
     var q=preQty[p.id]||1;
     return '<div class="prod">'
       +'<div class="th" data-add="'+esc(p.id)+'" title="Click to add">'
-      +(p.img?'<img src="'+esc(p.img)+'" alt="" onerror="this.remove()">':'&#127869;')
+      +(p.img?'<img src="'+esc(p.img)+'" alt="" onerror="qrFail(this)">':'&#127869;')
       +(p.weighted?'<span class="bdg">Weighted</span>':(p.pizza?'<span class="bdg">Options</span>':''))
       +'<span class="catbdg">'+esc(p.cat)+'</span>'
       +(CAN.manage?'<button class="imgb" data-img="'+esc(p.id)+'" title="Change picture">&#128247;</button>':'')
@@ -1112,7 +1112,14 @@ $('#chargeBtn').onclick=function(){
     if(!r.ok){if(btn){btn.disabled=false;btn.textContent='Complete Payment'}toast(r.message||'Bill save nahi hua');return}
     ov.remove();
     if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
-    var info={billNo:r.bill_no||billNo,mode:mode,table:curTable,t:t,pay:pay,rcv:rcv,at:new Date().toLocaleString()};
+    /* fbr_no server se aata hai (pos-finalize ka jawab). QR isi ka banta
+       hai; na mile to purana fallback payload chalta hai. */
+    var info={billNo:r.bill_no||billNo,mode:mode,table:curTable,t:t,pay:pay,rcv:rcv,
+              fbrNo:(r.fbr_no||''),fiscal:(r.fiscal||null),at:new Date().toLocaleString()};
+    if(r.fiscal&&r.fiscal.status&&r.fiscal.status!=='SENT'&&r.fiscal.status!=='NONE'){
+      /* FBR tak nahi pohancha - user ko USI WAQT pata chale, mahine baad nahi. */
+      toast('Bill ho gaya, magar FBR pending: '+(r.fiscal.message||r.fiscal.status),true);
+    }
     lastBill=info;
     /* AUTO PRINT + background par naya bill */
     printNode(slipNode('BILL',cart.slice(),info));
@@ -1149,11 +1156,22 @@ function slipHtml(kind,lines,info){
       ? '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)+(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>'
       : '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td><td class="r">'+money(l.qty*l.price)+'</td></tr>';
   }).join('');
+  /* Pehle QR fail hone par `this.remove()` tha - QR khamoshi se gayab.
+     FBR ke bill par yeh na-qabil-e-qabool hai; ab wajah likhi aati hai. */
+  window.qrFail=function(img){
+    img.style.display='none';
+    var d=document.createElement('div');
+    d.style.fontSize='9px'; d.textContent='QR nahi ban saka';
+    if(img.parentNode)img.parentNode.insertBefore(d,img.nextSibling);
+  };
   var fbrQr='';
   if(kind!=='KOT'&&PRINT.qr){
-    var payload='INV:'+((info&&info.billNo)||billNo)+'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax);
-    fbrQr='<hr><div class="c"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(payload)
-      +'" style="width:96px;height:96px" onerror="this.remove()"><div style="font-size:9px">FBR Invoice QR</div></div>';
+    /* Asli FBR invoice number, warna QR mein banaya hua matn jata tha
+       jise FBR ka koi scanner pehchanta hi nahi. */
+    var payload=(info&&info.fbrNo)?info.fbrNo
+              :('INV:'+((info&&info.billNo)||billNo)+'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax));
+    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=3&data='+encodeURIComponent(payload)
+      +'" style="width:96px;height:96px" onerror="qrFail(this)"><div style="font-size:9px">FBR Invoice QR</div></div>';
   }
   var foot=kind==='KOT'?'<hr>'
     :'<hr><table>'

@@ -38,22 +38,40 @@ final class BillTemplate
         return $o;
     }
 
-    /** 80mm par ~32 characters aate hain (Courier 9pt). */
-    private const W = 32;
+    /* 80mm par ek line mein kitne characters aate hain — Pdf se poocha
+       jata hai, andaza nahi. Pehle yahan 32 hardcoded tha aur rows kabhi
+       size 8 kabhi 9 par bante the; monospace mein alag size = alag
+       chaurai, is liye raqamein kabhi dayen kinare par nahi aati thin.
+       AB: har column-aligned line SIRF size 9 par. */
+    private const SZ = 9;
+    private static function w(): int { return \Aio\Services\Pdf::cols(self::SZ); }
 
-    private static function rule(string $c = '-'): array { return [str_repeat($c, self::W), 'l', 8]; }
+    private static function rule(string $c = '-'): array { return [str_repeat($c, self::w()), 'l', self::SZ]; }
 
     /** Bayen naam, dayen raqam — ek hi line par, beech mein spaces. */
-    private static function row(string $left, string $right, int $size = 9, bool $bold = false): array
+    /** Bayen naam, dayen raqam — hamesha size 9, warna column bigar jata hai. */
+    private static function row(string $left, string $right, bool $bold = false): array
     {
-        $left  = trim($left);
-        $right = trim($right);
-        $room  = self::W - strlen($right);
+        $W = self::w();
+        /* rtrim sirf — leading spaces indent hain, unhen maarna nahi.
+           Pehle trim() se item ka indent gayab ho jata tha. */
+        $left = rtrim($left); $right = trim($right);
+        $room = $W - strlen($right) - 1;
         if ($room < 1) $room = 1;
-        if (strlen($left) > $room - 1) $left = substr($left, 0, max(1, $room - 2)) . '.';
-        $pad = self::W - strlen($left) - strlen($right);
+        if (strlen($left) > $room) $left = substr($left, 0, max(1, $room - 1)) . '.';
+        $pad = $W - strlen($left) - strlen($right);
         if ($pad < 1) $pad = 1;
-        return [$left . str_repeat(' ', $pad) . $right, $bold ? 'b' : 'l', $size];
+        return [$left . str_repeat(' ', $pad) . $right, $bold ? 'b' : 'l', self::SZ];
+    }
+
+    /** Lamba naam kaat kar agli line par le jao (kinare se bahar na jaye). */
+    private static function wrap(string $t, int $indent = 0): array
+    {
+        $W = self::w() - $indent; $out = [];
+        foreach (explode("\n", wordwrap(trim($t), max(8, $W), "\n", true)) as $l) {
+            $out[] = [str_repeat(' ', $indent) . $l, 'l', self::SZ];
+        }
+        return $out;
     }
 
     private static function money(float $n): string { return number_format($n, 0); }
@@ -82,18 +100,39 @@ final class BillTemplate
 
     /* ---------------- shared bits ---------------- */
 
+    /**
+     * Sar-nama. AHEM: yahan har line ka matn PEHLE dekha jata hai ke
+     * pehle chhap to nahi chuka. Bill par address DO DAFA chhap raha tha
+     * kyunke branch ka naam, address aur receipt header teenon mein wahi
+     * matn para tha — aur code bina dekhe teenon chhap deta tha.
+     */
     private static function head(array $o, array $ctx, bool $full): array
     {
-        $L = [];
+        $L = []; $seen = [];
+        $put = function (string $t, int $size, string $al = 'c') use (&$L, &$seen) {
+            $t = trim(preg_replace('/\s+/', ' ', $t));
+            if ($t === '') return;
+            /* mbstring har build par maujood nahi — fallback lazmi. */
+            $k = function_exists('mb_strtolower') ? mb_strtolower($t) : strtolower($t);
+            if (isset($seen[$k])) return;          // dobara nahi
+            $seen[$k] = true;
+            /* Choti font par ziada characters aate hain; us hisab se wrap
+               taake line kaghaz se bahar na nikle. */
+            $cols = \Aio\Services\Pdf::cols(max(6, $size));
+            foreach (explode("\n", wordwrap($t, $cols, "\n", true)) as $piece) {
+                $L[] = [$piece, $al, $size];
+            }
+        };
+
         $biz = trim((string)($ctx['business'] ?? '')) ?: (string)($ctx['site'] ?? 'Restaurant');
-        $L[] = [$biz, 'c', 12];
+        $put($biz, 12);
         if ($full) {
-            if (!empty($ctx['site']) && $ctx['site'] !== $biz) $L[] = [(string)$ctx['site'], 'c', 8];
-            if (!empty($ctx['address'])) $L[] = [(string)$ctx['address'], 'c', 8];
-            if (!empty($ctx['phone']))   $L[] = ['Ph: '.(string)$ctx['phone'], 'c', 8];
-            if (!empty($ctx['ntn']))     $L[] = ['NTN: '.(string)$ctx['ntn'], 'c', 8];
+            $put((string)($ctx['site'] ?? ''), 8);
+            $put((string)($ctx['address'] ?? ''), 8);
+            if (!empty($ctx['phone'])) $put('Ph: '.(string)$ctx['phone'], 8);
+            if (!empty($ctx['ntn']))   $put('NTN: '.(string)$ctx['ntn'], 8);
         }
-        if (!empty($ctx['header'])) $L[] = [(string)$ctx['header'], 'c', 8];
+        $put((string)($ctx['header'] ?? ''), 8);
         return $L;
     }
 
@@ -101,40 +140,53 @@ final class BillTemplate
     {
         $L = [];
         $when = date('d M Y  H:i', strtotime((string)($o['closed_at'] ?: $o['created_at'])));
-        $L[] = self::row('Bill # '.(string)$o['bill_no'], $when, 8);
-        $line2 = (string)$o['service_mode'] . (!empty($o['tbl']) ? ('  '.$o['tbl']) : '');
+        $L[] = self::row('Bill # '.(string)$o['bill_no'], $when);
+        $modes = ['DINE_IN' => 'Dine In', 'TAKEAWAY' => 'Takeaway', 'TAKE_AWAY' => 'Takeaway',
+                  'DELIVERY' => 'Delivery', 'QR' => 'QR Order'];
+        $mode  = $modes[strtoupper((string)$o['service_mode'])] ?? (string)$o['service_mode'];
+        $line2 = $mode . (!empty($o['tbl']) ? ('   /  '.$o['tbl']) : '');
         if (!empty($o['cashier'])) $line2 .= '  /  '.(string)$o['cashier'];
-        $L[] = [$line2, 'l', 8];
+        $L[] = [$line2, 'l', self::SZ];
         if ($full && !empty($o['cust'])) {
-            $L[] = ['Customer: '.(string)$o['cust'].(!empty($o['cphone']) ? (' '.$o['cphone']) : ''), 'l', 8];
+            $L = array_merge($L, self::wrap('Customer: '.(string)$o['cust'].(!empty($o['cphone']) ? (' '.$o['cphone']) : '')));
         }
         return $L;
     }
 
-    private static function totals(array $o, array $ctx, int $size = 9): array
+    private static function totals(array $o, array $ctx): array
     {
         $cur = (string)($ctx['currency'] ?? 'PKR');
         $L = [];
-        $L[] = self::row('Subtotal', self::money((float)$o['subtotal']), $size);
-        if ((float)$o['discount_amount'] > 0) $L[] = self::row('Discount', '-'.self::money((float)$o['discount_amount']), $size);
-        if ((float)$o['service_charge']  > 0) $L[] = self::row('Service Charge', self::money((float)$o['service_charge']), $size);
-        if ((float)$o['tax_amount']      > 0) $L[] = self::row('Sales Tax', self::money((float)$o['tax_amount']), $size);
+        $L[] = self::row('Subtotal', self::money((float)$o['subtotal']));
+        if ((float)$o['discount_amount'] > 0) $L[] = self::row('Discount', '-'.self::money((float)$o['discount_amount']));
+        if ((float)$o['service_charge']  > 0) $L[] = self::row('Service Charge', self::money((float)$o['service_charge']));
+        if ((float)$o['tax_amount']      > 0) $L[] = self::row('Sales Tax', self::money((float)$o['tax_amount']));
         $L[] = self::rule('=');
-        $L[] = self::row('TOTAL '.$cur, self::money((float)$o['grand_total']), 11, true);
+        $L[] = self::row('TOTAL '.$cur, self::money((float)$o['grand_total']), true);
         return $L;
     }
 
     private static function foot(array $ctx, bool $full): array
     {
         $L = [];
-        $L[] = ['', 'l', 8];
+        $L[] = ['', 'l', self::SZ];
+
         if (!empty($ctx['fbr_no'])) {
-            $L[] = ['FBR Invoice: '.(string)$ctx['fbr_no'], 'c', 8];
-            $L[] = ['[ QR ]', 'c', 8];
+            $L[] = ['FBR Invoice', 'c', 8];
+            $L[] = [(string)$ctx['fbr_no'], 'c', self::SZ];
+            /* ASLI QR, isi computer par bana hua. Pehle sirf "[ QR ]"
+               likha aata tha, aur POS screen internet wale
+               api.qrserver.com se image mangwata tha — net band hote hi
+               QR khamoshi se gayab. FBR ke bill par yeh na-qabil-e-qabool
+               hai. */
+            $m = Qr::matrix((string)$ctx['fbr_no']);
+            if ($m) $L[] = ['@qr', 'c', 0, $m];
         } elseif (!empty($ctx['fbr_pending'])) {
-            /* Khamosh nahi. Agar FBR tak nahi pohancha to bill par likha ho. */
-            $L[] = ['FBR: PENDING', 'c', 8];
+            $L[] = ['*** FBR: PENDING ***', 'c', self::SZ];
+            $L[] = ['Yeh bill FBR ko abhi bheja nahi ja saka.', 'c', 7];
         }
+
+        $L[] = ['', 'l', self::SZ];
         $L[] = [trim((string)($ctx['footer'] ?? '')) ?: 'Thank you! Visit again.', 'c', 8];
         if ($full) $L[] = ['Powered by Wabwar Software House', 'c', 7];
         return $L;
@@ -149,12 +201,12 @@ final class BillTemplate
         $L[] = self::rule();
         $L = array_merge($L, self::meta($o, true));
         $L[] = self::rule();
-        $L[] = self::row('Item', 'Amount', 8, true);
+        $L[] = self::row('ITEM', 'AMOUNT', true);
         $L[] = self::rule();
         foreach ($items as $it) {
-            $L[] = [(string)$it['nm'], 'l', 9];
+            $L = array_merge($L, self::wrap((string)$it['nm']));
             $L[] = self::row('   '.self::qty((float)$it['qty']).' x '.self::money((float)$it['unit_price']),
-                             self::money((float)$it['line_total']), 8);
+                             self::money((float)$it['line_total']));
         }
         $L[] = self::rule();
         $L = array_merge($L, self::totals($o, $ctx));
@@ -170,10 +222,10 @@ final class BillTemplate
         $L[] = self::rule();
         foreach ($items as $it) {
             $L[] = self::row(self::qty((float)$it['qty']).' '.(string)$it['nm'],
-                             self::money((float)$it['line_total']), 8);
+                             self::money((float)$it['line_total']));
         }
         $L[] = self::rule();
-        $L = array_merge($L, self::totals($o, $ctx, 8));
+        $L = array_merge($L, self::totals($o, $ctx));
         return array_merge($L, self::foot($ctx, false));
     }
 
@@ -186,22 +238,21 @@ final class BillTemplate
         $L[] = self::rule();
         $L = array_merge($L, self::meta($o, true));
         $L[] = self::rule();
-        $L[] = self::row('Item / Qty x Rate', 'Tax   Amount', 8, true);
+        $L[] = self::row('ITEM  /  QTY x RATE @TAX', 'AMOUNT', true);
         $L[] = self::rule();
         foreach ($items as $it) {
             $rate = isset($it['tax_rate']) ? (float)$it['tax_rate'] : (float)($ctx['tax_rate'] ?? 0);
-            $tax  = isset($it['tax_amount']) ? (float)$it['tax_amount'] : 0.0;
-            $L[] = [(string)$it['nm'], 'l', 9];
+            $L = array_merge($L, self::wrap((string)$it['nm']));
             $L[] = self::row('   '.self::qty((float)$it['qty']).' x '.self::money((float)$it['unit_price'])
-                             .'  @'.rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.').'%',
-                             self::money($tax).'  '.self::money((float)$it['line_total']), 8);
+                             .' @'.rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.').'%',
+                             self::money((float)$it['line_total']));
         }
         $L[] = self::rule();
         $L = array_merge($L, self::totals($o, $ctx));
-        $L[] = ['', 'l', 8];
-        $L[] = ['Payment: '.(string)($o['pay_mode'] ?? '-'), 'l', 8];
+        $L[] = self::row('Payment', (string)($o['pay_mode'] ?? '-'));
         return array_merge($L, self::foot($ctx, true));
     }
+
 }
 
 // build: V64 build 2026-08-27

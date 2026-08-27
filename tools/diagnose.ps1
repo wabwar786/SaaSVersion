@@ -21,7 +21,25 @@ $php = Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.exe' -Re
 if ($php) {
   $ini = Join-Path (Split-Path $php.FullName) 'php.ini'
   KV 'Private PHP' $php.FullName 'Green'
-  KV 'PHP version' (& $php.FullName -c "$ini" -r "echo PHP_VERSION;" 2>&1)
+  $ver = (& $php.FullName -c "$ini" -r "echo PHP_VERSION;" 2>&1 | Out-String).Trim()
+  KV 'PHP version' $ver
+
+  # V64.1 — VCRUNTIME ka masla yahan PAKRA jata hai.
+  # Pehle yeh report bas "MISSING" x4 aur "Application boot FAILED"
+  # dikhati thi, jis se lagta tha ke package kharab hai. Asli wajah yeh
+  # hoti hai ke php.exe chal hi nahi raha - purani Visual C++ runtime.
+  if ($ver -match 'VCRUNTIME140|not compatible with this PHP build') {
+    Write-Host ''
+    Write-Host '  >>> ASLI MASLA MIL GAYA' -ForegroundColor Yellow
+    Write-Host '  Is computer par PURANI Visual C++ runtime hai; PHP ko nayi chahiye.' -ForegroundColor Yellow
+    Write-Host '  Isi liye php.exe chal nahi raha - neeche wali saari "MISSING" lines' -ForegroundColor Gray
+    Write-Host '  isi ka nateeja hain, package bilkul theek hai.' -ForegroundColor Gray
+    Write-Host ''
+    Write-Host '  HAL: yeh install karein, phir INSTALL_OFFLINE.bat dobara chalayein:' -ForegroundColor White
+    Write-Host '       https://aka.ms/vs/17/release/vc_redist.x64.exe' -ForegroundColor White
+    Write-Host ''
+  }
+
   $ext = & $php.FullName -c "$ini" -r "echo implode(',', get_loaded_extensions());" 2>&1
   foreach ($e in @('openssl','mbstring','pdo_mysql','zlib')) {
     $has = ("$ext" -match "(?i)\b$e\b")

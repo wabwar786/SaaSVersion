@@ -2942,3 +2942,145 @@ Har `information_schema` query par lowercase alias.
 **NahI chala:** `sync_suite.py`, `reset_verify.py` (sandbox MySQL),
 PowerShell launcher (sandbox Linux hai), aur **FBR ka asli submission** —
 mere paas fiscal service nahi hai.
+
+## V64.1 — Offline install: purani Visual C++ runtime
+
+**Alamat (naye PC par):**
+
+    [2/5] Preparing PHP runtime...
+    php.exe : PHP Warning: 'C:\Windows\SYSTEM32\VCRUNTIME140.dll' 14.0
+    is not compatible with this PHP build linked with 14.29
+    Setup did not complete.
+
+Aur DIAGNOSE.bat mein:
+
+    ext: openssl    : MISSING
+    ext: mbstring   : MISSING
+    ext: pdo_mysql  : MISSING
+    ext: zlib       : MISSING
+    Application boot: FAILED
+
+**Wajah:** us PC ki System32 mein purani Visual C++ runtime hai (14.0 =
+VC++ 2015). Hamari PHP 8.2 build ko 14.29+ chahiye (VS2019/2022). Is liye
+`php.exe` chalta hi nahi.
+
+Wo chaar "MISSING" aur "boot FAILED" **isi ka nateeja** thin, koi alag
+masla nahi — magar report se lagta tha ke package hi kharab hai. Asli
+wajah `PHP version` wali line mein dabi hui thi.
+
+### Fix — Windows par kuch install kiye baghair
+
+Windows kisi exe ki DLL dependencies **pehle usi folder** mein dhoondta
+hai jahan exe hai, phir System32 (`vcruntime140.dll` "KnownDLL" nahi hai).
+Chunanche nayi DLL ki copy `php.exe` ke saath rakh dene se System32 ki
+purani copy be-asar ho jati hai — aur hamara waada bhi bacha rehta hai:
+*"Nothing is installed on Windows."*
+
+**`tools/fix_vcruntime.ps1`** (naya) teen raste, isi tarteeb se:
+
+1. Package ke apne bundled DLLs — `vendor/vcruntime/`
+2. PC par kahin maujood nayi copy (System32, Visual Studio folders) dhoond
+   kar — version 14.29+ ki tasdeeq ke saath
+3. Warna: saaf hidayat ke `vc_redist.x64.exe` install karein
+
+**`install_offline.ps1`:** ab is error ko pehchanta hai, fix chalata hai,
+aur **ek dobara koshish** karta hai. Pehle sirf PowerShell ka
+RemoteException ka dhair chhapta tha jis se customer ko kuch samajh nahi
+aata tha.
+
+**`diagnose.ps1`:** ab asli wajah upar hi likh deta hai —
+*"php.exe chal nahi raha, neeche wali saari MISSING lines isi ka nateeja
+hain, package bilkul theek hai"* — aur hal ka link deta hai.
+
+**Package mein:** `fix_vcruntime.ps1` aur `vendor/vcruntime/*.dll` ab
+offline ZIP mein jate hain (`offline-package` endpoint).
+
+### Ek dafa ka kaam — aap ke liye
+
+Server par `vendor/vcruntime/` mein yeh teen files rakh dein (kisi bhi
+aise Windows se jahan VC++ 2015-2022 x64 hai, System32 se):
+
+    vcruntime140.dll   vcruntime140_1.dll   msvcp140.dll
+
+(Properties -> Details -> File version 14.29 ya ziada honi chahiye.)
+
+Uske baad har package mein khud chali jayengi aur yeh masla kisi customer
+ke PC par dobara nahi aayega. Folder khali ho to bhi setup chalta rahega —
+bas us PC par khud dhoondega, aur na mile to customer ko batayega.
+
+---
+
+# V64.2 — Bill ki alignment, asli QR, FBR panel
+
+## 1. Bill ki alignment — do bugs
+
+**(a) Courier ki chaurai ghalat.** `Pdf::receipt()` mein
+`$w = $size * 0.5 * strlen($text)` tha. Courier monospace ki asli chaurai
+**0.6** hai. Is liye har centered aur right-aligned line thori bayen
+khisak jati thi.
+
+**(b) Ek hi bill par do alag font sizes se column bante the.** `row()`
+kabhi size 8 par, kabhi 9 par. Monospace mein alag size = alag chaurai,
+is liye raqamein kabhi bhi dayen kinare par nahi aati thin — bill par
+"950" beech mein latka hua nazar aata tha.
+
+Ab: `Pdf::cols()` asli columns batata hai (80mm par size 9 = **37**), aur
+har column-aligned line **sirf size 9** par banti hai. Sizes ab sirf
+centered headings ke liye badalte hain.
+
+Ek aur: `row()` `trim($left)` karta tha — is se item ka indent bhi ur
+jata tha. Ab `rtrim()`.
+
+## 2. Address DO DAFA chhap raha tha
+
+Branch ka naam, address aur receipt header — teenon mein wahi matn para
+tha, aur code bina dekhe teenon chhap deta tha.
+
+Ab `head()` har line ka matn pehle dekhta hai; jo pehle chhap chuka wo
+dobara nahi chhapta. Saath hi lambi lines ab font ke hisab se wrap hoti
+hain (kaghaz se bahar nahi jatin), aur `DINE_IN` ki jagah `Dine In`.
+
+## 3. FBR ka QR — ab ASLI, aur offline
+
+**Masla:** POS `https://api.qrserver.com` (INTERNET) se QR ki image
+mangwata tha, aur nakami par `onerror="this.remove()"` — yani net band
+hote hi QR **khamoshi se gayab**. Offline POS aur FBR bill par yeh
+na-qabil-e-qabool hai. Bill PDF par to QR tha hi nahi, sirf `[ QR ]`
+likha aata tha.
+
+Aur QR ka payload bhi banaya hua matn tha (`INV:...|AMT:...|TAX:...`),
+asli FBR invoice number nahi — jise FBR ka koi scanner pehchanta hi nahi.
+
+**Hal:** `src/Services/Qr.php` — apna QR encoder, koi library nahi:
+byte mode, ECC level M, version 1-10, aath masks mein se behtareen.
+`Pdf::receipt()` ab QR ko vector murabbon se banata hai (thermal printer
+par saaf), aur naya `qr` endpoint POS ke liye SVG deta hai — sab kuch
+isi computer par, internet ki koi zaroorat nahi.
+
+QR ab **asli FBR invoice number** ka banta hai (`pos-finalize` ke jawab
+mein `fbr_no` aata hai). FBR pending ho to POS par usi waqt toast, aur
+bill par `*** FBR: PENDING ***` — mahine ke aakhir mein pata nahi chalega.
+
+### Yeh kaise tasdeeq hua
+
+Encoder likh dena kaafi nahi tha, is liye:
+
+1. **Reference se muqabla** — Python `qrcode` library se matrix
+   muqabla. Do asli bug mile aur theek hue:
+   - `reserve()` timing modules (6,8) aur (8,6) ko sifar kar deta tha
+   - format info bits **ULTI tarteeb** mein lag rahe the (bit 0 par bit
+     14 aana chahiye tha)
+2. **Asli scanner se** — OpenCV `QRCodeDetector` se 9 mukhtalif payloads:
+   **9/9 theek parhe gaye**
+3. **Poora PDF bana kar** — bill PDF render (`pdftoppm`, 300 dpi) kar ke
+   us tasveer se QR scan: **decode ho gaya, matn bilkul theek**
+
+(Reference library se 3/7 matrices hu-ba-hu match karti hain; baqi mein
+sirf mask ka farq hai — dono valid QR hain, jaisa scanner test se sabit
+hua.)
+
+## 4. FBR panel container se bahar nikal raha tha
+
+Panel `</main></div>` ke **baad** daal diya gaya tha, yani layout ke
+container se bahar. Ab baqi sections ke saath `.content` ke andar hai
+aur uska panel-head bhi doosre panels jaisa (`<h2>`).

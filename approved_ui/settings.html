@@ -61,16 +61,11 @@
             <label class="field full"><span>Low-stock alert</span><select data-s="lowstock_alert"><option>On</option><option>Off</option></select></label>
           </div></div>
         </section>
-      </div>
-    </div>
-  </main>
-</div>
-<div class="scrim" id="scrim"></div>
-      <section class="panel" id="fiscalPanel">
-        <div class="panel-head"><h3>FBR / Digital Invoice</h3></div>
-        <div class="panel-body">
-          <div class="note full" id="fiscalNote" style="display:none"></div>
-          <div class="form-grid">
+        <section class="panel" id="fiscalPanel">
+        <div class="panel-head"><div><h2>FBR / Digital Invoice</h2></div></div>
+          <div class="panel-body">
+            <div class="note" id="fiscalNote" style="display:none;margin-bottom:10px"></div>
+            <div class="form-grid">
             <label class="field"><span>Provider</span><select data-s="fiscal_provider"><option>NONE</option><option>FBR</option><option>KPRA</option></select></label>
             <label class="field"><span>POS ID <span class="hint">&middot; FBR se mila hua</span></span><input data-s="fiscal_pos_id" placeholder="931868"></label>
             <label class="field full"><span>Fiscal service URL <span class="hint">&middot; isi computer par</span></span><input data-s="fiscal_service_url" placeholder="http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel"></label>
@@ -86,10 +81,14 @@
                 <span id="fiscalStat" class="hint"></span>
               </div>
             </div>
+            </div>
           </div>
-        </div>
-      </section>
-
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
 <div class="toast" id="toast"></div>
 <script src="shared_store.js"></script>
 <script src="live_store.js"></script>

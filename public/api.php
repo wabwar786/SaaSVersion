@@ -298,6 +298,26 @@ $mm=$p->prepare("SELECT mi.name,mi.base_price,mi.is_active,mi.is_pos,COALESCE(mc
 $bt=null;try{$bt=count(PageData::posBoot()['products']);}catch(Throwable $e){$out['posBoot_error']=$e->getMessage();}
 $out['posBoot_products']=$bt;
 ok(['diag'=>$out]);
+case 'qr':
+ /* V64.2 — QR ab ISI computer par banta hai.
+    Pehle POS `api.qrserver.com` (internet) se image mangwata tha aur
+    nakami par `onerror="this.remove()"` se QR khamoshi se gayab ho jata
+    tha. Offline POS aur FBR bill ke liye yeh na-qabil-e-qabool hai. */
+ $data=(string)($_GET['data']??'');
+ if($data===''||strlen($data)>300)fail('data required (max 300 chars)');
+ $m=\Aio\Services\Qr::matrix($data);
+ if(!$m)fail('QR nahi ban saka (data bohat lamba hai)');
+ $n=count($m);$px=max(1,min(8,(int)($_GET['scale']??4)));$q=2;
+ $side=($n+2*$q)*$px;
+ $r='';
+ for($y=0;$y<$n;$y++)for($x=0;$x<$n;$x++)if($m[$y][$x])
+   $r.='<rect x="'.(($x+$q)*$px).'" y="'.(($y+$q)*$px).'" width="'.$px.'" height="'.$px.'"/>';
+ $svg='<svg xmlns="http://www.w3.org/2000/svg" width="'.$side.'" height="'.$side.'" viewBox="0 0 '.$side.' '.$side.'">'
+     .'<rect width="'.$side.'" height="'.$side.'" fill="#fff"/><g fill="#000">'.$r.'</g></svg>';
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: image/svg+xml');header('Cache-Control: public, max-age=86400');
+ header('Content-Length: '.strlen($svg));echo $svg;exit;
+
 case 'bill-templates':needLogin();ok(['templates'=>BillTemplate::options()]);
 
 case 'fiscal-test':needLogin();
@@ -532,7 +552,7 @@ foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c
 foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
-foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1'] as $ps){
+foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1','fix_vcruntime.ps1'] as $ps){
   if(is_file($root.'/tools/'.$ps))$zip->addFile($root.'/tools/'.$ps,'tools/'.$ps);
 }
 $zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('storage/logs');
@@ -542,6 +562,17 @@ $anyVendor=false;
 foreach(['php.zip','mariadb.zip'] as $vf){
   if(is_file($root.'/vendor/'.$vf)){$zip->addFile($root.'/vendor/'.$vf,'vendor/'.$vf);$anyVendor=true;}
 }
+/* V64.1 — Visual C++ runtime DLLs.
+   Kuch PCs par System32 ki VCRUNTIME140.dll purani (14.0) hoti hai aur
+   PHP 8.2 (14.29+ se linked) chalta hi nahi. Yeh DLLs php.exe ke saath
+   rakh dene se System32 ki purani copy be-asar ho jati hai - customer ke
+   PC par kuch install nahi karna parta.
+   Server par vendor/vcruntime/ mein rakh dein to har package mein khud
+   chali jayengi. */
+foreach(['vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll'] as $vd){
+  if(is_file($root.'/vendor/vcruntime/'.$vd)){$zip->addFile($root.'/vendor/vcruntime/'.$vd,'vendor/vcruntime/'.$vd);$anyVendor=true;}
+}
+if(is_file($root.'/vendor/vcruntime/README.txt'))$zip->addFile($root.'/vendor/vcruntime/README.txt','vendor/vcruntime/README.txt');
 if(!$anyVendor)$zip->addEmptyDir('vendor');
 $zip->addFromString('OFFLINE_README.txt',
  "SMARTPOS - OFFLINE VERSION\n".str_repeat('=',52)."\n\n"
@@ -894,7 +925,7 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no
     jayegi. Customer counter par khara hai - bill rokna hal nahi hai. */
  $fiscal=['status'=>'NONE','invoice_no'=>'','message'=>''];
  try{$fiscal=FiscalService::submit($id);}catch(Throwable $e){$fiscal=['status'=>'PENDING','invoice_no'=>'','message'=>substr($e->getMessage(),0,200)];}
- $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard(),'fiscal'=>$fiscal];
+ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no']];
  /* Bill cloud par foran - 60 second wale loop ka intezar nahi. */
  register_shutdown_function('sync_nudge');
  ok($resp);
