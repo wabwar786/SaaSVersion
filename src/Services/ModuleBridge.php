@@ -16,7 +16,7 @@ use PDO;
  */
 final class ModuleBridge
 {
-    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu', 'tables'];
+    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu', 'tables', 'printers'];
 
     /**
      * UI module -> DeleteService entity.
@@ -31,6 +31,7 @@ final class ModuleBridge
         'menu'      => 'menu_item',
         'wastage'   => 'wastage',
         'tables'    => 'table',
+        'printers'  => 'printer',
     ];
 
     public static function handles(string $module): bool
@@ -49,6 +50,7 @@ final class ModuleBridge
             'wastage'   => self::listWastage(),
             'menu'      => self::listMenu(),
             'tables'    => self::listTables(),
+            'printers'  => self::listPrinters(),
             default     => [],
         };
     }
@@ -65,6 +67,7 @@ final class ModuleBridge
             'wastage'   => self::saveWastage($id, $d),
             'menu'      => self::saveMenu($id, $d),
             'tables'    => self::saveTable($id, $d),
+            'printers'  => self::savePrinter($id, $d),
             default     => throw new \RuntimeException('Unsupported module: '.$module),
         };
     }
@@ -148,6 +151,85 @@ final class ModuleBridge
         $p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active)
                      VALUES(?,?,?,?,?,?,?,'SQUARE',?,1)")
           ->execute([$id, tenant_id(), site_id(), $fid, $code, $name, $seats, $status]);
+        return $id;
+    }
+
+    /* ------------------------- printers -------------------------
+
+       Yeh page bhi `ui_records` mein likhta tha jabke POS asli
+       `printers` table se KOT bhejta hai. Yani yahan banaya hua printer
+       kabhi print karta hi nahi tha. Aur "Status" ka dropdown user khud
+       set karta tha — woh raye thi, haqeeqat nahi. Ab dono ek hi table
+       par hain aur status asli test se aata hai. */
+
+    private static function listPrinters(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT id, name, printer_type, station_code, connection_type,
+                    ip_address, port_no, windows_name, paper_width_mm, is_default, is_active
+               FROM printers
+              WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL
+              ORDER BY is_default DESC, name");
+        $q->execute([tenant_id(), site_id()]);
+        $types = ['RECEIPT' => 'Receipt Printer', 'KITCHEN' => 'KOT Printer',
+                  'BAR' => 'Bar Printer', 'LABEL' => 'Label Printer'];
+        return array_map(fn($x) => [
+            'id'       => $x['id'],
+            'name'     => $x['name'],
+            'type'     => $types[strtoupper((string)$x['printer_type'])] ?? (string)$x['printer_type'],
+            'location' => (string)($x['station_code'] ?? ''),
+            'ip'       => (string)($x['ip_address'] ?? ''),
+            'port'     => (int)($x['port_no'] ?? 0) ?: 9100,
+            'conn'     => (string)$x['connection_type'],
+            'winname'  => (string)($x['windows_name'] ?? ''),
+            'paper'    => (int)($x['paper_width_mm'] ?? 80),
+            'default'  => ((int)$x['is_default'] === 1) ? 'Yes' : 'No',
+            'status'   => ((int)$x['is_active'] === 1) ? 'Active' : 'Inactive',
+        ], $q->fetchAll());
+    }
+
+    private static function savePrinter(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Printer name is required');
+
+        $types = ['Receipt Printer' => 'RECEIPT', 'KOT Printer' => 'KITCHEN',
+                  'Bar Printer' => 'BAR', 'Label Printer' => 'LABEL'];
+        $type = $types[(string)($d['type'] ?? '')] ?? 'RECEIPT';
+        $conn = strtoupper(trim((string)($d['conn'] ?? 'NETWORK'))) ?: 'NETWORK';
+        $ip   = trim((string)($d['ip'] ?? ''));
+        $port = (int)($d['port'] ?? 0) ?: 9100;
+        $win  = trim((string)($d['winname'] ?? ''));
+        $paper= (int)($d['paper'] ?? 80) ?: 80;
+        $isDef= (string)($d['default'] ?? 'No') === 'Yes' ? 1 : 0;
+        $act  = (string)($d['status'] ?? 'Active') === 'Active' ? 1 : 0;
+
+        if ($conn === 'NETWORK' && $ip === '' && $win === '') {
+            throw new \RuntimeException('Enter an IP address for a network printer, or a Windows printer name.');
+        }
+
+        if ($id !== '') {
+            $st = $p->prepare("UPDATE printers SET name=?, printer_type=?, station_code=?, connection_type=?,
+                                      ip_address=?, port_no=?, windows_name=?, paper_width_mm=?,
+                                      is_default=?, is_active=?, updated_at=NOW(6)
+                                WHERE id=? AND tenant_id=? AND site_id=?");
+            $st->execute([$name, $type, (string)($d['location'] ?? ''), $conn, $ip ?: null, $port,
+                          $win ?: null, $paper, $isDef, $act, $id, tenant_id(), site_id()]);
+        } else {
+            $id = uuid();
+            $p->prepare("INSERT INTO printers(id,tenant_id,site_id,name,printer_type,station_code,connection_type,
+                                              ip_address,port_no,windows_name,paper_width_mm,is_default,is_active)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+              ->execute([$id, tenant_id(), site_id(), $name, $type, (string)($d['location'] ?? ''), $conn,
+                         $ip ?: null, $port, $win ?: null, $paper, $isDef, $act]);
+        }
+
+        /* Ek hi default reh sakta hai. */
+        if ($isDef) {
+            $p->prepare("UPDATE printers SET is_default=0 WHERE site_id=? AND id<>?")
+              ->execute([site_id(), $id]);
+        }
         return $id;
     }
 

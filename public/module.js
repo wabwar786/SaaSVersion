@@ -147,7 +147,13 @@
       $('#mEmpty').style.display=f.length?'none':'block';
       $('#mRows').innerHTML=f.map(function(r){
         var tds=(cfg.columns||[]).map(function(c){return '<td'+(c.align==='num'?' class="num"':'')+'>'+fmtCell(r,c)+'</td>'}).join('');
-        var act=canAdd?'<td><div class="row-actions"><button title="Edit" data-edit="'+r.id+'">✎</button><button title="Remove" data-del="'+r.id+'">🗑</button></div></td>':'';
+        /* V66 — modules apne extra row buttons de sakte hain (misal
+           printers ka Check / Test print). */
+        var extra='';
+        (cfg.rowActions||[]).forEach(function(a){
+          extra+='<button class="btn sm" data-rowact="'+a.action+'" data-rid="'+r.id+'">'+a.label+'</button>';
+        });
+        var act=canAdd?'<td><div class="row-actions">'+extra+'<button title="Edit" data-edit="'+r.id+'">✎</button><button title="Remove" data-del="'+r.id+'">🗑</button></div></td>':'';
         return '<tr>'+tds+act+'</tr>';
       }).join('');
     }
@@ -175,6 +181,17 @@
       if(e.target.closest('#mSave')){save();return}
       var c=e.target.closest('[data-close]');if(c){closeM();return}
       var ed=e.target.closest('[data-edit]');if(ed){openForm(ed.getAttribute('data-edit'));return}
+      var ra=e.target.closest('[data-rowact]');
+      if(ra){
+        var act=ra.getAttribute('data-rowact'), rid=ra.getAttribute('data-rid');
+        var old=ra.textContent; ra.disabled=true; ra.textContent='...';
+        var res=window.DBApi.req(act,{id:rid});
+        ra.disabled=false; ra.textContent=old;
+        /* Jawab CHECK hota hai — result user tak jata hai, chahe kamyab
+           ho ya nakaam, poori wajah ke saath. */
+        toast((res&&res.message)?res.message:((res&&res.ok)?'Done':'Request failed'), !(res&&res.ok));
+        return;
+      }
       var dl=e.target.closest('[data-del]');if(dl){
         delId=dl.getAttribute('data-del');
         var r=rows.find(function(x){return x.id===delId});

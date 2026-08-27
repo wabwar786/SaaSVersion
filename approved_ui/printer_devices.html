@@ -26,6 +26,59 @@
 <script src="module.js"></script>
 <script src="module_config.js"></script>
 <script>RestaurantModule.render(MODULE_CONFIGS['printers']);</script>
+<script>
+/* V66 — Category to printer routing.
+   POS pehle se printer ke hisab se KOT ko group karta hai (PosService),
+   magar yeh mapping set karne ka koi UI tha hi nahi. Is liye multi
+   category wale bill ka KOT sahi printers par nahi ja pata tha. */
+(function(){
+  var host=document.querySelector('.content')||document.querySelector('.main');
+  if(!host||!window.DBApi)return;
+
+  var sec=document.createElement('section');
+  sec.className='panel'; sec.style.marginTop='16px';
+  sec.innerHTML='<div class="panel-head"><div><h2>Kitchen routing</h2>'
+    +'<p class="lead">Which printer each menu category is sent to</p></div></div>'
+    +'<div class="panel-body"><div id="routeBody" class="hint">Loading...</div></div>';
+  host.appendChild(sec);
+
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function toast(m,err){var t=document.getElementById('toast');
+    if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+    t.textContent=m;t.className='toast show'+(err?' err':'');
+    clearTimeout(window.__rt);window.__rt=setTimeout(function(){t.className='toast'},2200)}
+
+  function draw(){
+    var r=DBApi.req('printer-routes');
+    var box=document.getElementById('routeBody');
+    if(!r||!r.ok){box.textContent=(r&&r.message)||'Could not load routing.';return}
+    var cats=r.categories||[], prs=r.printers||[], routes=r.routes||[];
+    if(!cats.length){box.innerHTML='<span class="hint">No menu categories yet. Add categories first.</span>';return}
+    if(!prs.length){box.innerHTML='<span class="hint">No active printers yet. Add a printer above first.</span>';return}
+    var byCat={}; routes.forEach(function(x){byCat[x.category_id]=x.printer_id});
+
+    var h='<div class="table-wrap"><table class="table"><thead><tr>'
+      +'<th>Menu category</th><th>Printer</th></tr></thead><tbody>';
+    cats.forEach(function(c){
+      h+='<tr><td class="t-main">'+esc(c.name)+'</td><td>'
+        +'<select data-route="'+esc(c.id)+'"><option value="">-- not printed --</option>'
+        + prs.map(function(p){
+            return '<option value="'+esc(p.id)+'"'+(byCat[c.id]===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')
+        +'</select></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    box.innerHTML=h;
+
+    box.addEventListener('change',function(e){
+      var sel=e.target.closest('[data-route]'); if(!sel)return;
+      var res=DBApi.req('printer-route-set',{category_id:sel.getAttribute('data-route'),printer_id:sel.value});
+      toast(res&&res.ok?'Routing saved':((res&&res.message)||'Could not save routing'),!(res&&res.ok));
+    });
+  }
+  draw();
+})();
+</script>
 </body>
 </html>
 

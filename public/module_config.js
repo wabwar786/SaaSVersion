@@ -119,30 +119,40 @@ window.MODULE_CONFIGS={
   },
 
   printers:{
-    key:'printers',title:'Printers / Devices',storeKey:'printers',recordName:'Device',addLabel:'+ Add device',
+    key:'printers',title:'Printers / Devices',storeKey:'printers',recordName:'Printer',addLabel:'+ Add printer',
     listTitle:'Printers & devices',listSub:'Receipt, KOT and label printers on the branch network',
-    searchPlaceholder:'Search device or location',searchFields:['name','location','ip'],emptyIcon:'⎙',
+    searchPlaceholder:'Search printer or location',searchFields:['name','location','ip'],emptyIcon:'\u2399',
     kpis:[
-      {label:'Devices',calc:function(r){return r.length}},
-      {label:'Online',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Online'}).length}},
-      {label:'Offline',tone:'danger',calc:function(r){return r.filter(function(x){return x.status==='Offline'}).length}}
+      {label:'Printers',calc:function(r){return r.length}},
+      {label:'Active',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Active'}).length}},
+      {label:'Network',tone:'info',calc:function(r){return r.filter(function(x){return x.ip}).length}}
     ],
     columns:[
-      {label:'Device',field:'name',sub:'type'},{label:'Location',field:'location'},{label:'IP address',field:'ip'},
-      {label:'Status',field:'status',format:'tag',tags:{Online:'ok',Offline:'danger'}}
+      {label:'Printer',field:'name',sub:'type'},{label:'Location',field:'location'},
+      {label:'Address',field:'ip'},
+      {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Inactive:'danger'}}
     ],
+    /* V66 — "Status" ka Online/Offline dropdown HATA diya gaya. Woh user
+       ki apni raye thi, haqeeqat nahi: printer band pare hone par bhi
+       "Online" likha rehta tha. Ab asli haalat "Check" button se aati
+       hai (TCP connect), aur "Test print" se kaghaz nikalta hai. */
     fields:[
-      {key:'name',label:'Device name',type:'text',required:true,full:true,placeholder:'Kitchen KOT 1'},
-      {key:'type',label:'Type',type:'select',options:['Receipt Printer','KOT Printer','Label Printer','Cash Drawer']},
-      {key:'location',label:'Location',type:'text'},{key:'ip',label:'IP address',type:'text',placeholder:'192.168.1.20'},
-      {key:'status',label:'Status',type:'select',options:['Online','Offline'],default:'Online'}
+      {key:'name',label:'Printer name',type:'text',required:true,full:true,placeholder:'Kitchen KOT 1'},
+      {key:'type',label:'Type',type:'select',options:['Receipt Printer','KOT Printer','Bar Printer','Label Printer']},
+      {key:'location',label:'Location',type:'text',placeholder:'Kitchen'},
+      {key:'conn',label:'Connection',type:'select',options:['NETWORK','WINDOWS'],default:'NETWORK'},
+      {key:'ip',label:'IP address',type:'text',placeholder:'192.168.1.20'},
+      {key:'port',label:'Port',type:'number',default:9100},
+      {key:'winname',label:'Windows printer name',type:'text',placeholder:'Only for WINDOWS connection'},
+      {key:'paper',label:'Paper width (mm)',type:'select',options:['80','58'],default:'80'},
+      {key:'default',label:'Default printer',type:'select',options:['No','Yes'],default:'No'},
+      {key:'status',label:'Status',type:'select',options:['Active','Inactive'],default:'Active'}
     ],
-    seed:[
-      {name:'Front Counter Receipt',type:'Receipt Printer',location:'Counter',ip:'192.168.1.20',status:'Online'},
-      {name:'Kitchen KOT — Main',type:'KOT Printer',location:'Kitchen',ip:'192.168.1.21',status:'Online'},
-      {name:'BBQ Station KOT',type:'KOT Printer',location:'BBQ',ip:'192.168.1.22',status:'Online'},
-      {name:'Bar / Drinks KOT',type:'KOT Printer',location:'Bar',ip:'192.168.1.23',status:'Offline'}
-    ]
+    rowActions:[
+      {label:'Check',action:'printer-check'},
+      {label:'Test print',action:'printer-test'}
+    ],
+    seed:[]
   },
 
   branches:{

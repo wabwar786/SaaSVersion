@@ -87,52 +87,71 @@
   html+='</nav>';
   html+='<div class="side-foot"><div class="side-avatar" id="sideAvatar">'+initials(user.name)+'</div>'+
         '<div class="who"><b id="sideUserName">'+esc(user.name)+'</b><span id="sideUserRole">'+esc(user.role||'User')+'</span></div>'+
-        '<button class="logout" id="shellAbout" title="About this software">&#9432;</button>'+
+        '<button class="logout" id="shellSupport" title="Support">&#9993;</button>'+
         '<button class="logout" id="shellLogout" title="Sign out">&#9211;</button></div>';
 
   var side=document.getElementById('side')||document.querySelector('.sidebar');
   if(side){ side.className='sidebar'; side.innerHTML=html; }
 
-  /* ---------- About (V65) ----------
-     Customer ko yeh maloom hona is required ke software kis ne banaya hai
-     aur masle ki soorat mein kis se rabta karna hai. Pehle kahin bhi
-     nahi likha tha. */
-  function aboutHtml(a){
-    var v=(a&&a.vendor)||{};
-    return '<div class="dialog" style="width:min(420px,94vw)">'
-      +'<div class="dialog-head"><div><h3>About this software</h3>'
-      +'<p>'+esc(v.company||'Wabwar Software House')+'</p></div>'
-      +'<button class="close" data-ab="x">&times;</button></div>'
-      +'<div class="dialog-body">'
-      +'<p style="font-size:12px;margin:0 0 12px">This software is developed and supported by '
-      +'<b>'+esc(v.company||'Wabwar Software House')+'</b>.</p>'
-      +'<div>'
-      +row('Contact person', esc(v.person||''))
-      +row('Phone', '<a href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">'+esc(v.phone||'')+'</a>')
-      +row('Email', '<a href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>')
-      +row('Website', '<a href="https://'+esc(v.website||'')+'" target="_blank" rel="noopener">'+esc(v.website||'')+'</a>')
-      +row('Build', esc((a&&a.build)||'-'))
-      +'</div></div>'
-      +'<div class="dialog-foot"><button class="btn" data-ab="x">Close</button>'
-      +'<a class="btn primary" href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">Call support</a></div></div>';
+  /* ---------- Support (V66) ----------
+     Pehle yeh "About" tha aur sidebar mein rabte ka naam likha aata tha.
+     Ab ek Support button, aur uska apna animated popup jismein sirf
+     rabte ki tafseel hai. */
+  function supportHtml(a){
+    var v=(a&&a.vendor)||{}, tel=(v.phone||'').replace(/\s/g,'');
+    return '<div class="dialog sup-pop" style="width:min(400px,94vw);text-align:center">'
+      +'<button class="close" data-ab="x" style="position:absolute;right:10px;top:10px">&times;</button>'
+      +'<div class="dialog-body" style="padding:26px 22px 20px">'
+      +'<div class="sup-badge">&#9993;</div>'
+      +'<h3 style="margin:14px 0 2px">Need help?</h3>'
+      +'<p class="hint" style="margin:0 0 18px">Our support team is here for you</p>'
+      +'<a class="sup-row" href="tel:'+esc(tel)+'"><span class="sup-ic">&#9742;</span>'
+        +'<span><small>Call us</small><b>'+esc(v.phone||'')+'</b></span></a>'
+      +'<a class="sup-row" href="mailto:'+esc(v.email||'')+'"><span class="sup-ic">&#9993;</span>'
+        +'<span><small>Email</small><b>'+esc(v.email||'')+'</b></span></a>'
+      +'<a class="sup-row" href="https://'+esc(v.website||'')+'" target="_blank" rel="noopener">'
+        +'<span class="sup-ic">&#127760;</span><span><small>Website</small><b>'+esc(v.website||'')+'</b></span></a>'
+      +'<p class="hint" style="margin:16px 0 0;font-size:11px">'+esc(v.company||'Wabwar Software House')
+        +(a&&a.build?(' &middot; '+esc(a.build)):'')+'</p>'
+      +'</div></div>';
   }
-  function row(k,v){
-    return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px">'
-      +'<span style="color:var(--muted)">'+k+'</span><b style="text-align:right">'+v+'</b></div>';
+  function injectSupportCss(){
+    if(document.getElementById('supCss'))return;
+    var st=document.createElement('style'); st.id='supCss';
+    st.textContent=
+      '.sup-pop{position:relative;animation:supIn .26s cubic-bezier(.2,.9,.3,1.2)}'
+     +'@keyframes supIn{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}'
+     +'.sup-badge{width:64px;height:64px;margin:0 auto;border-radius:50%;display:grid;place-items:center;'
+     +'font-size:28px;color:#fff;background:var(--brand,#c02a37);animation:supPulse 2.2s ease-in-out infinite}'
+     +'@keyframes supPulse{0%,100%{box-shadow:0 0 0 0 rgba(192,42,55,.35)}50%{box-shadow:0 0 0 14px rgba(192,42,55,0)}}'
+     +'.sup-row{display:flex;align-items:center;gap:12px;text-align:left;padding:11px 13px;margin:8px 0;'
+     +'border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit;'
+     +'transition:transform .15s ease,border-color .15s ease,background .15s ease}'
+     +'.sup-row:hover{transform:translateX(3px);border-color:var(--brand-line,#eab6bb);background:var(--brand-soft,#fdeef0)}'
+     +'.sup-row small{display:block;font-size:10.5px;color:var(--muted)}'
+     +'.sup-row b{font-size:13px}'
+     +'.sup-ic{width:34px;height:34px;flex:0 0 34px;border-radius:9px;display:grid;place-items:center;'
+     +'background:var(--brand-soft,#fdeef0);color:var(--brand,#c02a37);font-size:15px}';
+    document.head.appendChild(st);
   }
-  function openAbout(){
-    var a={vendor:{company:'Wabwar Software House',person:'Waseem Iqbal',
-                   phone:'+92 342 5095104',email:'support@wabwar.pk',website:'www.wabwar.pk'},build:''};
+  function openSupport(){
+    injectSupportCss();
+    var a={vendor:{company:'Wabwar Software House',phone:'+92 342 5095104',
+                   email:'support@wabwar.pk',website:'www.wabwar.pk'},build:''};
     try{ if(window.DBApi){ var r=DBApi.req('about'); if(r&&r.ok)a=r; } }catch(e){}
-    var ov=document.createElement('div'); ov.className='modal show'; ov.innerHTML=aboutHtml(a);
+    var ov=document.createElement('div'); ov.className='modal show'; ov.innerHTML=supportHtml(a);
     document.body.appendChild(ov);
     ov.addEventListener('click',function(e){
       if(e.target===ov||e.target.closest('[data-ab="x"]')) ov.remove();
     });
+    document.addEventListener('keydown',function k(e){
+      if(e.key==='Escape'){ov.remove();document.removeEventListener('keydown',k);}
+    });
   }
-  var ab=document.getElementById('shellAbout');
-  if(ab) ab.onclick=openAbout;
-  window.openAbout=openAbout;
+  var sup=document.getElementById('shellSupport');
+  if(sup) sup.onclick=openSupport;
+  window.openSupport=openSupport;
+  window.openAbout=openSupport;   /* purana naam bhi chalta rahe */
 
   /* ---------- Licence banner (V65) ----------
      Expiry se 3 din pehle warning, aur expire hone par Wabwar ka rabta
@@ -154,10 +173,10 @@
       +(L.expired?('<span>Contact '+esc(v.company||'')+' &mdash; '+esc(v.person||'')+'</span>'
         +'<a class="btn sm primary" href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">Call '+esc(v.phone||'')+'</a>'
         +'<a class="btn sm" href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>'):'')
-      +'<button class="btn sm" id="licAbout" style="margin-left:auto">Details</button>';
+      +'<button class="btn sm" id="licAbout" style="margin-left:auto">Support</button>';
     var main=document.querySelector('.main')||document.body;
     main.insertBefore(bar,main.firstChild);
-    var la=document.getElementById('licAbout'); if(la) la.onclick=openAbout;
+    var la=document.getElementById('licAbout'); if(la) la.onclick=openSupport;
   })();
 
   // Mobile drawer

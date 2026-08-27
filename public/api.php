@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -317,6 +317,37 @@ case 'qr':
  while(ob_get_level())ob_end_clean();
  header('Content-Type: image/svg+xml');header('Cache-Control: public, max-age=86400');
  header('Content-Length: '.strlen($svg));echo $svg;exit;
+
+case 'printer-check':needLogin();$d=body();
+ /* V66 — asli check. Pehle Printers page par Online/Offline ka dropdown
+    tha jise user KHUD set karta tha; printer band pare hone par bhi
+    "Online" likha rehta tha. */
+ $p=DB::pdo();$q=$p->prepare("SELECT name,ip_address,port_no,connection_type,windows_name FROM printers WHERE id=? AND tenant_id=? AND site_id=? LIMIT 1");
+ $q->execute([(string)($d['id']??''),tenant_id(),site_id()]);$pr=$q->fetch();
+ if(!$pr)fail('Printer not found',404);
+ if(strtoupper((string)$pr['connection_type'])==='WINDOWS'&&!$pr['ip_address'])
+   ok(['ok'=>true,'status'=>'WINDOWS','message'=>'This printer uses a Windows printer name ('.($pr['windows_name']?:'not set').'). It can only be tested from the POS screen on that computer.']);
+ $r=PrinterService::check((string)$pr['ip_address'],(int)$pr['port_no']);
+ ok($r);
+
+case 'printer-test':needLogin();
+ if(!Auth::isManager())fail('Only an Admin or Manager can send a test print',403);
+ $d=body();$r=PrinterService::testPrint((string)($d['id']??''));
+ if(empty($r['ok']))fail((string)($r['message']??'Test print failed'));
+ ok($r);
+
+case 'printer-routes':needLogin();
+ $p=DB::pdo();$q=$p->prepare("SELECT id,name FROM menu_categories WHERE site_id=? AND deleted_at IS NULL ORDER BY sort_order,name");
+ $q->execute([site_id()]);
+ $pq=$p->prepare("SELECT id,name FROM printers WHERE site_id=? AND deleted_at IS NULL AND is_active=1 ORDER BY name");
+ $pq->execute([site_id()]);
+ ok(['categories'=>$q->fetchAll(),'printers'=>$pq->fetchAll(),'routes'=>PrinterService::routes()]);
+
+case 'printer-route-set':needLogin();
+ if(!Auth::isManager())fail('Only an Admin or Manager can change printer routing',403);
+ $d=body();$cat=(string)($d['category_id']??'');
+ if($cat==='')fail('A category is required');
+ ok(PrinterService::setRoute($cat,(string)($d['printer_id']??'')));
 
 case 'licence-status':needLogin();
  /* V65 — expiry ab software ke andar nazar aati hai. Pehle yeh sirf
@@ -1416,6 +1447,53 @@ case 'sa-sync-monitor':needSuper();
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
 case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
 case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
+case 'sa-licence-set':needSuper();$d=body();
+ /* V66 — har customer ka licence control ek jagah se.
+    Pehle sirf `sa-business-renew` tha aur UI mein browser ka prompt()
+    chalta tha: na validation, na grace, na suspend/activate. */
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ $p=DB::pdo();
+ $tq=$p->prepare("SELECT id,name FROM tenants WHERE id=? AND deleted_at IS NULL LIMIT 1");
+ $tq->execute([$tid]);$ten=$tq->fetch();if(!$ten)fail('Business not found',404);
+
+ $exp=trim((string)($d['expiry_date']??''));
+ $add=(int)($d['add_months']??0);
+ if($add>0){
+   /* Mojooda expiry se aage barhao; guzar chuki ho to aaj se. */
+   $cq=$p->prepare("SELECT expiry_date FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+   $cq->execute([$tid]);$cur=(string)($cq->fetchColumn()?:'');
+   $base=($cur!==''&&$cur>=date('Y-m-d'))?$cur:date('Y-m-d');
+   $exp=date('Y-m-d',strtotime($base.' +'.$add.' month'));
+ }
+ if($exp===''||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$exp))fail('Enter an expiry date as YYYY-MM-DD, or choose how many months to add');
+ if($exp<date('Y-m-d'))fail('That expiry date is already in the past');
+
+ $status=strtoupper(trim((string)($d['status']??'ACTIVE')));
+ if(!in_array($status,['ACTIVE','SUSPENDED'],true))$status='ACTIVE';
+ $amount=(float)($d['amount']??0);
+
+ $q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+ $q->execute([$tid]);$sub=$q->fetchColumn();
+ if($sub){
+   $p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);
+ }else{
+   $sub=uuid();
+   $p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")
+     ->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);
+ }
+ if($amount>0){
+   $p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")
+     ->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Licence update',Platform::superUser()['id']]);
+ }
+ $p->prepare("UPDATE tenants SET status=?,updated_at=NOW(6) WHERE id=?")->execute([$status,$tid]);
+ AdminData::audit('console',$tid,'LICENCE',$status.' till '.$exp.($amount>0?(' / PKR '.$amount):''));
+ ok(['message'=>$ten['name'].': '.($status==='SUSPENDED'?'suspended':'active').' till '.$exp,
+     'licence'=>Licence::fromDb($tid)]);
+
+case 'sa-licence-get':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ ok(['licence'=>Licence::fromDb($tid)]);
+
 case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');$exp=trim((string)($d['expiry_date']??''));if($tid===''||$exp==='')fail('tenant_id and expiry_date required');$amount=(float)($d['amount']??0);$p=DB::pdo();$q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");$q->execute([$tid]);$sub=$q->fetchColumn();if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);}else{$sub=uuid();$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);}if($amount>0){$p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Renewal',Platform::superUser()['id']]);}$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);ok(['message'=>'Renewed till '.$exp]);
 case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
 case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);

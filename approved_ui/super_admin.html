@@ -757,16 +757,50 @@ async function bizDetail(id){
   tr.after(det);
 }
 
+/* V66 — Licence control.
+   Pehle yeh browser ke prompt() se chalta tha: na validation, na
+   suspend/activate, na yeh nazar aata tha ke abhi kitne din bache hain.
+   Ab ek proper dialog. */
 async function bizRenew(id){
-  const exp=prompt('New expiry date (YYYY-MM-DD):');if(!exp)return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(exp.trim())){toast('Date format: YYYY-MM-DD');return}
-  const amtRaw=prompt('Payment amount (PKR, 0 = no payment record):','10000');if(amtRaw===null)return;
-  const r=await api('sa-business-renew',{tenant_id:id,expiry_date:exp.trim(),amount:Number(amtRaw||0),payment_method:'CASH'});
-  toast(r.ok?(r.message||'Renewed'):(r.message||'Failed'));if(r.ok)loadBiz();
+  const cur=await api('sa-licence-get&tenant_id='+encodeURIComponent(id));
+  const L=(cur&&cur.licence)||{};
+  const days=(L.days_left===null||L.days_left===undefined)?'—':L.days_left;
+  const pill=L.expired?'<span class="tag red">Expired</span>'
+            :(L.warn?'<span class="tag amber">Expiring soon</span>':'<span class="tag green">Active</span>');
+
+  /* super_admin ka apna modal helper (sModal / .modal-ov) use karo —
+     `.modal` yahan define hi nahi hai, dialog nazar hi nahi aata. */
+  const ov=sModal('<h3 style="margin:0 0 4px">Licence control</h3>'
+    +'<p class="lead" style="margin:0 0 14px">'+esc(L.business||'')+'</p>'
+    +'<div class="note" style="margin-bottom:12px">Current: '+pill
+      +' &nbsp; Expiry <b>'+esc(L.expiry_date||'not set')+'</b> &nbsp; Days left <b>'+days+'</b></div>'
+    +'<label class="field"><span>Extend by</span><select id="lcAdd">'
+      +'<option value="0">— set an exact date instead —</option>'
+      +'<option value="1">1 month</option><option value="3">3 months</option>'
+      +'<option value="6">6 months</option><option value="12">1 year</option></select></label>'
+    +'<label class="field"><span>Or exact expiry date</span><input id="lcDate" type="date" value="'+esc(L.expiry_date||'')+'"></label>'
+    +'<label class="field"><span>Status</span><select id="lcStatus">'
+      +'<option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select></label>'
+    +'<label class="field"><span>Payment amount (PKR) <span class="hint">&middot; 0 = no payment record</span></span>'
+      +'<input id="lcAmt" type="number" min="0" value="0"></label>'
+    +'<div class="action-row" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'
+      +'<button class="btn" data-x>Cancel</button>'
+      +'<button class="btn primary" id="lcSave">Save licence</button></div>');
+  ov.querySelector('#lcStatus').value=(L.tenant_status==='SUSPENDED')?'SUSPENDED':'ACTIVE';
+  ov.querySelector('#lcSave').onclick=async()=>{
+    const add=Number(ov.querySelector('#lcAdd').value||0);
+    const body={tenant_id:id,status:ov.querySelector('#lcStatus').value,
+                amount:Number(ov.querySelector('#lcAmt').value||0),payment_method:'CASH'};
+    if(add>0) body.add_months=add; else body.expiry_date=ov.querySelector('#lcDate').value;
+    const r=await api('sa-licence-set',body);
+    /* Jawab check hota hai — nakami par dialog khula rehta hai. */
+    if(!r.ok){toast(r.message||'Could not update licence');return}
+    toast(r.message||'Licence updated');ov.remove();loadBiz();
+  };
 }
 
 async function bizResetAdmin(id){
-  if(!confirm('Business admin ka password reset please? Purana password kaam nahi karega.'))return;
+  if(!confirm('Reset the business admin password? The old password will stop working.'))return;
   const r=await api('sa-business-reset-admin',{tenant_id:id});
   if(!r.ok){toast(r.message||'Failed');return}
   prompt('New one-time password for '+r.admin_email+' (copy now):',r.admin_password);
