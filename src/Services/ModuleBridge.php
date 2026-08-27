@@ -65,7 +65,7 @@ final class ModuleBridge
             'wastage'   => self::saveWastage($id, $d),
             'menu'      => self::saveMenu($id, $d),
             'tables'    => self::saveTable($id, $d),
-            default     => throw new \RuntimeException('Unbridged module: '.$module),
+            default     => throw new \RuntimeException('Unsupported module: '.$module),
         };
     }
 
@@ -79,7 +79,7 @@ final class ModuleBridge
     public static function delete(string $module, string $id, string $mode = 'auto', string $reason = ''): array
     {
         $entity = self::DELETE_ENTITY[$module] ?? null;
-        if ($entity === null) throw new \RuntimeException('Unbridged module: '.$module);
+        if ($entity === null) throw new \RuntimeException('Unsupported module: '.$module);
         return DeleteService::delete($entity, $id, $mode, $reason);
     }
 
@@ -140,7 +140,7 @@ final class ModuleBridge
         }
         $dupe = $p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? AND deleted_at IS NULL LIMIT 1");
         $dupe->execute([site_id(), $name]);
-        if ($dupe->fetchColumn()) throw new \RuntimeException('Is naam ki table pehle se maujood hai');
+        if ($dupe->fetchColumn()) throw new \RuntimeException('A table with this name already exists');
 
         $id = uuid();
         $code = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name), 0, 10))

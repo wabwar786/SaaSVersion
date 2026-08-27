@@ -14,7 +14,7 @@ use PDO;
  * FAILURE. Ab har delete isi jagah se guzarta hai aur teen mein se EK
  * saaf natija deta hai:
  *
- *   DELETED  — ho gaya (soft: deleted_at + is_active=0)
+ *   DELETED  — done (soft: deleted_at + is_active=0)
  *   BLOCKED  — nahi ho sakta, ASLI wajah ke saath ("42 bills mein use hua hai")
  *              + can_deactivate / can_force ke options
  *   FORCED   — Admin ne manager password se zabardasti kiya; child rows
@@ -50,7 +50,7 @@ final class DeleteService
             'module' => 'users', 'form' => 'users',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM cashier_shifts WHERE cashier_user_id=? AND status='OPEN'",
-                 'msg' => 'is user ki {n} shift abhi OPEN hai — pehle shift close karein'],
+                 'msg' => 'this user still has {n} open shift(s) - close them first'],
             ],
             'kids' => [
                 ['table' => 'user_roles', 'col' => 'user_id'],
@@ -65,7 +65,7 @@ final class DeleteService
             'module' => 'menu', 'form' => 'menu_items',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM order_items WHERE menu_item_id=?",
-                 'msg' => '{n} bill lines mein use hua hai — history bachane ke liye Inactive behtar hai'],
+                 'msg' => 'used in {n} bill line(s) - marking it inactive is safer than deleting'],
             ],
             'kids' => [
                 ['table' => 'recipes', 'col' => 'menu_item_id'],
@@ -79,7 +79,7 @@ final class DeleteService
             'module' => 'menu', 'form' => 'menu_categories',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM menu_items WHERE category_id=? AND deleted_at IS NULL",
-                 'msg' => 'is category mein {n} items maujood hain — pehle unhen hatayein ya doosri category dein'],
+                 'msg' => 'this category has {n} item(s) - move or remove them first'],
             ],
             'kids' => [
                 ['table' => 'menu_category_printer_routes', 'col' => 'category_id'],
@@ -92,9 +92,9 @@ final class DeleteService
             'module' => 'inventory', 'form' => 'inventory_items',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM recipe_ingredients WHERE inventory_item_id=?",
-                 'msg' => '{n} recipes is item par chalti hain'],
+                 'msg' => '{n} recipe(s) use this item'],
                 ['sql' => "SELECT COALESCE(SUM(CASE WHEN qty_on_hand<>0 THEN 1 ELSE 0 END),0) FROM stock_balances WHERE inventory_item_id=?",
-                 'msg' => 'is item ka stock abhi khali nahi ({n} location) — pehle wastage/transfer se zero karein'],
+                 'msg' => 'this item still has stock in {n} location(s) - clear it via wastage or transfer first'],
             ],
             'kids' => [
                 ['table' => 'stock_balances', 'col' => 'inventory_item_id'],
@@ -108,7 +108,7 @@ final class DeleteService
             'module' => 'inventory', 'form' => 'inventory_categories',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM inventory_items WHERE category_id=? AND deleted_at IS NULL",
-                 'msg' => 'is category mein {n} items hain'],
+                 'msg' => 'this category has {n} item(s)'],
             ],
             'kids' => [],
         ],
@@ -129,7 +129,7 @@ final class DeleteService
             'module' => 'suppliers', 'form' => 'suppliers',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM goods_receipts WHERE supplier_id=?",
-                 'msg' => 'is supplier ke {n} purchase receipts hain — history bachane ke liye Inactive behtar hai'],
+                 'msg' => 'this supplier has {n} purchase receipt(s) - marking it inactive is safer than deleting'],
             ],
             'kids' => [
                 ['table' => 'supplier_items', 'col' => 'supplier_id'],
@@ -142,7 +142,7 @@ final class DeleteService
             'module' => 'customers', 'form' => 'customers',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM orders WHERE customer_id=?",
-                 'msg' => 'is customer ke {n} orders hain'],
+                 'msg' => 'this customer has {n} order(s)'],
             ],
             'kids' => [
                 ['table' => 'customer_addresses', 'col' => 'customer_id'],
@@ -162,7 +162,7 @@ final class DeleteService
             'module' => 'tables', 'form' => 'dining_tables',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM orders WHERE table_id=? AND order_status='OPEN'",
-                 'msg' => 'is table par {n} bill abhi OPEN hai — pehle close karein'],
+                 'msg' => 'this table has {n} open bill(s) - close them first'],
             ],
             'kids' => [],
         ],
@@ -173,7 +173,7 @@ final class DeleteService
             'module' => 'tables', 'form' => 'floors',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM dining_tables WHERE floor_id=? AND deleted_at IS NULL",
-                 'msg' => 'is floor par {n} tables hain'],
+                 'msg' => 'this floor has {n} table(s)'],
             ],
             'kids' => [],
         ],
@@ -193,7 +193,7 @@ final class DeleteService
             'module' => 'shift', 'form' => 'cashier_shifts',
             'deps' => [
                 ['sql' => "SELECT COUNT(*) FROM cashier_shifts WHERE id=? AND status='OPEN'",
-                 'msg' => 'yeh shift abhi OPEN hai — pehle close karein'],
+                 'msg' => 'this shift is still open - close it first'],
             ],
             'kids' => [
                 ['table' => 'shift_cash_movements', 'col' => 'shift_id'],
@@ -236,8 +236,8 @@ final class DeleteService
             'label' => 'Bill', 'table' => 'orders', 'scope' => 'site',
             'name' => 'bill_no', 'soft' => null, 'active' => null,
             'module' => 'void', 'form' => 'orders',
-            'protected' => 'Bill delete nahi hota — accounting aur FBR record toot jata hai. '
-                         . 'Ise VOID karein (wajah + manager password ke saath); bill number history mein rehta hai.',
+            'protected' => 'Bills cannot be deleted - it would break accounting and FBR records. '
+                         . 'Void it instead (with a reason and manager password); the bill number stays in history.',
             'deps' => [], 'kids' => [],
         ],
     ];
@@ -263,7 +263,7 @@ final class DeleteService
     private static function cfgOf(string $entity): array
     {
         if (!isset(self::ENTITIES[$entity])) {
-            throw new \RuntimeException('Unknown entity: '.$entity);
+            throw new \RuntimeException('Unknown record type: '.$entity);
         }
         return self::ENTITIES[$entity];
     }
@@ -362,8 +362,8 @@ final class DeleteService
                 if ($n > 0) $out[] = str_replace('{n}', (string)$n, $d['msg']);
             } catch (\Throwable $ex) {
                 /* Check khud fail ho jaye to delete rok dena galat hai, magar
-                   chupchaap guzarna bhi galat. Wajah user tak jayegi. */
-                $out[] = 'Dependency check nahi chal saka: '.substr($ex->getMessage(), 0, 120);
+                   chupchaap guzarna bhi galat. Reason user tak jayegi. */
+                $out[] = 'Dependency check could not run: '.substr($ex->getMessage(), 0, 120);
             }
         }
         return $out;
@@ -395,10 +395,10 @@ final class DeleteService
                 (string)cfg('app.role'),
             ]);
         } catch (\Throwable $e) {
-            /* Tombstone likhna nakaam ho to delete bhi nahi honi chahiye —
+            /* Tombstone likhna nakaam ho to delete bhi nahi honi is required —
                warna dono taraf ka data hamesha ke liye alag ho jayega. */
-            throw new \RuntimeException('Delete rok di gayi: sync tombstone nahi likha ja saka ('
-                . substr($e->getMessage(), 0, 120) . '). migrate_delete_support.php chalayein.');
+            throw new \RuntimeException('Delete stopped: the sync tombstone could not be written ('
+                . substr($e->getMessage(), 0, 120) . '). Please run migrate_delete_support.php.');
         }
     }
 
@@ -448,22 +448,22 @@ final class DeleteService
     {
         $e  = self::cfgOf($entity);
         $id = trim($id);
-        if ($id === '') throw new \RuntimeException('Record id required');
+        if ($id === '') throw new \RuntimeException('Record id is required');
 
         if (!self::tableExists($e['table'])) {
-            throw new \RuntimeException("Table `{$e['table']}` is database mein maujood nahi. Migrations chalayein.");
+            throw new \RuntimeException("Table `{$e['table']}` does not exist in this database. Please run the migrations.");
         }
 
         $row = self::loadRow($e, $id);
         if (!$row) {
             /* Pehle yeh khamoshi se "ok" ho jata tha aur user reload par row
                dobara dekh kar hairan hota tha. */
-            throw new \RuntimeException(($e['label'] ?? 'Record').' nahi mila (ya aap ke branch/business ka nahi hai).');
+            throw new \RuntimeException(($e['label'] ?? 'Record').' not found (or it does not belong to your branch/business).');
         }
         $label = self::labelOf($e, $row);
 
         if (!self::mayDelete($e)) {
-            throw new \RuntimeException('Aap ko '.strtolower($e['label']).' delete karne ki ijazat nahi hai. Admin se rabta karein.');
+            throw new \RuntimeException('You do not have permission to '.strtolower($e['label']).'. Please contact your administrator.');
         }
 
         /* --- PROTECTED (bills) --- */
@@ -484,7 +484,7 @@ final class DeleteService
 
         if ($blockers && $mode !== 'force') {
             return ['result' => 'BLOCKED', 'label' => $label,
-                    'message' => $e['label'].' "'.$label.'" delete nahi ho sakti:',
+                    'message' => $e['label'].' "'.$label.'" cannot be deleted:',
                     'blockers' => $blockers,
                     'can_deactivate' => (bool)($e['active'] ?? null) || $soft !== null,
                     'can_force' => self::mayForce(), 'can_void' => false];
@@ -492,13 +492,13 @@ final class DeleteService
 
         if ($mode === 'force') {
             if (!self::mayForce()) {
-                throw new \RuntimeException('Force delete sirf Admin/Manager kar sakta hai.');
+                throw new \RuntimeException('Only an Admin or Manager can force delete.');
             }
             $kids = self::hardDelete($e, $id, $reason ?: 'force delete');
             self::log($entity, $e, $id, $label, 'FORCE', $reason, $kids);
             return ['result' => 'FORCED', 'label' => $label,
-                    'message' => $e['label'].' "'.$label.'" permanently delete ho gayi'
-                               . ($kids ? " ({$kids} related rows samet)" : '').'.',
+                    'message' => $e['label'].' "'.$label.'" was permanently deleted'
+                               . ($kids ? " ({$kids} including related rows)" : '').'.',
                     'blockers' => [], 'can_deactivate' => false, 'can_force' => false, 'can_void' => false];
         }
 
@@ -508,14 +508,14 @@ final class DeleteService
             $kids = self::hardDelete($e, $id, $reason ?: 'delete');
             self::log($entity, $e, $id, $label, 'HARD', $reason, $kids);
             return ['result' => 'DELETED', 'label' => $label,
-                    'message' => $e['label'].' "'.$label.'" delete ho gayi.',
+                    'message' => $e['label'].' "'.$label.'" was deleted.',
                     'blockers' => [], 'can_deactivate' => false, 'can_force' => false, 'can_void' => false];
         }
 
         self::softDelete($e, $id);
         self::log($entity, $e, $id, $label, 'SOFT', $reason);
         return ['result' => 'DELETED', 'label' => $label,
-                'message' => $e['label'].' "'.$label.'" delete ho gayi.',
+                'message' => $e['label'].' "'.$label.'" was deleted.',
                 'blockers' => [], 'can_deactivate' => false, 'can_force' => false, 'can_void' => false];
     }
 
@@ -533,8 +533,8 @@ final class DeleteService
         $physical = $soft === 'deleted' ? 'deleted' : $soft;
         if (!self::hasCol($t, $physical)) {
             throw new \RuntimeException(
-                "`$t` par `$physical` column nahi hai — pehle "
-                . "`php scripts/migrate_delete_support.php` chalayein.");
+                "`$t` is missing the `$physical` column - please run "
+                . "`php scripts/migrate_delete_support.php` first.");
         }
 
         $sets = [];
@@ -548,8 +548,8 @@ final class DeleteService
         if ($t === 'users' && self::hasCol($t, 'status')) {
             $sets[] = "`status` = 'SUSPENDED'";
         }
-        /* updated_at zaroori hai — isi se sync ko pata chalta hai ke row
-           badli hai aur doosri taraf bhi gayab honi chahiye. */
+        /* updated_at is required — isi se sync ko pata chalta hai ke row
+           badli hai aur doosri taraf bhi gayab honi is required. */
         if (self::hasCol($t, 'updated_at')) $sets[] = "`updated_at` = NOW(6)";
         if (self::hasCol($t, 'row_version')) $sets[] = "`row_version` = `row_version` + 1";
 
@@ -558,7 +558,7 @@ final class DeleteService
         $st->execute(array_merge([$id], $args));
 
         if ($st->rowCount() < 1) {
-            throw new \RuntimeException(($e['label'] ?? 'Record').' update nahi hui — shayad pehle hi delete ho chuki hai. Screen refresh karein.');
+            throw new \RuntimeException(($e['label'] ?? 'Record').' was not updated - it may already have been deleted. Please refresh the screen.');
         }
     }
 
@@ -587,7 +587,7 @@ final class DeleteService
                 $kids += $d->rowCount();
             }
 
-            /* Nishan PEHLE, delete BAAD mein. Ulta karein to crash ki soorat
+            /* Nishan PEHLE, delete BAAD mein. Ulta please to crash ki soorat
                mein row gayab aur tombstone ghayab — dono taraf hamesha alag. */
             self::tombstone($p, $e['table'], $id, $reason);
 
@@ -595,7 +595,7 @@ final class DeleteService
             $st = $p->prepare("DELETE FROM `{$e['table']}` WHERE $where");
             $st->execute(array_merge([$id], $args));
             if ($st->rowCount() < 1) {
-                throw new \RuntimeException(($e['label'] ?? 'Record').' delete nahi hui — screen refresh kar ke dobara koshish karein.');
+                throw new \RuntimeException(($e['label'] ?? 'Record').' could not be deleted - please refresh the screen and try again.');
             }
             return $kids;
         });
@@ -637,13 +637,13 @@ final class DeleteService
     {
         $e = self::cfgOf($entity);
         $row = self::loadRow($e, $id);
-        if (!$row) throw new \RuntimeException(($e['label'] ?? 'Record').' nahi mila.');
-        if (!self::mayDelete($e)) throw new \RuntimeException('Ijazat nahi hai.');
+        if (!$row) throw new \RuntimeException(($e['label'] ?? 'Record').' not found.');
+        if (!self::mayDelete($e)) throw new \RuntimeException('You do not have permission to do this.');
 
         $label = self::labelOf($e, $row);
         $col = $e['active'] ?? null;
         if (!$col || !self::hasCol($e['table'], $col)) {
-            throw new \RuntimeException($e['label'].' ko Inactive nahi kiya ja sakta — is par active/inactive ka option hi nahi.');
+            throw new \RuntimeException($e['label'].' cannot be marked inactive - it has no active/inactive setting.');
         }
         [$where, $args] = self::scopeWhere($e);
         $sets = ["`$col` = 0"];
@@ -654,7 +654,7 @@ final class DeleteService
 
         self::log($entity, $e, $id, $label, 'DEACTIVATE', $reason);
         return ['result' => 'DEACTIVATED', 'label' => $label,
-                'message' => $e['label'].' "'.$label.'" ab Inactive hai (data mehfooz hai).',
+                'message' => $e['label'].' "'.$label.'" is now inactive (the data is kept).',
                 'blockers' => [], 'can_deactivate' => false, 'can_force' => false, 'can_void' => false];
     }
 
@@ -666,9 +666,9 @@ final class DeleteService
         $e = self::cfgOf($entity);
         $soft = self::softCol($e);
         if ($soft === null) {
-            throw new \RuntimeException($e['label'].' permanently delete hui thi — wapas nahi aa sakti.');
+            throw new \RuntimeException($e['label'].' was permanently deleted and cannot be restored.');
         }
-        if (!self::mayDelete($e)) throw new \RuntimeException('Ijazat nahi hai.');
+        if (!self::mayDelete($e)) throw new \RuntimeException('You do not have permission to do this.');
 
         $p = DB::pdo();
         [$where, $args] = self::scopeWhere($e);
@@ -683,13 +683,13 @@ final class DeleteService
 
         $st = $p->prepare("UPDATE `{$e['table']}` SET ".implode(', ', $sets)." WHERE $where");
         $st->execute(array_merge([$id], $args));
-        if ($st->rowCount() < 1) throw new \RuntimeException('Record nahi mila ya pehle hi bahal hai.');
+        if ($st->rowCount() < 1) throw new \RuntimeException('Record not found, or it has already been restored.');
 
         $row = self::loadRow($e, $id);
         $label = $row ? self::labelOf($e, $row) : $id;
         self::log($entity, $e, $id, $label, 'RESTORE', '');
         return ['result' => 'RESTORED', 'label' => $label,
-                'message' => $e['label'].' "'.$label.'" wapas bahal ho gayi.'];
+                'message' => $e['label'].' "'.$label.'" has been restored.'];
     }
 
     /* ================= recycle bin ================= */
@@ -705,7 +705,7 @@ final class DeleteService
             if (!self::hasCol($e['table'], $soft)) continue;
 
             [$w, $args] = self::scopeWhere($e);
-            // scopeWhere 'id = ?' se shuru hota hai — yahan id nahi chahiye
+            // scopeWhere 'id = ?' se shuru hota hai — yahan id nahi is required
             $w = preg_replace('/^id = \?\s*/', '1=1 ', $w);
             $nameCol = $e['name'] ?? 'id';
             if (!self::hasCol($e['table'], $nameCol)) $nameCol = 'id';
@@ -738,9 +738,9 @@ final class DeleteService
      */
     public static function voidOrder(string $orderId, string $reason, ?string $managerId = null): array
     {
-        if (trim($reason) === '') throw new \RuntimeException('Void ki wajah likhna zaroori hai.');
+        if (trim($reason) === '') throw new \RuntimeException('A reason is required to void a bill.');
         if (!Auth::isManager() && !Auth::isAdmin()) {
-            throw new \RuntimeException('Bill void sirf Admin/Manager kar sakta hai.');
+            throw new \RuntimeException('Only an Admin or Manager can void a bill.');
         }
 
         return DB::tx(function (PDO $p) use ($orderId, $reason, $managerId) {
@@ -748,9 +748,9 @@ final class DeleteService
                                WHERE id=? AND site_id=? LIMIT 1");
             $q->execute([$orderId, site_id()]);
             $o = $q->fetch(PDO::FETCH_ASSOC);
-            if (!$o) throw new \RuntimeException('Bill nahi mila.');
+            if (!$o) throw new \RuntimeException('Bill not found.');
             if (($o['order_status'] ?? '') === 'VOID') {
-                throw new \RuntimeException('Yeh bill pehle hi VOID hai.');
+                throw new \RuntimeException('This bill has already been voided.');
             }
 
             $p->prepare("UPDATE orders SET order_status='VOID', updated_at=NOW(6) WHERE id=?")
@@ -797,7 +797,7 @@ final class DeleteService
             } catch (\Throwable $ex) {}
 
             return ['result' => 'VOIDED', 'bill_no' => $o['bill_no'],
-                    'message' => 'Bill '.$o['bill_no'].' VOID kar diya gaya. Stock wapas add ho gaya.'];
+                    'message' => 'Bill '.$o['bill_no'].' has been voided. Stock has been returned.'];
         });
     }
 }

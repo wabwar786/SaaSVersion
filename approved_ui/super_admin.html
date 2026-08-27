@@ -684,7 +684,7 @@ async function bizFeatures(id){
   const r=await api('sa-features-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
   const sel=r.selected;   // null = sab allowed
-  const ov=sModal('<h3>Features</h3><p class="muted">Is business ko sirf yahi features milenge. Kuch select na karein to sab allowed.</p>'
+  const ov=sModal('<h3>Features</h3><p class="muted">Is business ko sirf yahi features milenge. Kuch select na please to sab allowed.</p>'
     +'<div class="row" style="margin:12px 0"><button class="btn sec mini" id="fAll">Select all</button>'
     +'<button class="btn sec mini" id="fNone">Clear all</button></div>'
     +'<div class="fgrid" id="fList">'+(r.modules||[]).map(function(m){
@@ -708,7 +708,7 @@ async function bizWa(id){
   const r=await api('sa-wa-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
   const w=r.wa||{};
-  const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect karein aur events select karein.</p>'
+  const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect please aur events select please.</p>'
     +'<div class="grid" style="margin-top:14px">'
     +'<div style="grid-column:1/-1"><label>API Base URL</span><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
     +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</span><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
@@ -766,7 +766,7 @@ async function bizRenew(id){
 }
 
 async function bizResetAdmin(id){
-  if(!confirm('Business admin ka password reset karein? Purana password kaam nahi karega.'))return;
+  if(!confirm('Business admin ka password reset please? Purana password kaam nahi karega.'))return;
   const r=await api('sa-business-reset-admin',{tenant_id:id});
   if(!r.ok){toast(r.message||'Failed');return}
   prompt('New one-time password for '+r.admin_email+' (copy now):',r.admin_password);
@@ -827,7 +827,7 @@ function bizTag(b){
       if(j&&j.ok===false&&j.csrf&&!retried){
         var t=await freshCsrf();
         if(t)return await consoleApi(cmd,true);
-        return {ok:true,lines:[{t:'e',v:'Session expire ho gayi hai - dobara login karein.'}]};
+        return {ok:true,lines:[{t:'e',v:'Session expire done hai - dobara login please.'}]};
       }
       return j;
     }

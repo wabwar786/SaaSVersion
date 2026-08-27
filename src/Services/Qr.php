@@ -8,9 +8,9 @@ namespace Aio\Services;
  * chhapta hai. POS abhi `api.qrserver.com` (internet) se QR ki image
  * mangwa raha tha — yani net band hote hi QR gayab, aur wo bhi khamoshi
  * se (`onerror="this.remove()"`). FBR ke bill par yeh na-qabil-e-qabool
- * hai. Ab QR isi computer par banta hai, internet ki koi zaroorat nahi.
+ * hai. Ab QR on this computer banta hai, internet ki koi zaroorat nahi.
  *
- * Daira (jaan-boojh kar mehdood, sirf utna jitna chahiye):
+ * Daira (jaan-boojh kar mehdood, sirf utna jitna is required):
  *   - Byte mode (ISO-8859-1 / ASCII payload)
  *   - Error correction level M
  *   - Version 1..10  (~150 bytes tak - FBR invoice ke liye kaafi)

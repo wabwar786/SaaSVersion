@@ -104,7 +104,7 @@
       b.disabled=false;b.textContent='Sync now';
       if(r&&r.ok){
         var pushed=(r.push&&r.push.rows)||r.pushed||0, pulled=(r.pull&&r.pull.rows)||r.pulled||0;
-        /* V62 — delete channel ki khabar bhi user ko milni chahiye:
+        /* V62 — delete channel ki khabar bhi user ko milni is required:
            agar cloud par kuch mit gaya hai to yahan nazar aata hai. */
         var gone=r.deleted_rows||0;
         toast(r.skipped?'Nothing to sync right now'

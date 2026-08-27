@@ -73,7 +73,7 @@ function qp(k){var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search);retur
 function start(){
   var r=api('qr-start&t='+encodeURIComponent(qp('t'))+'&s='+encodeURIComponent(qp('s')));
   if(!r.ok){
-    $('#list').innerHTML='<div class="msg"><div class="ic">🔒</div><h2>QR valid nahi</h2><p>'+esc(r.message||'Please scan the QR on your table again.')+'</p></div>';
+    $('#list').innerHTML='<div class="msg"><div class="ic">🔒</div><h2>Invalid QR code</h2><p>'+esc(r.message||'Please scan the QR on your table again.')+'</p></div>';
     return;
   }
   TOKEN=r.token;MENU=r.menu||[];ENDS=Date.now()+(r.expires_min||90)*60000;
@@ -90,7 +90,7 @@ function tick(){
   if(!el)return;                /* order bhejne ke baad page badal jata hai */
   var left=Math.max(0,ENDS-Date.now()),m=Math.floor(left/60000),s=Math.floor(left%60000/1000);
   if(left<=0){el.textContent='Session khatam';el.className='timer warn';
-    var l=$('#list'); if(l)l.innerHTML='<div class="msg"><div class="ic">&#8987;</div><h2>Session ka waqt khatam</h2><p>Table par laga QR dobara scan karein.</p></div>';
+    var l=$('#list'); if(l)l.innerHTML='<div class="msg"><div class="ic">&#8987;</div><h2>Session ka waqt khatam</h2><p>Table par laga QR dobara scan please.</p></div>';
     var bb=$('#bar'); if(bb)bb.style.display='none';return;}
   el.textContent='Session: '+m+':'+(s<10?'0':'')+s;
   el.className='timer'+(m<10?' warn':'');

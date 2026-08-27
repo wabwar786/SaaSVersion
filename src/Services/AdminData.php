@@ -230,9 +230,9 @@ final class AdminData
                 /* Tombstone na likha ja saka to reset rok dena behtar hai —
                    warna cloud khali aur node bhara: wahi purana masla. */
                 throw new \RuntimeException(
-                    'Factory reset rok di gayi: sync tombstone nahi likha ja saka ('
+                    'Factory reset stopped: the sync tombstone could not be written ('
                     . substr($e->getMessage(), 0, 140)
-                    . '). Pehle `php scripts/migrate_delete_support.php` chalayein.');
+                    . '). Pehle `php scripts/migrate_delete_support.php` first.');
             }
         }
 
@@ -281,7 +281,7 @@ final class AdminData
         catch (\Throwable $e) {}
         $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
-        // FULL ke baad business chalne laayak rehna chahiye:
+        // FULL ke baad business chalne laayak rehna is required:
         // roles + branch defaults dobara bana do
         if ($mode === 'FULL') {
             try {

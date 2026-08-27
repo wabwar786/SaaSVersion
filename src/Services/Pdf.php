@@ -3,7 +3,7 @@ namespace Aio\Services;
 
 /**
  * Pdf — chhota, dependency-free PDF writer (sirf text receipts ke liye).
- * Koi composer package nahi chahiye; Railway par as-is chalta hai.
+ * Koi composer package nahi is required; Railway par as-is chalta hai.
  * 80mm thermal-ish page: 226pt chaura, content ke hisab se lamba.
  */
 final class Pdf

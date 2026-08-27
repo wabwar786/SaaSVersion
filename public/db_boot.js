@@ -13,7 +13,7 @@
        DB se dubara hydrate ho jata hai.
 
    Synchronous XHR jaan-boojh kar: hydration page scripts se
-   PEHLE mukammal honi zaroori hai. Local node par server
+   PEHLE mukammal honi is required. Local node par server
    localhost hai (latency ~0); cloud par yeh sirf logged-in
    pages ke head mein chalta hai.
    ============================================================ */

@@ -152,7 +152,7 @@ final class SettingsService
     public static function save(array $d): array
     {
         if (!Auth::isManager() && !Auth::isAdmin()) {
-            throw new \RuntimeException('Settings sirf Admin/Manager badal sakta hai.');
+            throw new \RuntimeException('Only an Admin or Manager can change settings.');
         }
 
         $p = DB::pdo();
@@ -161,13 +161,13 @@ final class SettingsService
         /* --- business name --- */
         if (array_key_exists('business_name', $d)) {
             $n = trim((string)$d['business_name']);
-            if ($n === '') throw new \RuntimeException('Business ka naam khali nahi ho sakta.');
+            if ($n === '') throw new \RuntimeException('Business name cannot be empty.');
             try {
                 $p->prepare("UPDATE tenants SET display_name=?, updated_at=NOW(6) WHERE id=?")
                   ->execute([$n, tenant_id()]);
                 $changed[] = 'business_name';
             } catch (\Throwable $e) {
-                throw new \RuntimeException('Business name save nahi hua: '.substr($e->getMessage(), 0, 120));
+                throw new \RuntimeException('Business name could not be saved: '.substr($e->getMessage(), 0, 120));
             }
         }
 
@@ -175,7 +175,7 @@ final class SettingsService
         $sSet = []; $sArg = [];
         if (array_key_exists('branch_name', $d)) {
             $b = trim((string)$d['branch_name']);
-            if ($b === '') throw new \RuntimeException('Branch ka naam khali nahi ho sakta.');
+            if ($b === '') throw new \RuntimeException('Branch name cannot be empty.');
             $sSet[] = 'name=?';         $sArg[] = $b;  $changed[] = 'branch_name';
         }
         if (array_key_exists('phone', $d))   { $sSet[] = 'phone=?';        $sArg[] = trim((string)$d['phone']);   $changed[] = 'phone'; }
@@ -185,7 +185,7 @@ final class SettingsService
             try {
                 $p->prepare("UPDATE sites SET ".implode(', ', $sSet).", updated_at=NOW(6) WHERE id=?")->execute($sArg);
             } catch (\Throwable $e) {
-                throw new \RuntimeException('Branch details save nahi huin: '.substr($e->getMessage(), 0, 120));
+                throw new \RuntimeException('Branch details could not be saved: '.substr($e->getMessage(), 0, 120));
             }
         }
 
@@ -212,7 +212,7 @@ final class SettingsService
                 'service_charge' => array_key_exists('service_charge', $d) ? max(0, (float)$d['service_charge']) : $cur['service_charge'],
             ];
             foreach ($val as $k => $v) {
-                if ($v > 100) throw new \RuntimeException(str_replace('_', ' ', $k).' 100% se zyada nahi ho sakti.');
+                if ($v > 100) throw new \RuntimeException(str_replace('_', ' ', $k).' cannot be more than 100%.');
             }
             $json = json_encode($val, JSON_UNESCAPED_UNICODE);
             try {
@@ -229,7 +229,7 @@ final class SettingsService
                 }
                 $changed[] = 'taxes';
             } catch (\Throwable $e) {
-                throw new \RuntimeException('Tax settings save nahi huin: '.substr($e->getMessage(), 0, 120));
+                throw new \RuntimeException('Tax settings could not be saved: '.substr($e->getMessage(), 0, 120));
             }
         }
 
@@ -239,7 +239,7 @@ final class SettingsService
             if (!array_key_exists($form, $d)) continue;
             $v = trim((string)$d[$form]);
             if ($k === 'provider' && !in_array($v, FiscalService::PROVIDERS, true)) {
-                throw new \RuntimeException('Provider ghalat hai.');
+                throw new \RuntimeException('Invalid provider.');
             }
             self::put($p, $k, $v, 'fiscal');
             $changed[] = $form;
@@ -272,7 +272,7 @@ final class SettingsService
             }
         } catch (\Throwable $e) {
             /* Khamosh nahi. Ek setting bhi na bache to user ko pata chale. */
-            throw new \RuntimeException("Setting '$key' save nahi hui: ".substr($e->getMessage(), 0, 120));
+            throw new \RuntimeException("Setting '$key' could not be saved: ".substr($e->getMessage(), 0, 120));
         }
     }
 }

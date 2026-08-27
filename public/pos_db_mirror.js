@@ -134,7 +134,7 @@
       '<span class="sb">🏬 '+((b&&b.site&&b.site.name)||'Branch')+'</span>'
       +shiftHtml
       +'<span class="sb">🍽 '+items+' menu item'+(items===1?'':'s')+'</span>'
-      +(items===0?'<span style="color:#b3541e;font-weight:700">Menu khali hai — “+ New Item” se pehla item banayein</span>':'')
+      +(items===0?'<span style="color:#b3541e;font-weight:700">Menu is empty — “+ New Item” se pehla item banayein</span>':'')
       +'<span id="aioVer">'+VERSION+'</span>';
     var oc=document.getElementById('aioStripOpen');if(oc)oc.onclick=function(e){e.preventDefault();showOpenGate();};
     var cc=document.getElementById('aioStripClose');if(cc)cc.onclick=function(e){e.preventDefault();showCloseModal();};
@@ -224,7 +224,7 @@
     var ov=overlay('aioShiftGate'),c=card();
     c.innerHTML='<div style="font-size:26px;margin-bottom:6px">🔓</div>'
       +'<div style="font-size:17px;font-weight:800;margin-bottom:4px">Shift Opening</div>'
-      +'<div style="font-size:12.5px;color:#5f6f66;margin-bottom:18px">POS billing shift open hone ke baad hi chalega. Drawer ka opening cash count karke enter karein.</div>'
+      +'<div style="font-size:12.5px;color:#5f6f66;margin-bottom:18px">POS billing shift open hone ke baad hi chalega. Drawer ka opening cash count karke enter please.</div>'
       +'<label style="display:block;font-size:11px;font-weight:700;color:#5f6f66;margin-bottom:5px">OPENING CASH (PKR)</label>'
       +'<input id="aioOpenCash" type="number" min="0" step="1" value="0" style="width:100%;padding:12px;border:1px solid #d7e0da;border-radius:10px;font-size:16px;font-weight:700;margin-bottom:16px">'
       +'<button id="aioOpenBtn" style="width:100%;padding:13px;border:0;border-radius:10px;background:#e23744;color:#fff;font-weight:800;font-size:14px;cursor:pointer">Open Shift & Start Billing</button>';
@@ -331,7 +331,7 @@
     if(typeof window.markPendingAsSent==='function'){
       var originalKot=window.markPendingAsSent;
       window.markPendingAsSent=function(){
-        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open karein');return false;}
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open please');return false;}
         var payload=buildPayload();
         var r=req('pos-kot',payload);
         if(!r.ok){
@@ -347,7 +347,7 @@
     if(typeof window.completeCharge==='function'){
       var originalCharge=window.completeCharge;
       window.completeCharge=function(action){
-        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open karein');return false;}
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open please');return false;}
         if(typeof validateTender==='function'&&!validateTender())return false;
         var payload=buildPayload();
         var r=req('pos-finalize',payload);
@@ -482,7 +482,7 @@
     box.id='aioEmptyMenu';
     box.style.cssText='grid-column:1/-1;padding:34px 18px;text-align:center;border:1px dashed var(--l,#d7e0da);border-radius:12px;margin:8px';
     box.innerHTML='<div style="font-size:30px;margin-bottom:8px">🍽️</div>'+
-      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">Menu abhi khali hai</div>'+
+      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">Menu abhi is empty</div>'+
       '<div style="font-size:12px;color:#7b8a80;margin-bottom:14px">Apna pehla item banayein — POS foran ready ho jayega.</div>'+
       '<button id="aioFirstItem" style="padding:10px 18px;border:0;border-radius:10px;background:#e23744;color:#fff;font-weight:700;cursor:pointer;font-size:13px">＋ Create First Item</button>';
     grid.appendChild(box);

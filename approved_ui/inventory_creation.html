@@ -143,16 +143,16 @@ document.addEventListener('click',e=>{
   /* V62 — is page par pehle delete (aur edit) ka koi rasta hi nahi tha.
      Ab asli DB delete DeleteKit se: agar item kisi recipe mein use ho
      raha ho ya uska stock khali na ho to server saaf wajah deta hai,
-     khamoshi se "ho gaya" kabhi nahi kehta. */
+     khamoshi se "done" kabhi nahi kehta. */
   const di=e.target.closest('[data-del-item]');
   if(di){window.DeleteKit.confirm({entity:'inventory_item',id:di.dataset.delItem,name:di.dataset.name||'',
-    what:'Inventory item',title:'Item delete karein?',
-    warning:'Item purchasing aur recipes ki list se hat jayega. Purani purchase history mehfooz rehti hai.'});return}
+    what:'Inventory item',title:'Delete this item?',
+    warning:'The item will be removed from purchasing and recipes. Past purchase history is kept.'});return}
   const dc=e.target.closest('[data-del-cat]');
   if(dc){const nm=dc.dataset.delCat,row=catRows().find(x=>x.name===nm);
-    if(!row){toast('Category database mein nahi mili - page refresh karein');return}
+    if(!row){toast('Category not found in the database - please refresh the page');return}
     window.DeleteKit.confirm({entity:'inventory_category',id:row.id,name:nm,
-      what:'Inventory category',title:'Category delete karein?'});return}
+      what:'Inventory category',title:'Delete this category?'});return}
 });
 refreshCategoryControls();render();
 </script>

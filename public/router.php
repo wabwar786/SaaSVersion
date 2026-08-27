@@ -23,7 +23,7 @@ $publicPages=['login.html','signup.html','signup_pending.html','setup.html','sup
 $fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){
-  if(!Auth::user()){header('Location: /login.html?build=v14');exit;}
+  if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
   $key=$fileModule[$name]??null;
   if($key&&$key!=='dashboard'&&!Auth::canModule($key)){http_response_code(403);exit('Access denied.');}
 }
@@ -61,12 +61,12 @@ try{
 $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';</script>'
      .'<script src="/db_api.js?b=v14"></script>'
-     /* V62 — delete confirm har page par available hona chahiye (POS samet),
+     /* V62 — delete confirm har page par available hona is required (POS samet),
         warna har screen apna alag adhoora delete likhti hai. */
      .'<script src="/delete_kit.js?b=v62"></script>'
      .'<script src="/brand.js?b=v26"></script>';
 // DB-first hydration only on authenticated app pages (source of truth = DB).
-// db_boot POS par NahI chahiye: POS khud pos-boot se hydrate hota hai, aur
+// db_boot POS par NahI is required: POS khud pos-boot se hydrate hota hai, aur
 // db_boot ki 2 synchronous XHRs page load ko slow karti thin.
 if(!in_array($name,$publicPages,true) && Auth::user() && $name!=='restaurant_pos.html'){
   $head.='<script src="/db_boot.js?b=v16"></script>';

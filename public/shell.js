@@ -87,10 +87,78 @@
   html+='</nav>';
   html+='<div class="side-foot"><div class="side-avatar" id="sideAvatar">'+initials(user.name)+'</div>'+
         '<div class="who"><b id="sideUserName">'+esc(user.name)+'</b><span id="sideUserRole">'+esc(user.role||'User')+'</span></div>'+
-        '<button class="logout" id="shellLogout" title="Sign out">⏻</button></div>';
+        '<button class="logout" id="shellAbout" title="About this software">&#9432;</button>'+
+        '<button class="logout" id="shellLogout" title="Sign out">&#9211;</button></div>';
 
   var side=document.getElementById('side')||document.querySelector('.sidebar');
   if(side){ side.className='sidebar'; side.innerHTML=html; }
+
+  /* ---------- About (V65) ----------
+     Customer ko yeh maloom hona is required ke software kis ne banaya hai
+     aur masle ki soorat mein kis se rabta karna hai. Pehle kahin bhi
+     nahi likha tha. */
+  function aboutHtml(a){
+    var v=(a&&a.vendor)||{};
+    return '<div class="dialog" style="width:min(420px,94vw)">'
+      +'<div class="dialog-head"><div><h3>About this software</h3>'
+      +'<p>'+esc(v.company||'Wabwar Software House')+'</p></div>'
+      +'<button class="close" data-ab="x">&times;</button></div>'
+      +'<div class="dialog-body">'
+      +'<p style="font-size:12px;margin:0 0 12px">This software is developed and supported by '
+      +'<b>'+esc(v.company||'Wabwar Software House')+'</b>.</p>'
+      +'<div>'
+      +row('Contact person', esc(v.person||''))
+      +row('Phone', '<a href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">'+esc(v.phone||'')+'</a>')
+      +row('Email', '<a href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>')
+      +row('Website', '<a href="https://'+esc(v.website||'')+'" target="_blank" rel="noopener">'+esc(v.website||'')+'</a>')
+      +row('Build', esc((a&&a.build)||'-'))
+      +'</div></div>'
+      +'<div class="dialog-foot"><button class="btn" data-ab="x">Close</button>'
+      +'<a class="btn primary" href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">Call support</a></div></div>';
+  }
+  function row(k,v){
+    return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px">'
+      +'<span style="color:var(--muted)">'+k+'</span><b style="text-align:right">'+v+'</b></div>';
+  }
+  function openAbout(){
+    var a={vendor:{company:'Wabwar Software House',person:'Waseem Iqbal',
+                   phone:'+92 342 5095104',email:'support@wabwar.pk',website:'www.wabwar.pk'},build:''};
+    try{ if(window.DBApi){ var r=DBApi.req('about'); if(r&&r.ok)a=r; } }catch(e){}
+    var ov=document.createElement('div'); ov.className='modal show'; ov.innerHTML=aboutHtml(a);
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){
+      if(e.target===ov||e.target.closest('[data-ab="x"]')) ov.remove();
+    });
+  }
+  var ab=document.getElementById('shellAbout');
+  if(ab) ab.onclick=openAbout;
+  window.openAbout=openAbout;
+
+  /* ---------- Licence banner (V65) ----------
+     Expiry se 3 din pehle warning, aur expire hone par Wabwar ka rabta
+     taake customer seedha call kar ke renew karwa le. */
+  (function(){
+    if(!window.DBApi) return;
+    var r; try{ r=DBApi.req('licence-status'); }catch(e){ return; }
+    if(!r||!r.ok||!r.licence) return;
+    var L=r.licence;
+    if(!L.expired && !L.warn) return;
+    var v=L.vendor||{};
+    var bar=document.createElement('div');
+    bar.id='licBar';
+    bar.style.cssText='position:sticky;top:0;z-index:60;padding:10px 14px;font-size:12.5px;'
+      +'display:flex;gap:10px;align-items:center;flex-wrap:wrap;'
+      +(L.expired?'background:var(--danger-soft);color:var(--danger);border-bottom:1px solid var(--danger-line)'
+                 :'background:#fff6e5;color:#8a5a00;border-bottom:1px solid #f0d9a8');
+    bar.innerHTML='<b>'+esc(L.message||'')+'</b>'
+      +(L.expired?('<span>Contact '+esc(v.company||'')+' &mdash; '+esc(v.person||'')+'</span>'
+        +'<a class="btn sm primary" href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">Call '+esc(v.phone||'')+'</a>'
+        +'<a class="btn sm" href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>'):'')
+      +'<button class="btn sm" id="licAbout" style="margin-left:auto">Details</button>';
+    var main=document.querySelector('.main')||document.body;
+    main.insertBefore(bar,main.firstChild);
+    var la=document.getElementById('licAbout'); if(la) la.onclick=openAbout;
+  })();
 
   // Mobile drawer
   var scrim=document.getElementById('scrim');

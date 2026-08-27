@@ -112,7 +112,7 @@ final class BillTemplate
         $put = function (string $t, int $size, string $al = 'c') use (&$L, &$seen) {
             $t = trim(preg_replace('/\s+/', ' ', $t));
             if ($t === '') return;
-            /* mbstring har build par maujood nahi — fallback lazmi. */
+            /* mbstring har build par does not exist — fallback lazmi. */
             $k = function_exists('mb_strtolower') ? mb_strtolower($t) : strtolower($t);
             if (isset($seen[$k])) return;          // dobara nahi
             $seen[$k] = true;
@@ -174,7 +174,7 @@ final class BillTemplate
         if (!empty($ctx['fbr_no'])) {
             $L[] = ['FBR Invoice', 'c', 8];
             $L[] = [(string)$ctx['fbr_no'], 'c', self::SZ];
-            /* ASLI QR, isi computer par bana hua. Pehle sirf "[ QR ]"
+            /* ASLI QR, on this computer bana hua. Pehle sirf "[ QR ]"
                likha aata tha, aur POS screen internet wale
                api.qrserver.com se image mangwata tha — net band hote hi
                QR khamoshi se gayab. FBR ke bill par yeh na-qabil-e-qabool
@@ -183,7 +183,7 @@ final class BillTemplate
             if ($m) $L[] = ['@qr', 'c', 0, $m];
         } elseif (!empty($ctx['fbr_pending'])) {
             $L[] = ['*** FBR: PENDING ***', 'c', self::SZ];
-            $L[] = ['Yeh bill FBR ko abhi bheja nahi ja saka.', 'c', 7];
+            $L[] = ['This bill has not been sent to FBR yet.', 'c', 7];
         }
 
         $L[] = ['', 'l', self::SZ];

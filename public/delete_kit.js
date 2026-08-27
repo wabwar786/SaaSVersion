@@ -4,7 +4,7 @@
    Yeh file is liye bani ke purana delete KHAMOSHI SE fail hota tha:
    `module.js` server ka jawab discard kar deta tha, user ko
    "Record removed" toast dikhta tha, aur reload par row wapas aa
-   jati thi. Wajah kabhi kisi tak nahi pohanchti thi.
+   jati thi. Reason kabhi kisi tak nahi pohanchti thi.
 
    Ab har delete yahan se guzarta hai aur teen mein se EK natija
    dikhata hai:
@@ -52,23 +52,23 @@
   /* ---------------- server call ----------------
      DBApi.req() har page par maujood hai (router.php <head> mein
      db_api.js inject karta hai). Agar kisi wajah se na mile to
-     saaf error dena hai, chupchaap "ho gaya" kehna nahi. */
+     saaf error dena hai, chupchaap "done" kehna nahi. */
   function call(action, payload) {
     if (!window.DBApi || !window.DBApi.req) {
-      return { ok: false, message: 'Server connection available nahi (db_api.js load nahi hui). Page refresh karein.' };
+      return { ok: false, message: 'No server connection (db_api.js did not load). Please refresh the page.' };
     }
     try {
       var r = window.DBApi.req(action, payload);
-      return r && typeof r === 'object' ? r : { ok: false, message: 'Server ka jawab samajh nahi aaya.' };
+      return r && typeof r === 'object' ? r : { ok: false, message: 'The server response could not be understood.' };
     } catch (e) {
-      return { ok: false, message: 'Request nahi bhej sake: ' + (e && e.message ? e.message : e) };
+      return { ok: false, message: 'Could not send the request: ' + (e && e.message ? e.message : e) };
     }
   }
 
   /* ---------------- blocked screen ---------------- */
   function showBlocked(res, opts, retryForce) {
-    var reasons = (res.blockers && res.blockers.length ? res.blockers : [res.message || 'Delete nahi ho sakti.']);
-    var body = '<div class="dialog-head"><div><h3>Delete nahi ho sakti</h3>'
+    var reasons = (res.blockers && res.blockers.length ? res.blockers : [res.message || 'Could not delete.']);
+    var body = '<div class="dialog-head"><div><h3>Could not delete</h3>'
              + '<p>' + esc(opts.name || res.label || '') + '</p></div>'
              + '<button class="close" data-dk="x">&times;</button></div>'
              + '<div class="dialog-body">'
@@ -77,20 +77,20 @@
              + '</div>';
 
     if (res.can_deactivate) {
-      body += '<p style="font-size:11px;margin-top:10px">Data bachate hue ise list se hatana ho to '
-            + '<b>Inactive</b> kar dein — history salamat rehti hai aur bills/reports nahi tootte.</p>';
+      body += '<p style="font-size:11px;margin-top:10px">To hide it from the list while keeping the data, mark it '
+            + '<b>Inactive</b> instead - history stays intact and bills/reports keep working.</p>';
     }
     if (res.can_force) {
-      body += '<label class="field" style="margin-top:12px"><span>Force delete ke liye manager password</span>'
+      body += '<label class="field" style="margin-top:12px"><span>Manager password for force delete</span>'
             + '<input type="password" data-dk="pw" placeholder="Manager password" autocomplete="off"></label>'
-            + '<label class="field"><span>Wajah (audit log ke liye)</span>'
-            + '<input data-dk="reason" placeholder="misal: ghalat entry thi"></label>'
+            + '<label class="field"><span>Reason (audit log ke liye)</span>'
+            + '<input data-dk="reason" placeholder="e.g. entered by mistake"></label>'
             + '<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger);margin-top:8px">'
-            + 'Force delete related rows samet permanent hai aur <b>wapas nahi aati</b>. '
-            + 'Yeh branch computers par bhi apply ho jayegi.</div>';
+            + 'Force delete including related rows permanent hai aur <b>cannot be undone</b>. '
+            + 'It will also apply on branch computers.</div>';
     }
     body += '</div><div class="dialog-foot"><button class="btn" data-dk="x">Cancel</button>'
-          + (res.can_deactivate ? '<button class="btn" data-dk="deact">Sirf Inactive karein</button>' : '')
+          + (res.can_deactivate ? '<button class="btn" data-dk="deact">Mark inactive only</button>' : '')
           + (res.can_force ? '<button class="btn danger" data-dk="force">Force delete</button>' : '')
           + '</div>';
 
@@ -104,7 +104,7 @@
       if (a === 'force') {
         var pw = (m.q('[data-dk="pw"]') || {}).value || '';
         var rs = (m.q('[data-dk="reason"]') || {}).value || '';
-        if (!pw) { toast('Manager password likhein', true); return; }
+        if (!pw) { toast('Enter the manager password', true); return; }
         m.close();
         retryForce('force', pw, rs);
       }
@@ -121,7 +121,7 @@
   */
   function confirmDelete(opts) {
     opts = opts || {};
-    if (!opts.id) { toast('Record id nahi mila', true); return; }
+    if (!opts.id) { toast('Record id is missing', true); return; }
 
     var action = opts.action || (opts.entity ? 'entity-delete' : 'records-delete');
     var what = opts.what || (opts.entity ? opts.entity.replace(/_/g, ' ') : 'record');
@@ -138,28 +138,28 @@
       if (!res.ok) {
         /* Server ka ASLI message. "rejected by cloud" jaisa be-maani
            message kabhi nahi. */
-        toast(res.message || 'Delete nahi ho saki', true);
+        toast(res.message || 'Could not delete', true);
         return;
       }
       if (res.result === 'BLOCKED') { showBlocked(res, opts, send); return; }
 
-      toast(res.message || 'Delete ho gaya');
+      toast(res.message || 'Deleted');
       if (typeof opts.onDone === 'function') opts.onDone(res);
       else setTimeout(function () { location.reload(); }, 450);
     }
 
     var m = overlay(
-      '<div class="dialog-head"><div><h3>' + esc(opts.title || 'Delete karein?') + '</h3>'
+      '<div class="dialog-head"><div><h3>' + esc(opts.title || 'Delete this?') + '</h3>'
       + '<p>' + esc(what) + (opts.name ? ': ' + esc(opts.name) : '') + '</p></div>'
       + '<button class="close" data-dk="x">&times;</button></div>'
       + '<div class="dialog-body">'
       + '<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)">'
-      + esc(opts.warning || 'Yeh record list se hat jayega. Agar kahin use ho raha hoga to system rok kar wajah batayega.')
+      + esc(opts.warning || 'This record will be removed from the list. If it is in use, the system will stop and tell you why.')
       + '</div>'
-      + '<label class="field" style="margin-top:12px"><span>Wajah <span class="hint">&middot; optional, audit log ke liye</span></span>'
-      + '<input data-dk="reason" placeholder="misal: duplicate entry"></label>'
+      + '<label class="field" style="margin-top:12px"><span>Reason <span class="hint">&middot; optional, for the audit log</span></span>'
+      + '<input data-dk="reason" placeholder="e.g. duplicate entry"></label>'
       + '</div>'
-      + '<div class="dialog-foot"><button class="btn" data-dk="x">Rehne dein</button>'
+      + '<div class="dialog-foot"><button class="btn" data-dk="x">Cancel</button>'
       + '<button class="btn danger" data-dk="go">Delete</button></div>'
     );
 
@@ -180,8 +180,8 @@
   /* ---------------- restore ---------------- */
   function restore(entity, id, onDone) {
     var res = call('entity-restore', { entity: entity, id: id });
-    if (!res.ok) { toast(res.message || 'Restore nahi ho saka', true); return; }
-    toast(res.message || 'Bahal ho gaya');
+    if (!res.ok) { toast(res.message || 'Could not restore', true); return; }
+    toast(res.message || 'Restored');
     if (typeof onDone === 'function') onDone(res);
     else setTimeout(function () { location.reload(); }, 450);
   }

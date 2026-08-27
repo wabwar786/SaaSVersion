@@ -21,7 +21,7 @@
 
     var r=req('pos-boot');
     if(!r.ok||!r.boot){
-      if(typeof toast==='function')toast('Live menu load nahi hua: '+(r.message||'server unreachable'));
+      if(typeof toast==='function')toast('Live menu could not be loaded: '+(r.message||'server unreachable'));
       return;
     }
     var b=r.boot;
@@ -66,7 +66,7 @@
       if(grid){
         var d=document.createElement('div');
         d.style.cssText='grid-column:1/-1;padding:30px;text-align:center;color:#5f6f66;font-size:13px';
-        d.innerHTML='🍽️ Menu abhi khali hai — POS ya Menu & Categories se items banayein, yahan foran aa jayenge.';
+        d.innerHTML='🍽️ Menu abhi is empty — POS ya Menu & Categories se items banayein, yahan foran aa jayenge.';
         grid.appendChild(d);
       }
     }

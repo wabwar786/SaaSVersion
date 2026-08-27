@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-/* API ka jawab HAMESHA saaf JSON hona chahiye.
+/* API ka jawab HAMESHA saaf JSON hona is required.
    Aap ke server par MySQL 8 ke "Undefined array key" warnings seedhe
    response mein chhap gaye aur poora JSON kharab kar diya — browser ko
    sirf "Request failed" dikha. Warnings log mein jayen, response mein nahi. */
@@ -8,14 +8,14 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
      phrase ke baghair aage nahi bhejta aur client tak 500 pohanchta tha.
      `csrf` flag se client naya token le kar khud ek dafa retry kar leta hai. */
   http_response_code(403);
-  echo json_encode(['ok'=>false,'csrf'=>true,'message'=>'Security token expire ho gaya tha. Dobara koshish ki ja rahi hai - agar phir bhi na chale to page refresh karein.'],JSON_UNESCAPED_UNICODE);
+  echo json_encode(['ok'=>false,'csrf'=>true,'message'=>'Your security token expired. Retrying automatically - if this keeps happening, refresh the page.'],JSON_UNESCAPED_UNICODE);
   exit;
 }}}
 function shift_report(array $sh, ?string $until): array {
@@ -301,12 +301,12 @@ ok(['diag'=>$out]);
 case 'qr':
  /* V64.2 — QR ab ISI computer par banta hai.
     Pehle POS `api.qrserver.com` (internet) se image mangwata tha aur
-    nakami par `onerror="this.remove()"` se QR khamoshi se gayab ho jata
+    nakami is missing the `onerror="this.remove()"` se QR khamoshi se gayab ho jata
     tha. Offline POS aur FBR bill ke liye yeh na-qabil-e-qabool hai. */
  $data=(string)($_GET['data']??'');
- if($data===''||strlen($data)>300)fail('data required (max 300 chars)');
+ if($data===''||strlen($data)>300)fail('data is required (max 300 characters)');
  $m=\Aio\Services\Qr::matrix($data);
- if(!$m)fail('QR nahi ban saka (data bohat lamba hai)');
+ if(!$m)fail('QR could not be generated (data is too long)');
  $n=count($m);$px=max(1,min(8,(int)($_GET['scale']??4)));$q=2;
  $side=($n+2*$q)*$px;
  $r='';
@@ -318,18 +318,34 @@ case 'qr':
  header('Content-Type: image/svg+xml');header('Cache-Control: public, max-age=86400');
  header('Content-Length: '.strlen($svg));echo $svg;exit;
 
+case 'licence-status':needLogin();
+ /* V65 — expiry ab software ke andar nazar aati hai. Pehle yeh sirf
+    cloud ke super-admin console mein thi; restaurant ka apna software
+    (aur khaas kar offline node) ko kuch pata hi nahi hota tha, aur
+    customer ek din aa kar dekhta tha ke software band hai. */
+ ok(['licence'=>Licence::current()]);
+
+case 'sync-licence':$stid=syncTenant();
+ /* Node yeh har sync par mangta hai aur locally cache karta hai, taake
+    net band ho tab bhi expiry ka pata rahe. */
+ ok(['licence'=>Licence::fromDb($stid)]);
+
+case 'about':
+ ok(['vendor'=>Licence::VENDOR,'build'=>trim((string)@file_get_contents(dirname(__DIR__).'/VERSION')),
+     'php'=>PHP_VERSION,'role'=>(string)cfg('app.role')]);
+
 case 'bill-templates':needLogin();ok(['templates'=>BillTemplate::options()]);
 
 case 'fiscal-test':needLogin();
- if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ if(!Auth::isManager())fail('Admins and Managers only',403);
  $r=FiscalService::test();ok(['result'=>$r]);
 
 case 'fiscal-pending':needLogin();
  ok(['pending'=>FiscalService::pending(),'available_here'=>FiscalService::availableHere()]);
 
 case 'fiscal-retry':needLogin();
- if(!Auth::isManager())fail('Sirf Admin/Manager',403);
- if(!FiscalService::availableHere())fail('FBR sirf offline version par chalta hai',403);
+ if(!Auth::isManager())fail('Admins and Managers only',403);
+ if(!FiscalService::availableHere())fail('FBR works only in the offline version',403);
  ok(FiscalService::retryPending());
 
 case 'settings-get':needLogin();
@@ -342,15 +358,15 @@ case 'settings-save':needLogin();$d=body();
  ok($r+['settings'=>SettingsService::get()]);
 
 case 'pos-settings':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$q->execute([tenant_id(),site_id()]);$j=$q->fetchColumn();$d=$j?(json_decode($j,true)?:[]):[];ok(['settings'=>['tax_cash'=>isset($d['tax_cash'])?(float)$d['tax_cash']:16.0,'tax_card'=>isset($d['tax_card'])?(float)$d['tax_card']:8.0,'service_charge'=>isset($d['service_charge'])?(float)$d['service_charge']:0.0]]);
-case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Settings sirf Admin/Manager badal sakta hai',403);$d=body();$val=['tax_cash'=>max(0,(float)($d['tax_cash']??16)),'tax_card'=>max(0,(float)($d['tax_card']??8)),'service_charge'=>max(0,(float)($d['service_charge']??0))];$p=DB::pdo();$q=$p->prepare("SELECT id FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");$q->execute([tenant_id(),site_id()]);$id=$q->fetchColumn();$json=json_encode($val,JSON_UNESCAPED_UNICODE);if($id)$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([$json,$id]);else $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at) VALUES(?,?,?,'pos_settings',?,0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$json]);ok(['settings'=>$val]);
-case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Picture change sirf Admin/Manager kar sakta hai',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('Valid image URL ya uploaded image chahiye');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);
-case 'pos-verify-manager':needLogin();$d=body();$pw=(string)($d['password']??'');if($pw==='')fail('Password required',422);$p=DB::pdo();$q=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");$q->execute([tenant_id()]);foreach($q->fetchAll() as $u){if($u['password_hash']&&password_verify($pw,$u['password_hash']))ok(['manager'=>$u['full_name'],'manager_id'=>$u['id']]);}fail('Manager password ghalat hai',401);
+case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change settings',403);$d=body();$val=['tax_cash'=>max(0,(float)($d['tax_cash']??16)),'tax_card'=>max(0,(float)($d['tax_card']??8)),'service_charge'=>max(0,(float)($d['service_charge']??0))];$p=DB::pdo();$q=$p->prepare("SELECT id FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");$q->execute([tenant_id(),site_id()]);$id=$q->fetchColumn();$json=json_encode($val,JSON_UNESCAPED_UNICODE);if($id)$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([$json,$id]);else $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at) VALUES(?,?,?,'pos_settings',?,0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$json]);ok(['settings'=>$val]);
+case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change pictures',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('A valid image URL or uploaded image is required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);
+case 'pos-verify-manager':needLogin();$d=body();$pw=(string)($d['password']??'');if($pw==='')fail('Password required',422);$p=DB::pdo();$q=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");$q->execute([tenant_id()]);foreach($q->fetchAll() as $u){if($u['password_hash']&&password_verify($pw,$u['password_hash']))ok(['manager'=>$u['full_name'],'manager_id'=>$u['id']]);}fail('Incorrect manager password',401);
 case 'bill-pdf':needLogin();
  /* V64 — layout ab BillTemplate se aata hai (Settings mein jo chuna gaya).
     Pehle yahan ek hi hardcoded shakl thi, aur Settings ki header/footer
     lines bill par aati hi nahi thin. Preview aur asli bill dono isi
     function se bante hain - do alag copies nahi. */
- $bill=preg_replace('/[^0-9A-Za-z-]/','',(string)($_GET['bill']??''));if($bill==='')fail('bill required');
+ $bill=preg_replace('/[^0-9A-Za-z-]/','',(string)($_GET['bill']??''));if($bill==='')fail('A bill number is required');
  $p=DB::pdo();
  $oq=$p->prepare("SELECT o.id,o.bill_no,o.service_mode,o.grand_total,o.subtotal,o.discount_amount,o.service_charge,o.tax_amount,o.closed_at,o.created_at,o.fiscal_invoice_no,o.fiscal_status,dt.display_name tbl,c.full_name cust,c.phone cphone,u.full_name cashier FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN users u ON u.id=o.created_by_user_id WHERE o.site_id=? AND o.bill_no=? ORDER BY o.created_at DESC LIMIT 1");
  $oq->execute([site_id(),$bill]);$o=$oq->fetch();if(!$o)fail('Bill not found',404);
@@ -388,7 +404,7 @@ case 'bill-preview':needLogin();
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');header('Content-Disposition: inline; filename="preview.pdf"');header('Content-Length: '.strlen($pdf));echo $pdf;exit;
 
-case 'menu-image-search':needLogin();$q=trim((string)($_GET['q']??''));if($q==='')fail('query required');$out=[];$src='suggested';$page=max(1,(int)($_GET['page']??1));
+case 'menu-image-search':needLogin();$q=trim((string)($_GET['q']??''));if($q==='')fail('A search term is required');$out=[];$src='suggested';$page=max(1,(int)($_GET['page']??1));
 $gk=getenv('GOOGLE_CSE_KEY')?:'';$gx=getenv('GOOGLE_CSE_CX')?:'';
 if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
  $raw=@file_get_contents('https://www.googleapis.com/customsearch/v1?searchType=image&num=10&start='.((($page-1)*10)+1).'&key='.rawurlencode($gk).'&cx='.rawurlencode($gx).'&q='.rawurlencode($q.' food'),false,$ctx);
@@ -397,7 +413,7 @@ if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
 if(!$out){try{$ctx2=stream_context_create(['http'=>['timeout'=>6,'header'=>"User-Agent: SaaSVersion-POS\r\n"]]);$raw2=@file_get_contents('https://api.openverse.org/v1/images/?q='.rawurlencode($q.' food').'&page='.$page.'&page_size=12',false,$ctx2);if($raw2){$j2=json_decode($raw2,true);foreach(($j2['results']??[]) as $r){if(!empty($r['thumbnail'])||!empty($r['url']))$out[]=['thumb'=>$r['thumbnail']??$r['url'],'url'=>$r['url']??$r['thumbnail'],'title'=>$r['title']??''];}}}catch(Throwable $e){}}
 if(!$out){$kw=strtolower(preg_replace('/[^a-z0-9 ]/i','',$q));$kw=implode(',',array_slice(preg_split('/\s+/',trim($kw))?:['food'],0,3));for($i=0;$i<8;$i++){$u='https://loremflickr.com/400/300/'.rawurlencode($kw?:'food').',food?lock='.(1000+$i);$out[]=['thumb'=>$u,'url'=>$u,'title'=>$q];}}
 ok(['images'=>array_slice($out,0,12),'source'=>$src]);
-case 'offline-package':needLogin();if(cfg('app.role')!=='cloud')fail('Offline version sirf online portal se download hoti hai',403);if(!Auth::isManager())fail('Sirf Admin/Manager offline version download kar sakta hai',403);
+case 'offline-package':needLogin();if(cfg('app.role')!=='cloud')fail('The offline version can only be downloaded from the online portal',403);if(!Auth::isManager())fail('Only an Admin or Manager can download the offline version',403);
 $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
 if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
@@ -610,9 +626,9 @@ header('Content-Disposition: attachment; filename="'.$pkgName.'.zip"');
 header('Content-Length: '.strlen($data));
 echo $data;exit;
 /* ============ QR TABLE ORDERING (session-based) ============ */
-case 'qr-tables':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);$p=DB::pdo();$q=$p->prepare("SELECT id,display_name,table_code FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$q->execute([site_id()]);$base=rtrim((string)cfg('app.base_url'),'/');$rows=[];foreach($q->fetchAll() as $t){$rows[]=['id'=>$t['id'],'name'=>$t['display_name'],'url'=>$base.'/qr.html?t='.rawurlencode((string)$t['id']).'&s='.rawurlencode(site_id())];}ok(['tables'=>$rows,'base'=>$base]);
+case 'qr-tables':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);$p=DB::pdo();$q=$p->prepare("SELECT id,display_name,table_code FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$q->execute([site_id()]);$base=rtrim((string)cfg('app.base_url'),'/');$rows=[];foreach($q->fetchAll() as $t){$rows[]=['id'=>$t['id'],'name'=>$t['display_name'],'url'=>$base.'/qr.html?t='.rawurlencode((string)$t['id']).'&s='.rawurlencode(site_id())];}ok(['tables'=>$rows,'base'=>$base]);
 case 'qr-start':$p=DB::pdo();$tid=(string)($_GET['t']??'');$sid=(string)($_GET['s']??'');if($tid===''||$sid==='')fail('Invalid QR');
- $tq=$p->prepare("SELECT dt.id,dt.display_name,dt.tenant_id,dt.site_id FROM dining_tables dt WHERE dt.id=? AND dt.site_id=? AND dt.is_active=1");$tq->execute([$tid,$sid]);$t=$tq->fetch();if(!$t)fail('QR valid nahi',404);
+ $tq=$p->prepare("SELECT dt.id,dt.display_name,dt.tenant_id,dt.site_id FROM dining_tables dt WHERE dt.id=? AND dt.site_id=? AND dt.is_active=1");$tq->execute([$tid,$sid]);$t=$tq->fetch();if(!$t)fail('Invalid QR code',404);
  $mins=(int)(getenv('QR_SESSION_MINUTES')?:90);
  $tok=bin2hex(random_bytes(20));$qid=uuid();
  $p->prepare("INSERT INTO qr_sessions(id,tenant_id,site_id,table_id,table_name,token,status,started_at,expires_at) VALUES(?,?,?,?,?,?,'ACTIVE',NOW(6),DATE_ADD(NOW(6),INTERVAL ? MINUTE))")
@@ -624,20 +640,20 @@ case 'qr-start':$p=DB::pdo();$tid=(string)($_GET['t']??'');$sid=(string)($_GET['
      'brand'=>['name'=>$br['n']??'Restaurant','logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'']]);
 case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok==='')fail('Session token required',401);
  $sq=$p->prepare("SELECT *, (expires_at > NOW(6)) AS alive FROM qr_sessions WHERE token=? LIMIT 1");$sq->execute([$tok]);$ses=$sq->fetch();
- if(!$ses)fail('Session valid nahi - QR dobara scan karein',401);
- if($ses['status']!=='ACTIVE')fail('Yeh session band ho chuki hai - QR dobara scan karein',401);
- if(!(int)$ses['alive']){$p->prepare("UPDATE qr_sessions SET status='EXPIRED' WHERE id=?")->execute([$ses['id']]);fail('Session ka waqt khatam - table par QR dobara scan karein',401);}
- $items=is_array($d['items']??null)?$d['items']:[];if(!$items)fail('Cart khali hai');
+ if(!$ses)fail('Invalid session - please scan the QR code again',401);
+ if($ses['status']!=='ACTIVE')fail('This session has ended - please scan the QR code again',401);
+ if(!(int)$ses['alive']){$p->prepare("UPDATE qr_sessions SET status='EXPIRED' WHERE id=?")->execute([$ses['id']]);fail('Session expired - please scan the QR code on your table again',401);}
+ $items=is_array($d['items']??null)?$d['items']:[];if(!$items)fail('Your cart is empty');
  $clean=[];$tot=0.0;
  foreach($items as $it){$mid=(string)($it['id']??'');$qty=(float)($it['qty']??0);if($mid===''||$qty<=0)continue;
    $mq=$p->prepare("SELECT name,base_price FROM menu_items WHERE id=? AND site_id=? AND is_active=1 AND deleted_at IS NULL");$mq->execute([$mid,$ses['site_id']]);$m=$mq->fetch();if(!$m)continue;
    $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],'note'=>(string)($it['note']??'')];
    $tot+=$qty*(float)$m['base_price'];}
- if(!$clean)fail('Koi valid item nahi');
+ if(!$clean)fail('No valid items');
  $oid=uuid();
  $p->prepare("INSERT INTO qr_orders(id,tenant_id,site_id,session_id,table_name,items_json,total,status,note,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
    ->execute([$oid,$ses['tenant_id'],$ses['site_id'],$ses['id'],$ses['table_name'],json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,(string)($d['note']??'')]);
- ok(['order_id'=>$oid,'total'=>$tot,'status'=>'PENDING','message'=>'Order cashier ko bhej diya gaya - confirm hone ka intezar karein']);
+ ok(['order_id'=>$oid,'total'=>$tot,'status'=>'PENDING','message'=>'Order cashier ko bhej diya gaya - confirm hone ka intezar please']);
 case 'qr-pending':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT id,table_name,items_json,total,note,created_at FROM qr_orders WHERE site_id=? AND status='PENDING' ORDER BY created_at");$q->execute([site_id()]);$rows=[];foreach($q->fetchAll() as $r){$rows[]=['id'=>$r['id'],'table'=>$r['table_name'],'items'=>json_decode((string)$r['items_json'],true)?:[],'total'=>(float)$r['total'],'note'=>$r['note'],'at'=>substr((string)$r['created_at'],11,5)];}ok(['orders'=>$rows]);
 case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtoupper((string)($d['action']??''));if(!in_array($act,['ACCEPTED','REJECTED'],true))fail('action required');
  $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
@@ -656,16 +672,16 @@ case 'entity-delete':needLogin();$d=body();
  $id=(string)($d['id']??'');
  $mode=strtolower((string)($d['mode']??'auto'));
  if(!in_array($mode,['auto','force','deactivate'],true))$mode='auto';
- if($ent===''||!DeleteService::has($ent))fail('Unknown entity: '.$ent);
+ if($ent===''||!DeleteService::has($ent))fail('Unknown record type: '.$ent);
  /* Force delete par manager password lazmi — ek click se permanent
     delete kabhi nahi. */
  if($mode==='force'){
    $pw=(string)($d['manager_password']??'');
-   if($pw==='')fail('Force delete ke liye manager password zaroori hai',422);
+   if($pw==='')fail('A manager password is required for force delete',422);
    $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
    $mq->execute([tenant_id()]);$okpw=false;
    foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
-   if(!$okpw)fail('Manager password ghalat hai',401);
+   if(!$okpw)fail('Incorrect manager password',401);
  }
  try{$r=DeleteService::delete($ent,$id,$mode,(string)($d['reason']??''));}
  catch(Throwable $e){fail($e->getMessage());}
@@ -673,24 +689,24 @@ case 'entity-delete':needLogin();$d=body();
 
 case 'entity-restore':needLogin();$d=body();
  $ent=preg_replace('/[^a-z_]/','',strtolower((string)($d['entity']??'')));
- if($ent===''||!DeleteService::has($ent))fail('Unknown entity: '.$ent);
+ if($ent===''||!DeleteService::has($ent))fail('Unknown record type: '.$ent);
  try{$r=DeleteService::restore($ent,(string)($d['id']??''));}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r);
 
-case 'recycle-bin':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+case 'recycle-bin':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  ok(['rows'=>DeleteService::recycleBin((int)($_GET['days']??30))]);
 
 case 'delete-entities':needLogin();ok(['entities'=>DeleteService::entities()]);
 
 case 'order-void':needLogin();$d=body();
- if(!Auth::isManager())fail('Bill void sirf Admin/Manager kar sakta hai',403);
+ if(!Auth::isManager())fail('Only an Admin or Manager can void a bill',403);
  $pw=(string)($d['manager_password']??'');
- if($pw==='')fail('Manager password zaroori hai',422);
+ if($pw==='')fail('Manager password is required',422);
  $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
  $mq->execute([tenant_id()]);$mid=null;
  foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$mid=$mu['id'];break;}}
- if(!$mid)fail('Manager password ghalat hai',401);
+ if(!$mid)fail('Incorrect manager password',401);
  try{$r=DeleteService::voidOrder((string)($d['id']??''),(string)($d['reason']??''),$mid);}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r);
@@ -702,46 +718,46 @@ case 'order-void':needLogin();$d=body();
    badal jayega. Ab alag, saaf endpoint. */
 case 'user-password':needLogin();Auth::requireModule('users');$d=body();
  $uid=(string)($d['id']??'');$np=(string)($d['password']??'');
- if($uid==='')fail('User required');
- if(strlen($np)<4)fail('Password kam az kam 4 characters ka hona chahiye');
+ if($uid==='')fail('A user is required');
+ if(strlen($np)<4)fail('Password must be at least 4 characters');
  $p=DB::pdo();$q=$p->prepare("SELECT id,full_name FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
  $q->execute([$uid,tenant_id()]);$u=$q->fetch();
- if(!$u)fail('User nahi mila');
+ if(!$u)fail('User not found');
  [$h,$alg]=UserService::passwordHash($np);
  $p->prepare("UPDATE users SET password_hash=?,password_algo=?,must_change_password=?,updated_at=NOW(6) WHERE id=?")
    ->execute([$h,$alg,!empty($d['must_change'])?1:0,$uid]);
- ok(['message'=>$u['full_name'].' ka password badal diya gaya.','state'=>accessState()]);
+ ok(['message'=>'Password changed for '.$u['full_name'].'.','state'=>accessState()]);
 
 case 'user-status':needLogin();Auth::requireModule('users');$d=body();
  $uid=(string)($d['id']??'');$st=strtoupper((string)($d['status']??''));
- if(!in_array($st,['ACTIVE','SUSPENDED'],true))fail('status ACTIVE ya SUSPENDED');
- if($uid==='')fail('User required');
- if($uid===(current_user()['id']??''))fail('Aap apna hi account suspend nahi kar sakte.');
+ if(!in_array($st,['ACTIVE','SUSPENDED'],true))fail('status must be ACTIVE or SUSPENDED');
+ if($uid==='')fail('A user is required');
+ if($uid===(current_user()['id']??''))fail('You cannot suspend your own account.');
  $p=DB::pdo();
  if($st==='SUSPENDED'){
    /* Aakhri zinda admin kabhi band na ho, warna business se sab bahar. */
    $c=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE' AND deleted_at IS NULL AND id<>?");
    $c->execute([tenant_id(),$uid]);
    $isAdm=$p->prepare("SELECT is_tenant_admin FROM users WHERE id=? AND tenant_id=?");$isAdm->execute([$uid,tenant_id()]);
-   if((int)$isAdm->fetchColumn()===1&&(int)$c->fetchColumn()===0)fail('Yeh akhri active admin hai — suspend nahi ho sakta.');
+   if((int)$isAdm->fetchColumn()===1&&(int)$c->fetchColumn()===0)fail('This is the last active admin and cannot be suspended.');
  }
  $st2=$p->prepare("UPDATE users SET status=?,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
  $st2->execute([$st,$uid,tenant_id()]);
- if($st2->rowCount()<1)fail('User nahi mila ya pehle hi isi halat mein hai.');
- ok(['message'=>'User '.($st==='ACTIVE'?'activate':'suspend').' ho gaya.','state'=>accessState()]);
+ if($st2->rowCount()<1)fail('User not found, or already in that state.');
+ ok(['message'=>'User '.($st==='ACTIVE'?'activate':'suspend').' done.','state'=>accessState()]);
 
 case 'user-delete':needLogin();Auth::requireModule('users');$d=body();
  $uid=(string)($d['id']??'');
- if($uid==='')fail('User required');
- if($uid===(current_user()['id']??''))fail('Aap apna hi account delete nahi kar sakte.');
+ if($uid==='')fail('A user is required');
+ if($uid===(current_user()['id']??''))fail('You cannot delete your own account.');
  $p=DB::pdo();
  $isAdm=$p->prepare("SELECT is_tenant_admin,full_name FROM users WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
  $isAdm->execute([$uid,tenant_id()]);$row=$isAdm->fetch();
- if(!$row)fail('User nahi mila');
+ if(!$row)fail('User not found');
  if((int)$row['is_tenant_admin']===1){
    $c=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE' AND deleted_at IS NULL AND id<>?");
    $c->execute([tenant_id(),$uid]);
-   if((int)$c->fetchColumn()===0)fail('Yeh akhri admin hai — delete nahi ho sakta. Pehle doosra admin banayein.');
+   if((int)$c->fetchColumn()===0)fail('This is the last admin and cannot be deleted. Create another admin first.');
  }
  try{$r=DeleteService::delete('user',$uid,strtolower((string)($d['mode']??'auto'))==='force'?'force':'auto',(string)($d['reason']??''));}
  catch(Throwable $e){fail($e->getMessage());}
@@ -755,7 +771,7 @@ case 'users-list':
     yani sirf USI restaurant ke users. Bina slug ke koi list nahi milti. */
  if(cfg('app.role')==='cloud'){
    $lt=(string)($_SESSION['login_tenant_id']??'');
-   if($lt==='')fail('Business link ke baghair user list available nahi',403);
+   if($lt==='')fail('The user list is not available without a business link',403);
  }
  $p=DB::pdo();$q=$p->prepare("SELECT u.id,u.username,u.email,u.full_name,u.is_tenant_admin,
      COALESCE((SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id LIMIT 1),'') role_name
@@ -766,7 +782,7 @@ case 'users-list':
  ok(['users'=>$rows,'mode'=>'local']);
 
 /* ============ DEVICE PAIRING (tablet / mobile over LAN) ============ */
-case 'device-pair-start':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+case 'device-pair-start':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  $d=body();$role=strtoupper((string)($d['role']??'WAITER'));
  if(!in_array($role,['WAITER','CASHIER','KDS','MANAGER'],true))$role='WAITER';
  $p=DB::pdo();$tok=bin2hex(random_bytes(16));$did=uuid();
@@ -796,7 +812,7 @@ case 'device-pair-claim':
  if($tok==='')fail('Pairing code required',400);
  $q=$p->prepare("SELECT *, (expires_at > NOW(6)) alive FROM paired_devices WHERE pair_token=? LIMIT 1");
  $q->execute([$tok]);$dev=$q->fetch();
- if(!$dev)fail('Pairing code valid nahi - POS se naya QR banayein',401);
+ if(!$dev)fail('Invalid pairing code - generate a new QR from the POS',401);
  if($dev['status']==='REVOKED')fail('Yeh device revoke ho chuka hai',403);
  if($dev['status']==='PENDING'&&!(int)$dev['alive'])fail('Pairing code ka waqt khatam - POS se naya QR banayein',401);
  /* device ko us user ki session mil jati hai jisne QR banaya (role-limited) */
@@ -811,10 +827,10 @@ case 'device-pair-claim':
         'KDS'=>'/kds.html','MANAGER'=>'/index.html'][$dev['device_role']]??'/index.html';
  ok(['device'=>$dev['device_name'],'role'=>$dev['device_role'],'redirect'=>$land]);
 
-case 'device-list':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+case 'device-list':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  $q=DB::pdo()->prepare("SELECT id,device_name,device_role,status,paired_at,last_seen_at FROM paired_devices WHERE site_id=? AND status<>'REVOKED' ORDER BY created_at DESC LIMIT 50");
  $q->execute([site_id()]);ok(['devices'=>$q->fetchAll()]);
-case 'device-revoke':needLogin();if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+case 'device-revoke':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  $d=body();DB::pdo()->prepare("UPDATE paired_devices SET status='REVOKED' WHERE id=? AND site_id=?")->execute([(string)($d['id']??''),site_id()]);ok();
 
 case 'my-modules':needLogin();$u=Auth::user();ok(['modules'=>($u['modules']??[]),'admin'=>!empty($u['is_tenant_admin']),'manager'=>Auth::isManager(),'name'=>$u['full_name']??'']);
@@ -834,7 +850,7 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
  /* 1) Isi user ki koi shift pehle se open? */
  $q=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
  $q->execute([site_id(),$uid]);
- if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' pehle se open hai. Pehle usay close karein.');
+ if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' pehle se open hai. Pehle usay close please.');
  /* 2) Isi counter par kisi aur ki shift open? (do cashier ek counter par nahi) */
  $counter=trim((string)($d['counter']??''))?:'Counter 1';
  $c=$p->prepare("SELECT cs.shift_no,u.full_name FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN' AND cs.counter_name=? LIMIT 1");
@@ -843,7 +859,7 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
  /* 3) Pichli shift ka cash clear hua? */
  $lc=$p->prepare("SELECT shift_no,cash_cleared FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
  $lc->execute([site_id(),$uid]);
- if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear nahi hua. Pehle usay clear karein.'); }
+ if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear nahi hua. Pehle usay clear please.'); }
  $sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));
  $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
    VALUES(?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")
@@ -857,18 +873,18 @@ case 'shift-users':needLogin();
 
 case 'shift-clear-cash':needLogin();$d=body();$p=DB::pdo();$sid=(string)($d['shift_id']??'');
  $q=$p->prepare("SELECT * FROM cashier_shifts WHERE id=? AND site_id=? AND status='CLOSED' LIMIT 1");$q->execute([$sid,site_id()]);
- $sh=$q->fetch(); if(!$sh)fail('Closed shift nahi mili');
+ $sh=$q->fetch(); if(!$sh)fail('Closed shift not found');
  if((int)$sh['cash_cleared'])ok(['already'=>true]);
  $amt=(float)($d['amount']??$sh['actual_cash']);
  $p->prepare("UPDATE cashier_shifts SET cash_cleared=1,cleared_amount=?,updated_at=NOW(6) WHERE id=?")->execute([$amt,$sid]);
  ok(['cleared'=>$amt,'shift_no'=>$sh['shift_no']]);
 
 case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$uid=current_user()['id']??'';
- $toUser=(string)($d['to_user_id']??'');if($toUser==='')fail('Naya cashier select karein');
+ $toUser=(string)($d['to_user_id']??'');if($toUser==='')fail('Naya cashier select please');
  $q=$p->prepare("SELECT * FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");
- $q->execute([site_id(),$uid]);$sh=$q->fetch(); if(!$sh)fail('Aap ki koi open shift nahi');
+ $q->execute([site_id(),$uid]);$sh=$q->fetch(); if(!$sh)fail('You have no open shift');
  $uq=$p->prepare("SELECT id,full_name FROM users WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL");
- $uq->execute([$toUser,tenant_id()]);$nu=$uq->fetch(); if(!$nu)fail('Naya cashier valid nahi');
+ $uq->execute([$toUser,tenant_id()]);$nu=$uq->fetch(); if(!$nu)fail('The new cashier is not valid');
  $oc=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
  $oc->execute([site_id(),$toUser]);
  if($x=$oc->fetchColumn())fail($nu['full_name'].' ki shift '.$x.' pehle se open hai.');
@@ -903,15 +919,15 @@ case 'shift-handovers':needLogin();
  $q->execute([site_id()]);ok(['handovers'=>$q->fetchAll()]);
 
 case 'shift-preview':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No open shift.');ok(['report'=>shift_report($sh,null)]);
-case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('Aap ki koi open shift nahi.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
+case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
  $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
    ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
-case 'menu-category-create':needLogin();if(!Auth::isManager())fail('Category create sirf Admin/Manager kar sakta hai',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
-case 'menu-item-rate':needLogin();if(!Auth::isManager())fail('Rate change sirf Admin/Manager kar sakta hai',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
+case 'menu-category-create':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
+case 'menu-item-rate':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
 case 'pos-table-create':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tables'))fail('Permission denied',403);$d=body();$nm=trim((string)($d['name']??''));if($nm==='')fail('Table name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$nm]);if($q->fetchColumn())fail('Table already exists');$f=$p->prepare("SELECT id FROM floors WHERE site_id=? AND is_active=1 ORDER BY sort_order LIMIT 1");$f->execute([site_id()]);$fid=$f->fetchColumn();if(!$fid){$fid=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,'Main Floor',1,1)")->execute([$fid,tenant_id(),site_id()]);}$tid=uuid();$code=strtoupper(substr(preg_replace('/[^A-Za-z0-9]/','',$nm),0,10))?:('T'.substr(str_replace('-','',$tid),0,4));$p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,'SQUARE','AVAILABLE',1)")->execute([$tid,tenant_id(),site_id(),$fid,$code,$nm,(int)($d['seats']??4)]);ok(['id'=>$tid,'name'=>$nm]);
-case 'pos-quick-item':needLogin();if(!Auth::isManager())fail('Item create sirf Admin/Manager kar sakta hai',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
+case 'pos-quick-item':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
 $itemType=($d['type']??'standard')==='weighted'?'WEIGHTED':'STANDARD';$consumption='NONE';$directId=null;$directQty=null;
 $inv=is_array($d['inventory']??null)?$d['inventory']:[];$mode=(string)($inv['mode']??'none');
 if($mode==='existing'&&!empty($inv['item_id'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$iq->execute([(string)$inv['item_id'],site_id()]);$directId=$iq->fetchColumn()?:null;if(!$directId)fail('Selected inventory item not found');$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
@@ -1089,7 +1105,7 @@ case 'sync-push-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
  ok(['tables'=>$out]);
 
 case 'sync-push':$stid=syncTenant();syncNodeSeen($stid);$d=body();$tbl=(string)($d['table']??'');
- if(!syncTableAllowed($tbl))fail('Table sync ke liye allowed nahi: '.$tbl,403);
+ if(!syncTableAllowed($tbl))fail('This table is not allowed for sync: '.$tbl,403);
  Sync::$lastConflicts=[];
  $sent=count($d['rows']??[]);
  $n=Sync::applyRows($tbl,$d['rows']??[],$stid);
@@ -1100,7 +1116,7 @@ case 'sync-push':$stid=syncTenant();syncNodeSeen($stid);$d=body();$tbl=(string)(
      'conflict_detail'=>array_slice($conf,0,5),
      'row_error'=>Sync::$lastRowErrors[$tbl]??null]);
 case 'sync-pull':$stid=syncTenant();syncNodeSeen($stid);$d=body();$t=(string)($d['table']??'');
- if(!syncTableAllowed($t))fail('Table sync ke liye allowed nahi: '.$t,403);
+ if(!syncTableAllowed($t))fail('This table is not allowed for sync: '.$t,403);
  $GLOBALS['sync_tenant_id']=$stid;
  $GLOBALS['sync_site_id']=(string)($d['site_id']??'');$since=(string)($d['since']??'1970-01-01 00:00:00.000000');$lim=(int)($d['limit']??300);$rows=Sync::changedRows($t,$since,$lim);$ts=Sync::tsCol($t);$wm=($rows&&$ts)?end($rows)[$ts]:$since;
  if($rows)syncActivityLog($stid,'PULL',$t,count($rows));
@@ -1194,7 +1210,7 @@ case 'sync-state':needLogin();
 
 case 'sync-run':needLogin();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
- if(cfg('app.role')==='cloud')fail('Yeh cloud server hai - sync offline node se chalti hai. Yahan sirf status dekha ja sakta hai.',400);
+ if(cfg('app.role')==='cloud')fail('This is the cloud server - sync runs from the offline node. Only status can be viewed here.',400);
  $why=Sync::statusReason();
  if($why!=='')fail($why,400);
  ok(Sync::run('manual'));
@@ -1212,42 +1228,42 @@ case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg
     aur client jawab check hi nahi karta tha: user ko "Record removed"
     dikhta tha aur reload par row wapas aa jati thi. Ab har rasta ya to
     asli natija deta hai ya asli wajah. */
- if($id==='')fail('Record id required');
+ if($id==='')fail('Record id is required');
  $mode=strtolower((string)($d['mode']??'auto'));if(!in_array($mode,['auto','force','deactivate'],true))$mode='auto';
  if(ModuleBridge::handles($mod)){
    if($mode==='force'){
-     $pw=(string)($d['manager_password']??'');if($pw==='')fail('Force delete ke liye manager password zaroori hai',422);
+     $pw=(string)($d['manager_password']??'');if($pw==='')fail('A manager password is required for force delete',422);
      $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
      $mq->execute([tenant_id()]);$okpw=false;
      foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
-     if(!$okpw)fail('Manager password ghalat hai',401);
+     if(!$okpw)fail('Incorrect manager password',401);
    }
    try{$r=ModuleBridge::delete($mod,$id,$mode,(string)($d['reason']??''));}catch(Throwable $e){fail($e->getMessage());}
    ok($r+['bridged'=>true]);
  }
  $st=DB::pdo()->prepare("UPDATE ui_records SET deleted=1,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=? AND deleted=0");
  $st->execute([$id,tenant_id(),$mod]);
- if($st->rowCount()<1)fail('Record nahi mila (ya pehle hi delete ho chuka hai). Screen refresh karein.');
- ok(['result'=>'DELETED','message'=>'Record delete ho gaya.']);
+ if($st->rowCount()<1)fail('Record not found, or it was already deleted. Please refresh the screen.');
+ ok(['result'=>'DELETED','message'=>'Record deleted.']);
 case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??''))){
  /* V62.3 — "Invalid platform credentials" bilkul be-maani tha: user ko
     pata hi nahi chalta tha ke aage kya karna hai. Hifazat ke liye hum
     ab bhi nahi batate ke email galat thi ya password, magar rasta zaroor
     batate hain. */
  $n=0;try{$n=(int)DB::pdo()->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn();}catch(Throwable $e){}
- fail('Email ya password ghalat hai.'.($n?(' Is server par '.$n.' platform account maujood hai. Password bhool gaye hain to server par chalayein:  php scripts/reset_super_admin.php'):' Is server par koi active platform account hi nahi - chalayein:  php scripts/reset_super_admin.php --email="<email>" --password="<pass>" --create'),401);
+ fail('Email ya password ghalat hai.'.($n?(' Is server par '.$n.' platform account maujood hai. Password bhool gaye hain to server par please run:  php scripts/reset_super_admin.php'):' Is server par koi active platform account hi nahi - please run:  php scripts/reset_super_admin.php --email="<email>" --password="<pass>" --create'),401);
 }$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
 case 'sa-logout':Platform::superLogout();ok();
 case 'sa-me':$u=Platform::superUser();ok(['user'=>$u?['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]:null]);
 case 'sa-plans':needSuper();ok(['plans'=>DB::pdo()->query("SELECT id,name,price,billing_cycle FROM subscription_plans WHERE is_active=1 ORDER BY price")->fetchAll()]);
 case 'sa-business-list':needSuper();ok(['businesses'=>Platform::listBusinesses()]);
 case 'sa-business-create':needSuper();$d=body();$r=Platform::provisionBusiness($d);ok(['business'=>$r]);
-case 'sa-branding-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$logo=(string)($d['logo_url']??'');if($logo!==''&&strlen($logo)>1500000)fail('Logo too large (max ~1MB)');DB::pdo()->prepare("UPDATE tenants SET display_name=?,logo_url=?,brand_color=?,brand_accent=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['display_name']??''))?:null,$logo!==''?$logo:null,trim((string)($d['brand_color']??''))?:null,trim((string)($d['brand_accent']??''))?:null,$tid]);ok(['message'=>'Branding saved']);
-case 'sa-features-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$q=$p->prepare("SELECT features_json FROM tenants WHERE id=?");$q->execute([$tid]);$j=$q->fetchColumn();$sel=$j?(json_decode((string)$j,true)?:[]):null;$all=$p->query("SELECT module_key,name title FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll();ok(['modules'=>$all,'selected'=>$sel]);
-case 'sa-features-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$f=is_array($d['features']??null)?array_values(array_unique(array_map('strval',$d['features']))):[];DB::pdo()->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")->execute([$f?json_encode($f):null,$tid]);ok(['count'=>count($f)]);
-case 'sa-wa-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id required');$q=DB::pdo()->prepare("SELECT wa_api_url,wa_api_key,wa_events_json FROM tenants WHERE id=?");$q->execute([$tid]);$r=$q->fetch()?:[];ok(['wa'=>['url'=>$r['wa_api_url']??'','key'=>$r['wa_api_key']??'','events'=>$r['wa_events_json']?(json_decode((string)$r['wa_events_json'],true)?:[]):[]]]);
-case 'sa-wa-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$ev=is_array($d['events']??null)?array_values(array_map('strval',$d['events'])):[];DB::pdo()->prepare("UPDATE tenants SET wa_api_url=?,wa_api_key=?,wa_events_json=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['url']??''))?:null,trim((string)($d['key']??''))?:null,json_encode($ev),$tid]);ok(['events'=>count($ev)]);
-case 'sa-wa-test':needSuper();$d=body();$url=rtrim(trim((string)($d['url']??'')),'/');$key=trim((string)($d['key']??''));if($url===''||$key==='')fail('URL and API key required');$ctx=stream_context_create(['http'=>['method'=>'GET','timeout'=>8,'header'=>"x-api-key: $key\r\nContent-Type: application/json\r\n",'ignore_errors'=>true]]);$raw=@file_get_contents($url.'/api/status',false,$ctx);if($raw===false)fail('Connect nahi ho saka - URL check karein');ok(['status'=>json_decode($raw,true)?:$raw]);
+case 'sa-branding-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$logo=(string)($d['logo_url']??'');if($logo!==''&&strlen($logo)>1500000)fail('Logo too large (max ~1MB)');DB::pdo()->prepare("UPDATE tenants SET display_name=?,logo_url=?,brand_color=?,brand_accent=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['display_name']??''))?:null,$logo!==''?$logo:null,trim((string)($d['brand_color']??''))?:null,trim((string)($d['brand_accent']??''))?:null,$tid]);ok(['message'=>'Branding saved']);
+case 'sa-features-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT features_json FROM tenants WHERE id=?");$q->execute([$tid]);$j=$q->fetchColumn();$sel=$j?(json_decode((string)$j,true)?:[]):null;$all=$p->query("SELECT module_key,name title FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll();ok(['modules'=>$all,'selected'=>$sel]);
+case 'sa-features-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$f=is_array($d['features']??null)?array_values(array_unique(array_map('strval',$d['features']))):[];DB::pdo()->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")->execute([$f?json_encode($f):null,$tid]);ok(['count'=>count($f)]);
+case 'sa-wa-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$q=DB::pdo()->prepare("SELECT wa_api_url,wa_api_key,wa_events_json FROM tenants WHERE id=?");$q->execute([$tid]);$r=$q->fetch()?:[];ok(['wa'=>['url'=>$r['wa_api_url']??'','key'=>$r['wa_api_key']??'','events'=>$r['wa_events_json']?(json_decode((string)$r['wa_events_json'],true)?:[]):[]]]);
+case 'sa-wa-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$ev=is_array($d['events']??null)?array_values(array_map('strval',$d['events'])):[];DB::pdo()->prepare("UPDATE tenants SET wa_api_url=?,wa_api_key=?,wa_events_json=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['url']??''))?:null,trim((string)($d['key']??''))?:null,json_encode($ev),$tid]);ok(['events'=>count($ev)]);
+case 'sa-wa-test':needSuper();$d=body();$url=rtrim(trim((string)($d['url']??'')),'/');$key=trim((string)($d['key']??''));if($url===''||$key==='')fail('URL and API key required');$ctx=stream_context_create(['http'=>['method'=>'GET','timeout'=>8,'header'=>"x-api-key: $key\r\nContent-Type: application/json\r\n",'ignore_errors'=>true]]);$raw=@file_get_contents($url.'/api/status',false,$ctx);if($raw===false)fail('Could not connect - please check the URL');ok(['status'=>json_decode($raw,true)?:$raw]);
 case 'sa-dashboard':needSuper();$p=DB::pdo();$n=function($sql,$a=[])use($p){$q=$p->prepare($sql);$q->execute($a);return (int)$q->fetchColumn();};
 $out=['businesses'=>$n("SELECT COUNT(*) FROM tenants WHERE slug IS NOT NULL AND deleted_at IS NULL"),
  'active'=>$n("SELECT COUNT(*) FROM tenants WHERE slug IS NOT NULL AND status='ACTIVE' AND deleted_at IS NULL"),
@@ -1263,7 +1279,7 @@ $out['recent_payments']=$pay;
 ok(['dash'=>$out]);
 /* ============ SUPER ADMIN: BACKUP / RESET / IMPORT ============ */
 case 'sa-backup':needSuper();
- $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $scope=strtoupper((string)($_GET['scope']??'FULL'));if(!in_array($scope,['MASTER','FULL'],true))$scope='FULL';
  $p=DB::pdo();$q=$p->prepare("SELECT slug,name FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
  if(!$t)fail('Business not found',404);
@@ -1288,7 +1304,7 @@ case 'sa-backup-list':needSuper();
  $q->execute([$tid]);ok(['backups'=>$q->fetchAll()]);
 
 case 'sa-factory-reset':needSuper();$d=body();
- $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $mode=strtoupper((string)($d['mode']??'TXN'));if(!in_array($mode,['TXN','FULL'],true))$mode='TXN';
  $p=DB::pdo();$q=$p->prepare("SELECT name,slug FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
  if(!$t)fail('Business not found',404);
@@ -1307,7 +1323,7 @@ case 'sa-factory-reset':needSuper();$d=body();
 
 case 'sa-console':needSuper();$d=body();
  $cmd=(string)($d['cmd']??'');
- /* Console ka jawab HAMESHA JSON hona chahiye. Pehle koi PHP fatal ya
+ /* Console ka jawab HAMESHA JSON hona is required. Pehle koi PHP fatal ya
     timeout aata to browser ko HTML/khali response milta aur wo sirf
     "Request failed" dikhata — asli wajah kahin nazar hi nahi aati thi. */
  @set_time_limit(180);
@@ -1331,7 +1347,7 @@ case 'sa-console':needSuper();$d=body();
  }
 
 case 'sa-business-delete':needSuper();$d=body();
- $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $p=DB::pdo();$q=$p->prepare("SELECT name,slug FROM tenants WHERE id=?");$q->execute([$tid]);$t=$q->fetch();
  if(!$t)fail('Business not found',404);
  if(trim((string)($d['confirm_name']??''))!==trim((string)$t['name']))
@@ -1351,7 +1367,7 @@ case 'sa-import-inspect':needSuper();
 case 'sa-import-run':needSuper();
  $raw=file_get_contents('php://input');$d=json_decode($raw,true);
  if(!is_array($d))fail('Bad request');
- $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $file=(string)($d['file']??'');if($file==='')fail('No file content received');
  $mode=strtoupper((string)($d['mode']??'SKIP'));if(!in_array($mode,['SKIP','UPDATE'],true))$mode='SKIP';
  $only=is_array($d['only']??null)?array_map('strval',$d['only']):[];
@@ -1398,11 +1414,11 @@ case 'sa-sync-monitor':needSuper();
  ok(['nodes'=>$n,'today'=>$a,'failures'=>$f]);
 
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
-case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
-case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
+case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
+case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
 case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');$exp=trim((string)($d['expiry_date']??''));if($tid===''||$exp==='')fail('tenant_id and expiry_date required');$amount=(float)($d['amount']??0);$p=DB::pdo();$q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");$q->execute([$tid]);$sub=$q->fetchColumn();if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);}else{$sub=uuid();$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);}if($amount>0){$p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Renewal',Platform::superUser()['id']]);}$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);ok(['message'=>'Renewed till '.$exp]);
-case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
-case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);
+case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
+case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);
 case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations','sites','users','platform_users','platform_modules','subscription_plans','tenant_subscriptions','subscription_payments','orders','order_items','payments','payment_methods','customers','suppliers','menu_items','menu_categories','inventory_items','stock_balances','kitchen_tickets','cashier_shifts','expenses','ui_records','sync_state'];$missing=[];foreach($need as $t){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$t]);if(!(int)$q->fetchColumn())$missing[]=$t;}$cols=[];foreach([['tenants','slug'],['tenants','industry_code'],['tenants','sync_token'],['tenants','owner_email'],['suppliers','city'],['suppliers','category']] as $c){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");$q->execute($c);if(!(int)$q->fetchColumn())$cols[]=implode('.',$c);}ok(['db'=>cfg('db.database'),'php'=>PHP_VERSION,'role'=>cfg('app.role'),'missing_tables'=>$missing,'missing_columns'=>$cols,'healthy'=>!$missing&&!$cols]);
 default:fail('Unknown API action',404);}
 }catch(Throwable $e){

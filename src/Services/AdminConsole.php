@@ -167,9 +167,9 @@ final class AdminConsole
             ['t' => 'i',  'v' => ''],
             ['t' => 'd',  'v' => 'purge groups: transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs'],
             ['t' => 'd',  'v' => 'reset/purge se pehle 1 ghante ke andar backup lazmi hai (logs/sync ke ilawa).'],
-            ['t' => 'd',  'v' => '--confirm mein business ka POORA NAAM chahiye, slug nahi. <slug> ke brackets na likhein.'],
+            ['t' => 'd',  'v' => '--confirm mein business ka POORA NAAM is required, slug nahi. <slug> ke brackets na likhein.'],
             ['t' => 'd',  'v' => 'Poori tafseel: docs/CONSOLE_COMMANDS.md'],
-            ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh chalayein'],
+            ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh please run'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
         ]);
     }
@@ -190,7 +190,7 @@ final class AdminConsole
 
     /**
      * Server par sab kuch mojood hai ya nahi — jab koi command "Request
-     * failed" de to sab se pehle yehi chalayein.
+     * failed" de to sab se pehle yehi please run.
      */
     private static function cmdSelftest(string $slug): array
     {
@@ -441,7 +441,7 @@ final class AdminConsole
      * resync — BRANCH COMPUTER ko cloud ke barabar laata hai.
      *
      * Yeh command us haqiqi masle ke liye hai jahan cloud par data 0 hai
-     * magar branch computer par purana data abhi bhi nazar aata hai. Wajah:
+     * magar branch computer par purana data abhi bhi nazar aata hai. Reason:
      * purane build mein sync sirf "kya badla" bhejti thi, "kya mit gaya"
      * ka koi channel tha hi nahi — is liye cloud par ki hui delete kabhi
      * node tak pohanchti hi nahi thi.
@@ -474,7 +474,7 @@ final class AdminConsole
                 $n++; $names[] = $name;
             } catch (\Throwable $e) {
                 return self::err('Tombstone nahi likha ja saka: ' . $e->getMessage()
-                               . '  — pehle `php scripts/migrate_delete_support.php` chalayein.');
+                               . '  — pehle `php scripts/migrate_delete_support.php` first.');
             }
         }
 
@@ -510,7 +510,7 @@ final class AdminConsole
             $q->execute($args);
             $rows = $q->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
-            return self::err('sync_tombstones table nahi mili — `php scripts/migrate_delete_support.php` chalayein.');
+            return self::err('sync_tombstones table not found — `php scripts/migrate_delete_support.php` first.');
         }
         if (!$rows) return self::out([['t' => 'd', 'v' => 'Koi delete signal nahi.']]);
 
@@ -529,7 +529,7 @@ final class AdminConsole
      * permissions — har user ke modules, aur yeh ke wo kahan se aa rahe hain.
      *
      * Yeh command us haqiqi masle ke baad bani jahan node par user ke 6
-     * modules the aur cloud par usi user ke 0. Wajah do thin:
+     * modules the aur cloud par usi user ke 0. Reason do thin:
      *   1) `user_module_access` kisi sync list mein thi hi nahi
      *   2) `platform_modules.id` har installation par random thi, is liye
      *      row pohanch bhi jati to join match hi nahi karta
@@ -543,7 +543,7 @@ final class AdminConsole
         $lines = [];
         $fp = \Aio\Services\Sync::moduleFingerprint();
         $lines[] = ['t' => 'k', 'v' => 'Module fingerprint: ' . ($fp !== '' ? $fp : '(none)')];
-        $lines[] = ['t' => 'd', 'v' => 'Node par bhi yehi hona chahiye. Alag ho to permissions be-asar rehti hain.'];
+        $lines[] = ['t' => 'd', 'v' => 'Node par bhi yehi hona is required. Alag ho to permissions be-asar rehti hain.'];
         $lines[] = ['t' => 'i', 'v' => ''];
 
         $q = $p->prepare(
@@ -582,7 +582,7 @@ final class AdminConsole
             $lines[] = ['t' => 'i', 'v' => ''];
             $lines[] = ['t' => 'e', 'v' => $blank . ' user ke paas ek bhi module nahi hai.'];
             $lines[] = ['t' => 'd', 'v' => 'Agar node par yeh users modules ke saath dikhte hain to dono taraf'];
-            $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` chalayein, phir node par Sync now.'];
+            $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` please run, phir node par Sync now.'];
         }
         return self::out($lines);
     }

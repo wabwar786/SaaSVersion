@@ -140,7 +140,7 @@ final class FiscalService
                                 WHERE o.id=? AND o.site_id=? LIMIT 1");
             $oq->execute([$orderId, site_id()]);
             $o = $oq->fetch(PDO::FETCH_ASSOC);
-            if (!$o) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'Bill nahi mila'];
+            if (!$o) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'Bill not found'];
 
             $iq = $p->prepare("SELECT oi.qty, oi.unit_price, oi.line_total, oi.menu_item_id,
                                       COALESCE(oi.item_name_snapshot, mi.name) nm, mi.pct_code
@@ -149,7 +149,7 @@ final class FiscalService
                                 WHERE oi.order_id=?");
             $iq->execute([$orderId]);
             $rows = $iq->fetchAll(PDO::FETCH_ASSOC);
-            if (!$rows) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'Bill mein koi item nahi'];
+            if (!$rows) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'The bill has no items'];
 
             $rate = self::rateFor($orderId);
             $items = [];
@@ -262,7 +262,7 @@ final class FiscalService
         }
         if ($no === '') {
             return ['status' => 'PENDING', 'invoice_no' => '',
-                    'message' => 'FBR ne invoice number nahi diya. Jawab: '.substr($r['body'], 0, 160)];
+                    'message' => 'FBR did not return an invoice number. Reply: '.substr($r['body'], 0, 160)];
         }
         return ['status' => 'SENT', 'invoice_no' => $no, 'message' => ''];
     }
@@ -300,14 +300,14 @@ final class FiscalService
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
             return ['ok' => false, 'body' => '',
-                    'error' => 'Fiscal service tak nahi pohanch sake ('.$url.'). Kya wo is computer par chal raha hai?'];
+                    'error' => 'Could not reach the fiscal service ('.$url.'). Is it running on this computer?'];
         }
         $code = 0;
         foreach (($http_response_header ?? []) as $h) {
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) $code = (int)$m[1];
         }
         if ($code >= 400) {
-            return ['ok' => false, 'body' => $raw, 'error' => 'Fiscal service ne HTTP '.$code.' diya: '.substr($raw, 0, 160)];
+            return ['ok' => false, 'body' => $raw, 'error' => 'The fiscal service returned HTTP '.$code.': '.substr($raw, 0, 160)];
         }
         return ['ok' => true, 'body' => (string)$raw, 'error' => ''];
     }
@@ -316,7 +316,7 @@ final class FiscalService
     {
         $ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => $timeout, 'ignore_errors' => true]]);
         $raw = @file_get_contents($url, false, $ctx);
-        if ($raw === false) return ['ok' => false, 'body' => '', 'error' => 'Service tak nahi pohanch sake.'];
+        if ($raw === false) return ['ok' => false, 'body' => '', 'error' => 'Could not reach the service.'];
         return ['ok' => true, 'body' => (string)$raw, 'error' => ''];
     }
 
@@ -324,20 +324,20 @@ final class FiscalService
     public static function test(): array
     {
         if (!self::availableHere()) {
-            return ['ok' => false, 'message' => 'FBR sirf offline version par chalta hai (fiscal service localhost par hota hai).'];
+            return ['ok' => false, 'message' => 'FBR works only in the offline version (fiscal service localhost par hota hai).'];
         }
         $cfg = self::settings();
-        if ($cfg['provider'] === 'NONE') return ['ok' => false, 'message' => 'Pehle provider chunein.'];
+        if ($cfg['provider'] === 'NONE') return ['ok' => false, 'message' => 'Select a provider first.'];
         if ($cfg['provider'] === 'KPRA') {
-            if (!$cfg['ntn'] || !$cfg['access_key']) return ['ok' => false, 'message' => 'KPRA ke liye NTN aur access key zaroori hain.'];
-            return ['ok' => true, 'message' => 'KPRA settings mukammal hain (asli tasdeeq pehle bill par hogi).'];
+            if (!$cfg['ntn'] || !$cfg['access_key']) return ['ok' => false, 'message' => 'KPRA requires both an NTN and an access key.'];
+            return ['ok' => true, 'message' => 'KPRA settings look complete (they will be verified on the first bill).'];
         }
-        if (!$cfg['service_url']) return ['ok' => false, 'message' => 'Fiscal service URL likhein.'];
-        if (!$cfg['pos_id'])      return ['ok' => false, 'message' => 'POS ID likhein.'];
+        if (!$cfg['service_url']) return ['ok' => false, 'message' => 'Enter the fiscal service URL.'];
+        if (!$cfg['pos_id'])      return ['ok' => false, 'message' => 'Enter the POS ID.'];
 
         $r = self::post((string)$cfg['service_url'], ['POSID' => (int)$cfg['pos_id'], 'USIN' => 'TEST', 'Items' => []], 5);
         if (!$r['ok']) return ['ok' => false, 'message' => $r['error']];
-        return ['ok' => true, 'message' => 'Fiscal service ne jawab diya. Jawab: '.substr($r['body'], 0, 120)];
+        return ['ok' => true, 'message' => 'The fiscal service responded. Reply: '.substr($r['body'], 0, 120)];
     }
 
     /* ---------------- log + order ---------------- */

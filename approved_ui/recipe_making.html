@@ -68,8 +68,8 @@ document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');i
     jata hai; server bata dega agar item bills mein use ho chuka hai. */
  const dm=e.target.closest('[data-del-menu]');
  if(dm){e.stopPropagation();window.DeleteKit.confirm({entity:'menu_item',id:dm.dataset.delMenu,name:dm.dataset.name||'',
-   what:'Menu item + recipe',title:'Recipe delete karein?',
-   warning:'Menu item aur uski recipe dono hat jayengi. POS par bhi nazar nahi aayegi.'});return}
+   what:'Menu item + recipe',title:'Delete this recipe?',
+   warning:'Both the menu item and its recipe will be removed. It will no longer appear on the POS.'});return}
 });
 $('#newRecipeBtn').onclick=newRecipe;$('#categoryBtn').onclick=()=>openM('categoryModal');
 $('#saveCategory').onclick=()=>{const n=$('#catName').value.trim();if(!n){toast('Category name required');return}const state=RestaurantStore.getState();if(state.menuCategories.some(c=>c.name.toLowerCase()===n.toLowerCase())){toast('Category already exists');return}state.menuCategories.push({name:n,printer:$('#catPrinter').value});RestaurantStore.saveState(state);closeM('categoryModal');populate();$('#menuCategory').value=n;syncPrinter();toast(n+' category created with '+printers[$('#catPrinter').value])};

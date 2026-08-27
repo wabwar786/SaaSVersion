@@ -44,7 +44,7 @@ final class Sync
 
     /**
      * Cloud ka build. Dono taraf ka build match na kare to naye fixes
-     * aadhe adhoore chalte hain — UI ko saaf batana zaroori hai.
+     * aadhe adhoore chalte hain — UI ko saaf batana is required.
      */
     public static function cloudBuild(int $ttl = 300): array
     {
@@ -151,7 +151,7 @@ final class Sync
         $sock = @\fsockopen(($scheme === 'https' ? 'ssl://' : '') . $host, $port, $en, $es, 6);
         $ms = (int)((\microtime(true) - $t0) * 1000);
         if ($sock) { \fclose($sock); $add('Connection', true, "Connected to $host:$port in {$ms}ms"); }
-        else { $add('Connection', false, "Cannot reach $host:$port - $es (errno $en). Firewall/antivirus ya proxy check karein."); return $out; }
+        else { $add('Connection', false, "Cannot reach $host:$port - $es (errno $en). Firewall/antivirus ya proxy check please."); return $out; }
 
         try {
             $cx = self::cfg();
@@ -195,7 +195,7 @@ final class Sync
                     $add('Module IDs match', $mok, $mok
                         ? 'Cloud aur is computer par module ids ek jaisi hain'
                         : 'MISMATCH - permissions sync NahI hongi (har user online "0 Modules" dikhega). '
-                          . 'Dono taraf `php scripts/migrate_module_ids.php` chalayein.  '
+                          . 'Dono taraf `php scripts/migrate_module_ids.php` first.  '
                           . 'This: ' . substr($lf, 0, 8) . '  |  Cloud: ' . (($cf !== '') ? substr($cf, 0, 8) : 'unknown'));
                 } catch (\Throwable $e) {
                     $add('Module IDs match', false, 'Check nahi chal saka: ' . substr($e->getMessage(), 0, 90));
@@ -224,7 +224,7 @@ final class Sync
     {
         $c = $GLOBALS['config']['sync'] ?? [];
         /* Backward-compatible: kuch configs mein 'endpoint' likha hota hai
-           aur kuch mein 'cloud_api_url'. Dono chalne chahiye. */
+           aur kuch mein 'cloud_api_url'. Dono chalne is required. */
         if (empty($c['cloud_api_url'])) {
             if (!empty($c['endpoint']))      $c['cloud_api_url'] = $c['endpoint'];
             elseif (!empty($GLOBALS['config']['app']['cloud_url'])) {
@@ -242,7 +242,7 @@ final class Sync
            kisi list mein thi hi nahi, is liye node par assign kiye hue
            modules kabhi cloud tak pohanchte hi nahi the aur online har
            user "0 Modules" dikhata tha. Purani config wale nodes ko bhi
-           yeh milna chahiye. */
+           yeh milna is required. */
         $force = [
             'sync_tombstones',
             'users', 'user_roles', 'roles', 'role_modules',
@@ -339,7 +339,7 @@ final class Sync
 
     /**
      * platform_modules ka fingerprint — cloud aur node par HAMESHA barabar
-     * hona chahiye. Alag ho to permissions sync ho kar bhi be-asar rehti
+     * hona is required. Alag ho to permissions sync ho kar bhi be-asar rehti
      * hain (join match hi nahi karta).
      */
     public static function moduleFingerprint(): string
@@ -372,7 +372,7 @@ final class Sync
             $args[] = $scope;
         }
         // Branch scope: multi-branch business mein ek branch ko doosri
-        // branch ka transactional data neeche nahi aana chahiye.
+        // branch ka transactional data neeche nahi aana is required.
         if ($site && in_array('site_id', $cols, true)) {
             /* NULL site_id = tenant-level data (misal customers jo kisi ek
                branch se bandhe nahi). Pehle sirf "site_id = ?" tha, is liye
@@ -1103,7 +1103,7 @@ final class Sync
        TOMBSTONES — "kya mit gaya" ka channel.
 
        Yeh V62 ka sab se bara fix hai. Sync engine sirf upsert karti thi
-       (updated_at watermark + INSERT/UPDATE). Jab cloud par `DELETE FROM
+       (updated_at watermark + INSERT/UPDATE). Jab cloud is missing the `DELETE FROM
        orders ...` chalta tha (factory reset / purge / force delete), row
        bina koi nishan chhore ghayab ho jati thi. Node agli pull par
        poochta: "mere watermark ke baad kya naya hai?" — cloud kehta
@@ -1222,7 +1222,7 @@ final class Sync
                 }
             } catch (\Throwable $e) {
                 try { $p->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (\Throwable $e2) {}
-                /* KHAMOSH NAHI. Wajah run log tak jayegi. */
+                /* KHAMOSH NAHI. Reason run log tak jayegi. */
                 $out['errors'][] = $table.': '.substr($e->getMessage(), 0, 140);
             }
         }
@@ -1273,6 +1273,13 @@ final class Sync
                Yeh wo step hai jis ke baghair cloud par delete kiya hua data
                node par hamesha zinda rehta tha. */
             $tomb = self::applyTombstones();
+
+            /* V65 — licence cloud se le kar locally mehfooz karo, taake
+               net band hone par bhi POS ko expiry ka pata rahe. */
+            try {
+                $lic = self::post('sync-licence', []);
+                if (!empty($lic['licence'])) Licence::store($lic['licence']);
+            } catch (\Throwable $e) { /* licence best-effort */ }
 
             $total  = array_sum($pushed) + array_sum($pulled);
             self::touchState('engine', 'OK', null);

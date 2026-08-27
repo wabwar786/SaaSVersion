@@ -2,7 +2,7 @@
 /**
  * session-diagnostics.php — SESSION AUR CSRF KI ASLI HAALAT.
  *
- * V62 mein barha diya gaya. Wajah: "Invalid CSRF token" aur "login nahi ho
+ * V62 mein barha diya gaya. Reason: "Invalid CSRF token" aur "login nahi ho
  * raha" dono ek hi cheez ki alamat hain — session persist nahi ho rahi —
  * magar yeh baat kahin nazar nahi aati thi. session_start() ka failure
  * khamosh hota hai (display_errors=0), is liye app bilkul theek lagti hai
@@ -52,13 +52,13 @@ if (!$writable) {
     $verdict = 'BROKEN';
     $advice  = 'Session directory likhi nahi ja sakti. Har request par nayi session banti hai, '
              . 'is liye login kabhi tikta nahi aur har POST par CSRF fail hota hai. '
-             . 'Container mein chalayein: mkdir -p storage/sessions && chown -R www-data:www-data storage';
+             . 'Container mein please run: mkdir -p storage/sessions && chown -R www-data:www-data storage';
 } elseif ($sessionLost) {
     $verdict = 'SESSION_RESET';
-    $advice  = 'Browser purani session cookie bhej raha hai magar server par wo session maujood nahi '
-             . '(aam tor par deploy / container restart ke baad). Ek dafa logout kar ke dobara login karein, '
-             . 'ya is site ki cookie clear karein. V62 ka client naya CSRF token khud le leta hai, '
-             . 'magar LOGIN ke liye ek taza page chahiye.';
+    $advice  = 'Browser purani session cookie bhej raha hai magar server par wo session does not exist '
+             . '(aam tor par deploy / container restart ke baad). Ek dafa logout kar ke dobara login please, '
+             . 'ya is site ki cookie clear please. V62 ka client naya CSRF token khud le leta hai, '
+             . 'magar LOGIN ke liye ek taza page is required.';
 } elseif (((int)ini_get('session.gc_maxlifetime')) < 3600) {
     $verdict = 'SHORT_LIFETIME';
     $advice  = 'session.gc_maxlifetime sirf ' . ini_get('session.gc_maxlifetime') . ' second hai. '

@@ -3084,3 +3084,90 @@ hua.)
 Panel `</main></div>` ke **baad** daal diya gaya tha, yani layout ke
 container se bahar. Ab baqi sections ke saath `.content` ke andar hai
 aur uska panel-head bhi doosre panels jaisa (`<h2>`).
+
+---
+
+# V65 — Phase A: English, login URL, About, licence expiry
+
+## 1. Login URL (#8)
+
+`router.php` line 26:
+
+    header('Location: /login.html?build=v14');
+
+Yehi `?build=v14` address bar mein nazar aata tha. Ab saaf `/login.html`.
+(Baqi `?b=v14` sirf CSS/JS par hai — browser cache ke liye, address bar
+mein nazar nahi aata, is liye wo waise hi hain.)
+
+## 2. Poora software English (#12)
+
+29 files mein tehqeeq ke baad **124 user-facing Roman Urdu strings**
+mile (`fail()`, `toast()`, `RuntimeException`, `'message'=>`). Sab
+English kar diye — error messages, confirmations, bill ka matn, Settings
+ke notes, POS ke toasts.
+
+Bara hissa in mein se **meri apni ghalti** thi: V62-V64 mein jo naye
+messages daale wo Roman Urdu mein the.
+
+Ab baqi: **0** user-facing strings.
+
+> **Code comments Roman Urdu mein hi rakhe hain** — wo customer ko kabhi
+> nazar nahi aate aur aap ke liye parhna asaan rehta hai. Agar aap chahein
+> to wo bhi English kar dun, bata dein.
+
+Is doran ek bug bhi bana aur pakra gaya: `$u['full_name'].' 's password'`
+— apostrophe ne PHP string tor di thi. `php -l` ne foran pakar liya, aur
+maine poore project mein isi qism ki doosri jagahein bhi check kar leen
+(koi aur nahi thi).
+
+## 3. About Wabwar (#2)
+
+Sidebar ke neeche naya **ⓘ** button — har page par. Dialog mein:
+
+    Wabwar Software House
+    Waseem Iqbal
+    +92 342 5095104        (tap-to-call)
+    support@wabwar.pk      (tap-to-email)
+    www.wabwar.pk
+    Build
+
+Naya endpoint `about`. Sirf `shared.css` ki mojooda classes
+(`.modal .dialog .dialog-head/body/foot .btn .close`).
+
+## 4. Licence expiry (#11, #13)
+
+**Masla:** expiry sirf CLOUD ke super-admin console mein thi. Restaurant
+ka apna software — aur khaas kar OFFLINE node — ko kuch pata hi nahi hota
+tha. Customer ek din aata aur software band, koi warning nahi, aur yeh
+bhi maloom nahi ke kis ko phone kare.
+
+**Naya `src/Services/Licence.php`:**
+
+- Cloud par seedha `tenant_subscriptions` se
+- Offline node par: **har sync ke saath** cloud se licence aata hai aur
+  `site_settings` (group `licence`) mein mehfooz hota hai — is liye net
+  band ho tab bhi POS ko expiry ka pata rehta hai
+- Naye endpoints: `licence-status`, `sync-licence`
+
+**Dikhta kahan hai:**
+
+- **3 din pehle** se peela banner: *"Your subscription expires in 2 days"*
+- **Expire hone par** laal banner + Wabwar ka rabta + **Call** aur
+  **Email** ke buttons — customer seedha call kar ke renew karwa le
+- Dashboard aur baqi pages par `shell.js` se; **POS par alag se**
+  (POS `shell.js` use nahi karta) — cashier ko wahin nazar aata hai
+
+## Testing
+
+    php -l  (har PHP file)             -> 0 errors
+    php tools/check_pages.php          -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+    user-facing Roman Urdu strings      -> 0 (pehle 124)
+
+**NahI chala:** licence banner ka asli waqt par chalna (expiry date set
+kar ke dekhna parega), `sync_suite.py`, `reset_verify.py`.
+
+## Aage — Phase B
+
+Printers: IP ping se verify + test print (#1), aur category-printer
+mapping. Uske baad Phase C reports.
