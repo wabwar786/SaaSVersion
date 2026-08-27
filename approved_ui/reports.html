@@ -34,35 +34,30 @@
       <button class="btn" id="exportBtn">Export CSV</button>
     </header>
     <div class="content">
-      <div class="kpis">
-        <div class="kpi"><div class="lab">Net sales</div><div class="val" id="rNet">PKR 0</div><div class="sub" id="rOrders">0 orders</div></div>
-        <div class="kpi ok"><div class="lab">Gross profit</div><div class="val" id="rProfit">PKR 0</div><div class="sub" id="rMargin">0% margin</div></div>
-        <div class="kpi warn"><div class="lab">Food cost</div><div class="val" id="rFood">PKR 0</div><div class="sub" id="rFoodPct">0% of sales</div></div>
-        <div class="kpi info"><div class="lab">Avg. order value</div><div class="val" id="rAov">PKR 0</div><div class="sub">Per bill</div></div>
-      </div>
-      <div class="split">
+      <div class="split" style="grid-template-columns:260px 1fr;align-items:start">
+
         <section class="panel">
-          <div class="panel-head"><div><h2>Sales by hour</h2><p>Peak trading times</p></div></div>
-          <div class="panel-body"><div class="chart" id="chart"></div></div>
+          <div class="panel-head"><div><h2>Reports</h2><p>Pick one</p></div></div>
+          <div class="panel-body flush"><div id="repList" class="hint" style="padding:12px">Loading...</div></div>
         </section>
+
         <section class="panel">
-          <div class="panel-head"><div><h2>Sales channel mix</h2></div></div>
-          <div class="panel-body"><div class="don">
-            <svg width="150" height="150" viewBox="0 0 42 42" id="donut" style="flex-shrink:0"></svg>
-            <div class="don-legend" id="legend"></div>
-          </div></div>
+          <div class="panel-head">
+            <div><h2 id="repTitle">Select a report</h2><p id="repDesc">Choose a report from the list</p></div>
+            <div class="tools">
+              <label class="field" style="margin:0"><span>From</span><input type="date" id="dFrom"></label>
+              <label class="field" style="margin:0"><span>To</span><input type="date" id="dTo"></label>
+              <button class="btn" id="runBtn">Run</button>
+              <button class="btn" id="csvBtn">Export CSV</button>
+            </div>
+          </div>
+          <div class="panel-body flush">
+            <div id="repNote" class="note" style="display:none;margin:12px"></div>
+            <div id="repBody" style="padding:14px" class="hint">No report loaded yet.</div>
+          </div>
         </section>
+
       </div>
-      <section class="panel" style="margin-top:14px">
-        <div class="panel-head"><div><h2>Top selling items</h2><p>By revenue</p></div></div>
-        <div class="panel-body"><div class="bars-h" id="topBars"></div></div>
-      </section>
-      <section class="panel" style="margin-top:14px">
-        <div class="panel-head"><div><h2>Payment collection</h2></div></div>
-        <div class="panel-body flush"><div class="table-wrap"><table class="table">
-          <thead><tr><th>Method</th><th class="num">Amount</th><th class="num">Share</th></tr></thead>
-          <tbody id="payRows"></tbody></table></div></div>
-      </section>
     </div>
   </main>
 </div>
@@ -73,36 +68,123 @@
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="reports"></script>
 <script>
-var $=function(s){return document.querySelector(s)};
-var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
-var mult={today:1,week:6.4,month:27};
-function toast(m){var t=$('#toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast'},1600)}
-function render(range){
-  var s=RestaurantLive.get(), k=mult[range]||1;
-  var net=Math.round(s.netSales*k), food=Math.round(s.foodCost*k), exp=Math.round(s.expenses*k);
-  var orders=Math.round(s.orders*k), profit=net-food-exp;
-  $('#rNet').textContent=money(net); $('#rOrders').textContent=orders+' orders';
-  $('#rProfit').textContent=money(profit); $('#rMargin').textContent=(net?Math.round(profit/net*100):0)+'% margin';
-  $('#rFood').textContent=money(food); $('#rFoodPct').textContent=(net?Math.round(food/net*100):0)+'% of sales';
-  $('#rAov').textContent=money(orders?net/orders:0);
-  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
-  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bcol"><div class="bar" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
-  var ch=[['Dine in',s.dineIn,'#e0301a'],['Takeaway',s.takeaway,'#f0663c'],['Delivery',s.delivery,'#1f6fb2'],['Online',s.online,'#15804a']];
-  var tot=ch.reduce(function(a,c){return a+c[1]},0), off=25, svg='';
-  ch.forEach(function(c){var pct=tot?c[1]/tot*100:0;svg+='<circle cx="21" cy="21" r="15.9155" fill="none" stroke="'+c[2]+'" stroke-width="6" stroke-dasharray="'+pct+' '+(100-pct)+'" stroke-dashoffset="'+off+'"/>';off-=pct});
-  $('#donut').innerHTML=svg;
-  $('#legend').innerHTML=ch.map(function(c){return '<div class="leg"><i style="background:'+c[2]+'"></i>'+c[0]+' — <b>'+(tot?Math.round(c[1]/tot*100):0)+'%</b></div>'}).join('');
-  var bmax=Math.max.apply(null,s.best.map(function(x){return x.sales}).concat([1]));
-  $('#topBars').innerHTML=s.best.map(function(x){return '<div class="brow"><span class="lab">'+x.name+'</span><div class="track"><div class="fill" style="width:'+(x.sales/bmax*100)+'%"></div></div><span class="val">'+money(Math.round(x.sales*k))+'</span></div>'}).join('');
-  var pay=[['Cash',s.cash],['Card',s.card],['Raast',s.raast],['Wallet / bank',s.walletBank]];
-  var ptot=pay.reduce(function(a,p){return a+p[1]},0);
-  $('#payRows').innerHTML=pay.map(function(p){return '<tr><td class="t-main">'+p[0]+'</td><td class="num">'+money(Math.round(p[1]*k))+'</td><td class="num">'+(ptot?Math.round(p[1]/ptot*100):0)+'%</td></tr>'}).join('');
-}
-document.querySelectorAll('#range button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#range button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');render(b.getAttribute('data-r'))}});
-$('#exportBtn').onclick=function(){toast('Report exported to CSV')};
-render('today');
+/* V67 — Reports.
+   Pehle yeh page localStorage ke seed data par chalta tha: numbers
+   khoobsurat the magar customer ke apne karobar se un ka koi taluq nahi
+   tha. Ab har raqam database se aati hai (ReportService), aur SAB reports
+   ek hi shakl lautati hain {columns, rows, totals} — is liye ek hi UI aur
+   ek hi CSV export sab ke liye kaafi hai. */
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function toast(m,err){var t=$('#toast');t.textContent=m;
+    t.className='toast show'+(err?' err':'');clearTimeout(window.__rt);
+    window.__rt=setTimeout(function(){t.className='toast'},2400)}
+  function num(v){var n=Number(v)||0;
+    return n.toLocaleString(undefined,{maximumFractionDigits:2})}
+
+  var current=null, CAT=[];
+
+  function ymd(d){return d.toISOString().slice(0,10)}
+  (function defaults(){
+    var to=new Date(), from=new Date(); from.setDate(from.getDate()-29);
+    $('#dFrom').value=ymd(from); $('#dTo').value=ymd(to);
+  })();
+
+  function loadList(){
+    if(!window.DBApi){$('#repList').textContent='No server connection.';return}
+    var r=DBApi.req('report-list');
+    if(!r||!r.ok){$('#repList').textContent=(r&&r.message)||'Could not load the report list.';return}
+    CAT=r.reports||[];
+    var groups={}, order=[];
+    CAT.forEach(function(x){ if(!groups[x.group]){groups[x.group]=[];order.push(x.group)} groups[x.group].push(x); });
+    var h='';
+    order.forEach(function(g){
+      h+='<div style="padding:8px 12px 4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">'+esc(g)+'</div>';
+      groups[g].forEach(function(x){
+        h+='<button class="rep-item" data-rep="'+esc(x.id)+'" style="display:block;width:100%;text-align:left;'
+          +'padding:9px 12px;border:0;background:none;cursor:pointer;border-left:3px solid transparent">'
+          +'<b style="font-size:12.5px;display:block">'+esc(x.name)+'</b>'
+          +'<span class="hint" style="font-size:11px">'+esc(x.desc)+'</span></button>';
+      });
+    });
+    $('#repList').innerHTML=h;
+    $('#repList').className='';
+  }
+
+  function mark(id){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-rep]'),function(b){
+      var on=b.getAttribute('data-rep')===id;
+      b.style.borderLeftColor=on?'var(--brand)':'transparent';
+      b.style.background=on?'var(--brand-soft)':'none';
+    });
+  }
+
+  function run(id){
+    if(!id)return;
+    current=id; mark(id);
+    var meta=CAT.filter(function(x){return x.id===id})[0]||{};
+    $('#repTitle').textContent=meta.name||'Report';
+    $('#repDesc').textContent=meta.desc||'';
+    $('#repBody').innerHTML='<span class="hint">Running...</span>';
+    $('#repNote').style.display='none';
+
+    var r=DBApi.req('report-run&id='+encodeURIComponent(id)
+        +'&from='+encodeURIComponent($('#dFrom').value)
+        +'&to='+encodeURIComponent($('#dTo').value));
+    /* Jawab check hota hai — nakami par asli wajah, khali table nahi. */
+    if(!r||!r.ok){
+      $('#repBody').innerHTML='<span class="hint">'+esc((r&&r.message)||'Report could not be run.')+'</span>';
+      return;
+    }
+    draw(r.report);
+  }
+
+  function draw(rep){
+    if(rep.note){ $('#repNote').textContent=rep.note; $('#repNote').style.display=''; }
+    if(!rep.rows||!rep.rows.length){
+      $('#repBody').innerHTML='<span class="hint">No data for '+esc(rep.from)+' to '+esc(rep.to)+'.</span>';
+      return;
+    }
+    var h='<div class="table-wrap"><table class="table"><thead><tr>';
+    rep.columns.forEach(function(c){ h+='<th'+(c.n?' class="num"':'')+'>'+esc(c.l)+'</th>'; });
+    h+='</tr></thead><tbody>';
+    rep.rows.forEach(function(row){
+      h+='<tr>';
+      rep.columns.forEach(function(c,i){
+        var v=row[c.k];
+        h+='<td'+(c.n?' class="num"':(i===0?' class="t-main"':''))+'>'+(c.n?num(v):esc(v))+'</td>';
+      });
+      h+='</tr>';
+    });
+    h+='</tbody>';
+    if(rep.totals&&Object.keys(rep.totals).length){
+      h+='<tfoot><tr>';
+      rep.columns.forEach(function(c,i){
+        if(i===0){h+='<td class="t-main"><b>Total</b></td>';return}
+        h+='<td'+(c.n?' class="num"':'')+'>'+(rep.totals[c.k]!==undefined?'<b>'+num(rep.totals[c.k])+'</b>':'')+'</td>';
+      });
+      h+='</tr></tfoot>';
+    }
+    h+='</table></div>';
+    $('#repBody').innerHTML=h;
+  }
+
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-rep]');
+    if(b){ run(b.getAttribute('data-rep')); }
+  });
+  $('#runBtn').onclick=function(){ current?run(current):toast('Pick a report first',true) };
+  $('#csvBtn').onclick=function(){
+    if(!current){toast('Pick a report first',true);return}
+    window.location='/api.php?action=report-csv&id='+encodeURIComponent(current)
+      +'&from='+encodeURIComponent($('#dFrom').value)+'&to='+encodeURIComponent($('#dTo').value);
+  };
+
+  loadList();
+  run('sales_summary');
+})();
 </script>
 </body>
 </html>
-
-<!-- build: V17.1 build 2026-08-25 -->

@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 use Aio\Auth;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: /login.html?build=v14');
+    header('Location: /login.html');
     exit;
 }
 
@@ -14,7 +14,7 @@ $email = trim((string)($_POST['email'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 
 if ($email === '' || $password === '') {
-    header('Location: /login.html?login_error=required&build=v14');
+    header('Location: /login.html?login_error=required');
     exit;
 }
 
@@ -25,7 +25,7 @@ if (!empty($_SESSION['login_tenant_slug'])) {
 
 try {
     if (!Auth::login($email, $password)) {
-        header('Location: /login.html?login_error=invalid&build=v14'.$bq);
+        header('Location: /login.html?login_error=invalid'.$bq);
         exit;
     }
 
@@ -33,7 +33,7 @@ try {
     $tid = (string)($_SESSION['user']['tenant_id'] ?? '');
     if ($tid !== '' && ($msg = Auth::subscriptionBlock($tid)) !== null) {
         Auth::logout();
-        header('Location: /login.html?login_error=blocked&reason='.rawurlencode($msg).'&build=v14'.$bq);
+        header('Location: /login.html?login_error=blocked&reason='.rawurlencode($msg).''.$bq);
         exit;
     }
 
@@ -46,7 +46,7 @@ try {
     }
 
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Location: /index.html?build=v14', true, 303);
+    header('Location: /index.html', true, 303);
     exit;
 } catch (Throwable $e) {
     /*
@@ -54,7 +54,7 @@ try {
      * Full PHP errors stay in storage/logs/php-error.log.
      */
     error_log('LOGIN SUBMIT ERROR: '.$e->getMessage());
-    header('Location: /login.html?login_error=server&build=v14');
+    header('Location: /login.html?login_error=server');
     exit;
 }
 

@@ -3288,3 +3288,81 @@ kamyabi ya nakami, poori wajah ke saath user tak.
 
 **NahI chala:** asli printer par test print (mere paas printer nahi),
 licence banner ka waqt par chalna, `sync_suite.py`, `reset_verify.py`.
+
+---
+
+# V67 — Phase C: Reports (+ URL fix)
+
+## 1. `?build=v14` — asli jagah mili
+
+V65 mein maine sirf `router.php` ka redirect theek kiya tha, magar
+customer ko wo URL **login ke baad** dikhta tha. Asli jagah
+`login-submit.php` thi — chhe redirects mein:
+
+    header('Location: /index.html?build=v14', true, 303);
+    header('Location: /login.html?login_error=invalid&build=v14'.$bq);
+
+Sab saaf kar diye. `reset-demo-ui.php` mein `?build=v13` bhi tha, wo bhi.
+Ab address bar mein sirf `/index.html` aur `/login.html` aata hai.
+
+## 2. Reports (#3) — 15 reports
+
+`reports.html` ek khali shell tha: chart ka CSS mojood, data koi nahi.
+Numbers `localStorage` ke seed se aate the — khoobsurat, magar customer
+ke apne karobar se un ka koi taluq nahi.
+
+Naya `src/Services/ReportService.php`:
+
+| Group | Reports |
+|---|---|
+| **Sales** | Sales summary · Sales by item · Sales by category · Sales by hour · Payment methods · Dine-in/takeaway/delivery |
+| **Tax** | FBR / fiscal sales · Tax summary |
+| **Money** | Expenses · Profit and loss |
+| **Operations** | Sales by cashier · Sales by table · Voids and discounts |
+| **Inventory** | Stock movement · Purchases |
+
+**Design ke do usool:**
+
+1. **Har report ek hi shakl lautati hai** — `{columns, rows, totals}`.
+   Is liye ek hi UI sab dikhati hai aur CSV export bhi ek hi jagah likha
+   hai. Har report ka apna page banate to har naye report par teen jagah
+   code likhna parta.
+2. **Har raqam DATABASE se aati hai**, JS mein hisab nahi hota. Bill ke
+   total aur report ke total ka farq hi wo cheez hai jis se customer ka
+   software par se etimad uth jata hai.
+
+VOID bills har report se khaarij hain — warna sale asli se zyada dikhti.
+
+**Profit & loss** cost of sales recipe consumption se leta hai. Agar
+recipes nahi banayi gayin to cost sifar aayega aur profit zyada dikhega —
+report khud yeh baat likh kar batati hai, chupati nahi.
+
+CSV export har report par (Excel ke liye BOM ke saath).
+
+### Testing — SQL bina chalaye nahi diya
+
+Sandbox mein MySQL start nahi ho saka (socket auth). Is liye maine
+**har query ko schema ke khilaf column-by-column verify** kiya —
+`docs/02_local_mysql_schema.sql` + migrations se 96 tables ke columns
+nikal kar, har `alias.column` reference match kiya.
+
+Pehle pass mein **ek asli bug pakra gaya**:
+
+    stock_transactions.created_at  -> is table par yeh column hai hi nahi
+
+Sahi column `business_date` hai (aur indexed bhi). `goods_receipts` par
+bhi `created_at` ki jagah `received_at` behtar tha. Dono theek.
+
+Dosre pass mein: **15 queries, 0 problems.**
+
+    php -l  (har PHP file)              -> 0 errors
+    php tools/check_pages.php           -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+**NahI chala:** reports asli data par (MySQL sandbox mein nahi chala).
+Column names verify ho chuke hain, magar natije ki tasdeeq aap ke data
+par hi hogi — khaas kar Profit & Loss.
+
+## Aage
+
+Custom report builder (C2), phir backup (#10) aur help desk (#9).

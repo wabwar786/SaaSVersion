@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -317,6 +317,25 @@ case 'qr':
  while(ob_get_level())ob_end_clean();
  header('Content-Type: image/svg+xml');header('Cache-Control: public, max-age=86400');
  header('Content-Length: '.strlen($svg));echo $svg;exit;
+
+case 'report-list':needLogin();Auth::requireModule('reports');
+ ok(['reports'=>ReportService::catalog()]);
+
+case 'report-run':needLogin();Auth::requireModule('reports');
+ $id=preg_replace('/[^a-z_]/','',strtolower((string)($_GET['id']??'')));
+ try{$r=ReportService::run($id,(string)($_GET['from']??''),(string)($_GET['to']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok(['report'=>$r]);
+
+case 'report-csv':needLogin();Auth::requireModule('reports');
+ $id=preg_replace('/[^a-z_]/','',strtolower((string)($_GET['id']??'')));
+ try{$r=ReportService::run($id,(string)($_GET['from']??''),(string)($_GET['to']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ $csv=ReportService::csv($r);
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: text/csv; charset=utf-8');
+ header('Content-Disposition: attachment; filename="'.$id.'-'.$r['from'].'-to-'.$r['to'].'.csv"');
+ header('Content-Length: '.strlen($csv));echo $csv;exit;
 
 case 'printer-check':needLogin();$d=body();
  /* V66 — asli check. Pehle Printers page par Online/Offline ka dropdown
