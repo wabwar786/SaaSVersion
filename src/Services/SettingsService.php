@@ -37,6 +37,7 @@ final class SettingsService
         'currency', 'rounding',
         'receipt_header', 'receipt_footer', 'receipt_logo', 'receipt_paper',
         'default_order_type', 'kot_autoprint', 'lowstock_alert',
+        'receipt_template',
     ];
 
     private const DEFAULTS = [
@@ -46,6 +47,7 @@ final class SettingsService
         'receipt_footer'     => '',
         'receipt_logo'       => 'Yes',
         'receipt_paper'      => '80mm',
+        'receipt_template'   => 'classic',
         'default_order_type' => 'Dine In',
         'kot_autoprint'      => 'On',
         'lowstock_alert'     => 'On',
@@ -116,7 +118,13 @@ final class SettingsService
         $out['tax_card']       = $tax['tax_card'];
         $out['service_charge'] = $tax['service_charge'];
 
-        $out['can_edit'] = Auth::isManager() || Auth::isAdmin();
+        /* --- FBR / fiscal (site_settings group 'fiscal') --- */
+        $f = FiscalService::settings();
+        foreach (FiscalService::defaults() as $k => $_) $out['fiscal_'.$k] = $f[$k];
+        $out['fiscal_available_here'] = $f['available_here'];
+
+        $out['templates'] = BillTemplate::options();
+        $out['can_edit']  = Auth::isManager() || Auth::isAdmin();
         return $out;
     }
 
@@ -225,6 +233,18 @@ final class SettingsService
             }
         }
 
+        /* --- FBR / fiscal --- */
+        foreach (FiscalService::defaults() as $k => $_) {
+            $form = 'fiscal_'.$k;
+            if (!array_key_exists($form, $d)) continue;
+            $v = trim((string)$d[$form]);
+            if ($k === 'provider' && !in_array($v, FiscalService::PROVIDERS, true)) {
+                throw new \RuntimeException('Provider ghalat hai.');
+            }
+            self::put($p, $k, $v, 'fiscal');
+            $changed[] = $form;
+        }
+
         /* --- baqi sab site_settings mein --- */
         foreach (self::KEYS as $k) {
             if (!array_key_exists($k, $d)) continue;
@@ -235,20 +255,20 @@ final class SettingsService
         return ['changed' => array_values(array_unique($changed))];
     }
 
-    private static function put(PDO $p, string $key, string $value): void
+    private static function put(PDO $p, string $key, string $value, string $group = self::GROUP): void
     {
         $json = json_encode($value, JSON_UNESCAPED_UNICODE);
         try {
             $q = $p->prepare("SELECT id FROM site_settings
                                WHERE site_id=? AND setting_group=? AND setting_key=? LIMIT 1");
-            $q->execute([site_id(), self::GROUP, $key]);
+            $q->execute([site_id(), $group, $key]);
             if ($id = $q->fetchColumn()) {
                 $p->prepare("UPDATE site_settings SET value_json=?, updated_at=NOW(6) WHERE id=?")
                   ->execute([$json, $id]);
             } else {
                 $p->prepare("INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json,is_secret)
                              VALUES(?,?,?,?,?,?,0)")
-                  ->execute([uuid(), tenant_id(), site_id(), self::GROUP, $key, $json]);
+                  ->execute([uuid(), tenant_id(), site_id(), $group, $key, $json]);
             }
         } catch (\Throwable $e) {
             /* Khamosh nahi. Ek setting bhi na bache to user ko pata chale. */

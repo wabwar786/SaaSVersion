@@ -48,6 +48,9 @@
             <label class="field full"><span>Footer line</span><input data-s="receipt_footer" placeholder="Bill ke neeche likhi jane wali line"></label>
             <label class="field"><span>Print logo</span><select data-s="receipt_logo"><option>Yes</option><option>No</option></select></label>
             <label class="field"><span>Paper size</span><select data-s="receipt_paper"><option>80mm</option><option>58mm</option></select></label>
+            <label class="field"><span>Bill template <span class="hint">&middot; 80mm</span></span><select data-s="receipt_template" id="tplSel"></select></label>
+            <div class="field"><span>&nbsp;</span><button class="btn" id="tplPreview" type="button">Preview bill</button></div>
+            <div class="note full">Jo template yahan chuna jayega <b>wahi</b> final bill par nikle ga. Preview bilkul wahi layout dikhata hai.</div>
           </div></div>
         </section>
         <section class="panel">
@@ -63,6 +66,30 @@
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
+      <section class="panel" id="fiscalPanel">
+        <div class="panel-head"><h3>FBR / Digital Invoice</h3></div>
+        <div class="panel-body">
+          <div class="note full" id="fiscalNote" style="display:none"></div>
+          <div class="form-grid">
+            <label class="field"><span>Provider</span><select data-s="fiscal_provider"><option>NONE</option><option>FBR</option><option>KPRA</option></select></label>
+            <label class="field"><span>POS ID <span class="hint">&middot; FBR se mila hua</span></span><input data-s="fiscal_pos_id" placeholder="931868"></label>
+            <label class="field full"><span>Fiscal service URL <span class="hint">&middot; isi computer par</span></span><input data-s="fiscal_service_url" placeholder="http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel"></label>
+            <label class="field"><span>NTN</span><input data-s="fiscal_ntn" placeholder="1234567-8"></label>
+            <label class="field"><span>Access key <span class="hint">&middot; KPRA ke liye</span></span><input data-s="fiscal_access_key"></label>
+            <label class="field"><span>Prices include tax</span><select data-s="fiscal_price_incl_tax"><option>No</option><option>Yes</option></select></label>
+            <label class="field"><span>Default PCT code</span><input data-s="fiscal_default_pct" placeholder="98016000"></label>
+            <label class="field"><span>FBR POS fee (Re. 1)</span><select data-s="fiscal_pos_fee"><option>Off</option><option>On</option></select></label>
+            <div class="field full"><span>&nbsp;</span>
+              <div class="action-row" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" id="fiscalTest" type="button">Test connection</button>
+                <button class="btn" id="fiscalRetry" type="button">Retry pending</button>
+                <span id="fiscalStat" class="hint"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
 <div class="toast" id="toast"></div>
 <script src="shared_store.js"></script>
 <script src="live_store.js"></script>
@@ -88,6 +115,24 @@
     var r=DBApi.req('settings-get');
     if(!r.ok){toast(r.message||'Settings load nahi ho sakin',true);return}
     var d=r.settings||{};
+
+    /* Bill templates server se — list ek hi jagah rehti hai (BillTemplate.php). */
+    var sel=$('#tplSel');
+    if(sel){
+      sel.innerHTML=(d.templates||[]).map(function(t){
+        return '<option value="'+t.id+'">'+t.label+'</option>'}).join('');
+    }
+
+    /* FBR sirf offline par. Cloud par fields band, wajah saaf likhi hui. */
+    if(d.fiscal_available_here===false){
+      var nt=$('#fiscalNote');
+      if(nt){nt.style.display='';nt.innerHTML='<b>FBR sirf offline version par chalta hai.</b> '+
+        'Fiscal service aur printers isi computer par (localhost) hote hain, is liye online portal '+
+        'se un tak pohancha nahi ja sakta. Yeh settings branch computer par kholein.'}
+      Array.prototype.forEach.call(document.querySelectorAll('#fiscalPanel [data-s],#fiscalPanel button'),
+        function(el){el.disabled=true});
+    }
+
     Array.prototype.forEach.call(fields(),function(el){
       var k=el.getAttribute('data-s');
       if(d[k]===undefined||d[k]===null)return;
@@ -120,6 +165,37 @@
       });
     }
     toast('Settings save ho gayin');
+  };
+
+  /* Preview: asli bill wale hi endpoint se, sirf namoona data.
+     Pehle template save karo taake preview wahi dikhaye jo save hua. */
+  var pv=$('#tplPreview');
+  if(pv)pv.onclick=function(){
+    var t=($('#tplSel')||{}).value||'classic';
+    window.open('/api.php?action=bill-preview&template='+encodeURIComponent(t),'_blank');
+  };
+
+  var ft=$('#fiscalTest');
+  if(ft)ft.onclick=function(){
+    var st=$('#fiscalStat');st.textContent='Testing...';
+    /* Test se pehle save — warna wo purani settings test karega. */
+    var o={};Array.prototype.forEach.call(fields(),function(el){o[el.getAttribute('data-s')]=el.value});
+    var sv=DBApi.req('settings-save',o);
+    if(!sv.ok){st.textContent='';toast(sv.message||'Settings save nahi huin',true);return}
+    var r=DBApi.req('fiscal-test');
+    if(!r.ok){st.textContent='';toast(r.message||'Test nahi ho saka',true);return}
+    var res=r.result||{};
+    st.textContent=res.message||'';
+    toast(res.message||'',!res.ok);
+  };
+
+  var fr=$('#fiscalRetry');
+  if(fr)fr.onclick=function(){
+    var st=$('#fiscalStat');st.textContent='Retrying...';
+    var r=DBApi.req('fiscal-retry',{});
+    if(!r.ok){st.textContent='';toast(r.message||'Retry nahi ho saka',true);return}
+    st.textContent='Sent: '+(r.sent||0)+'  ·  abhi pending: '+(r.pending||0);
+    toast('Sent '+(r.sent||0)+', pending '+(r.pending||0));
   };
 
   load();

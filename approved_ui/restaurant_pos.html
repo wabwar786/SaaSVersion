@@ -574,7 +574,9 @@ function boot(){
   loadHolds(); loadQr(); setInterval(loadQr,20000); renderAll();
   refreshSync();
   setInterval(refreshSync,30000);           /* chip har 30s update */
-  setInterval(function(){syncNow(false)},120000);  /* auto sync har 2 min */
+  /* V64 — pehle yahan har 2 minute par asal sync chalti thi, aur POS se
+     hatte hi timer mar jata tha. Ab background loop (60s) kaam karta hai;
+     yahan sirf chip refresh hota hai. */
   if(!shift){openGate();return}
   if(!cart.length&&!billStarted)newBillFlow();
 }

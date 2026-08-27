@@ -2771,9 +2771,15 @@ Yeh `factory reset FULL` par bhi lagu hai (wahi function chalta hai).
 
 ## 4. FBR spec mehfooz — `docs/FBR_SPEC.md`
 
-Customer ke C# POS (`restaurant_sale.cs`) se poora FBR flow nikal kar
-document kar diya: endpoint, JSON model, response parsing, KPRA ka alag
-rasta, aur woh settings jo chahiye hongi.
+Reference ke liye ek purane C# POS ka code dekha gaya, magar spec **poori
+tarah hamari apni terms mein** likha hai: hamari tables (`orders`,
+`order_items`, `menu_items`, `fiscal_invoices`, `site_settings`), hamare
+endpoints, hamare labels.
+
+Us software ke control names, column names, screen labels aur workflow
+**kuch bhi hamare system mein nahi aayega**. Us se sirf ek cheez li gayi
+hai: **FBR ke apne API ka contract** (`POSID`, `USIN`, `PCTCode` waghera)
+— wo FBR ka tay kiya hua hai, usay badla nahi ja sakta.
 
 Do bug jo purane code mein hain aur hum nahi dohrayenge:
 
@@ -2802,3 +2808,137 @@ NahI chala (sandbox MySQL socket auth par atka): `sync_suite.py`,
 Phase 2 — roles add/edit + printers (asli `printers` table, category
 mapping, final bill par bhi printer-wise grouping).
 Phase 3 — reports. Phase 4 — discounts, phir FBR.
+
+## V63.1 — Launcher: toota hua default browser
+
+**Alamat:** naye PC par software chala, magar Firefox ne
+`Couldn't load XPCOM` dikhaya. User ko laga software nahi chala —
+halanke console saaf keh raha tha:
+
+    Local database ready (127.0.0.1:3307)
+    The software is running at http://localhost:8080
+
+**Wajah:** launcher mein sirf yeh tha —
+
+    Start-Process "http://localhost:$port/login.html"
+
+Yani system ka **default browser**. Us PC ka Firefox toota hua tha.
+Hamare software ka masla nahi, magar user ke liye farq karna namumkin.
+
+**Fix (`tools/start_offline.ps1`):**
+default try → Edge → Chrome → aur har soorat mein address saaf screen par
+taake user khud khol sake. Aakhir mein hidayat bhi ke koi doosra browser
+khol kar `http://localhost:<port>` likhein.
+
+**Doosra fix:** auto-sync ka message pehle yeh tha —
+
+    Auto-sync could not start (data will sync when it does)
+
+Be-maani. Ab asli exception, log ka path, aur saaf batata hai ke cloud se
+data aayega/jayega NahI aur dashboard par "Sync now" se haath se chala
+sakte hain.
+
+---
+
+# V64 — Bill templates, 1-minute sync, FBR
+
+## 1. Sync ka asal masla — teen alag raftaarein
+
+Shikayat: *"local par jo kaam karta hun wo online par thora late update
+hota hai... kisi aur screen par jane se sync disconnect na ho."*
+
+Wajah ek nahi, teen thin:
+
+| Kahan | Kitni der |
+|---|---|
+| `sync_loop.php` (asli background process) | **5 minute** (`interval_minutes => 5`) |
+| Dashboard ka JS timer | 2 minute |
+| POS ka JS timer | 2 minute |
+
+Aur JS timer ka asli aib: **har page load par sifar se shuru hota tha.**
+POS -> dashboard -> menu -> POS... har navigation par reset. Agar user har
+90 second mein screen badalta to JS wala sync **kabhi chalta hi nahi tha**.
+Sirf 5-minute wala loop bacha, aur wo naye PC par chala hi nahi tha
+("Auto-sync could not start").
+
+### Fix — char cheezein
+
+1. **Bill close hote hi push.** `pos-finalize` ke baad `sync_nudge()` —
+   `register_shutdown_function` se, yani jawab bhejne ke BAAD. Bill ka
+   rasta kabhi nahi rukta. Bill ab seconds mein cloud par.
+2. **Loop 60 second.** Nayi key `sync.interval_seconds => 60`. Purani
+   `interval_minutes` fallback ke taur par chalti rahegi.
+3. **Loop OS process hai, page nahi.** Screen badalne se koi taluq nahi.
+   Dashboard aur POS ke JS timers ab sirf **status chip** update karte
+   hain (20s), sync ka kaam nahi karte.
+4. **Watchdog.** Launcher har 30 second dekhta hai ke loop zinda hai
+   (`storage/logs/sync_loop.pid`); mara ho to dobara chala deta hai.
+   Loop `sync_loop.beat` mein heartbeat bhi likhta hai.
+
+## 2. 80mm bill templates
+
+Pehle bill ka layout `api.php` ke `bill-pdf` case mein **hardcoded** tha —
+ek hi shakl, aur Settings ki header/footer lines bill par aati hi nahi thin.
+
+Naya `src/Services/BillTemplate.php` — teen 80mm layouts:
+
+| | |
+|---|---|
+| **Classic** | poora business info, item + rate, tax breakup, footer |
+| **Compact** | ek line per item, kam kaghaz |
+| **Tax / FBR** | har line par tax rate + amount, neeche FBR invoice no + QR ki jagah |
+
+Settings mein dropdown + **Preview bill** button. Preview aur asli bill
+**ek hi function** se bante hain — do alag copies nahi, warna waqt ke saath
+farq aa jata.
+
+Templates ki list server se aati hai (`bill-templates`), taake naam ek hi
+jagah rahen.
+
+## 3. FBR — Settings mein hi
+
+Aap ne kaha alag page nahi, Settings mein. Naya section **FBR / Digital
+Invoice**: Provider (NONE/FBR/KPRA) · POS ID · Fiscal service URL · NTN ·
+Access key · Prices include tax · Default PCT · POS fee · **Test
+connection** · **Retry pending**.
+
+`site_settings` group `fiscal` mein.
+
+**Cloud par yeh section apne aap band** ho jata hai, saaf wajah ke saath:
+fiscal service aur printers localhost par hote hain, Railway se un tak
+pohancha nahi ja sakta.
+
+### `src/Services/FiscalService.php`
+
+**Do usool:**
+
+1. **Sirf offline.** `cfg('app.role')==='cloud'` par sab band.
+2. **Bill kabhi nahi rukta.** FBR band ho, net na ho — bill chhapega. Bas
+   us par `FBR: PENDING` likha aayega, entry `fiscal_invoices` mein
+   queue hogi, aur Retry se jayegi. Khamosh nakami kabhi nahi.
+
+**Tax ka hisaab (aap ki hidayat par apna):** har line ka sale/tax/total
+alag, phir header **unhi ka jama**. Header alag se dobara nahi ginta —
+isi se wo mismatch khatam hota hai jo per-line rounding se paida hota hai
+aur jis par FBR invoice reject karta hai.
+
+Rate wahi `tax_cash` / `tax_card` jo V63 se Settings par hain — payment
+method ke `method_type` se chuna jata hai. Alag fiscal rate nahi.
+
+**Response:** asli JSON parse (`InvoiceNumber` / `FBRInvoiceNumber` ...).
+Fixed byte offsets ya substring hacks nahi.
+
+`scripts/migrate_fiscal.php`: `orders.fiscal_invoice_no`,
+`orders.fiscal_status`, `menu_items.pct_code`, `fiscal_invoices` table.
+Har `information_schema` query par lowercase alias.
+
+## Testing
+
+    php -l  (har PHP file)          -> 0 errors
+    php tools/check_pages.php       -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + JS)    -> 0 failures
+    PowerShell brace/paren/quote balance -> OK
+
+**NahI chala:** `sync_suite.py`, `reset_verify.py` (sandbox MySQL),
+PowerShell launcher (sandbox Linux hai), aur **FBR ka asli submission** —
+mere paas fiscal service nahi hai.

@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -166,7 +166,21 @@ function syncTableAllowed(string $table): bool {
     'sync_tombstones',
   ];
   return in_array($table,$allow,true);
-}function moduleFingerprint():string{
+}/* V64 — BILL CLOSE HOTE HI PUSH.
+   Pehle bill cloud par tab pohanchta tha jab background loop ka agla
+   waqfa aata (5 minute), ya jab kisi khuli screen ka JS timer chalta
+   (aur wo har navigation par sifar se shuru hota tha). Ab bill band
+   hote hi ek foran nudge. Yeh kabhi bill ka rasta nahi rokta: har
+   cheez try/catch mein hai aur time-box ke saath. */
+function sync_nudge():void{
+  if((string)cfg('app.role')==='cloud')return;
+  try{
+    if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
+    @ignore_user_abort(true);
+    \Aio\Services\Sync::run('bill');
+  }catch(Throwable $e){ /* bill nahi rukta - loop 60s mein dobara koshish karega */ }
+}
+function moduleFingerprint():string{
   try{
     $q=DB::pdo()->query("SELECT MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY module_key SEPARATOR '|')) AS fp
                            FROM platform_modules WHERE is_active=1");
@@ -284,6 +298,20 @@ $mm=$p->prepare("SELECT mi.name,mi.base_price,mi.is_active,mi.is_pos,COALESCE(mc
 $bt=null;try{$bt=count(PageData::posBoot()['products']);}catch(Throwable $e){$out['posBoot_error']=$e->getMessage();}
 $out['posBoot_products']=$bt;
 ok(['diag'=>$out]);
+case 'bill-templates':needLogin();ok(['templates'=>BillTemplate::options()]);
+
+case 'fiscal-test':needLogin();
+ if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ $r=FiscalService::test();ok(['result'=>$r]);
+
+case 'fiscal-pending':needLogin();
+ ok(['pending'=>FiscalService::pending(),'available_here'=>FiscalService::availableHere()]);
+
+case 'fiscal-retry':needLogin();
+ if(!Auth::isManager())fail('Sirf Admin/Manager',403);
+ if(!FiscalService::availableHere())fail('FBR sirf offline version par chalta hai',403);
+ ok(FiscalService::retryPending());
+
 case 'settings-get':needLogin();
  /* V63 — Settings page ab ASLI data dikhata hai (pehle 100% localStorage
     tha: "Urban Spoon", hardcoded NTN, aur Save par kuch hota hi nahi tha). */
@@ -297,13 +325,49 @@ case 'pos-settings':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT data_json FR
 case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Settings sirf Admin/Manager badal sakta hai',403);$d=body();$val=['tax_cash'=>max(0,(float)($d['tax_cash']??16)),'tax_card'=>max(0,(float)($d['tax_card']??8)),'service_charge'=>max(0,(float)($d['service_charge']??0))];$p=DB::pdo();$q=$p->prepare("SELECT id FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");$q->execute([tenant_id(),site_id()]);$id=$q->fetchColumn();$json=json_encode($val,JSON_UNESCAPED_UNICODE);if($id)$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([$json,$id]);else $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at) VALUES(?,?,?,'pos_settings',?,0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$json]);ok(['settings'=>$val]);
 case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Picture change sirf Admin/Manager kar sakta hai',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('Valid image URL ya uploaded image chahiye');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);
 case 'pos-verify-manager':needLogin();$d=body();$pw=(string)($d['password']??'');if($pw==='')fail('Password required',422);$p=DB::pdo();$q=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");$q->execute([tenant_id()]);foreach($q->fetchAll() as $u){if($u['password_hash']&&password_verify($pw,$u['password_hash']))ok(['manager'=>$u['full_name'],'manager_id'=>$u['id']]);}fail('Manager password ghalat hai',401);
-case 'bill-pdf':needLogin();$bill=preg_replace('/[^0-9A-Za-z-]/','',(string)($_GET['bill']??''));if($bill==='')fail('bill required');$p=DB::pdo();$oq=$p->prepare("SELECT o.id,o.bill_no,o.service_mode,o.grand_total,o.subtotal,o.discount_amount,o.service_charge,o.tax_amount,o.closed_at,o.created_at,dt.display_name tbl,c.full_name cust,c.phone cphone FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id WHERE o.site_id=? AND o.bill_no=? ORDER BY o.created_at DESC LIMIT 1");$oq->execute([site_id(),$bill]);$o=$oq->fetch();if(!$o)fail('Bill not found',404);$iq=$p->prepare("SELECT oi.qty,oi.unit_price,oi.line_total,COALESCE(oi.item_name_snapshot,mi.name) nm FROM order_items oi LEFT JOIN menu_items mi ON mi.id=oi.menu_item_id WHERE oi.order_id=?");$iq->execute([$o['id']]);$items=$iq->fetchAll();$sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$site=$sq->fetchColumn()?:'Restaurant';
-$L=[];$L[]=[$site,'c',12];$L[]=['SALES INVOICE','c',9];$L[]=['Bill #'.$o['bill_no'].'  '.$o['service_mode'].($o['tbl']?('  '.$o['tbl']):''),'c',8];$L[]=[date('d M Y  H:i',strtotime((string)($o['closed_at']?:$o['created_at']))),'c',8];if($o['cust']){$L[]=['Customer: '.$o['cust'].($o['cphone']?(' '.$o['cphone']):''),'l',8];}$L[]=['------------------------------','l',8];
-foreach($items as $it){$nm=(string)$it['nm'];$L[]=[rtrim(rtrim(number_format((float)$it['qty'],3,'.',''),'0'),'.').' x '.$nm,'l',9];$L[]=['      @ '.number_format((float)$it['unit_price'],0).'            '.number_format((float)$it['line_total'],0),'r',8];}
-$L[]=['------------------------------','l',8];$L[]=['Subtotal            '.number_format((float)$o['subtotal'],0),'r',9];if((float)$o['discount_amount']>0)$L[]=['Discount           -'.number_format((float)$o['discount_amount'],0),'r',9];if((float)$o['service_charge']>0)$L[]=['Service Charge      '.number_format((float)$o['service_charge'],0),'r',9];if((float)$o['tax_amount']>0)$L[]=['Sales Tax           '.number_format((float)$o['tax_amount'],0),'r',9];$L[]=['GRAND TOTAL   PKR '.number_format((float)$o['grand_total'],0),'b',11];$L[]=['','l',8];$L[]=['Thank you! Visit again.','c',8];
-$pdf=\Aio\Services\Pdf::receipt($L);
-while(ob_get_level())ob_end_clean();
-header('Content-Type: application/pdf');header('Content-Disposition: inline; filename="bill-'.$o['bill_no'].'.pdf"');header('Content-Length: '.strlen($pdf));echo $pdf;exit;
+case 'bill-pdf':needLogin();
+ /* V64 — layout ab BillTemplate se aata hai (Settings mein jo chuna gaya).
+    Pehle yahan ek hi hardcoded shakl thi, aur Settings ki header/footer
+    lines bill par aati hi nahi thin. Preview aur asli bill dono isi
+    function se bante hain - do alag copies nahi. */
+ $bill=preg_replace('/[^0-9A-Za-z-]/','',(string)($_GET['bill']??''));if($bill==='')fail('bill required');
+ $p=DB::pdo();
+ $oq=$p->prepare("SELECT o.id,o.bill_no,o.service_mode,o.grand_total,o.subtotal,o.discount_amount,o.service_charge,o.tax_amount,o.closed_at,o.created_at,o.fiscal_invoice_no,o.fiscal_status,dt.display_name tbl,c.full_name cust,c.phone cphone,u.full_name cashier FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN users u ON u.id=o.created_by_user_id WHERE o.site_id=? AND o.bill_no=? ORDER BY o.created_at DESC LIMIT 1");
+ $oq->execute([site_id(),$bill]);$o=$oq->fetch();if(!$o)fail('Bill not found',404);
+ $iq=$p->prepare("SELECT oi.qty,oi.unit_price,oi.line_total,COALESCE(oi.item_name_snapshot,mi.name) nm FROM order_items oi LEFT JOIN menu_items mi ON mi.id=oi.menu_item_id WHERE oi.order_id=?");
+ $iq->execute([$o['id']]);$items=$iq->fetchAll();
+ $st=SettingsService::get();
+ $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
+       'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>$st['receipt_header']??'',
+       'footer'=>$st['receipt_footer']??'','currency'=>$st['currency']??'PKR',
+       'tax_rate'=>(float)($st['tax_cash']??0),
+       'fbr_no'=>(string)($o['fiscal_invoice_no']??''),
+       'fbr_pending'=>in_array((string)($o['fiscal_status']??''),['PENDING','FAILED'],true)];
+ $tpl=(string)($_GET['template']??'')?:(string)($st['receipt_template']??'classic');
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::render($tpl,$o,$items,$ctx));
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/pdf');header('Content-Disposition: inline; filename="bill-'.$o['bill_no'].'.pdf"');header('Content-Length: '.strlen($pdf));echo $pdf;exit;
+
+case 'bill-preview':needLogin();
+ /* Settings ka Preview — asli bill wale hi function se, sirf namoona data. */
+ $tpl=(string)($_GET['template']??'classic');
+ $st=SettingsService::get();
+ $o=['bill_no'=>'L1-0042','service_mode'=>'DINE_IN','tbl'=>'Table 5','cust'=>'Walk-in','cphone'=>'',
+     'cashier'=>'Counter 1','subtotal'=>1450.0,'discount_amount'=>50.0,'service_charge'=>0.0,
+     'tax_amount'=>224.0,'grand_total'=>1624.0,'closed_at'=>date('Y-m-d H:i:s'),'created_at'=>date('Y-m-d H:i:s'),
+     'pay_mode'=>'Cash'];
+ $rate=(float)($st['tax_cash']??16);
+ $items=[['nm'=>'Chicken Karahi (Full)','qty'=>1,'unit_price'=>950,'line_total'=>950,'tax_rate'=>$rate,'tax_amount'=>round(950*$rate/100,2)],
+         ['nm'=>'Garlic Naan','qty'=>4,'unit_price'=>60,'line_total'=>240,'tax_rate'=>$rate,'tax_amount'=>round(240*$rate/100,2)],
+         ['nm'=>'Fresh Lime','qty'=>2,'unit_price'=>130,'line_total'=>260,'tax_rate'=>$rate,'tax_amount'=>round(260*$rate/100,2)]];
+ $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
+       'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>$st['receipt_header']??'',
+       'footer'=>$st['receipt_footer']??'','currency'=>$st['currency']??'PKR','tax_rate'=>$rate,
+       'fbr_no'=>'','fbr_pending'=>false];
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::render($tpl,$o,$items,$ctx));
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/pdf');header('Content-Disposition: inline; filename="preview.pdf"');header('Content-Length: '.strlen($pdf));echo $pdf;exit;
+
 case 'menu-image-search':needLogin();$q=trim((string)($_GET['q']??''));if($q==='')fail('query required');$out=[];$src='suggested';$page=max(1,(int)($_GET['page']??1));
 $gk=getenv('GOOGLE_CSE_KEY')?:'';$gx=getenv('GOOGLE_CSE_CX')?:'';
 if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
@@ -823,7 +887,17 @@ if($mode==='existing'&&!empty($inv['item_id'])){$iq=$p->prepare("SELECT id FROM 
 elseif($mode==='new'){$invName=trim((string)($inv['name']??$name));$unitCode=strtoupper(trim((string)($inv['unit']??'PCS')))?:'PCS';$uq=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$uq->execute([$unitCode]);$unitId=$uq->fetchColumn();if(!$unitId){$uq=$p->prepare("SELECT id FROM units ORDER BY code LIMIT 1");$uq->execute();$unitId=$uq->fetchColumn();}if(!$unitId)fail('No units configured');$lq=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY name LIMIT 1");$lq->execute([site_id()]);$loc=$lq->fetchColumn();$directId=\Aio\Services\InventoryService::createItem(['category_id'=>null,'sku'=>null,'barcode'=>null,'name'=>$invName,'usage_mode'=>'DIRECT_SALE','stock_unit_id'=>$unitId,'purchase_unit_name'=>$unitCode,'purchase_factor'=>1,'avg_cost'=>(float)($inv['cost']??0),'reorder_level'=>(float)($inv['reorder']??0),'track_batch'=>0,'track_expiry'=>0,'location_id'=>$loc?:null,'opening_qty'=>(float)($inv['opening_qty']??0)]);$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
 $mid=uuid();$vn=0;DB::tx(function($p)use($d,$mid,$cid,$name,$itemType,$consumption,$directId,$directQty,$price,&$vn){$p->prepare("INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,description,item_type,consumption_type,direct_inventory_item_id,direct_inventory_qty,base_price,is_active,is_online,is_pos) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,1,1)")->execute([$mid,tenant_id(),site_id(),$cid,$name,(string)($d['desc']??''),$itemType,$consumption,$directId,$directQty,$price]);$opts=is_array($d['variants']??null)?$d['variants']:[];foreach($opts as $o){$vname=trim((string)($o['name']??''));$vprice=(float)($o['price']??0);if($vname===''||$vprice<=0)continue;$vn++;$p->prepare("INSERT INTO menu_item_variants(id,tenant_id,site_id,menu_item_id,name,price,sort_order,is_active) VALUES(?,?,?,?,?,?,?,1)")->execute([uuid(),tenant_id(),site_id(),$mid,$vname,$vprice,$vn]);}});
 ok(['id'=>$mid,'category_id'=>$cid,'inventory_item_id'=>$directId,'variants'=>$vn]);
-case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);ok(['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard()]);
+case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);
+ /* V64 — FBR: bill band hone ke BAAD, print se PEHLE.
+    submit() kabhi exception nahi phenkta. FBR band ho to bill phir bhi
+    chhapega, us par "FBR: PENDING" likha aayega aur entry queue mein
+    jayegi. Customer counter par khara hai - bill rokna hal nahi hai. */
+ $fiscal=['status'=>'NONE','invoice_no'=>'','message'=>''];
+ try{$fiscal=FiscalService::submit($id);}catch(Throwable $e){$fiscal=['status'=>'PENDING','invoice_no'=>'','message'=>substr($e->getMessage(),0,200)];}
+ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard(),'fiscal'=>$fiscal];
+ /* Bill cloud par foran - 60 second wale loop ka intezar nahi. */
+ register_shutdown_function('sync_nudge');
+ ok($resp);
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();$d['bill_no']=pos_bill_guard($d);$r=PosService::sendKot($d,$d['items']??[]);$r['bill_no']=$d['bill_no'];ok($r);
 case 'customer-order':
 $d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();

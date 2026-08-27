@@ -143,14 +143,74 @@ try {
           -WorkingDirectory $root -NoNewWindow -PassThru `
           -RedirectStandardOutput $syncLog -RedirectStandardError $syncLog
   Say 'Auto-sync started (runs in the background).' 'DarkGray'
-} catch { Say 'Auto-sync could not start (data will sync when it does).' 'DarkYellow' }
+} catch {
+  # Pehle yahan sirf "data will sync when it does" likha aata tha - be-maani.
+  # User ko pata hi nahi chalta tha ke sync chal hi nahi rahi aur kyun.
+  Say 'Auto-sync START NAHI HUI:' 'Red'
+  Say ("   " + $_.Exception.Message) 'DarkYellow'
+  Say "   Log: $syncLog" 'DarkGray'
+  Say '   Software chalta rahega, magar cloud se data aayega/jayega NAHI.' 'DarkYellow'
+  Say '   Dashboard par "Sync now" se haath se chala sakte hain.' 'DarkGray'
+}
 
-Start-Process "http://localhost:$port/login.html"
+# ---------- browser ----------
+# Pehle sirf `Start-Process <url>` tha, yani system ka DEFAULT browser.
+# Agar us PC ka default browser toota hua ho (misal Firefox ka
+# "Couldn't load XPCOM"), to user ko lagta tha software nahi chala --
+# halanke server bilkul theek chal raha hota tha.
+# Ab: default try -> Edge -> Chrome -> aur har soorat mein address saaf
+# screen par, taake user khud khol sake.
+$url = "http://localhost:$port/login.html"
+$opened = $false
+try { Start-Process $url -ErrorAction Stop; $opened = $true } catch { }
+
+if (-not $opened) {
+  foreach ($b in @(
+      "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+      "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+      "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+      "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe")) {
+    if (Test-Path $b) {
+      try { Start-Process -FilePath $b -ArgumentList $url -ErrorAction Stop; $opened = $true; break } catch { }
+    }
+  }
+}
+
+if (-not $opened) {
+  Write-Host ''
+  Say 'Browser khud nahi khul saka.' 'Yellow'
+  Say "Chrome ya Edge kholein aur yeh address likhein:  $url" 'Yellow'
+}
 
 Write-Host ''
 Say "The software is running at http://localhost:$port" 'Green'
 Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
+Say "Agar browser mein koi error aaye, koi doosra browser khol kar http://localhost:$port likhein." 'DarkGray'
 Write-Host ''
+
+# ---------- sync watchdog ----------
+# Pehle sync loop chup-chaap mar sakta tha aur kisi ko pata na chalta.
+# Ab har 30 second dekha jata hai; mara ho to dobara chala diya jata hai.
+$watch = Start-Job -ScriptBlock {
+  param($root, $phpExe, $phpIni, $logDir)
+  while ($true) {
+    Start-Sleep -Seconds 30
+    $pidFile = Join-Path $logDir 'sync_loop.pid'
+    $alive = $false
+    if (Test-Path $pidFile) {
+      $sp = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+      if ($sp) { $alive = [bool](Get-Process -Id ([int]$sp) -ErrorAction SilentlyContinue) }
+    }
+    if (-not $alive) {
+      $a = '-c "{0}" "scripts/sync_loop.php"' -f $phpIni
+      $lg = Join-Path $logDir 'sync.log'
+      try {
+        Start-Process -FilePath $phpExe -ArgumentList $a -WorkingDirectory $root -NoNewWindow `
+          -RedirectStandardOutput $lg -RedirectStandardError $lg | Out-Null
+      } catch { }
+    }
+  }
+} -ArgumentList $root, $phpExe, $phpIni, $logDir
 
 try { Wait-Process -Id $srv.Id } finally {
   Stop-Process -Id $srv.Id -ErrorAction SilentlyContinue

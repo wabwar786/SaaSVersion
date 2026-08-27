@@ -28,7 +28,8 @@ return [
         'enabled' => true,
         'cloud_api_url' => '',            // cloud is the cloud
         'token' => $env('SYNC_TOKEN','CHANGE-THIS-LONG-RANDOM-SYNC-TOKEN'),
-        'interval_minutes' => 5,
+        'interval_seconds' => 60,    // V64: local ka bill 1 minute ke andar cloud par
+        'interval_minutes' => 5,     // purani key - ab sirf fallback
         'batch' => 300,
         'push_tables' => [],
         'pull_tables' => [],

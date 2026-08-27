@@ -52,6 +52,7 @@ php scripts/migrate_sync_columns.php || echo "[boot] sync columns migrate skippe
 php scripts/migrate_sync_log.php    || echo "[boot] sync log migrate skipped"
 php scripts/migrate_delete_support.php || echo "[boot] delete support migrate skipped"
 php scripts/migrate_print_rule_default.php || echo "[boot] print_rule migrate skipped"
+php scripts/migrate_fiscal.php || echo "[boot] fiscal migrate skipped"
 php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"

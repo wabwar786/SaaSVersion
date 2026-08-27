@@ -466,7 +466,12 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
 
   refresh();
   setInterval(refresh,30000);
-  setInterval(function(){ if(state&&state.role!=='cloud'&&state.enabled)runSync(false); },120000);
+  /* V64 — YEH TIMER PEHLE ASAL SYNC CHALATA THA, HAR 2 MINUTE.
+     Masla: har page load par sifar se shuru hota tha. User POS -> dashboard
+     -> menu karta rehta to yeh kabhi poora hota hi nahi tha.
+     Ab asal kaam `sync_loop.php` karta hai (alag OS process, har 60 second,
+     screen se koi taluq nahi). Yeh timer sirf status DIKHATA hai. */
+  setInterval(function(){ if(state&&state.role!=='cloud'&&state.enabled)refresh(); },20000);
 })();
 
 

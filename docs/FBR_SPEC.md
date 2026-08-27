@@ -1,94 +1,131 @@
-# FBR / KPRA Digital Invoicing — Spec
+# FBR / Provincial Digital Invoicing — Spec
 
-**Source:** `restaurant_sale.cs` (mojooda C# POS jo customer chala raha hai)
-**Status:** Phase 4 — abhi banaya NahI gaya. Yeh sirf mehfooz kiya hua record hai.
+**Status:** Phase 4 — abhi banaya NahI gaya. Yeh design record hai.
+
+> **Ahem:** yeh spec **hamare** system ki terms mein likha hai — hamari
+> tables, hamare endpoints, hamare labels. Reference ke liye ek purane C#
+> POS ka code dekha gaya tha, magar us ke control names, column names,
+> screen labels aur workflow **kuch bhi hamare software mein nahi aayega**.
+> Us se sirf ek cheez li gayi hai: **FBR ke apne API ka contract** (field
+> names jaise `POSID`, `USIN`, `PCTCode`) — wo FBR ka tay kiya hua hai,
+> usay badla nahi ja sakta.
 
 ---
 
-## 1. Buniyadi haqeeqat: FBR sirf OFFLINE version par chal sakta hai
+## 1. Buniyadi haqeeqat: FBR sirf OFFLINE version par
 
-C# code mein endpoint yeh hai:
+FBR ka fiscal service usi computer par install hota hai jahan POS chal raha
+hai, aur uska endpoint **localhost** par hota hai. Cloud (Railway) se us
+tak pohancha hi nahi ja sakta.
+
+Yehi baat printers ki hai — wo bhi LAN par local hain.
+
+**Nateeja:**
+
+- Cloud portal par FBR ka page **dikhega hi nahi**
+- Offline installation par dikhega, aur wahan bhi tabhi jab enable ho
+- `cfg('app.role') === 'cloud'` par saare fiscal endpoints `fail()` karenge
+
+---
+
+## 2. Hamare system mein kahan lagega
+
+Mojooda flow:
 
 ```
-http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel
+POS  →  api.php  case 'pos-finalize'  →  PosService::finalize()
+     →  bill_pdf / print
 ```
 
-**`localhost`.** FBR ka fiscal service usi computer par install hota hai jahan
-POS chal raha hai. Cloud (Railway) se is tak pohancha hi nahi ja sakta.
+Naya flow:
 
-Isi tarah printers bhi local hain (`arx.PrintOptions.PrinterName = "printer1"`).
+```
+POS  →  pos-finalize  →  PosService::finalize()
+     →  FiscalService::submit($orderId)      ← naya
+     →  bill_pdf / print   (invoice no + QR bill par)
+```
 
-**Nateeja:** FBR page cloud portal par **dikhega hi nahi**. Sirf offline
-installation par, aur wahan bhi tabhi jab customer ne enable kiya ho.
+Yani fiscal submit **bill close hone ke baad, print se pehle**.
 
----
-
-## 2. Kab chalta hai
-
-`btnsave_Click` mein — is tarteeb se:
-
-1. Bill database mein save
-2. **FBR ko POST** → invoice number wapas
-3. Invoice number `stockout.bilty_no` mein save
-4. Usi number se **QR code** banta hai
-5. Bill print — QR bill par
-
-Yani FBR call **final print se pehle** hoti hai, aur uska number bill par
-chhapta hai. (Aap ne bhi yehi kaha tha.)
+Naya: `src/Services/FiscalService.php`
 
 ---
 
-## 3. Request payload
+## 3. Hamare data ki tabdeeliyan
 
-### Invoice (header)
-
-| Field | Note |
+| Kahan | Kya |
 |---|---|
-| `POSID` | int — FBR se mila hua POS registration id |
-| `USIN` | bill number |
-| `DateTime` | ab ka waqt |
-| `BuyerNTN` · `BuyerCNIC` | optional |
-| `BuyerName` · `BuyerPhoneNumber` | customer |
-| `TotalBillAmount` | bill ka total |
-| `TotalQuantity` | saari qty ka jama |
-| `TotalSaleValue` | tax se pehle |
-| `TotalTaxCharged` | tax ki raqam |
-| `Discount` | |
-| `FurtherTax` | 0 |
-| `PaymentMode` | CASH → 1, CARD → 2, baqi → 1 |
-| `InvoiceType` | 1 |
-| `Items[]` | neeche |
+| `orders` | `fiscal_invoice_no VARCHAR(60) NULL`, `fiscal_status VARCHAR(20)` (`NONE` / `PENDING` / `SENT` / `FAILED`) |
+| `menu_items` | `pct_code VARCHAR(12) NULL` — per-item PCT, default settings se |
+| `fiscal_invoices` | **schema mein pehle se maujood** — submission log yahan |
+| `site_settings` | group `fiscal` — neeche wali settings |
 
-### InvoiceItems
-
-`ItemCode` · `ItemName` · `Quantity` · `PCTCode` · `TaxRate` ·
-`SaleValue` · `TotalAmount` · `TaxCharged` · `Discount` · `FurtherTax` ·
-`InvoiceType`
-
-`PCTCode` C# mein `"98016000"` hardcoded hai. Hamare paas yeh
-**per-item configurable** hona chahiye (`menu_items.pct_code`), default
-`98016000`.
+Koi nayi "sale" table nahi. Hum apni `orders` / `order_items` par hi kaam
+karenge.
 
 ---
 
-## 4. Tax ka hisaab
+## 4. FBR ko bheja jane wala payload
 
-Customer ne kaha: *"formula tum khud apni taraf se lagana."*
+Yeh field names **FBR ke hain** — inhen badla nahi ja sakta.
 
-Purane code ka masla: `Math.Round(x, 1)` aur `Math.Round(x)` mila kar use
-hota hai, is liye har line par ek-do rupay ka farq aa jata hai aur bill ka
-total items ke jama se match nahi karta. FBR aisa mismatch reject kar deta
-hai.
+### Header
 
-**Hamara tareeqa — do usool:**
+| FBR field | Hamare paas se |
+|---|---|
+| `POSID` | `site_settings: fiscal.pos_id` |
+| `USIN` | `orders.bill_no` |
+| `DateTime` | `orders.closed_at` |
+| `BuyerNTN` · `BuyerCNIC` | `customers` (khali ho sakta hai) |
+| `BuyerName` · `BuyerPhoneNumber` | `customers.full_name` / `.phone` |
+| `TotalBillAmount` | Σ line_total |
+| `TotalQuantity` | Σ qty |
+| `TotalSaleValue` | Σ line_sale |
+| `TotalTaxCharged` | Σ line_tax |
+| `Discount` | `orders.discount_amount` |
+| `FurtherTax` | 0 |
+| `PaymentMode` | payment method se map (neeche) |
+| `InvoiceType` | 1 (normal) / 3 (refund) |
+| `Items[]` | `order_items` se |
 
-1. **Andar ka hisaab poori precision par** (paisa level), rounding sirf
-   aakhir mein aur sirf display/print ke liye.
-2. **Har line ka tax alag nikaal kar jama** — header ka total us jama ke
-   barabar rakha jaye, alag se dobara calculate na ho. Isi se mismatch
-   khatam hota hai.
+### Items
 
-### Tax-exclusive (rate price ke upar lagta hai)
+| FBR field | Hamare paas se |
+|---|---|
+| `ItemCode` | `menu_items.id` (ya SKU) |
+| `ItemName` | `order_items.item_name_snapshot` |
+| `Quantity` | `order_items.qty` |
+| `PCTCode` | `menu_items.pct_code` → warna `fiscal.default_pct` |
+| `TaxRate` | payment mode ke hisaab se rate |
+| `SaleValue` · `TotalAmount` · `TaxCharged` | neeche wale formule se |
+| `Discount` · `FurtherTax` | line discount / 0 |
+
+### PaymentMode mapping
+
+Hamari `payment_methods.method_type` se:
+
+| Hamara | FBR |
+|---|---|
+| `CASH`, `COD` | 1 |
+| `CARD` | 2 |
+| `BANK`, `WALLET` | 1 |
+
+---
+
+## 5. Tax ka hisaab — hamara apna
+
+Do usool:
+
+1. **Andar ka hisaab poori precision par.** Rounding sirf aakhir mein, sirf
+   bhejte/chhapte waqt (2 decimal).
+2. **Header lines ke jama se banta hai** — alag se dobara calculate nahi
+   hota. Har line ka tax alag nikaal kar jama kiya jata hai.
+
+Yeh doosra usool ahem hai: agar header alag se calculate ho aur lines alag
+se, to har line ki rounding ka farq jama ho kar total mismatch bana deta
+hai, aur FBR aisi invoice reject kar deta hai.
+
+### Tax-exclusive (rate price ke upar)
 
 ```
 line_sale  = unit_price × qty − line_discount
@@ -96,7 +133,7 @@ line_tax   = line_sale × rate / 100
 line_total = line_sale + line_tax
 ```
 
-### Tax-inclusive (rate price ke andar shamil hai)
+### Tax-inclusive (rate price ke andar shamil)
 
 ```
 line_total = unit_price × qty − line_discount
@@ -113,89 +150,91 @@ TotalBillAmount = Σ line_total
 TotalQuantity   = Σ qty
 ```
 
-Har cheez 2 decimal par round hoti hai **sirf bhejte waqt**, aur header
-lines ke jama se banta hai — alag se dobara nahi ginta.
+### Rate kahan se
 
-### Kaun sa rate?
+`pos_settings` se — **wahi do rates jo V63 se Settings page par hain**:
 
-`tax_cash` ya `tax_card` — payment mode ke hisaab se (yeh V63 se Settings
-page par maujood hain). Purane C# mein bhi `main.credit_card_tax` alag tha,
-yani yeh concept customer ke system mein pehle se hai.
+- payment mode CASH → `tax_cash`
+- payment mode CARD / wallet / bank → `tax_card`
+
+Alag fiscal tax rate nahi banayenge. Ek hi jagah.
 
 ### Service charge
 
-C# mein service charge bill par lagta hai magar FBR ko **nahi** jata
-(`sc` alag column hai). Hum bhi yehi rakhenge — service charge sales tax
-ka hissa nahi.
+`orders.service_charge` bill par lagta hai magar **FBR ko nahi jata** —
+sales tax ka hissa nahi.
 
 ### POS fee
 
-C# mein: `taxrate > 1 && kpra == ""` → bill mein **Re. 1** FBR POS fee.
-Yeh FBR ka apna rule hai; rakhenge, magar Settings se on/off ho sakega.
+FBR apni POS fee (Re. 1 per invoice) ka taqaza karta hai. Settings mein
+on/off, default off. On ho to bill par alag line: `FBR POS Fee`.
 
 ---
 
-## 5. Response — purane code ka bug
+## 6. Response aur nakami
 
-```csharp
-string reMfist21 = HtmlResult.Substring(18, 30);
-FBR_String = reMfist21.Substring(0, reMfist21.IndexOf('"')).Trim();
-```
+Response ka **asli JSON parse** hoga (invoice number ke field se). Fixed
+offsets ya substring hacks nahi.
 
-Yeh **fixed byte offsets** par chal raha hai. Response format zara sa badla
-(ek space, ek naya field) to ya galat invoice number aayega ya
-`ArgumentOutOfRangeException`. Aur poora block `catch (Exception ex) { }`
-mein hai — yani **bill khamoshi se bina FBR number ke chhap jayega**.
+Nakami par:
 
-**Hamara tareeqa:**
-- Asli JSON parse (`InvoiceNumber` / `FBRInvoiceNumber` field name se)
-- Fail hone par **bill nahi rukega** (customer khara hai), magar:
-  - bill par saaf likha aayega `FBR: PENDING`
-  - order `fiscal_invoices` mein `PENDING` status ke saath queue hoga
-  - background retry (3 koshishen)
-  - dashboard par pending count nazar aayega
-- Khamosh nakami kabhi nahi.
+- **Bill nahi rukega** — customer counter par khara hai
+- Bill par saaf: `FBR: PENDING`
+- `fiscal_invoices` mein row `PENDING` ke saath, `orders.fiscal_status = PENDING`
+- Background retry (3 koshishen, barhta hua wafqa)
+- Dashboard par pending count, aur FBR page par "Retry now"
+
+**Khamosh nakami kabhi nahi.** Nakam bill ka pata usi waqt chalna chahiye,
+mahine ke aakhir mein nahi.
 
 ---
 
-## 6. KPRA (Khyber Pakhtunkhwa) — alag rasta
+## 7. Provider
 
-FBR nahi, simple GET:
+Har soobe ka apna nizam hai (FBR federal, KPRA, PRA, SRB, BRA). Design
+**provider-based** hoga:
 
 ```
-http://kpra.gov.pk/rims/integration/?ntn=<NTN>&key=<KEY>
-   &invoice_no=<bill>&amount=<base>&sts=<tax>&date=<Y-m-d H:i:s>
+fiscal.provider = NONE | FBR | KPRA | ...
 ```
 
-`amount` = tax se pehle, `sts` = tax ki raqam. Response ka koi invoice
-number nahi — sirf submission.
-
-Province-wise aur bhi hain (PRA Punjab, SRB Sindh, BRA Balochistan), is
-liye design **provider-based** hoga: `fiscal_provider` = `FBR` | `KPRA` |
-`NONE`.
+`FiscalService` mein har provider ka apna adapter. Abhi FBR aur KPRA;
+baqi baad mein bina core chhue add ho sakenge.
 
 ---
 
-## 7. Settings jo chahiye hongi (offline-only page)
+## 8. FBR page (sirf offline) — hamare apne labels
 
-| Setting | Misal |
+`approved_ui/fbr.html` — mojooda khali shell ki jagah:
+
+**FBR / Digital Invoice**
+
+| Label | |
 |---|---|
-| Provider | FBR / KPRA / None |
-| Service URL | `http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel` |
-| POS ID | FBR se mila hua |
+| Provider | None / FBR / KPRA |
+| Fiscal service URL | localhost ka address |
+| POS ID | |
 | NTN | |
-| Key | KPRA ke liye |
-| Price includes tax | Yes / No |
-| Default PCT code | `98016000` |
-| POS fee (Re. 1) | On / Off |
+| Access key | |
+| Prices include tax | Yes / No |
+| Default PCT code | |
+| FBR POS fee (Re. 1) | On / Off |
+
+Neeche: **Connection test**, aur **Pending invoices** ki list (bill no,
+waqt, wajah, Retry).
+
+Cloud par yeh page kholne par sirf ek note: *"FBR sirf offline version par
+chalta hai (local fiscal service aur local printers ke liye)."*
 
 ---
 
-## 8. Tables jo banengi
+## 9. Testing
 
-- `fiscal_invoices` — schema mein **pehle se maujood** hai
-- `menu_items.pct_code` — naya column
-- `orders.fiscal_invoice_no` + `fiscal_status` — naye columns
+- Tax-exclusive aur tax-inclusive dono par: Σ lines == header (paisa exact)
+- Service charge FBR total mein **nahi**
+- Fiscal service band ho → bill phir bhi chhape, `PENDING` ke saath
+- Retry se `SENT`, invoice no aur QR bill par
+- Cloud par fiscal endpoints 403
 
 ---
 

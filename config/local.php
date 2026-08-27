@@ -34,7 +34,8 @@ return [
         'cloud_api_url' => '',
         // Cloud config mein isi token ko match karwana hai (shared secret).
         'token' => 'CHANGE-THIS-LONG-RANDOM-SYNC-TOKEN',
-        'interval_minutes' => 5,     // har kitne minute baad auto-sync ho
+        'interval_seconds' => 60,    // V64: local ka bill 1 minute ke andar cloud par
+        'interval_minutes' => 5,     // purani key - ab sirf fallback     // har kitne minute baad auto-sync ho
         'batch' => 300,              // ek batch mein max rows
         // Local -> Cloud PUSH: ye tables upar bheji jaati hain (jinme updated_at hai).
         'push_tables' => [
