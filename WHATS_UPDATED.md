@@ -3171,3 +3171,120 @@ kar ke dekhna parega), `sync_suite.py`, `reset_verify.py`.
 
 Printers: IP ping se verify + test print (#1), aur category-printer
 mapping. Uske baad Phase C reports.
+
+---
+
+# V66 — Support popup, licence control, Phase B (printers)
+
+## 1. Support button (About ki jagah)
+
+Sidebar mein ab **Support** button hai (pehle "About"). Rabte ka naam
+sidebar se hata diya gaya. Popup animated hai (slide-up + pulsing badge)
+aur usmein sirf rabte ki tafseel:
+
+    Call us   +92 342 5095104     (tap to call)
+    Email     support@wabwar.pk
+    Website   www.wabwar.pk
+    Wabwar Software House · build
+
+Sirf `shared.css` ki mojooda classes + `#supCss` ka apna chhota style
+block (scoped, kisi doosri cheez par asar nahi). Licence banner ka
+"Details" button bhi ab isi popup ko kholta hai.
+
+## 2. Licence control — har customer ke liye (super admin)
+
+Pehle renewal browser ke `prompt()` se hoti thi:
+
+    prompt('New expiry date (YYYY-MM-DD):')
+    prompt('Payment amount (PKR, 0 = no payment record):')
+
+Na validation, na suspend/activate, na yeh nazar aata tha ke abhi kitne
+din bache hain.
+
+**Ab proper dialog** (`sa-licence-get` / `sa-licence-set`):
+
+- Abhi ki halat upar: status pill, expiry date, **days left**
+- **Extend by**: 1 / 3 / 6 months ya 1 year — mojooda expiry se aage
+  (guzar chuki ho to aaj se), ya exact date
+- **Status**: Active / Suspended
+- Payment amount (0 = koi payment record nahi)
+- Server side validation: date format, guzri hui date reject, status
+  sirf ACTIVE/SUSPENDED
+- Har tabdeeli audit log mein
+
+Yeh wahi licence hai jo V65 ka banner parhta hai — customer ko 3 din
+pehle warning, aur expire hone par Wabwar ka number.
+
+## 3. Phase B — Printers (#1)
+
+### Printers page ab ASLI table par
+
+`printers` module `ui_records` mein likhta tha, jabke POS asli `printers`
+table se KOT bhejta hai. **Yani yahan banaya hua printer kabhi print
+karta hi nahi tha.** Ab dono ek hi table par (`ModuleBridge`).
+
+Naye fields: connection (NETWORK / WINDOWS), IP, port, Windows printer
+name, paper width, default printer.
+
+### "Status" ka jhoota dropdown khatam
+
+Pehle Online/Offline ka dropdown tha jise **user khud** set karta tha.
+Woh raye thi, haqeeqat nahi — printer band pare hone par bhi "Online"
+likha rehta tha aur bill kho jata tha. Hata diya gaya.
+
+### Check + Test print (asli)
+
+`src/Services/PrinterService.php`:
+
+- **Check** — printer ke port par TCP connect (9100 raw / jo set ho).
+  TCP ko ICMP ping par tarjeeh di gayi: ping ka jawab dena yeh sabit
+  nahi karta ke printer PRINT bhi kar sakta hai; port khula hona zyada
+  kaam ka jawab hai.
+- **Test print** — asli ESC/POS test page bhejta hai (double-height
+  heading, printer ka naam/type/address/waqt, partial cut). Kaghaz
+  nikalta hai to sab theek.
+
+Jawab hamesha wajah ke saath:
+
+| Status | Matlab |
+|---|---|
+| `ONLINE` | port ne jawab diya (+ kitne ms mein) |
+| `PORT_CLOSED` | network par hai magar port band — port setting dekhein |
+| `NO_RESPONSE` | jawab nahi — printer/IP/port check karein |
+| `UNREACHABLE` | ping ne bhi jawab nahi diya |
+| `NO_IP` / `BAD_IP` | IP set hi nahi / ghalat |
+
+**Ek ahem baat:** `ping` har jagah maujood nahi hota (kuch systems par
+`exec` band hota hai). Aisi soorat mein ab hum yeh **dawa nahi karte**
+ke "printer network par hai hi nahi" — sirf `NO_RESPONSE` kehte hain.
+Pehle wala code ping na milne par bhi UNREACHABLE keh deta, jo bilkul
+gumrah-kun hota.
+
+### Kitchen routing UI
+
+POS pehle se printer ke hisab se KOT group karta hai (`PosService`),
+magar **yeh mapping set karne ka koi UI tha hi nahi**. Ab Printers page
+par "Kitchen routing" — har menu category ke saamne printer ka dropdown.
+Isi se multi-category bill ke alag alag KOT sahi printers par jate hain.
+
+### module.js — rowActions
+
+Modules ab apne extra row buttons de sakte hain (`rowActions`). Printers
+ke "Check" aur "Test print" isi se hain, aur **jawab check hota hai** —
+kamyabi ya nakami, poori wajah ke saath user tak.
+
+## Testing
+
+    php -l  (har PHP file)              -> 0 errors
+    php tools/check_pages.php           -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+**PrinterService chala kar test kiya:**
+
+    listening port par     -> ONLINE (0 ms)      <- asli socket khol kar
+    band port par          -> NO_RESPONSE
+    ghalat IP par          -> BAD_IP
+    IP hi na ho            -> NO_IP
+
+**NahI chala:** asli printer par test print (mere paas printer nahi),
+licence banner ka waqt par chalna, `sync_suite.py`, `reset_verify.py`.
