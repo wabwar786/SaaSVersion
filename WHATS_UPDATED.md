@@ -3366,3 +3366,90 @@ par hi hogi — khaas kar Profit & Loss.
 ## Aage
 
 Custom report builder (C2), phir backup (#10) aur help desk (#9).
+
+---
+
+# V68 — Tablet on the LAN
+
+## Asli rukawat: server LAN par sunta hi nahi tha
+
+    php -S 127.0.0.1:8080 -t public public/router.php
+
+Offline server **sirf `127.0.0.1`** par sunta tha — yani sirf usi
+computer se khulta tha. Tablet chahe usi WiFi par ho, us tak **pohanch
+hi nahi sakta tha**.
+
+Tablet ka baqi saara kaam pehle se bana hua tha (444-line UI,
+`order_taker_db.js` asli `pos-boot` / `pos-kot` par, `paired_devices`
+table, QR pairing, role limiting). **Sirf darwaza band tha.**
+
+## Kya kaam kiya gaya
+
+**1. LAN binding** — `127.0.0.1` → `0.0.0.0`. Port check bhi
+`IPAddress::Any` par. Hifazat kam nahi hui: `router.php` har
+non-public page par login/pairing maangta hai, sirf `login.html`,
+`pair.html`, `qr.html` khule hain.
+
+**2. Firewall** — installer ab ek dafa inbound rule banata hai
+(TCP 8080), **sirf Private network par**. Public profile par
+jaan-boojh kar NAHI — warna cafe ya airport ki WiFi par POS khul jata.
+Admin rights na hon to setup saaf batata hai ke tablets tab tak
+connect nahi honge.
+
+**3. LAN address har start par** — router aksar PC ko nayi IP de deta
+hai aur agle din tablet chalna band kar deta hai. Ab launcher har baar
+asli IP dhoond kar dikhata hai aur `storage/logs/lan_url.txt` mein
+likh deta hai:
+
+    TABLETS / OTHER DEVICES ON THIS WIFI
+       http://192.168.1.10:8080
+
+**4. "Connect a tablet"** — POS par naya button. Ek screen par: LAN
+address, **QR code**, aur 15 minute ka pairing token. QR isi computer
+par banta hai (V64.2 wala apna encoder) — internet ki zaroorat nahi.
+
+Waiter QR scan karta hai → `pair.html` (public page) → device paired →
+**seedha Order Taker screen**. Na IP likhni parti hai, na password.
+Yeh `device-pair-claim` ka mojooda redirect hi hai
+(`WAITER → /restaurant_order_taker_tablet.html`).
+
+**5. Tablet ab POS jaisa dikhta hai** — pehle uske apne rang the
+(green brand, alag background); ek hi restaurant ke do screens **do
+alag software** lagte the. Ab wahi tokens jo `restaurant_pos.html`
+use karta hai. Purane CSS variable naam bhi rakhe hain (POS ke rangon
+par map kiye) taake mojooda 400+ lines ka CSS na toote.
+`pair.html` bhi wahi brand.
+
+**6. POS band = tablet band, magar SAAF paighaam ke saath**
+
+Aap ka faisla: tablet ek patla client rahe. Ab wo har 15 second server
+se rabta check karta hai:
+
+| Halat | Kya dikhta hai |
+|---|---|
+| Server nahi mila (2 dafa lagatar) | "POS computer is not reachable — this tablet works only while the POS computer is switched on" |
+| 401 / 403 | "This tablet needs to be connected again — ask the counter to tap Connect a tablet" |
+
+Yeh farq ahem hai: session khatam hone par "POS not reachable" kehna
+**jhoot** hota aur waiter be-wajah counter ka computer dekhne chala
+jata. Aur ek dafa fail hone par screen nahi dikhati — WiFi ka lamhati
+jhatka aam hai.
+
+## Testing
+
+PHP built-in server LAN address par chala kar **asli test**:
+
+    localhost se       -> 302 -> /login.html
+    LAN IP se          -> 302 -> /login.html      <- tablet ka rasta, ab khula
+    pair.html (public) -> 200                     <- QR scan ke liye
+    login page         -> loads
+
+(Redirect mein `?build=v14` nahi hai — V67 wala fix bhi isi test se
+tasdeeq ho gaya.)
+
+    php -l  (har PHP file)              -> 0 errors
+    php tools/check_pages.php           -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+**NahI chala:** Windows firewall rule (sandbox Linux hai), asli tablet
+par QR scan aur order lena, aur `sync_suite.py` / `reset_verify.py`.

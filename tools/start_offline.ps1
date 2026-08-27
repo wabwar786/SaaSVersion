@@ -85,7 +85,7 @@ if ("$check" -notmatch 'APP_OK') {
 # ---------- 4) find a genuinely free port ----------
 function Test-PortFree([int]$p) {
   try {
-    $l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Parse('127.0.0.1'), $p)
+    $l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, $p)
     $l.Start(); $l.Stop(); return $true
   } catch { return $false }
 }
@@ -99,7 +99,15 @@ Say "Starting the software on http://localhost:$port ..." 'Cyan'
 # name contains spaces or brackets - e.g. "smartpos_by_wabwar-a (1)" - an
 # unquoted path breaks apart and PHP reports "Could not open input file".
 # So we build one properly quoted argument string.
-$phpArgs = '-c "{0}" -S 127.0.0.1:{1} -t "public" "public/router.php"' -f $phpIni, $port
+# V68 — TABLET KE LIYE LAN PAR SUNO.
+# Pehle server sirf 127.0.0.1 par sunta tha, yani tablet ya koi bhi
+# doosra device us tak POHANCH HI NAHI SAKTA tha - chahe wo isi WiFi
+# par ho. Tablet ka poora kaam bana hua tha magar darwaza band tha.
+#
+# Hifazat: server khulne se koi khatra nahi kyunke har request pehle
+# login/pairing se guzarti hai (router.php + api.php). Bina paired
+# device ke sirf login page milta hai.
+$phpArgs = '-c "{0}" -S 0.0.0.0:{1} -t "public" "public/router.php"' -f $phpIni, $port
 $srv = Start-Process -FilePath $phpExe `
         -ArgumentList $phpArgs `
         -WorkingDirectory $root -NoNewWindow -PassThru `
@@ -184,6 +192,31 @@ if (-not $opened) {
 
 Write-Host ''
 Say "The software is running at http://localhost:$port" 'Green'
+# ---------- LAN address (tablets ke liye) ----------
+# Router aksar PC ko nayi IP de deta hai, is liye har start par asli IP
+# dhoond kar dikhate hain - warna agle din tablet kaam karna band kar
+# deta hai aur kisi ko wajah samajh nahi aati.
+$lanIp = $null
+try {
+  $lanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' -and $_.PrefixOrigin -ne 'WellKnown' } |
+            Sort-Object -Property SkipAsSource, InterfaceIndex |
+            Select-Object -First 1 -ExpandProperty IPAddress)
+} catch {
+  try {
+    $lanIp = ([Net.Dns]::GetHostAddresses([Net.Dns]::GetHostName()) |
+              Where-Object { $_.AddressFamily -eq 'InterNetwork' -and $_.IPAddressToString -notmatch '^(127\.|169\.254\.)' } |
+              Select-Object -First 1).IPAddressToString
+  } catch { }
+}
+if ($lanIp) {
+  Write-Host ''
+  Say '  TABLETS / OTHER DEVICES ON THIS WIFI' 'Cyan'
+  Say ("     http://{0}:{1}" -f $lanIp, $port) 'White'
+  Say '     Open the POS -> "Connect a tablet" to show a QR code.' 'DarkGray'
+  try { Set-Content -Path (Join-Path $logDir 'lan_url.txt') -Value ("http://{0}:{1}" -f $lanIp, $port) -ErrorAction SilentlyContinue } catch { }
+}
+
 Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
 Say "Agar browser mein koi error aaye, koi doosra browser khol kar http://localhost:$port likhein." 'DarkGray'
 Write-Host ''

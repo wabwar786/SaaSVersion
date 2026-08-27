@@ -832,6 +832,42 @@ case 'users-list':
  ok(['users'=>$rows,'mode'=>'local']);
 
 /* ============ DEVICE PAIRING (tablet / mobile over LAN) ============ */
+case 'tablet-connect':needLogin();
+ /* V68 — "Connect a tablet".
+    Ek hi jawab mein: is PC ka LAN address, pairing token, aur QR ka
+    matn. Waiter QR scan karta hai aur seedha order screen par pohanch
+    jata hai - na IP likhni parti hai, na password. */
+ if(!Auth::isManager())fail('Only an Admin or Manager can connect a tablet',403);
+ if((string)cfg('app.role')==='cloud')
+   fail('Tablets connect to the POS computer on your local network, not to the online portal. Open this on the branch computer.',400);
+
+ /* LAN address: launcher ne likha hua, warna khud maloom karo */
+ $url='';
+ $f=dirname(__DIR__).'/storage/logs/lan_url.txt';
+ if(is_file($f))$url=trim((string)@file_get_contents($f));
+ if($url===''){
+   $ip='';
+   $host=gethostname();
+   if($host){$ips=@gethostbynamel($host)?:[];
+     foreach($ips as $x){if(!preg_match('/^(127\.|169\.254\.)/',$x)){$ip=$x;break;}}}
+   if($ip==='')$ip=(string)($_SERVER['SERVER_ADDR']??'');
+   $port=(int)($_SERVER['SERVER_PORT']??8080)?:8080;
+   $url=$ip?('http://'.$ip.':'.$port):'';
+ }
+ if($url==='')fail('Could not work out this computer\'s network address. Check that WiFi or LAN is connected.');
+
+ $d=body();$role=strtoupper((string)($d['role']??'WAITER'));
+ if(!in_array($role,['WAITER','CASHIER','KDS'],true))$role='WAITER';
+
+ $p=DB::pdo();$tok=bin2hex(random_bytes(16));$did=uuid();
+ $mins=(int)(getenv('PAIR_TOKEN_MINUTES')?:15);
+ $p->prepare("INSERT INTO paired_devices(id,tenant_id,site_id,device_name,device_role,pair_token,user_id,status,created_at,expires_at)
+   VALUES(?,?,?,?,?,?,?,'PENDING',NOW(6),DATE_ADD(NOW(6),INTERVAL ? MINUTE))")
+  ->execute([$did,tenant_id(),site_id(),(string)($d['name']??('Tablet '.date('H:i'))),$role,$tok,(current_user()['id']??null),$mins]);
+
+ ok(['url'=>$url,'pair_url'=>$url.'/pair.html?t='.$tok,'token'=>$tok,
+     'role'=>$role,'expires_minutes'=>$mins,'device_id'=>$did]);
+
 case 'device-pair-start':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  $d=body();$role=strtoupper((string)($d['role']??'WAITER'));
  if(!in_array($role,['WAITER','CASHIER','KDS','MANAGER'],true))$role='WAITER';

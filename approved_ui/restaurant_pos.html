@@ -255,6 +255,7 @@ textarea.inp{min-height:62px;resize:vertical}
     <div style="flex:1"></div>
     <button class="tb" id="qrBtn">QR Orders <b id="qrCount">(0)</b></button>
     <button class="tb" id="voidBtn">Void Logs</button>
+    <button class="tb" id="tabletBtn">Connect a tablet</button>
     <button class="tb" id="dupBtn">Duplicate Bill</button>
     <button class="tb amber" id="holdsBtn">Hold Bills <b id="holdCount">(0)</b></button>
     <button class="tb" id="sysBtn">System</button>
@@ -1159,6 +1160,37 @@ function slipHtml(kind,lines,info){
   }).join('');
   /* Pehle QR fail hone is missing the `this.remove()` tha - QR khamoshi se gayab.
      FBR ke bill par yeh na-qabil-e-qabool hai; ab wajah likhi aati hai. */
+  /* ---------- Connect a tablet (V68) ----------
+     Waiter ke tablet ko jorne ka poora tareeqa ek screen par: is PC ka
+     LAN address, QR, aur 15 minute ka code. QR isi computer par banta
+     hai (Qr.php) — internet ki zaroorat nahi. */
+  var tb=document.getElementById('tabletBtn');
+  if(tb) tb.onclick=function(){
+    var r=DBApi.req('tablet-connect',{role:'WAITER'});
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not start tablet pairing',true); return; }
+    var ov=document.createElement('div');
+    ov.setAttribute('style','position:fixed;inset:0;background:rgba(21,34,27,.55);z-index:9999;'
+      +'display:grid;place-items:center;padding:20px');
+    ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:430px;width:100%;'
+      +'padding:26px 24px;text-align:center;box-shadow:0 20px 60px rgba(21,34,27,.25)">'
+      +'<h2 style="margin:0 0 4px;font-size:18px">Connect a tablet</h2>'
+      +'<p style="margin:0 0 16px;font-size:12.5px;color:#5f6f66">'
+        +'On the tablet, connect to the same WiFi and scan this code.</p>'
+      +'<img src="/api.php?action=qr&scale=6&data='+encodeURIComponent(r.pair_url)+'" '
+        +'style="width:220px;height:220px;border:1px solid #e1e9e4;border-radius:12px" alt="" onerror="qrFail(this)">'
+      +'<p style="margin:14px 0 4px;font-size:12px;color:#5f6f66">Or open this address on the tablet</p>'
+      +'<div style="font-size:15px;font-weight:800;letter-spacing:.02em">'+esc(r.url)+'</div>'
+      +'<p style="margin:12px 0 0;font-size:11.5px;color:#8b9a92">'
+        +'This code works for '+esc(String(r.expires_minutes))+' minutes. '
+        +'The tablet stops working when this POS computer is switched off.</p>'
+      +'<button class="tb" id="tabClose" style="margin-top:16px;width:100%">Done</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){
+      if(e.target===ov||e.target.id==='tabClose') ov.remove();
+    });
+  };
+
   /* ---------- Licence banner (V65) ----------
      POS shell.js use nahi karta, is liye yahan alag se. Cashier ko
      3 din pehle pata chalna is required, aur expire hone par Wabwar ka

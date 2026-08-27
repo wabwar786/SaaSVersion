@@ -52,6 +52,28 @@ Info 'Windows - everything stays inside this folder.'
 Write-Host ''
 
 # ---------- 1) package check ----------
+# ---------- Firewall (tablets ke liye) ----------
+# Tablet tabhi pohanch sakta hai jab Windows Firewall port 8080 par
+# inbound ijazat de. Sirf PRIVATE network par - Public (cafe/airport ki
+# WiFi) par NAHI, warna kisi bhi jagah POS khul jayega.
+function Add-TabletFirewallRule {
+  param([int]$Port = 8080)
+  $name = 'SmartPOS Tablet Access'
+  try {
+    $ex = Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue
+    if ($ex) { return 'already set' }
+    New-NetFirewallRule -DisplayName $name -Direction Inbound -Action Allow `
+      -Protocol TCP -LocalPort $Port -Profile Private -ErrorAction Stop | Out-Null
+    return 'added'
+  } catch {
+    try {
+      netsh advfirewall firewall add rule name="$name" dir=in action=allow `
+        protocol=TCP localport=$Port profile=private | Out-Null
+      return 'added'
+    } catch { return 'FAILED' }
+  }
+}
+
 Step 1 'Verifying package...'
 if (-not (Test-Path "$root\runtime\app.sealed")) {
   Bad 'Package is incomplete (runtime\app.sealed not found).'
@@ -59,6 +81,15 @@ if (-not (Test-Path "$root\runtime\app.sealed")) {
   exit 1
 }
 Good 'Package verified.'
+
+$fw = Add-TabletFirewallRule -Port 8080
+if ($fw -eq 'FAILED') {
+  Bad 'Could not add the firewall rule for tablets (needs Administrator).'
+  Bad 'Tablets will not connect until port 8080 is allowed on the private network.'
+  Bad 'You can run this setup as Administrator later to fix it.'
+} else {
+  Good ("Tablet access on the local network: " + $fw + " (TCP 8080, private network only).")
+}
 
 # ---------- 2) PHP runtime ----------
 Step 2 'Preparing PHP runtime...'

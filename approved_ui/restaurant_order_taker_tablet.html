@@ -5,15 +5,26 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Urban Spoon — Order Taker Tablet</title>
 <style>
+/* V68 — Tablet ab POS jaisa dikhta hai.
+   Pehle iske apne rang the (green brand, alag bg) — ek hi restaurant
+   ke do screens do alag software lagte the. Ab wahi tokens jo
+   restaurant_pos.html use karta hai; purane naam bhi rakhe hain taake
+   mojooda CSS na toote. */
 :root{
-  --bg:#f4f7f5;--white:#fff;--line:#dfe7e2;--text:#26372e;--muted:#77857d;
-  --green:#0f9d65;--greenSoft:#eaf8f1;--orange:#ef9535;--blue:#3e81d3;--violet:#7458c7;
+  --bg:#f2f6f3;--panel:#fff;--white:#fff;--ink:#15221b;--ink2:#5f6f66;--ink3:#8b9a92;
+  --l:#e1e9e4;--line:#e1e9e4;--text:#15221b;--muted:#5f6f66;
+  --brand:#e23744;--brand2:#ff5864;--ok:#0f7a3d;--okbg:#eaf6ef;
+  --warn:#b3541e;--warnbg:#fdf4e9;
+  --sh:0 1px 2px rgba(21,34,27,.05),0 6px 18px rgba(21,34,27,.05);
+  --shl:0 4px 12px rgba(21,34,27,.08),0 18px 40px rgba(21,34,27,.12);
+  /* purane naam POS ke rangon par map — brand ab dono jagah ek hi */
+  --green:#e23744;--greenSoft:#fdeef0;--orange:#b3541e;--blue:#3e81d3;--violet:#7458c7;
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg)}
 body{
-  font-family:"Segoe UI Variable Text","Segoe UI",Inter,Arial,sans-serif;
-  color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased
+  font-family:-apple-system,"Segoe UI Variable Text","Segoe UI",Inter,Roboto,Arial,sans-serif;
+  color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased
 }
 button,input,select,textarea{font:inherit}
 button{cursor:pointer}
@@ -24,8 +35,21 @@ svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
   min-height:100vh;
   display:grid;
   grid-template-columns:76px minmax(0,1fr) 360px;
-  background:#fff
+  background:var(--panel)
 }
+/* Server band ho jane par saaf paighaam — tablet ek patla client hai,
+   POS computer band to yeh bhi band. Khamoshi se khali screen dikhana
+   sab se bura tajurba hota hai. */
+#tabOffline{position:fixed;inset:0;z-index:99998;background:rgba(21,34,27,.92);color:#fff;
+  display:none;place-items:center;text-align:center;padding:30px}
+#tabOffline.show{display:grid}
+#tabOffline .box{max-width:400px}
+#tabOffline h2{font-size:20px;margin:0 0 8px}
+#tabOffline p{font-size:13.5px;line-height:1.6;opacity:.85;margin:0 0 6px}
+#tabOffline .dotbig{width:56px;height:56px;border-radius:50%;background:var(--brand);
+  margin:0 auto 16px;display:grid;place-items:center;font-size:26px;
+  animation:tabPulse 1.6s ease-in-out infinite}
+@keyframes tabPulse{0%,100%{box-shadow:0 0 0 0 rgba(226,55,68,.45)}50%{box-shadow:0 0 0 16px rgba(226,55,68,0)}}
 
 /* slim tablet rail */
 .rail{
@@ -437,6 +461,57 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Enter'){e.preventDefault();applyQty()}
 });
 renderCats();renderProducts();renderCart();
+
+/* ---------- V68: POS computer se rabta ----------
+   Tablet ek patla client hai — POS computer band to tablet band. Yeh
+   baat user ko SAAF nazar aani chahiye, warna wo khali screen dekh kar
+   samajhta hai ke software kharab ho gaya. */
+(function(){
+  var box=document.createElement('div');
+  box.id='tabOffline';
+  box.innerHTML='<div class="box"><div class="dotbig">&#9888;</div>'
+    +'<h2>POS computer is not reachable</h2>'
+    +'<p>This tablet works only while the POS computer is switched on and '
+    +'connected to the same WiFi.</p>'
+    +'<p id="tabOffWhen" style="opacity:.6;font-size:12px"></p></div>';
+  document.body.appendChild(box);
+
+  var missed=0;
+  function ping(){
+    var x=new XMLHttpRequest();
+    x.open('GET','/api.php?action=current-user',true);
+    x.timeout=6000;
+    x.onload=function(){
+      if(x.status>=200&&x.status<400){ missed=0; box.classList.remove('show'); return; }
+      if(x.status===401||x.status===403){
+        /* Server chal raha hai, session khatam hui hai. "POS not
+           reachable" kehna JHOOT hoga aur waiter POS computer dekhne
+           chala jayega. Asli wajah batao. */
+        box.querySelector('h2').textContent='This tablet needs to be connected again';
+        box.querySelector('p').textContent=
+          'Ask the counter to open the POS and tap "Connect a tablet", then scan the code.';
+        box.classList.add('show');
+        missed=0; return;
+      }
+      fail();
+    };
+    x.onerror=x.ontimeout=fail;
+    try{x.send()}catch(e){fail()}
+  }
+  function fail(){
+    missed++;
+    /* Ek dafa fail hone par ghabrana nahi — WiFi ka lamhati jhatka aam
+       hai. Do lagatar nakamiyon par hi screen dikhate hain. */
+    if(missed>=2){
+      document.getElementById('tabOffWhen').textContent=
+        'Last checked '+new Date().toLocaleTimeString();
+      box.classList.add('show');
+    }
+  }
+  ping();
+  setInterval(ping,15000);
+  window.addEventListener('online',ping);
+})();
 </script>
 <a href="index.html" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#fff;border:1px solid #dfe6e2;padding:6px 8px;font:10px Segoe UI;color:#087d50;text-decoration:none">UI Suite</a></body>
 </html>
