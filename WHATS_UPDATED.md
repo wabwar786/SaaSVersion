@@ -4592,3 +4592,47 @@ import ya poore raste ke istemal nahi ho rahi.
 
 Yeh wahi raasta hai jo endpoint chalata hai — is dafa lint par bharosa
 nahi kiya, asal mein chala kar dekha.
+
+---
+
+# V82 — Console se business banana
+
+Console mein `delete` to tha, magar **`create` tha hi nahi** — yani
+console se business mitaya ja sakta tha aur banaya nahi ja sakta tha.
+
+## Do naye commands
+
+    create "<Name>" --email=owner@x.pk [--owner="Full Name"] [--expiry=YYYY-MM-DD]
+    demo   "<Name>" [--email=..] [--expiry=YYYY-MM-DD]
+
+`demo` wahi kaam karta hai magar business ko DEMO nishan lagata hai aur
+sample data daal deta hai (13 menu items, 8 tables, customers, suppliers,
+printer). Us ka customer data har 5 din baad khud saaf hota hai.
+
+Expiry na di jaye to console **saaf batata hai**:
+*"No expiry set — use the Licence control, or pass --expiry=YYYY-MM-DD"*
+— warna business hamesha chalta rehta aur kisi ko pata na chalta.
+
+`help` mein dono likhe hue hain.
+
+## Chala kar tasdeeq
+
+    $ create "Console Test Shop" --email=owner@console.pk --expiry=2027-01-31
+      Business created: Console Test Shop
+        Slug           console-test-shop
+        Owner login    owner@console.pk
+        Expires        2027-01-31
+
+    $ demo "Console Demo" --expiry=2026-12-31
+      DEMO business created: Console Demo
+        Sample data: 13 menu items, 8 tables, customers, suppliers, printer
+        Customer data clears every 5 days; this sample data stays.
+
+    $ delete console-test-shop
+      This command deletes data, so it needs the business name to confirm.
+
+    $ delete console-test-shop --confirm "Wrong Name"
+      Confirmation does not match. Expected: Console Test Shop
+
+    $ delete console-test-shop --confirm "Console Test Shop"
+      Deleted "Console Test Shop" — 21 rows from 8 tables

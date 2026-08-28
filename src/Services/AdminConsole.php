@@ -104,6 +104,11 @@ final class AdminConsole
                 case 'footprint': return self::cmdFootprint($args[0] ?? '');
                 case 'backup':    return self::cmdBackup($args[0] ?? '', strtoupper($args[1] ?? 'FULL'), $actor);
                 case 'reset':     return self::cmdReset($args[0] ?? '', strtoupper($args[1] ?? 'TXN'), (string)$flags['confirm'], $actor);
+                /* V82 — business banane ka rasta console par bhi.
+                   Pehle sirf `delete` tha: console se business mitaya ja
+                   sakta tha magar banaya nahi ja sakta tha. */
+                case 'create':    return self::cmdCreate($args, $flags, $actor, false);
+                case 'demo':      return self::cmdCreate($args, $flags, $actor, true);
                 case 'delete':    return self::cmdDelete($args[0] ?? '', (string)$flags['confirm'], $actor);
                 case 'purge':     return self::cmdPurge($args[0] ?? '', strtolower($args[1] ?? ''),
                                       (string)($flags['before'] ?? ''), (string)$flags['confirm'], $actor);
@@ -144,6 +149,10 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'reset <slug> [txn|full] --confirm "<name>"'],
             ['t' => 'd',  'v' => '                                  txn  = transactions only'],
             ['t' => 'd',  'v' => '                                  full = everything, only admin login stays'],
+            ['t' => 'k',  'v' => 'create "<Name>" --email=owner@x.pk [--owner="Full Name"] [--expiry=YYYY-MM-DD]'],
+            ['t' => 'i',  'v' => '                                  create a new business'],
+            ['t' => 'k',  'v' => 'demo "<Name>" [--email=..] [--expiry=YYYY-MM-DD]'],
+            ['t' => 'i',  'v' => '                                  demo business with sample data (clears every 5 days)'],
             ['t' => 'k',  'v' => 'delete <slug> --confirm "<name>"  remove the business completely'],
             ['t' => 'h',  'v' => 'PURGE (selective)'],
             ['t' => 'k',  'v' => 'purge <slug> <what> --confirm "<name>"'],
@@ -361,6 +370,82 @@ final class AdminConsole
         if (count($r['deleted']) > 12) $out[] = ['t' => 'd', 'v' => '  … +' . (count($r['deleted']) - 12) . ' more tables'];
         if ($mode === 'FULL') $out[] = ['t' => 'd', 'v' => 'Admin login kept; branch defaults re-created.'];
         return self::out($out, ['refresh' => true]);
+    }
+
+    /**
+     * create "Business Name" --owner="Name" --email=a@b.c [--expiry=YYYY-MM-DD]
+     * demo   "Business Name" [--owner=...] [--email=...]
+     *
+     * `demo` wahi kaam karta hai magar business ko DEMO nishan lagata
+     * hai aur sample data (menu, tables, customers) daal deta hai.
+     */
+    private static function cmdCreate(array $args, array $flags, string $actor, bool $demo): array
+    {
+        $name = trim((string)($args[0] ?? ''));
+        if ($name === '') {
+            return self::err('Business name required. Example: '
+                . ($demo ? 'demo "Royal Grill"' : 'create "Royal Grill" --email=owner@royal.pk'));
+        }
+
+        $email = trim((string)($flags['email'] ?? ''));
+        $owner = trim((string)($flags['owner'] ?? 'Owner'));
+        if (!$demo && $email === '') {
+            return self::err('Owner email required. Example: create "' . $name . '" --email=owner@shop.pk');
+        }
+        if ($email === '') $email = 'demo@' . preg_replace('/[^a-z0-9]/', '', strtolower($name)) . '.local';
+
+        try {
+            $r = Platform::provisionBusiness([
+                'business_name' => $name,
+                'owner_email'   => $email,
+                'owner_name'    => $owner,
+            ]);
+        } catch (\Throwable $e) {
+            return self::err('Could not create the business: ' . $e->getMessage());
+        }
+
+        $tid  = (string)($r['tenant_id'] ?? '');
+        $slug = (string)($r['slug'] ?? '');
+        $pass = (string)($r['password'] ?? $r['owner_password'] ?? '');
+
+        $out = [['t' => 'g', 'v' => ($demo ? 'DEMO business created' : 'Business created') . ': ' . $name]];
+        $out[] = ['t' => 'i', 'v' => sprintf('  %-14s %s', 'Slug', $slug)];
+        $out[] = ['t' => 'i', 'v' => sprintf('  %-14s %s', 'Owner login', $email)];
+        if ($pass !== '') $out[] = ['t' => 'i', 'v' => sprintf('  %-14s %s', 'Password', $pass)];
+
+        if ($demo) {
+            try {
+                DB::pdo()->prepare("UPDATE tenants SET is_demo=1, demo_last_reset=NOW(6) WHERE id=?")
+                  ->execute([$tid]);
+                $sq = DB::pdo()->prepare("SELECT id FROM sites WHERE tenant_id=? LIMIT 1");
+                $sq->execute([$tid]);
+                $seeded = DemoBusiness::seed($tid, (string)$sq->fetchColumn());
+                $out[] = ['t' => 'g', 'v' => '  Sample data: ' . ($seeded['menu_items'] ?? 0)
+                    . ' menu items, ' . ($seeded['tables'] ?? 0) . ' tables, customers, suppliers, printer'];
+                $out[] = ['t' => 'i', 'v' => '  Customer data clears every '
+                    . DemoBusiness::RESET_DAYS . ' days; this sample data stays.'];
+            } catch (\Throwable $e) {
+                $out[] = ['t' => 'r', 'v' => '  Business made, but sample data failed: '
+                    . substr($e->getMessage(), 0, 90)];
+            }
+        }
+
+        /* Expiry — na di jaye to business hamesha chalta rahega. */
+        $exp = trim((string)($flags['expiry'] ?? ''));
+        if ($exp !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $exp)) {
+            try {
+                $p = DB::pdo();
+                $p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by)
+                             VALUES(?,?,'ACTIVE',0,CURDATE(),?,?)")
+                  ->execute([uuid(), $tid, $exp, Platform::superUser()['id'] ?? null]);
+                $out[] = ['t' => 'i', 'v' => sprintf('  %-14s %s', 'Expires', $exp)];
+            } catch (\Throwable $e) {}
+        } else {
+            $out[] = ['t' => 'r', 'v' => '  No expiry set — use the Licence control, or pass --expiry=YYYY-MM-DD'];
+        }
+
+        AdminData::audit($actor, $tid, $demo ? 'DEMO_CREATE' : 'CREATE_BUSINESS', $name . ' (' . $slug . ')');
+        return self::out($out);
     }
 
     private static function cmdDelete(string $slug, string $confirm, string $actor): array
