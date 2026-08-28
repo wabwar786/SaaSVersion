@@ -192,6 +192,79 @@ final class BillTemplate
         return $L;
     }
 
+    /* ---------------- shift closing report (80mm) ----------------
+       Malik ko sirf cash ka farq nahi chahiye. Usay yeh dekhna hota hai
+       ke us shift mein BIKA kya — category ke hisab se, har category ke
+       andar item aur raqam, aur neeche discount aur total. Yehi cheez
+       roz raat ko counter par chhapti hai. */
+
+    public static function shiftReport(array $r, array $ctx): array
+    {
+        $L = self::head([], $ctx, true);
+        $L[] = ['SHIFT CLOSING REPORT', 'c', 9];
+        $L[] = self::rule();
+        $L[] = self::row('Shift', (string)$r['shift']);
+        $L[] = self::row('Cashier', (string)$r['cashier']);
+        $L[] = self::row('Opened', (string)$r['opened']);
+        $L[] = self::row('Closed', (string)($r['closed'] ?: '-'));
+        $L[] = self::rule();
+
+        /* ---- category ke hisab se sale ---- */
+        if (!empty($r['categories'])) {
+            $L[] = ['SALES BY CATEGORY', 'c', 8];
+            $L[] = self::rule();
+            foreach ($r['categories'] as $c) {
+                $L[] = self::row(strtoupper((string)$c['name']), self::money((float)$c['amount']), true);
+                foreach ($c['items'] as $it) {
+                    $L[] = self::row('  ' . self::qty((float)$it['qty']) . ' x ' . (string)$it['name'],
+                                     self::money((float)$it['amount']));
+                }
+                $L[] = ['', 'l', self::SZ];
+            }
+            $L[] = self::rule();
+        } else {
+            $L[] = ['No sales in this shift.', 'c', 8];
+            $L[] = self::rule();
+        }
+
+        /* ---- totals ---- */
+        $L[] = self::row('Bills', (string)(int)$r['bills']);
+        $L[] = self::row('Subtotal', self::money((float)$r['subtotal']));
+        if ((float)$r['discount'] > 0) $L[] = self::row('Discount', '-' . self::money((float)$r['discount']));
+        if ((float)$r['service']  > 0) $L[] = self::row('Service Charge', self::money((float)$r['service']));
+        if ((float)$r['tax']      > 0) $L[] = self::row('Sales Tax', self::money((float)$r['tax']));
+        $L[] = self::rule('=');
+        $L[] = self::row('TOTAL SALES', self::money((float)$r['total']), true);
+        $L[] = self::rule();
+
+        /* ---- payment mix ---- */
+        if (!empty($r['payments'])) {
+            $L[] = ['PAYMENTS', 'c', 8];
+            foreach ($r['payments'] as $p) {
+                $L[] = self::row((string)$p['method'], self::money((float)$p['amount']));
+            }
+            $L[] = self::rule();
+        }
+
+        /* ---- cash reconciliation ---- */
+        $L[] = ['CASH IN TILL', 'c', 8];
+        $L[] = self::row('Opening float', self::money((float)$r['opening']));
+        $L[] = self::row('Expected', self::money((float)$r['expected']));
+        $L[] = self::row('Counted', self::money((float)$r['counted']));
+        $var = (float)$r['variance'];
+        $L[] = self::rule('=');
+        $L[] = self::row($var == 0 ? 'BALANCED' : ($var > 0 ? 'CASH OVER' : 'CASH SHORT'),
+                         ($var > 0 ? '+' : '') . self::money($var), true);
+
+        $L[] = ['', 'l', self::SZ];
+        $L[] = ['Cashier signature: ______________', 'l', 8];
+        $L[] = ['', 'l', self::SZ];
+        $L[] = ['Manager signature: ______________', 'l', 8];
+        $L[] = ['', 'l', self::SZ];
+        $L[] = [date('d M Y  H:i'), 'c', 7];
+        return $L;
+    }
+
     /* ---------------- 1. classic ---------------- */
 
     private static function classic(array $o, array $items, array $ctx): array

@@ -48,6 +48,7 @@
               <label class="field" style="margin:0"><span>From</span><input type="date" id="dFrom"></label>
               <label class="field" style="margin:0"><span>To</span><input type="date" id="dTo"></label>
               <button class="btn" id="runBtn">Run</button>
+              <button class="btn" id="printBtn">Print</button>
               <button class="btn" id="csvBtn">Export CSV</button>
             </div>
           </div>
@@ -67,6 +68,33 @@
 <script src="live_store.js"></script>
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="reports"></script>
+<style>
+/* V73 — report ab professional dikhti hai aur chhap bhi sakti hai.
+   Pehle sirf ek nangi table thi: na business ka naam, na date range,
+   na totals ka farq — customer usay print kar ke kisi ko nahi de sakta
+   tha. */
+.rep-doc{padding:16px 18px}
+.rep-doc h1{font-size:17px;margin:0 0 2px;font-weight:800}
+.rep-meta{font-size:11.5px;color:var(--muted);margin-bottom:14px}
+.rep-doc .table th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);border-bottom:2px solid var(--line)}
+.rep-doc .table td{font-size:12.5px}
+.rep-doc .table tbody tr:nth-child(even){background:#fbfdfc}
+.rep-doc .table td.num,.rep-doc .table th.num{text-align:right;
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.rep-doc .table tfoot td{border-top:2px solid var(--line);font-weight:800;background:#fff}
+.rep-sign{display:none}
+@media print{
+  /* Sirf report chhape — sidebar, buttons, toast kuch nahi. */
+  .sidebar,.header,.scrim,.tools,.toast,#repList,.panel-head p{display:none!important}
+  .app,.main,.content,.split{display:block!important;margin:0!important;padding:0!important}
+  .panel{border:0!important;box-shadow:none!important;margin:0!important}
+  .rep-doc{padding:0}
+  .rep-doc .table tbody tr:nth-child(even){background:transparent}
+  .rep-sign{display:flex;justify-content:space-between;margin-top:36px;font-size:11px}
+  @page{margin:14mm}
+}
+</style>
 <script>
 /* V67 — Reports.
    Pehle yeh page localStorage ke seed data par chalta tha: numbers
@@ -146,13 +174,31 @@
     draw(r.report);
   }
 
+  var BIZ=null;
+  function bizLine(){
+    if(BIZ===null){ try{var r=DBApi.req('settings-get'); BIZ=(r&&r.ok)?r.settings:{};}catch(e){BIZ={};} }
+    var b=BIZ||{};
+    return {name:b.business_name||'',branch:b.branch_name||'',ntn:b.ntn||''};
+  }
   function draw(rep){
     if(rep.note){ $('#repNote').textContent=rep.note; $('#repNote').style.display=''; }
     if(!rep.rows||!rep.rows.length){
       $('#repBody').innerHTML='<span class="hint">No data for '+esc(rep.from)+' to '+esc(rep.to)+'.</span>';
       return;
     }
-    var h='<div class="table-wrap"><table class="table"><thead><tr>';
+    var b=bizLine();
+    /* Report ab ek dastavez hai, nangi table nahi: business ka naam,
+       date range, aur print par signature ki jagah. */
+    var h='<div class="rep-doc">'
+      +'<h1>'+esc(rep.title||'Report')+'</h1>'
+      +'<div class="rep-meta">'
+        +(b.name?('<b>'+esc(b.name)+'</b>'+(b.branch?(' &middot; '+esc(b.branch)):'')+'<br>'):'')
+        +(b.ntn?('NTN '+esc(b.ntn)+' &middot; '):'')
+        +esc(rep.from)+' to '+esc(rep.to)
+        +' &middot; '+rep.rows.length+' row(s)'
+        +' &middot; printed '+new Date().toLocaleString()
+      +'</div>'
+      +'<div class="table-wrap"><table class="table"><thead><tr>';
     rep.columns.forEach(function(c){ h+='<th'+(c.n?' class="num"':'')+'>'+esc(c.l)+'</th>'; });
     h+='</tr></thead><tbody>';
     rep.rows.forEach(function(row){
@@ -172,7 +218,10 @@
       });
       h+='</tr></tfoot>';
     }
-    h+='</table></div>';
+    h+='</table></div>'
+      +'<div class="rep-sign"><span>Prepared by: ____________________</span>'
+      +'<span>Checked by: ____________________</span></div>'
+      +'</div>';
     $('#repBody').innerHTML=h;
   }
 
@@ -250,6 +299,10 @@
       run(id); }
   });
   $('#runBtn').onclick=function(){ current?run(current):toast('Pick a report first',true) };
+  $('#printBtn').onclick=function(){
+    if(!$('#repBody').querySelector('table')){toast('Run a report first',true);return}
+    window.print();
+  };
   $('#csvBtn').onclick=function(){
     if(!current){toast('Pick a report first',true);return}
     window.location='/api.php?action=report-csv&id='+encodeURIComponent(current)

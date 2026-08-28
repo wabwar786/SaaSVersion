@@ -1,7 +1,16 @@
 (function(){
   function post(action,payload,token){
     const x=new XMLHttpRequest();
-    x.open(payload===undefined?'GET':'POST','/api.php?action='+encodeURIComponent(action),false);
+    /* BUG THA: `encodeURIComponent(action)` poori string ko encode kar
+       deta tha, is liye `report-run&id=sales_summary` ka `&` bhi %26 ban
+       jata aur server ko ek hi ajeeb sa action milta — "Unknown API
+       action". Ab sirf action ka NAAM encode hota hai, baqi query
+       waise hi jati hai (uske hisse pehle se encode ho kar aate hain). */
+    var amp=action.indexOf('&');
+    var url='/api.php?action='+(amp<0
+      ? encodeURIComponent(action)
+      : encodeURIComponent(action.slice(0,amp))+action.slice(amp));
+    x.open(payload===undefined?'GET':'POST',url,false);
     x.setRequestHeader('Accept','application/json');
     if(payload!==undefined){
       x.setRequestHeader('Content-Type','application/json');

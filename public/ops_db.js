@@ -98,8 +98,19 @@
           } },
         { l: 'Status', f: function (x) {
             return '<span class="tag ' + (x.status === 'Open' ? 'green' : '') + '">' + esc(x.status) + '</span>';
+          } },
+        { l: '', f: function (x) {
+            /* Closing report hamesha 80mm par — wahi kaghaz jo counter
+               par laga hota hai. */
+            return '<button class="btn sm" data-shrep="' + esc(x.id) + '">Print report</button>';
           } }
       ], r.shifts || []), tools));
+
+    host().addEventListener('click', function (e) {
+      var b = e.target.closest('[data-shrep]');
+      if (!b) return;
+      window.open('/api.php?action=shift-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
+    });
 
     var ob = document.getElementById('shOpen');
     if (ob) ob.onclick = function () {
@@ -125,7 +136,12 @@
       alert('Expected in till: ' + money(res.expected)
           + '\nYou counted:     ' + money(res.counted)
           + '\nDifference:      ' + (res.variance > 0 ? '+' : '') + money(res.variance));
-      toast(res.message); shiftPage();
+      toast(res.message);
+      /* Shift close hote hi closing report khud khul jati hai — cashier
+         ko yaad rakhna na pare, aur raat ko counter par hamesha ek
+         kaghaz nikle. */
+      window.open('/api.php?action=shift-report-pdf&id=' + encodeURIComponent(open.id), '_blank');
+      shiftPage();
     };
   }
 

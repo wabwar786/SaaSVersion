@@ -349,6 +349,25 @@ case 'shift-open':needLogin();Auth::requireModule('shift');$d=body();
 case 'shift-expected':needLogin();Auth::requireModule('shift');
  ok(['expected'=>OpsService::shiftExpected((string)($_GET['id']??''))]);
 
+case 'shift-report':needLogin();Auth::requireModule('shift');
+ try{$r=OpsService::shiftReport((string)($_GET['id']??''));}catch(Throwable $e){fail($e->getMessage());}
+ ok(['report'=>$r]);
+
+case 'shift-report-pdf':needLogin();Auth::requireModule('shift');
+ /* V73 — closing report HAMESHA 80mm par, wahi kaghaz jo counter par
+    laga hota hai. Bill ke hi Pdf/BillTemplate se banta hai taake shakl
+    aur alignment ek jaisi rahe. */
+ try{$r=OpsService::shiftReport((string)($_GET['id']??''));}catch(Throwable $e){fail($e->getMessage());}
+ $st=SettingsService::get();
+ $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
+       'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>'','footer'=>'',
+       'currency'=>$st['currency']??'PKR','fbr_no'=>'','fbr_pending'=>false];
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx));
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/pdf');
+ header('Content-Disposition: inline; filename="shift-'.$r['shift'].'.pdf"');
+ header('Content-Length: '.strlen($pdf));echo $pdf;exit;
+
 case 'shift-close':needLogin();Auth::requireModule('shift');$d=body();
  try{$r=OpsService::shiftClose((string)($d['id']??''),(float)($d['counted']??0),(string)($d['note']??''));}
  catch(Throwable $e){fail($e->getMessage());}

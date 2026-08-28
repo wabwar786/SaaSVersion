@@ -231,6 +231,96 @@ final class OpsService
                 'message' => 'Shift ' . $s['shift_no'] . ' closed - cash ' . $word . '.'];
     }
 
+    /**
+     * Shift closing report ka poora data — 80mm par chhapne ke liye.
+     *
+     * Sirf cash ka farq kaafi nahi hota. Malik yeh dekhna chahta hai ke
+     * us shift mein BIKA kya: category ke hisab se, aur har category ke
+     * andar item aur raqam. Neeche discount aur total.
+     */
+    public static function shiftReport(string $shiftId): array
+    {
+        $p = DB::pdo();
+        $q = $p->prepare(
+            "SELECT cs.*, COALESCE(u.full_name,'-') AS cashier
+               FROM cashier_shifts cs
+               LEFT JOIN users u ON u.id = cs.cashier_user_id
+              WHERE cs.id=? AND cs.site_id=? LIMIT 1");
+        $q->execute([$shiftId, site_id()]);
+        $sh = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$sh) throw new \RuntimeException('Shift not found.');
+
+        $open  = (string)$sh['opened_at'];
+        $close = (string)($sh['closed_at'] ?: date('Y-m-d H:i:s'));
+
+        /* Shift ke bills — shift_id se joro, aur jin par shift_id na ho
+           un ke liye waqt se. (Purane bills par shift_id NULL hai.) */
+        $where = "o.site_id=? AND o.order_status<>'VOID'
+                  AND (o.shift_id=? OR (o.shift_id IS NULL
+                       AND COALESCE(o.closed_at,o.created_at) BETWEEN ? AND ?))";
+        $args  = [site_id(), $shiftId, $open, $close];
+
+        $head = $p->prepare("SELECT COUNT(*) bills, COALESCE(SUM(o.subtotal),0) subtotal,
+                                    COALESCE(SUM(o.discount_amount),0) discount,
+                                    COALESCE(SUM(o.service_charge),0) service,
+                                    COALESCE(SUM(o.tax_amount),0) tax,
+                                    COALESCE(SUM(o.grand_total),0) total
+                               FROM orders o WHERE $where");
+        $head->execute($args);
+        $tot = $head->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $iq = $p->prepare(
+            "SELECT COALESCE(mc.name,'(uncategorised)') category,
+                    COALESCE(oi.item_name_snapshot, mi.name,'(deleted)') item,
+                    SUM(oi.qty) qty, SUM(oi.line_total) amount
+               FROM order_items oi
+               JOIN orders o ON o.id = oi.order_id
+               LEFT JOIN menu_items mi      ON mi.id = oi.menu_item_id
+               LEFT JOIN menu_categories mc ON mc.id = mi.category_id
+              WHERE $where AND oi.status='ACTIVE'
+              GROUP BY category, item
+              ORDER BY category, amount DESC");
+        $iq->execute($args);
+
+        $cats = [];
+        foreach ($iq->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $c = (string)$r['category'];
+            if (!isset($cats[$c])) $cats[$c] = ['name'=>$c,'qty'=>0,'amount'=>0,'items'=>[]];
+            $cats[$c]['items'][] = ['name'=>(string)$r['item'],'qty'=>(float)$r['qty'],'amount'=>(float)$r['amount']];
+            $cats[$c]['qty']    += (float)$r['qty'];
+            $cats[$c]['amount'] += (float)$r['amount'];
+        }
+
+        $pq = $p->prepare(
+            "SELECT COALESCE(pm.name,'(unknown)') method, COALESCE(SUM(pay.amount),0) amount
+               FROM payments pay
+               JOIN orders o ON o.id = pay.order_id
+               LEFT JOIN payment_methods pm ON pm.id = pay.payment_method_id
+              WHERE $where AND pay.status<>'CANCELLED'
+              GROUP BY method ORDER BY amount DESC");
+        $pq->execute($args);
+
+        return [
+            'shift'    => (string)$sh['shift_no'],
+            'cashier'  => (string)$sh['cashier'],
+            'date'     => (string)$sh['business_date'],
+            'opened'   => substr($open, 0, 16),
+            'closed'   => $sh['closed_at'] ? substr((string)$sh['closed_at'], 0, 16) : '',
+            'opening'  => (float)$sh['opening_cash'],
+            'expected' => (float)$sh['expected_cash'],
+            'counted'  => (float)$sh['actual_cash'],
+            'variance' => (float)$sh['variance_amount'],
+            'bills'    => (int)($tot['bills'] ?? 0),
+            'subtotal' => (float)($tot['subtotal'] ?? 0),
+            'discount' => (float)($tot['discount'] ?? 0),
+            'service'  => (float)($tot['service'] ?? 0),
+            'tax'      => (float)($tot['tax'] ?? 0),
+            'total'    => (float)($tot['total'] ?? 0),
+            'categories' => array_values($cats),
+            'payments' => $pq->fetchAll(PDO::FETCH_ASSOC),
+        ];
+    }
+
     /* ==================== RUNNING ORDERS ==================== */
 
     public static function runningOrders(): array

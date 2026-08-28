@@ -3788,3 +3788,92 @@ banta hai. Reports list mein "Your own > Custom report".
 
 **NahI chala:** asli tablet par (WiFi + device chahiye), asli printer,
 aur MySQL (sandbox mein start nahi hota).
+
+---
+
+# V73 — "Unknown API action", report design, closing report
+
+## 1. Reports khul hi nahi rahi thin — asli wajah
+
+`db_api.js` mein:
+
+    '/api.php?action=' + encodeURIComponent(action)
+
+Aur reports page bhejta tha:
+
+    req('report-run&id=sales_summary&from=2026-01-01&to=...')
+
+`encodeURIComponent()` **poori string** ko encode karta hai, is liye `&`
+bhi `%26` ban jata tha aur server ko ek hi ajeeb sa action milta:
+
+    action=report-run%26id%3Dsales_summary%26from%3D...   ->  Unknown API action
+
+**Char jagah** yehi masla tha: `report-run`, `guide`, `shift-expected`,
+`tablet-order` — yani reports, module guides, shift ka expected cash aur
+tablet ka table kholna, sab.
+
+Ab sirf action ka **naam** encode hota hai, baqi query waise hi jati hai
+(uske hisse pehle se encode ho kar aate hain).
+
+## 2. Report section ab ek dastavez hai
+
+Pehle sirf ek nangi table thi — na business ka naam, na date range, na
+totals ka farq. Customer usay print kar ke kisi ko de hi nahi sakta tha.
+
+Ab har report ke sar par: **business ka naam, branch, NTN, date range,
+kitni rows, kab print hui**. Neeche totals ki alag row. Numbers
+tabular-nums mein (columns theek line mein), alternate rows halke
+shade mein.
+
+**Naya Print button** + print CSS: sidebar, header, buttons, toast —
+print par kuch nahi aata, sirf report. Aur print par
+**"Prepared by / Checked by"** ki jagah khud aa jati hai.
+
+CSV export pehle se tha, waisa hi hai.
+
+## 3. Shift closing report — 80mm par
+
+Aap ki baat theek thi: closing report wahi kaghaz hai jo counter par
+laga hota hai. Ab wo hamesha **80mm** par chhapti hai, bill ke hi
+`Pdf` / `BillTemplate` se — taake shakl aur alignment bilkul ek jaisi rahe.
+
+Report mein:
+
+    SHIFT CLOSING REPORT
+    Shift / Cashier / Opened / Closed
+    -------------------------------------
+    SALES BY CATEGORY
+      BBQ                          18,400
+        14 x Chicken Tikka         11,200
+        10 x Seekh Kabab            7,200
+      KARAHI                       14,300
+        ...
+    -------------------------------------
+    Bills 37 / Subtotal / Discount / Tax
+    =====================================
+    TOTAL SALES                    43,260
+    PAYMENTS: Cash / Card
+    CASH IN TILL: opening / expected / counted
+    =====================================
+    CASH SHORT                       -200
+
+    Cashier signature: ______________
+    Manager signature: ______________
+
+Bills shift se `shift_id` par jurte hain, aur jin purane bills par
+`shift_id` NULL hai un ke liye waqt se — warna purani shifts ki report
+khali aati.
+
+Shift close karte hi report **khud khul jati hai**, aur har purani shift
+par "Print report" ka button bhi hai.
+
+## Testing
+
+    php -l  (har PHP file)                -> 0 errors
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+    URL banane ka test                    -> action=report-run&id=... (theek)
+    Closing report render + PDF           -> 4,018 bytes, layout saaf
+
+**NahI chala:** asli printer par 80mm output, aur MySQL par reports ka
+data (sandbox mein start nahi hota).
