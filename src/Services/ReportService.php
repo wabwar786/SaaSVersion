@@ -44,6 +44,11 @@ final class ReportService
             ['id' => 'table_sales',     'group' => 'Operations','name' => 'Sales by table',           'desc' => 'Table turnover and value'],
             ['id' => 'void_discount',   'group' => 'Operations','name' => 'Voids and discounts',      'desc' => 'Every voided bill and discount given'],
             ['id' => 'stock_movement',  'group' => 'Inventory', 'name' => 'Stock movement',           'desc' => 'What came in and what went out'],
+            ['id' => 'tracked_inventory','group' => 'Inventory', 'name' => 'Tracked inventory',        'desc' => 'Only the items you chose to watch closely'],
+            ['id' => 'low_stock',       'group' => 'Inventory', 'name' => 'Low stock',                'desc' => 'Items at or below their minimum level'],
+            ['id' => 'credit_sales',    'group' => 'Money',     'name' => 'Credit / unpaid bills',    'desc' => 'Bills that were not fully paid'],
+            ['id' => 'refunds',         'group' => 'Money',     'name' => 'Returns and refunds',      'desc' => 'Money paid back to customers'],
+            ['id' => 'supplier_buys',   'group' => 'Inventory', 'name' => 'Supplier purchases',       'desc' => 'How much you buy from each supplier'],
             ['id' => 'purchases',       'group' => 'Inventory', 'name' => 'Purchases',                'desc' => 'Goods received by supplier'],
         ];
     }
@@ -80,14 +85,30 @@ final class ReportService
     }
 
     /** Har report ke liye wahi bunyadi shart: is branch ke, VOID nahi. */
+    /**
+     * Har report ki bunyadi shart — aur CASHIER ISOLATION bhi.
+     *
+     * V79 — pehle yahan sirf site aur date thi. Yani cashier Reports
+     * khol kar poore branch ki sale dekh sakta tha. Ab `Scope` yahin
+     * lagta hai, is liye har report par khud-ba-khud lagu hota hai —
+     * har report mein alag se yaad rakhne ki zaroorat nahi.
+     */
     private static function billWhere(string $alias = 'o'): string
     {
+        [$w, $a] = Scope::orderWhere($alias);
+        self::$scopeArgs = $a;
         return "$alias.site_id = ? AND $alias.order_status <> 'VOID'
-                AND DATE(COALESCE($alias.closed_at, $alias.created_at)) BETWEEN ? AND ?";
+                AND DATE(COALESCE($alias.closed_at, $alias.created_at)) BETWEEN ? AND ?
+                AND $w";
     }
+
+    /** billWhere() ke extra args — q() inhen khud jorta hai. */
+    private static array $scopeArgs = [];
 
     private static function q(string $sql, array $args): array
     {
+        /* billWhere() ne jo scope args rakhe, wo yahan judte hain. */
+        if (self::$scopeArgs) { $args = array_merge($args, self::$scopeArgs); self::$scopeArgs = []; }
         try {
             $st = DB::pdo()->prepare($sql);
             $st->execute($args);
@@ -423,7 +444,9 @@ final class ReportService
         $rows = self::q(
             "SELECT DATE(gr.received_at) d, gr.grn_no,
                     COALESCE(s.name,'(unknown)') supplier,
-                    COUNT(gi.id) lines,
+                    /* `lines` MariaDB ka reserved word hai — bina backtick
+                       ke poori query syntax error deti hai. */
+                    COUNT(gi.id) `lines`,
                     COALESCE(SUM(gi.purchase_qty * gi.unit_cost),0) total
                FROM goods_receipts gr
                LEFT JOIN suppliers s ON s.id = gr.supplier_id
@@ -566,6 +589,108 @@ final class ReportService
         return self::shape($title, $cols, $rows, self::sum($rows, $wanted),
             'Your own report. Change the source, grouping or figures and run it again.')
             + ['from' => $from, 'to' => $to];
+    }
+
+    /* -------- V78: spec ke baqi reports -------- */
+
+    private static function r_tracked_inventory(string $f, string $t): array
+    {
+        $d = OpsService::trackedInventory($f, $t);
+        $rows = $d['rows'] ?? [];
+        return self::shape('Tracked inventory',
+            [['k'=>'name','l'=>'Item'],['k'=>'unit','l'=>'Unit'],
+             ['k'=>'opening','l'=>'Opening','n'=>1],['k'=>'added','l'=>'Added','n'=>1],
+             ['k'=>'sold','l'=>'Sold','n'=>1],['k'=>'returned','l'=>'Returned','n'=>1],
+             ['k'=>'adjusted','l'=>'Adjusted','n'=>1],['k'=>'remaining','l'=>'Remaining','n'=>1]],
+            $rows, self::sum($rows, ['opening','added','sold','returned','adjusted','remaining']),
+            $rows ? 'Only items marked as tracked appear here. Turn tracking on from Inventory.'
+                  : 'No items are marked as tracked yet. Open Inventory and switch tracking on for the items you want to watch.');
+    }
+
+    private static function r_low_stock(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT ii.name AS item, COALESCE(ic.name,'-') AS category,
+                    COALESCE(u.code,'') AS unit,
+                    ii.reorder_level AS minimum,
+                    COALESCE((SELECT SUM(sb.qty_on_hand) FROM stock_balances sb
+                               WHERE sb.inventory_item_id = ii.id AND sb.site_id = ?),0) AS on_hand
+               FROM inventory_items ii
+               LEFT JOIN inventory_categories ic ON ic.id = ii.category_id
+               LEFT JOIN units u ON u.id = ii.stock_unit_id
+              WHERE ii.site_id = ? AND ii.is_active = 1 AND ii.deleted_at IS NULL
+                AND ii.reorder_level > 0
+             HAVING on_hand <= minimum
+              ORDER BY (minimum - on_hand) DESC",
+            [site_id(), site_id()]);
+        /* Yeh report date range par nahi chalti — stock ki halat ABHI ki
+           hoti hai. Note se yeh baat saaf rehni chahiye. */
+        return self::shape('Low stock',
+            [['k'=>'item','l'=>'Item'],['k'=>'category','l'=>'Category'],['k'=>'unit','l'=>'Unit'],
+             ['k'=>'on_hand','l'=>'In stock','n'=>1],['k'=>'minimum','l'=>'Minimum','n'=>1]],
+            $rows, [], 'This shows stock as it is right now, so the date range does not apply.');
+    }
+
+    private static function r_credit_sales(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    COALESCE(c.full_name,'Walk-in') customer, COALESCE(c.phone,'') phone,
+                    o.grand_total total, COALESCE(o.paid_amount,0) paid,
+                    (o.grand_total - COALESCE(o.paid_amount,0)) due
+               FROM orders o
+               LEFT JOIN customers c ON c.id = o.customer_id
+              WHERE " . self::billWhere() . "
+                AND (o.grand_total - COALESCE(o.paid_amount,0)) > 0.009
+              ORDER BY d DESC",
+            [site_id(), $f, $t]);
+        return self::shape('Credit / unpaid bills',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'customer','l'=>'Customer'],
+             ['k'=>'phone','l'=>'Phone'],['k'=>'total','l'=>'Bill total','n'=>1],
+             ['k'=>'paid','l'=>'Paid','n'=>1],['k'=>'due','l'=>'Still due','n'=>1]],
+            $rows, self::sum($rows, ['total','paid','due']),
+            'Chase the biggest amounts first. Phone numbers are shown so you can call.');
+    }
+
+    private static function r_refunds(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    o.grand_total amount, COALESCE(u.full_name,'-') cashier,
+                    COALESCE((SELECT dl.reason FROM deletion_log dl
+                               WHERE dl.row_id=o.id AND dl.action='VOID'
+                               ORDER BY dl.created_at DESC LIMIT 1),'') reason
+               FROM orders o
+               LEFT JOIN users u ON u.id = o.created_by_user_id
+              WHERE o.site_id=? AND o.order_status='VOID'
+                AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+              ORDER BY d DESC",
+            [site_id(), $f, $t]);
+        return self::shape('Returns and refunds',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'cashier','l'=>'Cashier'],
+             ['k'=>'reason','l'=>'Reason'],['k'=>'amount','l'=>'Amount','n'=>1]],
+            $rows, self::sum($rows, ['amount']),
+            'A rising number of voids is worth looking into.');
+    }
+
+    private static function r_supplier_buys(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT COALESCE(s.name,'(unknown)') supplier, COALESCE(s.phone,'') phone,
+                    COUNT(DISTINCT gr.id) receipts,
+                    COALESCE(SUM(gi.purchase_qty * gi.unit_cost),0) amount
+               FROM goods_receipts gr
+               LEFT JOIN suppliers s ON s.id = gr.supplier_id
+               LEFT JOIN goods_receipt_items gi ON gi.goods_receipt_id = gr.id
+              WHERE gr.site_id=? AND gr.deleted_at IS NULL
+                AND DATE(gr.received_at) BETWEEN ? AND ?
+              GROUP BY supplier, phone
+              ORDER BY amount DESC",
+            [site_id(), $f, $t]);
+        return self::shape('Supplier purchases',
+            [['k'=>'supplier','l'=>'Supplier'],['k'=>'phone','l'=>'Phone'],
+             ['k'=>'receipts','l'=>'Receipts','n'=>1],['k'=>'amount','l'=>'Amount','n'=>1]],
+            $rows, self::sum($rows, ['receipts','amount']));
     }
 
     /* ==================== helpers ==================== */

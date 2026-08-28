@@ -158,8 +158,68 @@ final class Platform
      * yeh naye business ke liye bhi chalta hai aur PURANE (pre-V17) empty-shell
      * businesses ke backfill ke liye bhi (scripts/migrate_site_defaults.php).
      */
+    /**
+     * V79 — ROLES har naye business ke liye.
+     *
+     * BUG: `provisionBusiness()` roles banati hi nahi thi. Naya business
+     * `roles = 0` ke saath banta tha, yani malik kisi bhi naye user ko
+     * role de hi nahi sakta tha — user creation FK error par gir jati.
+     * `seed_roles.php` sirf haath se chalayi jaye tab kaam karti thi.
+     *
+     * Yeh sirf DB par asal mein chala kar pakra gaya; lint aur schema
+     * check dono is se guzar gaye the.
+     */
+    public static function ensureRoles(PDO $pdo, string $tenantId): int
+    {
+        $roles = [
+            'Owner / Admin'  => null,   // null = sab kuch
+            'Branch Manager' => ['dashboard','shift','pos','tablet','kds','tables','orders','online',
+                                 'inventory','purchasing','recipe','menu','wastage','transfer','count',
+                                 'suppliers','customers','expenses','accounting','promotions','reservations',
+                                 'riders','delivery','loyalty','whatsapp','printers','reports','closing',
+                                 'void','staff','settings','offline','branches'],
+            'Cashier'        => ['shift','pos','closing'],
+            'Waiter'         => ['tablet','tables'],
+            'Chef / Kitchen' => ['kds'],
+            'Storekeeper'    => ['inventory','purchasing','recipe','wastage','transfer','count','suppliers'],
+        ];
+
+        $mods = [];
+        try {
+            foreach ($pdo->query("SELECT id, module_key FROM platform_modules")->fetchAll() as $m) {
+                $mods[(string)$m['module_key']] = (string)$m['id'];
+            }
+        } catch (\Throwable $e) { return 0; }
+
+        $made = 0;
+        foreach ($roles as $name => $keys) {
+            $q = $pdo->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=?");
+            $q->execute([$tenantId, $name]);
+            $rid = $q->fetchColumn();
+            if (!$rid) {
+                $rid = \uuid();
+                $pdo->prepare("INSERT INTO roles(id,tenant_id,name,is_system,is_active) VALUES(?,?,?,1,1)")
+                    ->execute([$rid, $tenantId, $name]);
+                $made++;
+            }
+            if ($keys === null) continue;   // Owner ko sab, koi row nahi chahiye
+            foreach ($keys as $k) {
+                if (!isset($mods[$k])) continue;
+                $c = $pdo->prepare("SELECT COUNT(*) FROM role_modules WHERE role_id=? AND module_id=?");
+                $c->execute([$rid, $mods[$k]]);
+                if ((int)$c->fetchColumn() === 0) {
+                    $pdo->prepare("INSERT INTO role_modules(id,role_id,module_id,is_allowed) VALUES(?,?,?,1)")
+                        ->execute([\uuid(), $rid, $mods[$k]]);
+                }
+            }
+        }
+        return $made;
+    }
+
     public static function ensureSiteDefaults(PDO $pdo, string $tenantId, string $siteId): array
     {
+        self::ensureRoles($pdo, $tenantId);
+
         /* V63 — NAYA BUSINESS AB KHALI BANTA HAI.
            Pehle yahan demo data seed hota tha: 4 menu categories
            (Pakistani/Fast Food/BBQ/Beverages), Main Floor + 8 tables,

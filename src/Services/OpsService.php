@@ -137,6 +137,12 @@ final class OpsService
 
     public static function shiftList(int $limit = 60): array
     {
+        /* V79 — YEH LEAK THI. Cashier ko doosre cashier ki shifts bhi
+           nazar aa rahi thin (opening cash, counted cash, variance samet).
+           `Scope` maujood tha magar yahan lagaya hi nahi gaya tha —
+           bilkul wahi ghalti jis se bachne ke liye Scope banaya tha.
+           Asli do cashiers se test karne par hi pakri gayi. */
+        [$scopeW, $scopeA] = Scope::shiftWhere('cs');
         $q = DB::pdo()->prepare(
             "SELECT cs.id, cs.shift_no, cs.business_date, cs.status,
                     cs.opened_at, cs.closed_at,
@@ -144,9 +150,9 @@ final class OpsService
                     COALESCE(u.full_name,'-') AS cashier
                FROM cashier_shifts cs
                LEFT JOIN users u ON u.id = cs.cashier_user_id
-              WHERE cs.site_id = ? AND cs.deleted_at IS NULL
+              WHERE cs.site_id = ? AND cs.deleted_at IS NULL AND $scopeW
               ORDER BY cs.opened_at DESC LIMIT $limit");
-        $q->execute([site_id()]);
+        $q->execute(array_merge([site_id()], $scopeA));
         return array_map(fn($x) => [
             'id'       => $x['id'],
             'shift'    => (string)$x['shift_no'],
@@ -223,6 +229,37 @@ final class OpsService
                             close_note=?, status='CLOSED', updated_at=NOW(6)
                       WHERE id=? AND site_id=?")
           ->execute([$expected, $counted, $var, $note !== '' ? $note : null, $shiftId, site_id()]);
+
+        /* V79 — SNAPSHOT yahan bhi.
+           Yeh code sirf POS ke `shift-close` endpoint mein tha. Shift
+           Management page se band ki gayi shift ka snapshot banta hi
+           nahi tha — us ki purani report har dafa dobara ginti, aur
+           waqt ke saath badal jati. Do raste the, ek adhoora.
+           Ab snapshot ek hi jagah banta hai: yahan. */
+        try {
+            $snap = self::shiftReport($shiftId);
+            $ref  = 'CL-' . date('ymd-His');
+            $cash = 0.0; $card = 0.0;
+            foreach (($snap['payments'] ?? []) as $x) {
+                if (stripos((string)$x['method'], 'cash') !== false) $cash += (float)$x['amount'];
+                else $card += (float)$x['amount'];
+            }
+            $p->prepare("UPDATE cashier_shifts SET snapshot_json=?, closing_ref=?,
+                             gross_sales=?, net_sales=?, discount_total=?, invoice_count=?,
+                             cash_sales=?, card_sales=?, expense_total=?
+                           WHERE id=?")
+              ->execute([json_encode($snap, JSON_UNESCAPED_UNICODE), $ref,
+                         (float)($snap['total'] ?? 0),
+                         (float)(($snap['total'] ?? 0) - ($snap['tax'] ?? 0)),
+                         (float)($snap['discount'] ?? 0), (int)($snap['bills'] ?? 0),
+                         $cash, $card, (float)($snap['expenses'] ?? 0), $shiftId]);
+
+            /* Owner ko WhatsApp — closing MEHFOOZ hone ke baad. */
+            try { WhatsApp::queueShiftClosing($shiftId, $snap); } catch (\Throwable $e) {}
+        } catch (\Throwable $e) { /* snapshot na bane to bhi shift band rahe */ }
+
+        Audit::log('SHIFT_CLOSE', 'shift', ['id' => $shiftId, 'label' => (string)$s['shift_no'],
+                                            'new' => 'counted ' . $counted]);
 
         $word = $var == 0 ? 'exactly balanced'
               : ($var > 0 ? ('over by ' . number_format(abs($var), 2))
@@ -349,6 +386,9 @@ final class OpsService
             'total'    => (float)($tot['total'] ?? 0),
             'categories' => array_values($cats),
             'payments' => $pq->fetchAll(PDO::FETCH_ASSOC),
+            /* Sirf tracked items — poori inventory bhejna malik ke liye
+               be-kaar shor hai. */
+            'tracked' => (self::trackedBetween($open, $close)['rows'] ?? []),
         ];
     }
 
@@ -417,6 +457,8 @@ final class OpsService
 
     public static function runningOrders(): array
     {
+        /* Cashier ko sirf apne khule bill. */
+        [$scopeW, $scopeA] = Scope::orderWhere('o');
         $q = DB::pdo()->prepare(
             "SELECT o.id, o.bill_no, o.service_mode, o.order_status, o.payment_status,
                     o.grand_total, o.opened_at, o.created_at,
@@ -429,9 +471,9 @@ final class OpsService
                LEFT JOIN dining_tables dt ON dt.id = o.table_id
                LEFT JOIN customers c      ON c.id = o.customer_id
                LEFT JOIN users u          ON u.id = o.created_by_user_id
-              WHERE o.site_id = ? AND o.order_status = 'OPEN'
+              WHERE o.site_id = ? AND o.order_status = 'OPEN' AND $scopeW
               ORDER BY COALESCE(o.opened_at,o.created_at) ASC");
-        $q->execute([site_id()]);
+        $q->execute(array_merge([site_id()], $scopeA));
         $modes = ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','TAKE_AWAY'=>'Takeaway',
                   'DELIVERY'=>'Delivery','QR'=>'QR Order'];
         return array_map(fn($x) => [
@@ -694,6 +736,101 @@ final class OpsService
         ], $q->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /* ==================== TRACKED INVENTORY ====================
+       Malik har item ka hisab nahi chahta — sirf un chand cheezon ka
+       jo qeemti hain ya jinki chori ka andesha hai. Sirf wahi items
+       jinpar `is_tracked` on hai. */
+
+    /**
+     * Ek arse ka tracked hisab: opening / added / sold / returned /
+     * adjusted / remaining.
+     */
+    public static function trackedInventory(string $from = '', string $to = ''): array
+    {
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) ? $from : date('Y-m-d');
+        $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)   ? $to   : date('Y-m-d');
+        return self::trackedBetween($from . ' 00:00:00', $to . ' 23:59:59')
+             + ['from' => $from, 'to' => $to];
+    }
+
+    /**
+     * @param string $start  waqt se (shift ke liye opened_at)
+     * @param string $end    waqt tak (shift ke liye closed_at)
+     */
+    public static function trackedBetween(string $start, string $end): array
+    {
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT ii.id, ii.name, ii.sku,
+                        COALESCE(u.code,'') AS unit,
+                        /* ab kitna para hai */
+                        COALESCE((SELECT SUM(sb.qty_on_hand) FROM stock_balances sb
+                                   WHERE sb.inventory_item_id = ii.id AND sb.site_id = ?),0) AS on_hand,
+                        /* arse ke andar aaya */
+                        COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                                   JOIN stock_transactions st ON st.id = stl.stock_transaction_id
+                                  WHERE stl.inventory_item_id = ii.id AND st.site_id = ?
+                                    AND st.posted_at BETWEEN ? AND ?
+                                    AND stl.qty_change > 0),0) AS added,
+                        /* arse ke andar gaya (bik gaya / nikla) */
+                        COALESCE((SELECT -SUM(stl.qty_change) FROM stock_transaction_lines stl
+                                   JOIN stock_transactions st ON st.id = stl.stock_transaction_id
+                                  WHERE stl.inventory_item_id = ii.id AND st.site_id = ?
+                                    AND st.posted_at BETWEEN ? AND ?
+                                    AND stl.qty_change < 0
+                                    AND st.reference_type = 'ORDER'),0) AS sold,
+                        /* wapas aaya (void / refund) */
+                        COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                                   JOIN stock_transactions st ON st.id = stl.stock_transaction_id
+                                  WHERE stl.inventory_item_id = ii.id AND st.site_id = ?
+                                    AND st.posted_at BETWEEN ? AND ?
+                                    AND st.transaction_type IN ('VOID_RETURN','REVERSAL')),0) AS returned,
+                        /* wastage / count / transfer */
+                        COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                                   JOIN stock_transactions st ON st.id = stl.stock_transaction_id
+                                  WHERE stl.inventory_item_id = ii.id AND st.site_id = ?
+                                    AND st.posted_at BETWEEN ? AND ?
+                                    AND st.reference_type IN ('STOCK_ADJUSTMENT','STOCK_COUNT','STOCK_TRANSFER')),0) AS adjusted
+                   FROM inventory_items ii
+                   LEFT JOIN units u ON u.id = ii.stock_unit_id
+                  WHERE ii.site_id = ? AND ii.is_tracked = 1
+                    AND ii.deleted_at IS NULL AND ii.is_active = 1
+                  ORDER BY ii.name");
+            $q->execute([site_id(),
+                         site_id(), $start, $end,
+                         site_id(), $start, $end,
+                         site_id(), $start, $end,
+                         site_id(), $start, $end,
+                         site_id()]);
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            return ['rows' => [], 'error' => substr($e->getMessage(), 0, 160)];
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $remaining = (float)$r['on_hand'];
+            /* Opening = ab jo para hai, minus jo is arse mein aaya,
+               plus jo gaya. Yani peeche ki taraf hisab — kyunke stock
+               ka "opening" kahin mehfooz nahi hota. */
+            $opening = $remaining - (float)$r['added'] + (float)$r['sold']
+                     - (float)$r['returned'] - (float)$r['adjusted'];
+            $out[] = [
+                'id'        => $r['id'],
+                'code'      => (string)($r['sku'] ?? ''),
+                'name'      => (string)$r['name'],
+                'unit'      => (string)$r['unit'],
+                'opening'   => round($opening, 3),
+                'added'     => round((float)$r['added'], 3),
+                'sold'      => round((float)$r['sold'], 3),
+                'returned'  => round((float)$r['returned'], 3),
+                'adjusted'  => round((float)$r['adjusted'], 3),
+                'remaining' => round($remaining, 3),
+            ];
+        }
+        return ['rows' => $out];
+    }
+
     /* ==================== TABLET: HOLD BILLS ====================
        Har dine-in table, us par khula bill, aur us bill ka abhi ka total.
        Order taker ko yehi chahiye: "kis table par kitna ban gaya" —
@@ -768,6 +905,7 @@ final class OpsService
     /** Void ho chuke bills + wo bills jo abhi void kiye ja sakte hain. */
     public static function voidLog(string $from = '', string $to = ''): array
     {
+        [$scopeW, $scopeA] = Scope::orderWhere('o');
         $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) ? $from : date('Y-m-d', strtotime('-7 day'));
         $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)   ? $to   : date('Y-m-d');
 
@@ -786,8 +924,9 @@ final class OpsService
               WHERE o.site_id = ?
                 AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
                 AND o.order_status IN ('VOID','CLOSED','PAID')
+                AND $scopeW
               ORDER BY d DESC, o.bill_no DESC LIMIT 300");
-        $q->execute([site_id(), $from, $to]);
+        $q->execute(array_merge([site_id(), $from, $to], $scopeA));
 
         return array_map(fn($x) => [
             'id'        => $x['id'],

@@ -278,8 +278,10 @@ case 'signup-reject':needLogin();Auth::requireModule('users');$d=body();DB::pdo(
 case 'dashboard-state':needLogin();ok(['state'=>PageData::dashboard()]);
 case 'store-state':needLogin();ok(['state'=>PageData::storeState()]);
 case 'inventory-category-create':needLogin();Auth::requireModule('inventory');$d=body();InventoryService::createCategory(trim($d['name']??''));ok(['state'=>PageData::storeState()]);
-case 'inventory-item-create':needLogin();Auth::requireModule('inventory');$d=body();$p=DB::pdo();$cat=$p->prepare("SELECT id FROM inventory_categories WHERE site_id=? AND name=? LIMIT 1");$cat->execute([site_id(),$d['category']]);$cid=$cat->fetchColumn();$unitCode=strtoupper($d['stockUnit']==='piece'?'PCS':$d['stockUnit']);$u=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$u->execute([$unitCode]);$uid=$u->fetchColumn();$l=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND name=? LIMIT 1");$l->execute([site_id(),$d['storage']]);$lid=$l->fetchColumn()?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn();$usage=['Recipe Ingredient'=>'RECIPE_INGREDIENT','Direct Sale'=>'DIRECT_SALE','Both'=>'BOTH'][$d['usage']]??'RECIPE_INGREDIENT';InventoryService::createItem(['name'=>$d['name'],'category_id'=>$cid,'sku'=>$d['sku']??'','barcode'=>$d['barcode']??'','usage_mode'=>$usage,'stock_unit_id'=>$uid,'purchase_unit_name'=>$d['purchaseUnit'],'purchase_factor'=>(float)$d['purchaseFactor'],'avg_cost'=>(float)$d['avgStockCost'],'reorder_level'=>(float)$d['reorderQty'],'opening_qty'=>(float)$d['stockQty'],'location_id'=>$lid,'track_batch'=>!empty($d['batch']),'track_expiry'=>!empty($d['expiry'])]);ok(['state'=>PageData::storeState()]);
-case 'purchase-receive':needLogin();Auth::requireModule('purchasing');$d=body();$p=DB::pdo();$supplierName=$d['meta']['supplier']??'Supplier';$q=$p->prepare("SELECT id FROM suppliers WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$supplierName]);$sid=$q->fetchColumn();if(!$sid){$sid=uuid();$p->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,status) VALUES(?,?,?,?,'ACTIVE')")->execute([$sid,tenant_id(),site_id(),$supplierName]);}$lines=[];foreach($d['lines'] as $x){$itemId=(string)($x['itemId']??'');$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE id=? AND site_id=?");$iq->execute([$itemId,site_id()]);$it=$iq->fetch();if(!$it&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$it=$iq->fetch();}if(!$it)continue;$lines[]=['item_id'=>$it['id'],'purchase_qty'=>(float)$x['purchaseQty'],'purchase_factor'=>(float)$it['purchase_factor'],'unit_cost'=>(float)$x['unitCost'],'location_id'=>$it['default_storage_location_id']?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn(),'batch_no'=>'','expiry_date'=>''];}$grn=$d['meta']['reference']??('GRN-'.date('Ymd-His'));PurchaseService::receive(['grn_no'=>$grn,'supplier_id'=>$sid,'supplier_invoice_no'=>''],$lines);$amount=array_sum(array_map(fn($x)=>(float)$x['purchaseQty']*(float)$x['unitCost'],$d['lines']));ok(['amount'=>$amount,'movements'=>$lines,'state'=>PageData::storeState()]);
+case 'inventory-item-create':needLogin();
+ Audit::log('INVENTORY_ITEM','inventory',['label'=>(string)(body()['name']??'')]);Auth::requireModule('inventory');$d=body();$p=DB::pdo();$cat=$p->prepare("SELECT id FROM inventory_categories WHERE site_id=? AND name=? LIMIT 1");$cat->execute([site_id(),$d['category']]);$cid=$cat->fetchColumn();$unitCode=strtoupper($d['stockUnit']==='piece'?'PCS':$d['stockUnit']);$u=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$u->execute([$unitCode]);$uid=$u->fetchColumn();$l=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND name=? LIMIT 1");$l->execute([site_id(),$d['storage']]);$lid=$l->fetchColumn()?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn();$usage=['Recipe Ingredient'=>'RECIPE_INGREDIENT','Direct Sale'=>'DIRECT_SALE','Both'=>'BOTH'][$d['usage']]??'RECIPE_INGREDIENT';InventoryService::createItem(['name'=>$d['name'],'category_id'=>$cid,'sku'=>$d['sku']??'','barcode'=>$d['barcode']??'','usage_mode'=>$usage,'stock_unit_id'=>$uid,'purchase_unit_name'=>$d['purchaseUnit'],'purchase_factor'=>(float)$d['purchaseFactor'],'avg_cost'=>(float)$d['avgStockCost'],'reorder_level'=>(float)$d['reorderQty'],'opening_qty'=>(float)$d['stockQty'],'location_id'=>$lid,'track_batch'=>!empty($d['batch']),'track_expiry'=>!empty($d['expiry'])]);ok(['state'=>PageData::storeState()]);
+case 'purchase-receive':needLogin();
+ Audit::log('PURCHASE_RECEIVE','purchasing');Auth::requireModule('purchasing');$d=body();$p=DB::pdo();$supplierName=$d['meta']['supplier']??'Supplier';$q=$p->prepare("SELECT id FROM suppliers WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$supplierName]);$sid=$q->fetchColumn();if(!$sid){$sid=uuid();$p->prepare("INSERT INTO suppliers(id,tenant_id,site_id,name,status) VALUES(?,?,?,?,'ACTIVE')")->execute([$sid,tenant_id(),site_id(),$supplierName]);}$lines=[];foreach($d['lines'] as $x){$itemId=(string)($x['itemId']??'');$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE id=? AND site_id=?");$iq->execute([$itemId,site_id()]);$it=$iq->fetch();if(!$it&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id,purchase_factor,default_storage_location_id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$it=$iq->fetch();}if(!$it)continue;$lines[]=['item_id'=>$it['id'],'purchase_qty'=>(float)$x['purchaseQty'],'purchase_factor'=>(float)$it['purchase_factor'],'unit_cost'=>(float)$x['unitCost'],'location_id'=>$it['default_storage_location_id']?:$p->query("SELECT id FROM stock_locations WHERE site_id=".$p->quote(site_id())." LIMIT 1")->fetchColumn(),'batch_no'=>'','expiry_date'=>''];}$grn=$d['meta']['reference']??('GRN-'.date('Ymd-His'));PurchaseService::receive(['grn_no'=>$grn,'supplier_id'=>$sid,'supplier_invoice_no'=>''],$lines);$amount=array_sum(array_map(fn($x)=>(float)$x['purchaseQty']*(float)$x['unitCost'],$d['lines']));ok(['amount'=>$amount,'movements'=>$lines,'state'=>PageData::storeState()]);
 case 'store-save-state':needLogin();$d=body();$p=DB::pdo();foreach($d['menuCategories']??[] as $c){$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$c['name']]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,is_active) VALUES(?,?,?,?,1)")->execute([$cid,tenant_id(),site_id(),$c['name']]);}$station=strtoupper($c['printer']??'MAIN');$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND UPPER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$station]);$pid=$pr->fetchColumn();if($pid){$p->prepare("DELETE FROM menu_category_printer_routes WHERE category_id=?")->execute([$cid]);$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,print_rule,is_active) VALUES(?,?,?,?,?,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}}ok(['state'=>PageData::storeState()]);
 case 'recipe-save':needLogin();Auth::requireModule('recipe');$d=body();$p=DB::pdo();$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$cq->execute([site_id(),$d['category']]);$cid=$cq->fetchColumn();if(!$cid)fail('Menu category not found.');$menuId=$d['id']??'';if($menuId&&!preg_match('/^[0-9a-f-]{36}$/i',$menuId))$menuId='';$ingredients=[];foreach($d['ingredients']??[] as $x){$iid=(string)($x['itemId']??'');if(!preg_match('/^[0-9a-f-]{36}$/i',$iid)&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$iid=$iq->fetchColumn()?:'';}if($iid)$ingredients[]=['item_id'=>$iid,'qty'=>(float)$x['qty'],'waste_pct'=>(float)($x['wastePct']??0)];}$id=RecipeService::save(['menu_item_id'=>$menuId,'category_id'=>$cid,'code'=>'','name'=>$d['menuName'],'description'=>'','consumption_type'=>$d['mode']==='direct'?'DIRECT_INVENTORY':'RECIPE','direct_inventory_item_id'=>(function()use($p,$d){$iid=$d['inventoryItemId']??null;if($iid&&preg_match('/^[0-9a-f-]{36}$/i',(string)$iid))return$iid;if(!empty($d['inventoryItemName'])){$q=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$d['inventoryItemName']]);return$q->fetchColumn()?:null;}return null;})(),'direct_inventory_qty'=>$d['directQty']??null,'base_price'=>0,'yield_qty'=>$d['yieldQty']??1],$ingredients);$state=PageData::storeState();$recipe=null;foreach($state['recipes'] as $r)if($r['id']===$id)$recipe=$r;ok(['recipe'=>$recipe?:['id'=>$id]+$d,'state'=>$state]);
 case 'pos-next-bill':needLogin();ok(['next'=>pos_bill_no((int)PageData::nextBill())]);
@@ -465,6 +467,22 @@ case 'running-orders':needLogin();Auth::requireModule('orders');
 case 'void-log':needLogin();Auth::requireModule('void');
  ok(['rows'=>OpsService::voidLog((string)($_GET['from']??''),(string)($_GET['to']??''))]);
 
+case 'item-tracking':needLogin();$d=body();
+ /* V78 — kis item par nazar rakhni hai. Malik har item ka hisab nahi
+    chahta, sirf qeemti ya chori ke andesha wali cheezon ka. */
+ try{Scope::requireManagement('changing inventory tracking');}catch(Throwable $e){fail($e->getMessage(),403);}
+ $iid=(string)($d['id']??'');$on=!empty($d['tracked'])?1:0;
+ if($iid==='')fail('An item is required');
+ $st=DB::pdo()->prepare("UPDATE inventory_items SET is_tracked=?,updated_at=NOW(6)
+                          WHERE id=? AND site_id=? AND deleted_at IS NULL");
+ $st->execute([$on,$iid,site_id()]);
+ if($st->rowCount()<1)fail('Item not found.');
+ Audit::log('ITEM_TRACKING','inventory',['id'=>$iid,'new'=>$on?'tracked':'not tracked']);
+ ok(['tracked'=>(bool)$on,'message'=>$on?'Tracking turned on for this item.':'Tracking turned off.']);
+
+case 'tracked-inventory':needLogin();Auth::requireModule('reports');
+ ok(OpsService::trackedInventory((string)($_GET['from']??''),(string)($_GET['to']??'')));
+
 case 'report-list':needLogin();Auth::requireModule('reports');
  ok(['reports'=>ReportService::catalog()]);
 
@@ -559,6 +577,7 @@ case 'settings-get':needLogin();
  ok(['settings'=>SettingsService::get()]);
 
 case 'settings-save':needLogin();$d=body();
+ Audit::log('SETTINGS_CHANGE','settings');
  try{$r=SettingsService::save($d);}catch(Throwable $e){fail($e->getMessage());}
  ok($r+['settings'=>SettingsService::get()]);
 
@@ -1211,9 +1230,11 @@ case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=
 case 'menu-category-create':needLogin();
  try{Scope::requireManagement('creating categories');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
 case 'menu-item-rate':needLogin();
+ Audit::log('PRICE_CHANGE','menu',['id'=>(string)(body()['id']??''),'new'=>(string)(body()['price']??'')]);
  try{Scope::requireManagement('changing prices');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
 case 'pos-table-create':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tables'))fail('Permission denied',403);$d=body();$nm=trim((string)($d['name']??''));if($nm==='')fail('Table name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$nm]);if($q->fetchColumn())fail('Table already exists');$f=$p->prepare("SELECT id FROM floors WHERE site_id=? AND is_active=1 ORDER BY sort_order LIMIT 1");$f->execute([site_id()]);$fid=$f->fetchColumn();if(!$fid){$fid=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,'Main Floor',1,1)")->execute([$fid,tenant_id(),site_id()]);}$tid=uuid();$code=strtoupper(substr(preg_replace('/[^A-Za-z0-9]/','',$nm),0,10))?:('T'.substr(str_replace('-','',$tid),0,4));$p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,'SQUARE','AVAILABLE',1)")->execute([$tid,tenant_id(),site_id(),$fid,$code,$nm,(int)($d['seats']??4)]);ok(['id'=>$tid,'name'=>$nm]);
 case 'pos-quick-item':needLogin();
+ Audit::log('ITEM_CREATE','menu',['label'=>(string)(body()['name']??'')]);
  try{Scope::requireManagement('creating items');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
 $itemType=($d['type']??'standard')==='weighted'?'WEIGHTED':'STANDARD';$consumption='NONE';$directId=null;$directQty=null;
 $inv=is_array($d['inventory']??null)?$d['inventory']:[];$mode=(string)($inv['mode']??'none');
@@ -1708,6 +1729,33 @@ case 'sa-sync-monitor':needSuper();
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
 case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
 case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
+case 'sa-demo-create':needSuper();$d=body();
+ /* V79 — DEMO BUSINESS.
+    Customer ko dikhane ke liye poora bhara hua software. Har 5 din baad
+    jo kuch CUSTOMER ne daala wo mit jata hai aur system ka demo data
+    bacha rehta hai — yani demo hamesha dikhane laiq rehta hai. */
+ $nm=trim((string)($d['business_name']??''));if($nm==='')fail('Business name is required');
+ try{
+   $r=Platform::provisionBusiness(['business_name'=>$nm,
+       'owner_email'=>(string)($d['owner_email']??''),'owner_name'=>(string)($d['owner_name']??'Demo Owner')]);
+   $tid2=(string)($r['tenant_id']??'');
+   DB::pdo()->prepare("UPDATE tenants SET is_demo=1, demo_last_reset=NOW(6) WHERE id=?")->execute([$tid2]);
+   $sq2=DB::pdo()->prepare("SELECT id FROM sites WHERE tenant_id=? LIMIT 1");$sq2->execute([$tid2]);
+   $sid2=(string)$sq2->fetchColumn();
+   $seeded=\Aio\Services\DemoBusiness::seed($tid2,$sid2);
+   AdminData::audit('console',$tid2,'DEMO_CREATE','Demo business with sample data');
+   ok($r+['demo'=>true,'seeded'=>$seeded,
+     'message'=>$nm.' created as a DEMO business. Customer data clears every '
+       .\Aio\Services\DemoBusiness::RESET_DAYS.' days; the sample data stays.']);
+ }catch(Throwable $e){fail($e->getMessage());}
+
+case 'sa-demo-reset':needSuper();$d=body();
+ $tid2=(string)($d['tenant_id']??'');if($tid2==='')fail('tenant_id is required');
+ $n=\Aio\Services\DemoBusiness::resetCustomerData($tid2);
+ AdminData::audit('console',$tid2,'DEMO_RESET','Cleared '.array_sum($n).' customer rows');
+ ok(['cleared'=>array_sum($n),'tables'=>$n,
+     'message'=>'Customer data cleared. Sample data is untouched.']);
+
 case 'sa-licence-set':needSuper();$d=body();
  /* V66 — har customer ka licence control ek jagah se.
     Pehle sirf `sa-business-renew` tha aur UI mein browser ka prompt()
@@ -1762,8 +1810,21 @@ case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations',
 default:fail('Unknown API action',404);}
 }catch(Throwable $e){
   try{@file_put_contents(dirname(__DIR__).'/storage/logs/api-error.log','['.date('c').'] action='.($_GET['action']??'').' :: '.$e->getMessage().PHP_EOL,FILE_APPEND);}catch(Throwable $x){}
-  $showReal=cfg('app.debug')||\Aio\Services\Platform::superUser()||Auth::user();
-  fail($showReal?$e->getMessage():'Operation failed.',500);
+  /* V78 — TECHNICAL ERROR KABHI NORMAL USER KO NAHI.
+     Pehle shart `|| Auth::user()` thi, yani har logged-in user ko —
+     cashier samet — asli SQL/PHP error nazar aa jata tha. Woh na usay
+     samajh aata hai, na us ke kaam ka hai, aur database ki andaruni
+     tafseel bahar chali jati hai.
+     Ab: sirf super admin, manager, ya debug mode. Baqi sab ko saaf
+     paighaam aur ek reference id — support us id se log mein asli
+     wajah dhoond leta hai. */
+  $ref=strtoupper(substr(md5(uniqid('',true)),0,8));
+  try{@file_put_contents(dirname(__DIR__).'/storage/logs/api-error.log',
+      '['.date('c').'] ref='.$ref.' :: '.$e->getTraceAsString().PHP_EOL,FILE_APPEND);}catch(Throwable $x){}
+  $showReal=cfg('app.debug')||\Aio\Services\Platform::superUser()||Auth::isManager()||Auth::isAdmin();
+  fail($showReal ? $e->getMessage()
+                 : 'Something went wrong and the action was not completed. '
+                  .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
 // build: V62 build 2026-08-26

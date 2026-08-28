@@ -37,6 +37,9 @@ $tables = [
     'users','user_roles','roles','role_modules','user_form_permissions',
     /* V62.2 — inke baghair sync inhen KHAMOSHI se skip karti thi. */
     'user_module_access','user_site_access',
+    /* V79 — module ids dono taraf ek jaise hone chahiyen, warna
+       permissions ka JOIN khali lautta hai. */
+    'platform_modules',
     'employee_profiles','paired_devices','notification_queue','ui_records','devices',
 ];
 
@@ -50,25 +53,57 @@ $cols = function (string $t) use ($pdo): array {
 };
 
 $added = 0; $backfilled = 0; $skipped = 0;
+
+/* V79 — YEH BUG THA.
+   Pehle yahan sirf `updated_at` dekha jata tha:
+
+       if (in_array('updated_at', $c)) { $skipped++; continue; }
+
+   Yani jis table par `updated_at` PEHLE SE tha (users,
+   user_module_access waghera), us par `row_version` aur
+   `origin_node_id` KABHI nahi bante the — aur sync inhi do columns se
+   faisla karti hai ke kaunsi row nayi hai. Nateeja: permissions ka sync
+   khamoshi se kaam hi nahi karta tha, halanke V62.2 ka poora maqsad
+   wahi tha.
+
+   Ab teenon columns alag alag check hote hain. Yeh sirf asli DB par
+   chala kar pakra gaya. */
+$want = [
+    'updated_at'     => "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)",
+    'row_version'    => "BIGINT NOT NULL DEFAULT 1",
+    'origin_node_id' => "VARCHAR(64) NULL",
+];
+
 foreach ($tables as $t) {
     if (!$exists($t)) { continue; }
     $c = $cols($t);
-    if (in_array('updated_at', $c, true)) { $skipped++; continue; }
-    try {
-        $pdo->exec("ALTER TABLE `$t`
-            ADD COLUMN `updated_at` DATETIME(6) NOT NULL
-            DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)");
-        $added++;
-        if (in_array('created_at', $c, true)) {
-            $pdo->exec("UPDATE `$t` SET `updated_at`=`created_at` WHERE `created_at` IS NOT NULL");
-            $backfilled++;
+    $touched = false;
+
+    foreach ($want as $name => $def) {
+        if (in_array($name, $c, true)) continue;
+        try {
+            $pdo->exec("ALTER TABLE `$t` ADD COLUMN `$name` $def");
+            $added++; $touched = true;
+            echo "  + $t.$name\n";
+
+            if ($name === 'updated_at' && in_array('created_at', $c, true)) {
+                $pdo->exec("UPDATE `$t` SET `updated_at`=`created_at` WHERE `created_at` IS NOT NULL");
+                $backfilled++;
+            }
+        } catch (\Throwable $e) {
+            echo "  ! $t.$name: " . substr($e->getMessage(), 0, 80) . "\n";
         }
-        // sync ko batao ke is table ki sab rows dobara bhejni hain
-        $pdo->prepare("DELETE FROM sync_state WHERE scope IN (?,?)")
-            ->execute(['push:'.$t, 'pull:'.$t]);
-        echo "  + $t.updated_at\n";
-    } catch (\Throwable $e) {
-        echo "  ! $t: " . substr($e->getMessage(), 0, 90) . "\n";
+    }
+
+    if ($touched) {
+        /* Sync ko batao ke is table ki sab rows dobara bhejni hain. */
+        try {
+            $pdo->prepare("DELETE FROM sync_state WHERE scope IN (?,?)")
+                ->execute(['push:'.$t, 'pull:'.$t]);
+        } catch (\Throwable $e) {}
+    } else {
+        $skipped++;
     }
 }
+
 echo "SYNC_COLUMNS_READY added=$added backfilled=$backfilled already_ok=$skipped\n";

@@ -4281,3 +4281,245 @@ hain:
 
 Yeh sab agli baar. Jo is package mein hai wo poora chalta hai — adhoora
 kuch nahi chhora.
+
+---
+
+# V78 — Cashier ka daira, tracked inventory, baqi reports
+
+## 1. Cashier ko ab sirf apna kaam nazar aata hai
+
+**Masla:** `router.php` mein yeh shart thi —
+
+    if($key && $key!=='dashboard' && !Auth::canModule($key)) { 403 }
+
+`$key!=='dashboard'` ka matlab: **dashboard hamesha khula tha**, chahe
+user ko ijazat na ho. Cashier wahan se poore branch ki sale dekh sakta
+tha.
+
+Ab har page ki apni ijazat check hoti hai. Aur ijazat na ho to khali 403
+ke bajaye user ko us ke **apne pehle page** par bhej diya jata hai.
+
+**Cashier ka role ab teen cheezein:**
+
+    shift    — apni shift kholna aur band karna
+    pos      — Sale Point (bill, customer, KOT — sab wahin se)
+    closing  — apni purani closing reports
+
+`scripts/migrate_role_scope.php` **mojooda** installations par bhi yeh
+lagata hai — `seed_roles.php` sirf naye installs par chalta hai, is liye
+purane customers ke cashiers ke paas dashboard abhi bhi hota. Migration
+role ke saath saath **user par seedhe diye hue extra modules** bhi hata
+deti hai, warna role theek hone ke bawajood dashboard dikhta rehta.
+
+Waiter aur Chef ka daira bhi isi tarah tang kiya (tablet/tables, kds).
+
+Malik ne khud koi role banaya ya badla ho to migration us ko **haath
+nahi lagati**.
+
+## 2. Tracked inventory (#10, #11, #12)
+
+`inventory_items.is_tracked` naya flag. Inventory page par har item ke
+saamne **Track** button.
+
+Malik har item ka hisab nahi chahta — sirf un chand cheezon ka jo qeemti
+hain ya jinki chori ka andesha hai. Jo item tracked hai wahi:
+
+- **shift closing report** par (80mm) — opening / sold / remaining
+- **WhatsApp** ke khulase mein
+- **Reports > Tracked inventory** mein — opening, added, sold, returned,
+  adjusted, remaining, CSV ke saath
+
+Opening ka hisab **peeche ki taraf** lagta hai (ab jo para hai, minus jo
+aaya, plus jo gaya) — kyunke stock ka "opening" kahin mehfooz nahi hota.
+
+## 3. Paanch nayi reports (#18)
+
+Ab **20 reports**:
+
+- **Credit / unpaid bills** — jo bill poore nahi bhare gaye, customer ka
+  phone number ke saath (taake call kar sakein)
+- **Returns and refunds** — har void bill, wajah aur cashier ke saath
+- **Low stock** — reorder level se neeche
+- **Supplier purchases** — kis supplier se kitna khareeda
+- **Tracked inventory**
+
+Low stock jaan-boojh kar date range par nahi chalti — stock ki halat
+**abhi** ki hoti hai. Report khud yeh baat likh kar batati hai.
+
+## 4. Audit ke baqi hooks (#8)
+
+Ab **14 actions** log hote hain — pehle 10 the. Naye: price change, item
+create, inventory item, purchase receive, settings change, item tracking.
+
+## 5. Technical error ab normal user ko nahi (#23)
+
+Shart yeh thi:
+
+    $showReal = debug || superUser || Auth::user();
+
+Yani **har logged-in user** ko — cashier samet — asli SQL/PHP error nazar
+aa jata tha. Na usay samajh aata hai, na kaam ka hai, aur database ki
+andaruni tafseel bahar chali jati hai.
+
+Ab sirf super admin / manager / debug mode. Baqi sab ko:
+
+    Something went wrong and the action was not completed.
+    Nothing was half-saved. Please try again, or tell support
+    reference A3F91C22.
+
+Poora stack trace `storage/logs/api-error.log` mein usi reference ke
+saath — support seedha wahan dekh leta hai.
+
+## Testing — verification ne do bug pakre
+
+    php -l  (har PHP file)                -> 0 errors
+    duplicate API actions                 -> 0
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=46
+    node --check (46 pages + public/*.js) -> 0 failures
+    SQL schema check: 348 queries         -> 0 problems
+
+Pehle pass mein **saat ghalat column** mile aur theek hue:
+
+    inventory_items.item_code       -> asli naam `sku`
+    inventory_items.base_unit_id    -> asli naam `stock_unit_id`
+    inventory_items.min_stock_level -> asli naam `reorder_level`
+    units.unit_code                 -> asli naam `code`
+
+Yeh naye tracked-inventory aur low-stock reports mein the — bina is
+check ke dono report chalte hi crash karti.
+
+---
+
+## JO ABHI BHI BAQI HAI
+
+- **#13 POS ki client-side optimisation** — indexes lag chuke, magar
+  caching aur kam DB calls baqi.
+- **#17 baqi report pages ka UI pass** — Reports section V74 mein bana,
+  magar Expiry aur Due Payments jaisi reports abhi nahi hain.
+- **#25 poore software ka UI consistency pass**.
+
+---
+
+# V79 — Asli database par testing, aur demo business
+
+Pehli dafa poora software **asli MySQL par chala kar** test hua. Ab tak
+sirf lint aur schema-check thi.
+
+## Char asli bug jo sirf chala kar nikle
+
+### 1. Naya business bina roles ke banta tha
+
+`provisionBusiness()` roles banati hi nahi thi. Naya business
+`roles = 0` ke saath banta tha — yani malik kisi bhi naye user ko role
+de hi nahi sakta tha, aur user creation foreign-key error par gir jati.
+`seed_roles.php` sirf haath se chalane par kaam karti thi.
+
+Ab `Platform::ensureRoles()` provisioning ke saath chalti hai. Tasdeeq:
+naya business ab 6 roles ke saath banta hai (Cashier ke wahi 3 modules).
+
+### 2. Cashier ko doosre cashier ki shifts dikh rahi thin
+
+`OpsService::shiftList()` mein `Scope` lagaya hi nahi gaya tha —
+opening cash, counted cash, variance samet sab nazar aata tha.
+
+**Bilkul wahi ghalti jis se bachne ke liye `Scope` banaya tha.** Do asli
+cashiers se test karne par hi pakri gayi.
+
+`runningOrders()` aur `voidLog()` mein bhi yehi tha. Aur **Reports** mein
+bhi — cashier Reports khol kar poore branch ki sale dekh sakta tha. Ab
+`Scope` `billWhere()` ke andar hai, is liye **har report par khud-ba-khud**
+lagta hai; har nayi report mein alag se yaad rakhne ki zaroorat nahi.
+
+### 3. Sync ke columns kabhi bane hi nahi
+
+`migrate_sync_columns.php` mein:
+
+    if (in_array('updated_at', $c)) { $skipped++; continue; }
+
+Jis table par `updated_at` **pehle se** tha (users, user_module_access,
+roles...), us par `row_version` aur `origin_node_id` **kabhi nahi bante**
+— aur sync inhi do columns se faisla karti hai ke kaunsi row nayi hai.
+
+**Nateeja: permissions ka sync khamoshi se kaam hi nahi karta tha** —
+halanke V62.2 ka poora maqsad wahi tha.
+
+Ab teenon columns alag alag check hote hain. Pehle 36 columns bante the,
+**ab 91**. `platform_modules` list mein tha hi nahi, wo bhi joda.
+
+### 4. `purchases` report chalte hi crash
+
+    COUNT(gi.id) lines
+
+`lines` MariaDB ka **reserved word** hai — bina backtick ke poori query
+syntax error deti hai.
+
+### Aur teen chhoti
+
+- `seed_roles.php` khali database par **fatal crash** deti thi (FK error
+  ka stack trace). Ab saaf message aur skip.
+- `PosService` mein `guest_count` ki undefined-key warning.
+- Shift snapshot **sirf POS ke raste** banta tha. Shift Management page
+  se band ki gayi shift ka snapshot banta hi nahi tha — us ki purani
+  report har dafa dobara ginti. Ab snapshot ek hi jagah banta hai.
+
+## Test ka natija
+
+    [1]  provisioning                        1/1
+    [2]  reference data (units/payments)     3/3
+    [3]  no demo data on new business        3/3
+    [4]  users: username lazmi, email optional  3/3
+    [5]  login by username                   2/2
+    [6]  shift gate                          4/4
+    [7]  sales + shift linking               3/3
+    [8]  second cashier                      2/2
+    [9]  ISOLATION                           4/4
+    [10] manager sees all                    4/4
+    [11] isolation after fix                 5/5
+    [12] manager after fix                   3/3
+    [13] all 20 reports on real data        20/20
+    [15] custom report builder               3/3
+    [16] shift close + snapshot + PDF        4/4
+    [17] closing history + audit             3/3
+    [18-20] demo business                   11/11
+    [21] sync plumbing                       9/10*
+
+    * aakhri "fail" test ka apna ghalat function naam tha, code theek hai
+
+**Ahem tasdeeqein:**
+- Cashier B ne cashier A ka user id request mein bheja — **nazar-andaz
+  hua**, usay phir bhi sirf apna bill mila
+- Owner ko teenon bill nazar aaye
+- Audit log cashier ke liye **band** hai
+- Custom report mein `evil; DROP TABLE users` **reject** hua
+
+## Demo business (naya)
+
+Super admin par naya button: **Create DEMO business**.
+
+Business bharaa hua banta hai: 13 menu items 5 categories mein, 8 tables,
+3 customers, 2 suppliers, 6 expense categories, ek printer.
+
+**Har 5 din baad:** jo kuch CUSTOMER ne daala wo mit jata hai, aur jo
+SYSTEM ne daala tha wo bacha rehta hai. Demo hamesha dikhane laiq rehta
+hai.
+
+Sab se ahem faisla: "system ka data" **ids se** pehchana jata hai
+(`demo_seed_rows`), waqt se nahi. Waqt par bharosa karte to demo data
+bhi mit jata aur agli dafa customer ko khali software milta.
+
+**Chala kar tasdeeq kiya:**
+
+    seeded:      13 menu items, 8 tables, 3 customers, 1 printer
+    customer ne: 1 menu item, 3 bills, 1 shift
+    reset ke baad: 13 menu items, 8 tables, 3 customers, 1 printer
+                   0 orders, 0 shifts, customer ka item GAYA
+
+Reset boot par aur `scripts/demo_reset.php` se chalta hai.
+
+## Testing
+
+    php -l                     -> 0 errors
+    duplicate API actions      -> 0
+    check_pages                -> 46 pages
+    node --check               -> 0 failures
+    END-TO-END on real MySQL   -> 76 pass, 0 real failures

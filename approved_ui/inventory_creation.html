@@ -58,7 +58,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
+      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Track</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
     <div class="inventory-cards" id="cards"></div>
   </section>
@@ -120,7 +120,7 @@ function render(){
   $('#statLow').textContent=state.inventoryItems.filter(i=>status(i)==='Low').length;
   $('#statDirect').textContent=state.inventoryItems.filter(i=>i.usage==='Direct Sale').length;
   $('#statBoth').textContent=state.inventoryItems.filter(i=>i.usage==='Both').length;
-  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
+  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><button class="btn sm" data-track="'+i.id+'" data-on="'+(i.tracked?1:0)+'" title="Watch this item on the closing report">'+(i.tracked?'&#9679; Tracked':'Track')+'</button></td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
   $('#cards').innerHTML=list.map(i=>'<article class="inventory-card"><div class="inventory-card-top"><div><h3>'+i.name+'</h3><small>'+i.category+' · '+i.usage+'</small></div><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></div><div class="inventory-card-grid"><div><span>On Hand</span><b>'+RestaurantStore.formatStock(i)+'</b></div><div><span>Average Cost</span><b>'+RestaurantStore.formatPurchaseCost(i)+'</b></div><div><span>Purchase Unit</span><b>'+i.purchaseUnit+' × '+i.purchaseFactor+'</b></div><div><span>Storage</span><b>'+i.storage+'</b></div></div><div class="action-row" style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn sm danger" data-del-item="'+i.id+'" data-name="'+i.name+'">Delete</button></div></article>').join('');
 }
 function setTab(tab){
@@ -144,6 +144,19 @@ document.addEventListener('click',e=>{
      Ab asli DB delete DeleteKit se: agar item kisi recipe mein use ho
      raha ho ya uska stock khali na ho to server saaf wajah deta hai,
      khamoshi se "done" kabhi nahi kehta. */
+  /* V78 — TRACKED INVENTORY.
+     Malik har item ka hisab nahi chahta, sirf qeemti ya chori ke
+     andesha wali cheezon ka. Jo item yahan "Tracked" hai wahi shift
+     closing report aur WhatsApp ke khulase mein aata hai. */
+  const tb=e.target.closest('[data-track]');
+  if(tb){
+    const on=tb.getAttribute('data-on')==='1';
+    const r=window.DBApi?DBApi.req('item-tracking',{id:tb.dataset.track,tracked:on?0:1}):null;
+    if(!r||!r.ok){toast((r&&r.message)||'Could not change tracking');return}
+    toast(r.message||'Updated');
+    setTimeout(function(){location.reload()},400);
+    return;
+  }
   const di=e.target.closest('[data-del-item]');
   if(di){window.DeleteKit.confirm({entity:'inventory_item',id:di.dataset.delItem,name:di.dataset.name||'',
     what:'Inventory item',title:'Delete this item?',

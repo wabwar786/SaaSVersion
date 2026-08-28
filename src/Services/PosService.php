@@ -83,11 +83,11 @@ final class PosService {
     }
     $mode=self::modeCode($d['service_mode']??'Dine In');
     if($id){
-        $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")->execute([$mode,$table,$customer,self::shiftFor($p,$d),$d['guest_count']?:null,$id]);
+        $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")->execute([$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,$id]);
         return$id;
     }
     $id=uuid();
-    $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),$d['guest_count']?:null,current_user()['id']??null]);
+    $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,current_user()['id']??null]);
     return$id;
  }
  private static function resolveMenuId(PDO $p,array $i):string{

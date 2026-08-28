@@ -108,6 +108,18 @@ foreach ([
     }
 }
 
+/* ---------- 3b. tracked inventory flag ----------
+   Malik har item ka hisab nahi chahta — sirf un chand cheezon ka jo
+   qeemti hain ya jinki chori ka andesha hai. Yeh flag wahi chunta hai. */
+if ($has('inventory_items') && !$col('inventory_items', 'is_tracked')) {
+    try { $pdo->exec("ALTER TABLE inventory_items ADD COLUMN is_tracked TINYINT(1) NOT NULL DEFAULT 0");
+          echo "  + inventory_items.is_tracked\n"; $added++; } catch (\Throwable $e) {}
+}
+if ($has('menu_items') && !$col('menu_items', 'is_tracked')) {
+    try { $pdo->exec("ALTER TABLE menu_items ADD COLUMN is_tracked TINYINT(1) NOT NULL DEFAULT 0");
+          echo "  + menu_items.is_tracked\n"; $added++; } catch (\Throwable $e) {}
+}
+
 /* ---------- 4. whatsapp queue ---------- */
 $pdo->exec("CREATE TABLE IF NOT EXISTS whatsapp_queue (
   id           CHAR(36)     NOT NULL PRIMARY KEY,
@@ -150,6 +162,27 @@ foreach ([
           echo "  + index $t.$name\n"; $added++; }
     catch (\Throwable $e) {}
 }
+
+/* ---------- 6. demo business ---------- */
+foreach (['is_demo'=>'TINYINT(1) NOT NULL DEFAULT 0',
+          'demo_last_reset'=>'DATETIME(6) NULL'] as $c => $def) {
+    if ($has('tenants') && !$col('tenants', $c)) {
+        try { $pdo->exec("ALTER TABLE tenants ADD COLUMN `$c` $def");
+              echo "  + tenants.$c\n"; $added++; } catch (\Throwable $e) {}
+    }
+}
+/* Yeh table batati hai ke kaun si rows SYSTEM ne daali thin. Demo reset
+   inhen bachata hai aur baqi sab (customer ka kaam) mita deta hai.
+   Ids se pehchanna waqt se behtar hai: waqt par bharosa karte to demo
+   data bhi mit jata aur agli dafa customer ko khali software milta. */
+$pdo->exec("CREATE TABLE IF NOT EXISTS demo_seed_rows (
+  tenant_id  CHAR(36)    NOT NULL,
+  table_name VARCHAR(64) NOT NULL,
+  row_id     CHAR(36)    NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (tenant_id, table_name, row_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+echo "  = demo_seed_rows ready\n";
 
 echo "SECURITY_MIGRATION_READY added=$added\n";
 

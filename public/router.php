@@ -20,12 +20,28 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 $publicPages=['login.html','signup.html','signup_pending.html','setup.html','super_admin.html','qr.html','pair.html'];
-$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
+$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){
   if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
   $key=$fileModule[$name]??null;
-  if($key&&$key!=='dashboard'&&!Auth::canModule($key)){http_response_code(403);exit('Access denied.');}
+  /* V78 — DASHBOARD par bhi ijazat check hoti hai.
+     Pehle yahan `$key!=='dashboard'` tha, yani dashboard HAMESHA khula
+     rehta tha. Cashier wahan se poore branch ki sale dekh sakta tha —
+     halanke usay sirf apna kaam dikhna chahiye. Ab har page ki apni
+     ijazat, aur ijazat na ho to user ko us ke apne pehle page par
+     bhej diya jata hai (khali 403 se behtar). */
+  if($key&&!Auth::canModule($key)){
+    $home=null;
+    foreach(['pos'=>'/restaurant_pos.html','shift'=>'/shift_management.html',
+             'closing'=>'/closing_history.html','tablet'=>'/restaurant_order_taker_tablet.html',
+             'kds'=>'/kds.html'] as $mk=>$path){
+      if(Auth::canModule($mk)){$home=$path;break;}
+    }
+    if($home&&$home!=='/'.$name){header('Location: '.$home);exit;}
+    http_response_code(403);
+    exit('You do not have permission to open this screen.');
+  }
 }
 
 $file=dirname(__DIR__).'/approved_ui/'.$name;

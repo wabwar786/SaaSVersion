@@ -262,6 +262,20 @@ final class BillTemplate
         $L[] = self::row($var == 0 ? 'BALANCED' : ($var > 0 ? 'CASH OVER' : 'CASH SHORT'),
                          ($var > 0 ? '+' : '') . self::money($var), true);
 
+        /* Tracked inventory — sirf wo items jinpar tracking on hai.
+           Malik ko raat ko yeh dekhna hota hai ke qeemti cheez kitni
+           bik gayi aur kitni bachi. */
+        if (!empty($r['tracked'])) {
+            $L[] = self::rule();
+            $L[] = ['TRACKED INVENTORY', 'c', 8];
+            foreach ($r['tracked'] as $t) {
+                $L[] = self::row((string)$t['name'], '', true);
+                $L[] = self::row('  opening ' . self::qty((float)$t['opening'])
+                                 . '  sold ' . self::qty((float)$t['sold']),
+                                 'left ' . self::qty((float)$t['remaining']));
+            }
+        }
+
         if (!empty($r['note'])) {
             $L[] = ['', 'l', self::SZ];
             $L = array_merge($L, self::wrap('Note: ' . (string)$r['note']));

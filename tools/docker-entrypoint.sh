@@ -54,6 +54,8 @@ php scripts/migrate_delete_support.php || echo "[boot] delete support migrate sk
 php scripts/migrate_print_rule_default.php || echo "[boot] print_rule migrate skipped"
 php scripts/migrate_fiscal.php || echo "[boot] fiscal migrate skipped"
 php scripts/migrate_security.php || echo "[boot] security migrate skipped"
+php scripts/migrate_role_scope.php || echo "[boot] role scope migrate skipped"
+php scripts/demo_reset.php || echo "[boot] demo reset skipped"
 php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"

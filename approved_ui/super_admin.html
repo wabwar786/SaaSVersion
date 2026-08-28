@@ -252,6 +252,7 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
             <label class="field full"><span>Payment reference</span><input id="f_payment_reference"></label>
           </div>
           <button class="btn primary" id="createBtn">Create business</button>
+        <button class="btn sec" id="demoBtn" style="margin-left:8px">Create DEMO business</button>
         </div></div>
         <div class="panel hide" id="successCard" style="margin-top:14px">
           <div class="panel-head"><h2>Business created</h2><p>Share these with the owner</p></div>
@@ -1045,6 +1046,26 @@ $('pwSave').onclick=async function(){
   toast(r.ok?'Password changed':(r.message||'Failed'));
   if(r.ok){$('pw_cur').value=$('pw_new').value=$('pw_new2').value=''}
 };
+
+/* V79 — DEMO BUSINESS.
+   Customer ko dikhane ke liye poora bhara hua software: menu, tables,
+   customers, suppliers, printer. Har 5 din baad jo kuch CUSTOMER ne
+   daala wo mit jata hai aur yeh sample data bacha rehta hai — yani demo
+   hamesha dikhane laiq rehta hai. */
+$('demoBtn') && ($('demoBtn').onclick=async function(){
+  var nm=$('f_business_name').value.trim();
+  if(!nm){toast('Enter a business name first');return}
+  if(!confirm('Create "'+nm+'" as a DEMO business?\n\n'
+    +'It will be filled with sample menu, tables and customers.\n'
+    +'Every 5 days, anything the customer adds is cleared and the sample data stays.'))return;
+  this.disabled=true;this.textContent='Creating…';
+  var r=await api('sa-demo-create',{business_name:nm,
+    owner_name:$('f_owner_name').value,owner_email:$('f_owner_email').value});
+  this.disabled=false;this.textContent='Create DEMO business';
+  if(!r.ok){toast(r.message||'Failed');return}
+  toast(r.message||'Demo business created');
+  loadBiz&&loadBiz();
+});
 
 $('createBtn').onclick=async function(){
   this.disabled=true;this.textContent='Creating…';
