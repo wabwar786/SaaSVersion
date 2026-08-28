@@ -256,6 +256,8 @@ textarea.inp{min-height:62px;resize:vertical}
     <button class="tb" id="qrBtn">QR Orders <b id="qrCount">(0)</b></button>
     <button class="tb" id="voidBtn">Void Logs</button>
     <button class="tb" id="tabletBtn">Connect a tablet</button>
+    <!-- V77 — cashier ko logout ke liye POS chhorna na pare. -->
+    <button class="tb" id="posLogout" title="Sign out">Sign out</button>
     <button class="tb" id="dupBtn">Duplicate Bill</button>
     <button class="tb amber" id="holdsBtn">Hold Bills <b id="holdCount">(0)</b></button>
     <button class="tb" id="sysBtn">System</button>
@@ -529,8 +531,24 @@ function applyRole(){
   /* Modules jo user ko assign NahI, unke buttons hata do */
   var mods=(CAN.modules||[]);
   var hasMod=function(k){return CAN.manage||mods.indexOf(k)>=0};
-  if(!hasMod('menu')){var e=$('#newItemBtn');if(e)e.classList.add('hide')}
+  /* V77 — item banana aur rate badalna MANAGER ka kaam hai.
+     Cashier ka POS sirf billing par focus rahe. (Server par bhi rok hai
+     — sirf button chhupana kaafi nahi hota.) */
+  if(!hasMod('menu')||!CAN.manage){var e=$('#newItemBtn');if(e)e.classList.add('hide')}
   /* Header ka New Bill wahi kaam karta hai jo strip wala. */
+  (function(){var lo=$('#posLogout');
+    if(lo)lo.onclick=function(){
+      /* Khuli shift KHAMOSHI se band nahi hoti — logout aur shift do
+         alag cheezein hain. Cashier ko saaf batao. */
+      var msg='Sign out now?';
+      try{ var sh=DBApi.req('shift-current'); if(sh&&sh.ok&&sh.shift)
+        msg='Your shift stays open. You can sign back in and continue.\n\nSign out now?'; }catch(e){}
+      if(!confirm(msg))return;
+      var to='login.html';
+      try{ var r=DBApi.req('logout',{}); if(r&&r.redirect)to=r.redirect; }catch(e){}
+      location.href=to;
+    };})();
+
   (function(){var nb=$('#newBillTop');
     if(nb)nb.onclick=function(){var b=$('#newBillBtn'); if(b)b.click(); else if(window.newBill)newBill();};})();
 
@@ -640,7 +658,11 @@ function renderStrip(){
     +'<span class="sb">&#127869; '+n+' items</span>'
     +'<span class="sb">&#129534; <b>Bill #'+billNo+'</b></span>'
     +'<span id="ctx" class="ctx"></span>'
-    +'<button class="tb" id="newBillBtn" style="padding:3px 10px;font-size:11px">+ New Bill (F1)</button>'
+    /* V77 — yeh DUPLICATE tha. V75 mein maine header par "+ New Bill" daala
+     magar yeh strip wala bhi chhora — "New Bill" do jagah nazar aane laga.
+     Ab sirf header wala. Purana id chhupa hua rakha hai taake F1 aur
+     baqi code jo ise click karta hai wo na toote. */
+    +'<button class="tb hide" id="newBillBtn" aria-hidden="true"></button>'
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali &mdash; "+ New Item" se banayein</span>':'')
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';

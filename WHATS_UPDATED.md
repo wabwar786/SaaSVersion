@@ -4127,3 +4127,157 @@ screen-print fallback chalta hai — print bilkul rukta nahi.
     php -l  (har PHP file)   -> 0 errors
     node --check (POS)       -> OK
     Report render + PDF      -> 4,328 bytes, layout saaf
+
+---
+
+# V77 — Security, roles, audit, closing history, WhatsApp
+
+Aap ke 26-point spec ka pehla aur sab se ahem hissa. Neeche saaf likha
+hai kya ho gaya aur kya **nahi** hua.
+
+## Security ka core (#2, #5, #19, #20, #21)
+
+### Cashier isolation — ab SERVER par
+
+Naya `src/Services/Scope.php`. Ab tak har report apne tor par filter
+lagati thi, aur cashier ka user id aksar **client se** aata tha — yani
+cashier request badal kar doosre ki sales dekh sakta tha. Sirf button
+chhupane se yeh theek nahi hota.
+
+Ab usool ek jagah:
+
+    Cashier   -> hamesha sirf apna. User id SESSION se, client se KABHI nahi.
+    Manager   -> sab, aur filter laga sakta hai.
+
+`Scope::orderWhere()` / `shiftWhere()` / `ownsShift()` — har list aur
+report inhi se guzarti hai.
+
+### Shift ka gate server par (#5)
+
+`pos-finalize` aur `pos-kot` ab pehle `Scope::requireOpenShift()`
+chalate hain. Pehle yeh sirf screen par tha — koi seedha API par bill
+bana sakta tha aur wo bill kisi shift se juda hi na hota.
+
+Message: *"Your cash counter shift is closed. Please open a new shift
+before creating a sale."*
+
+### Item/price sirf manager (#4, #19)
+
+`pos-quick-item`, `menu-item-rate`, `menu-category-create` — teenon par
+`Scope::requireManagement()`. Backend par. Button chhupana kaafi nahi.
+
+### Closing snapshot (#21)
+
+Shift band hote hi uske totals **jama kar ke** `snapshot_json` mein
+mehfooz ho jate hain. Purani closing report ab dobara nahi ginti —
+warna aaj chhapne par alag figure aata (beech mein void/refund ho chuke
+hon). Accounts ke liye yeh na-qabil-e-qabool tha.
+
+Purani shifts (jo is se pehle band huin) par report live data se banti
+hai; history mein un par saaf "rebuilt" likha aata hai.
+
+## Username-based login (#1)
+
+`users.email` ab **optional**. Username lazmi aur unique. Pehle email
+lazmi thi, is liye malik jhoothi email likhta tha
+(`cashier1@gmail.com`) — jo na kabhi kaam aayi na sach thi.
+
+Migration purane users ko email se username de deti hai, warna wo login
+hi nahi kar pate.
+
+## User Activity Log (#8)
+
+Naya `audit_log` + `Audit.php` + apna page (sirf Owner/Manager).
+
+Abhi in par hooks lage hain: login, logout, sale created, shift closed,
+closing reprinted, user created/edited/deleted, password changed, user
+suspended, settings changed.
+
+Har record mein: waqt, user, role, action, module, record, purani value,
+nayi value, IP. Search aur filter ke saath.
+
+**Yeh record kahin se edit ya delete nahi ho sakta** — jaan-boojh kar.
+Jo log badla ja sake wo be-kaar hai.
+
+`Audit::log()` kabhi exception nahi phenkta: audit likhna nakaam ho to
+bill ya shift nahi rukna chahiye.
+
+## Shift Closing History (#7)
+
+Naya page. Agar automatic print band ho gaya, printer khali tha ya
+kaghaz khatam — purani report dobara chhapti hai.
+
+Cashier sirf **apni** dekhta hai; manager sab. Yeh filter server par
+hai. Aur `shiftmgr-report-pdf` par ab ownership check hai: doosre ki
+shift ka id daal kar report nikalna band.
+
+## WhatsApp closing report (#9)
+
+Naya `WhatsApp.php` + `whatsapp_queue`.
+
+Do usool:
+
+1. **Closing kabhi na ruke.** Message qatar mein jata hai. WhatsApp
+   band ho, key ghalat ho — shift phir bhi band hoti hai aur report
+   chhapti hai. Cashier ko counter par rok dena hal nahi.
+2. **Ek closing = ek message.** `uq_wa_ref` unique hai, is liye ek shift
+   ka message dobara qatar mein nahi ja sakta.
+
+Status: PENDING / SENT / RETRY, attempts, API ka jawab, sent time — sab
+DB mein. Manager nakaam message dobara bhej sakta hai.
+
+## Do masle jo MERE hi banaye hue the
+
+**#4 "New Bill" do dafa** — V75 mein maine header par naya button daala
+magar strip wala bhi chhora. Ab strip wala chhupa hua hai (id rakha
+hai taake F1 aur baqi code na toote).
+
+**#16 sidebar mein software house do dafa** — footer saaf kiya. Ab
+user, phir chhote icons ki ek qatar, aur uske neeche **ek saaf "Sign
+out" button**. Vendor ki tafseel sirf Support popup mein.
+
+## Logout (#15)
+
+Sidebar mein alag "Sign out" button, aur **POS par bhi** — cashier ko
+logout ke liye screens badalni na paren.
+
+Khuli shift **khamoshi se band nahi hoti**. Logout par saaf likha aata
+hai: *"Your shift stays open. You can sign back in and continue."*
+
+## Raftaar (#13, #24) — pehla qadam
+
+POS ki asli queries par indexes: barcode, item name, shift, bill no,
+order items, payments. Index ke baghair MySQL poori table parhta hai;
+50,000 bills ke baad yeh mehsoos hone lagta hai.
+
+## Testing
+
+    php -l  (har PHP file)                -> 0 errors
+    duplicate API actions                 -> 0
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=46
+    node --check (46 pages + public/*.js) -> 0 failures
+    SQL schema check: 343 queries         -> 0 problems
+
+---
+
+## JO ABHI NAHI HUA — saaf baat
+
+Yeh spec bohat bara hai. Neeche wale points is package mein **nahi**
+hain:
+
+- **#10, #11, #12 Tracked inventory** — items par tracking ka flag,
+  closing par opening/sold/remaining ka hisab, WhatsApp mein us ka
+  khulasa, aur uski apni report. (`WhatsApp::buildMessage()` mein us ki
+  jagah bana di hai, data abhi nahi aata.)
+- **#13 POS ki poori optimisation** — indexes lag gaye, magar client
+  side ka kaam (caching, kam DB calls) baqi hai.
+- **#17, #18 Baqi reports** — Reports ka UI V74 mein bana, magar spec
+  ki list mein se kai reports abhi nahi hain: Credit/Due sales, Returns,
+  Low Stock, Expiry, Supplier, Due Payments.
+- **#8 ke baqi hooks** — abhi 10 actions log hote hain. Price change,
+  stock adjust, product create/edit abhi baqi hain.
+- **#23 error handling ka poora review** aur **#25 UI consistency ka
+  poora pass**.
+
+Yeh sab agli baar. Jo is package mein hai wo poora chalta hai — adhoora
+kuch nahi chhora.

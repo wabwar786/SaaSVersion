@@ -4,7 +4,7 @@
   "settings.html": "41cfcea4182b036b1e887236d39220390217b39d19a50d87b63908e47f2df2c0",
   "accounting.html": "4a3259b1c77c2fb8016db7111430a5b8cee13c68b132c0cb670edd1087393ffe",
   "printer_devices.html": "d207297aa8cf10160381cc729c7a97e43da749f916b033a4381f2b205c98b39a",
-  "restaurant_pos.html": "51f0de015cb1a8f073bea4a8247668b1e4746cfd0fecac8b2e5dfde553aba54b",
+  "restaurant_pos.html": "0931644bb8b3ecb6d3141baaa4901c08416120d546b03e0dfd01972ba8032027",
   "rider_management.html": "6449adc48b2c7655c6eb6a295f2751f6d9d0bc03f8cef1ffbbc34dc785020975",
   "customer_web_qr.html": "4424b4b9a006ffa93ee3b6e4cc6cc3f2eb3334044704f3ffe9336b816de95476",
   "live_store.js": "fda3c0ec9677c7623b08bdc78cba3f503c111af734dca4bf426f9d8d5a349ab5",
@@ -40,7 +40,7 @@
   "purchasing.html": "8433d1f27824aad03679b7b51cef9582a598a9b2d482067a5766af661e522347",
   "signup.html": "bfca3d75267e9b279f694c0d6d1f3632597cd01830354d661835646c1fa9ff98",
   "multi_branch.html": "4320c96c63a196793d01e1e1347fdfdadab51d8daae2cdeca6be9c100be2ad84",
-  "users_access.html": "fc3ec82ec562ef616a7cc13cd0774086f3ad79106a4696f1b494b2b73bf3c80d",
+  "users_access.html": "984b75ad39aa5954d32d4bd1afdb11744cbc6d2f08ff8f7d5beb35d28e35596c",
   "online_orders.html": "10fce0603118345b76fdc30b3ce95d16d15c751bda4231f45d0114e114bbf5bb",
   "inventory_creation.html": "f658acb93eab136c76488b260dac69cc11069185ed1c87d2b7ddf3cbfe9a3f30",
   "assets/menu_01.jpg": "ee564a2ed6b60c0a24c01b7226731a5b02d9f9e69645ae4f0a9d15b3030167aa",
@@ -57,5 +57,11 @@
   "assets/menu_15.jpg": "875290aa4fd0903b2811abe043467ed8a83eebcdd8a7e8fd8d4c95676b6bd5d5",
   "assets/menu_13.jpg": "35e9f4be1b9e4e09342635e8fba71d477924fa441f3cda7dfe54589bde882db3",
   "assets/menu_02.jpg": "4a655453e9eab95af728f727d94356c3461cc39f8012702498c7729e46c93309",
-  "assets/menu_14.jpg": "821ab044f11fda61c5f45de535d66b118d32f9b3cf96f7ad2332408b6fb98b13"
+  "assets/menu_14.jpg": "821ab044f11fda61c5f45de535d66b118d32f9b3cf96f7ad2332408b6fb98b13",
+  "super_admin.html": "c9dd075a1f567b5c77729cf035ba955d17583401a5b732b434da95b8dc60d93a",
+  "qr.html": "ebbeecafaa322d21151dc63190af9e6202741c134827ca708e2b4b2a61e78ae0",
+  "setup.html": "e4fdc371680e7a8c2d8ed4a49089aaca99d60cf0c0c48785280a2307071e097b",
+  "closing_history.html": "b9d85bc83e156d75a3b40cb7cdbc54497368894ef9699acdccff8f15846c83b9",
+  "pair.html": "afa5bf50187ddfcdfad2638dacb9478fa9ae211d046912d9b8f78c671c94f0e6",
+  "activity_log.html": "32f26c64c40cbcf37ef18824824c4c19fac71623759a1644119351d842aa2b1e"
 }

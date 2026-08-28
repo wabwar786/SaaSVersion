@@ -241,6 +241,23 @@ final class OpsService
     public static function shiftReport(string $shiftId): array
     {
         $p = DB::pdo();
+
+        /* V77 — agar shift band ho chuki hai aur us ka SNAPSHOT mehfooz
+           hai, to wahi lauta do. Dobara ginne se aaj ka natija alag aa
+           sakta hai (beech mein void/refund ho chuke hon), aur purani
+           closing report badal jana accounts ke liye na-qabil-e-qabool
+           hai. */
+        try {
+            $sq = $p->prepare("SELECT snapshot_json FROM cashier_shifts
+                                WHERE id=? AND site_id=? AND status='CLOSED' LIMIT 1");
+            $sq->execute([$shiftId, site_id()]);
+            $j = $sq->fetchColumn();
+            if ($j) {
+                $d = json_decode((string)$j, true);
+                if (is_array($d) && !empty($d['shift'])) return $d;
+            }
+        } catch (\Throwable $e) { /* column purane DB par na ho to normal raste par */ }
+
         $q = $p->prepare(
             "SELECT cs.*, COALESCE(u.full_name,'-') AS cashier
                FROM cashier_shifts cs
@@ -333,6 +350,67 @@ final class OpsService
             'categories' => array_values($cats),
             'payments' => $pq->fetchAll(PDO::FETCH_ASSOC),
         ];
+    }
+
+    /**
+     * Closing history — purani closing reports dobara chhapne ke liye.
+     *
+     * Cashier sirf APNI dekh sakta hai; manager sab. Yeh filter server
+     * par lagta hai (Scope), UI par nahi — warna cashier request badal
+     * kar doosre ki report nikal leta.
+     */
+    public static function closingHistory(array $f = []): array
+    {
+        [$w, $a] = Scope::shiftWhere('cs', $f['user'] ?? null);
+
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f['from'] ?? ''))
+              ? (string)$f['from'] : date('Y-m-d', strtotime('-30 day'));
+        $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f['to'] ?? ''))
+              ? (string)$f['to'] : date('Y-m-d');
+
+        $sql = "SELECT cs.id, cs.shift_no, cs.closing_ref, cs.business_date,
+                       cs.opened_at, cs.closed_at, cs.counter_name,
+                       cs.opening_cash, cs.expected_cash, cs.actual_cash, cs.variance_amount,
+                       cs.invoice_count, cs.gross_sales, cs.discount_total,
+                       cs.cash_sales, cs.card_sales,
+                       COALESCE(u.full_name,'-') AS cashier,
+                       CASE WHEN cs.snapshot_json IS NULL THEN 0 ELSE 1 END AS has_snapshot
+                  FROM cashier_shifts cs
+                  LEFT JOIN users u ON u.id = cs.cashier_user_id
+                 WHERE cs.site_id = ? AND cs.status='CLOSED' AND cs.deleted_at IS NULL
+                   AND cs.business_date BETWEEN ? AND ?
+                   AND $w
+                 ORDER BY cs.closed_at DESC LIMIT 300";
+        $args = array_merge([site_id(), $from, $to], $a);
+
+        try {
+            $q = DB::pdo()->prepare($sql);
+            $q->execute($args);
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Could not load closing history: '.substr($e->getMessage(), 0, 140));
+        }
+
+        return ['from' => $from, 'to' => $to,
+                'can_see_all' => Scope::isManagement(),
+                'rows' => array_map(fn($x) => [
+                    'id'       => $x['id'],
+                    'ref'      => (string)($x['closing_ref'] ?: $x['shift_no']),
+                    'shift'    => (string)$x['shift_no'],
+                    'date'     => (string)$x['business_date'],
+                    'counter'  => (string)($x['counter_name'] ?? ''),
+                    'cashier'  => (string)$x['cashier'],
+                    'opened'   => substr((string)$x['opened_at'], 0, 16),
+                    'closed'   => substr((string)$x['closed_at'], 0, 16),
+                    'invoices' => (int)$x['invoice_count'],
+                    'sales'    => (float)$x['gross_sales'],
+                    'cash'     => (float)$x['cash_sales'],
+                    'card'     => (float)$x['card_sales'],
+                    'expected' => (float)$x['expected_cash'],
+                    'counted'  => (float)$x['actual_cash'],
+                    'variance' => (float)$x['variance_amount'],
+                    'saved'    => (int)$x['has_snapshot'] === 1,
+                ], $rows)];
     }
 
     /* ==================== RUNNING ORDERS ==================== */

@@ -324,6 +324,95 @@
       ], rows)));
   }
 
+  /* ==================== CLOSING HISTORY ====================
+     Agar automatic print band ho gaya, printer khali tha, ya kaghaz
+     khatam — purani closing report dobara chhapni chahiye. Cashier
+     sirf APNI dekhta hai; yeh filter server par lagta hai. */
+  function closingPage() {
+    var f = document.getElementById('chFrom'), t = document.getElementById('chTo');
+    var qs = (f && f.value ? '&from=' + encodeURIComponent(f.value) : '')
+           + (t && t.value ? '&to=' + encodeURIComponent(t.value) : '');
+    var r = req('closing-history' + qs);
+    if (!r || !r.ok) { replace(panel('Closing history', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load closing history') + '</div>')); return; }
+
+    var rows = r.rows || [];
+    var tools = '<label class="field" style="margin:0"><span>From</span>'
+      + '<input type="date" id="chFrom" value="' + esc(r.from) + '"></label>'
+      + '<label class="field" style="margin:0"><span>To</span>'
+      + '<input type="date" id="chTo" value="' + esc(r.to) + '"></label>'
+      + '<button class="btn" id="chGo">Show</button>';
+
+    replace(panel('Shift Closing History',
+      r.can_see_all ? 'All cashiers' : 'Your own closings only',
+      table([
+        { l: 'Reference', k: 'ref' },
+        { l: 'Date', k: 'date' },
+        { l: 'Cashier', f: function (x) { return esc(x.cashier); } },
+        { l: 'Counter', f: function (x) { return esc(x.counter || '-'); } },
+        { l: 'Closed', k: 'closed' },
+        { l: 'Invoices', n: 1, k: 'invoices' },
+        { l: 'Sales', n: 1, f: function (x) { return money(x.sales); } },
+        { l: 'Variance', n: 1, f: function (x) {
+            var v = Number(x.variance || 0);
+            return '<span style="' + (v === 0 ? '' : (v < 0 ? 'color:#a3222d' : 'color:#b3541e')) + '">'
+              + (v > 0 ? '+' : '') + money(v) + '</span>';
+          } },
+        { l: '', f: function (x) {
+            return '<button class="btn sm" data-chprint="' + esc(x.id) + '">Print</button>'
+              + (x.saved ? '' : ' <span class="hint" title="This shift was closed on an older build, so the report is rebuilt from live data">rebuilt</span>');
+          } }
+      ], rows), tools));
+
+    var g = document.getElementById('chGo');
+    if (g) g.onclick = closingPage;
+    host().addEventListener('click', function (e) {
+      var b = e.target.closest('[data-chprint]');
+      if (!b) return;
+      window.open('/api.php?action=shiftmgr-report-pdf&id='
+        + encodeURIComponent(b.getAttribute('data-chprint')), '_blank');
+    });
+  }
+
+  /* ==================== ACTIVITY LOG ====================
+     Sirf Owner/Manager. Yeh record MUSTAQIL hai — koi UI se ise badal
+     ya mita nahi sakta. */
+  function auditPage() {
+    var q = document.getElementById('alQ'), a = document.getElementById('alAct');
+    var qs = (q && q.value ? '&q=' + encodeURIComponent(q.value) : '')
+           + (a && a.value ? '&action=' + encodeURIComponent(a.value) : '');
+    var r = req('activity-log' + qs);
+    if (!r || !r.ok) { replace(panel('User Activity Log', '',
+      '<div style="padding:18px" class="hint">' + esc((r && r.message) || 'Not permitted') + '</div>')); return; }
+
+    var acts = r.actions || [];
+    var tools = '<input id="alQ" placeholder="Search user or record" style="height:36px;padding:0 10px;'
+      + 'border:1px solid var(--line);border-radius:8px" value="' + esc(q ? q.value : '') + '">'
+      + '<select id="alAct"><option value="">All actions</option>'
+      + acts.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + '</option>'; }).join('')
+      + '</select><button class="btn" id="alGo">Search</button>';
+
+    replace(panel('User Activity Log', esc(r.from) + ' to ' + esc(r.to) + ' \u00b7 read-only',
+      table([
+        { l: 'When', f: function (x) { return esc(String(x.created_at).slice(0, 19)); } },
+        { l: 'User', f: function (x) { return esc(x.username) + ' <span class="hint">' + esc(x.role_name || '') + '</span>'; } },
+        { l: 'Action', f: function (x) { return '<span class="tag">' + esc(x.action) + '</span>'; } },
+        { l: 'Module', f: function (x) { return esc(x.module || '-'); } },
+        { l: 'Record', f: function (x) { return esc(x.record_label || '-'); } },
+        { l: 'Details', f: function (x) {
+            var d = x.description || '';
+            if (x.old_value || x.new_value) d += (d ? ' \u00b7 ' : '') + esc(x.old_value || '') + ' \u2192 ' + esc(x.new_value || '');
+            return d || '-';
+          } }
+      ], r.rows || []), tools));
+
+    var g = document.getElementById('alGo');
+    if (g) g.onclick = auditPage;
+    var qq = document.getElementById('alQ');
+    if (qq) qq.onkeydown = function (e) { if (e.key === 'Enter') auditPage(); };
+    if (a) document.getElementById('alAct').value = a.value;
+  }
+
   function boot() {
     if (!window.DBApi) return;
     if (page === 'shift_management.html') shiftPage();
@@ -334,6 +423,8 @@
     else if (page === 'accounting.html') cashPage();
     else if (page === 'online_orders.html') onlinePage();
     else if (page === 'whatsapp_notifications.html') notifyPage();
+    else if (page === 'closing_history.html') closingPage();
+    else if (page === 'activity_log.html') auditPage();
   }
 
   /* module.js ke render ke BAAD chalna hai, warna wo hamara content

@@ -291,6 +291,21 @@ final class Guide
  ],
  'warn'=>['If the page shows "Background sync: STOPPED", restart the software. Nothing will reach the portal until it runs.']],
 
+'closing' => ['title'=>'Shift Closing History',
+ 'what'=>'Every past shift closing, and the ability to print any of them again.',
+ 'steps'=>['Set the date range.','Find the closing.','Press Print.'],
+ 'tips'=>[
+   'A cashier sees only their own closings. A manager sees everyone.',
+   'Reports are saved exactly as they were at closing time, so an old report never changes.',
+ ],
+ 'warn'=>['If a closing shows "rebuilt", it was closed on an older build and the report is worked out from live data - it may differ slightly from the original paper.']],
+
+'activity' => ['title'=>'User Activity Log',
+ 'what'=>'A permanent record of who did what: logins, sales, price changes, shift actions, deletions.',
+ 'steps'=>['Search by user or record, or filter by action.'],
+ 'tips'=>['Check this first whenever a figure looks wrong. It usually shows exactly what happened and who did it.'],
+ 'warn'=>['This log cannot be edited or deleted from anywhere in the software. That is deliberate - a log that can be changed is worthless.']],
+
 'dashboard' => ['title'=>'Dashboard',
  'what'=>'Today at a glance: sales, bills, average bill and sync status.',
  'steps'=>['This is your home screen.'],

@@ -96,6 +96,7 @@ if($name==='kds.html')$tail.='<script src="/kds_db.js?b=v70"></script>';
 // V70 — Shift / Running Orders / Void ab asli tables par (pehle ui_records).
 if(in_array($name,['shift_management.html','orders_management.html','void_refund.html',
                    'stock_transfer.html','stock_count.html','accounting.html',
+                   'closing_history.html','activity_log.html',
                    'online_orders.html','whatsapp_notifications.html'],true))
   $tail.='<script src="/ops_db.js?b=v70"></script>';
 

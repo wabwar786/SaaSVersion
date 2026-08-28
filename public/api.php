@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -188,7 +188,7 @@ function moduleFingerprint():string{
   }catch(Throwable $e){ return ''; }
 }
 function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
-function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
+function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'username'=>$u['username']??'','phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
 function applyUser(string $id,array $d,bool $create=false,?string $requestId=null):string{$p=DB::pdo();$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;$perm=$d['permissions']??[];if($create){return UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'','phone'=>$d['phone']??'','password'=>$d['password']?:'1234','role_id'=>$role,'modules'=>$mods,'is_admin'=>($d['role']??'')==='Owner / Admin','form_permissions'=>[]],$requestId);}return DB::tx(function($p)use($id,$d,$role,$mods){$p->prepare("UPDATE users SET full_name=?,email=?,phone=?,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$d['name'],$d['email'],$d['phone']??'',$id,tenant_id()]);if(!empty($d['password'])){[$h,$a]=UserService::passwordHash($d['password']);$p->prepare("UPDATE users SET password_hash=?,password_algo=? WHERE id=?")->execute([$h,$a,$id]);}$p->prepare("DELETE FROM user_roles WHERE user_id=?")->execute([$id]);$p->prepare("DELETE FROM user_module_access WHERE user_id=?")->execute([$id]);if($role)$p->prepare("INSERT INTO user_roles(id,user_id,role_id,site_id,assigned_by) VALUES(?,?,?,?,?)")->execute([uuid(),$id,$role,site_id(),current_user()['id']??null]);foreach($mods as $m)$p->prepare("INSERT INTO user_module_access(id,user_id,site_id,module_id,access_mode) VALUES(?,?,?,?, 'ALLOW')")->execute([uuid(),$id,site_id(),$m]);return$id;});}
 try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping','sa-login'],true))csrf_json();switch($a){
 case 'csrf-token':
@@ -264,7 +264,8 @@ case 'login':
         'isAdmin'=>(bool)($u['is_tenant_admin']??false)
     ]]);
 
-case 'logout':$__slug=(string)($_SESSION['login_tenant_slug']??'');Auth::logout();
+case 'logout':
+ Audit::log('LOGOUT','auth');$__slug=(string)($_SESSION['login_tenant_slug']??'');Auth::logout();
  /* Client ko wapas wahi business-wala login link do. */
  ok(['redirect'=>'/login.html'.($__slug!==''?('?b='.rawurlencode($__slug)):'')]);
 case 'setup':$d=body();$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE'");$q->execute([tenant_id()]);if((int)$q->fetchColumn())fail('Administrator already exists.');if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$mods=array_column($p->query("SELECT id FROM platform_modules WHERE is_active=1")->fetchAll(),'id');UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'admin','phone'=>'','password'=>$d['password'],'role_id'=>roleIdByName('Owner / Admin'),'modules'=>$mods,'is_admin'=>1]);ok();
@@ -358,14 +359,41 @@ case 'shiftmgr-open':needLogin();Auth::requireModule('shift');$d=body();
 case 'shiftmgr-expected':needLogin();Auth::requireModule('shift');
  ok(['expected'=>OpsService::shiftExpected((string)($_GET['id']??''))]);
 
+case 'closing-history':needLogin();
+ /* Cashier sirf apni, manager sab — filter Scope se, UI se nahi. */
+ try{ok(OpsService::closingHistory(['from'=>(string)($_GET['from']??''),'to'=>(string)($_GET['to']??''),
+     'user'=>(string)($_GET['user']??'')]));}
+ catch(Throwable $e){fail($e->getMessage());}
+
+case 'activity-log':needLogin();
+ try{ok(Audit::search(['from'=>(string)($_GET['from']??''),'to'=>(string)($_GET['to']??''),
+     'user'=>(string)($_GET['user']??''),'action'=>(string)($_GET['action']??''),
+     'module'=>(string)($_GET['module']??''),'q'=>(string)($_GET['q']??'')])
+     +['actions'=>Audit::actions()]);}
+ catch(Throwable $e){fail($e->getMessage(),403);}
+
+case 'whatsapp-settings':needLogin();
+ ok(['settings'=>\Aio\Services\WhatsApp::settings(),'queue'=>\Aio\Services\WhatsApp::queue(50)]);
+
+case 'whatsapp-save':needLogin();$d=body();
+ try{\Aio\Services\WhatsApp::saveSettings($d);}catch(Throwable $e){fail($e->getMessage(),403);}
+ ok(['settings'=>\Aio\Services\WhatsApp::settings()]);
+
+case 'whatsapp-retry':needLogin();$d=body();
+ try{$r=\Aio\Services\WhatsApp::retry((string)($d['id']??''));}catch(Throwable $e){fail($e->getMessage(),403);}
+ ok($r+['queue'=>\Aio\Services\WhatsApp::queue(50)]);
+
 case 'shiftmgr-report':needLogin();Auth::requireModule('shift');
  try{$r=OpsService::shiftReport((string)($_GET['id']??''));}catch(Throwable $e){fail($e->getMessage());}
  ok(['report'=>$r]);
 
 case 'shiftmgr-report-pdf':needLogin();
  /* POS ka cashier bhi apni shift ki report chhap sake — usay 'shift'
-    module ki ijazat na ho tab bhi. */
+    module ki ijazat na ho tab bhi. Magar SIRF APNI: dosre ki shift ka
+    id daal kar report nikalna band hai. */
  if(!Auth::canModule('shift')&&!Auth::canModule('pos'))fail('Permission denied',403);
+ if(!Scope::ownsShift((string)($_GET['id']??'')))fail('You can only print your own shift reports.',403);
+ Audit::log('CLOSING_REPRINT','shift',['id'=>(string)($_GET['id']??'')]);
  /* V73 — closing report HAMESHA 80mm par, wahi kaghaz jo counter par
     laga hota hai. Bill ke hi Pdf/BillTemplate se banta hai taake shakl
     aur alignment ek jaisi rahe. */
@@ -905,6 +933,7 @@ case 'order-void':needLogin();$d=body();
    likha tha — kisi ko andaza hi nahi tha ke yahan likhne se password
    badal jayega. Ab alag, saaf endpoint. */
 case 'user-password':needLogin();Auth::requireModule('users');$d=body();
+ Audit::log('USER_PASSWORD','users',['id'=>(string)($d['id']??'')]);
  $uid=(string)($d['id']??'');$np=(string)($d['password']??'');
  if($uid==='')fail('A user is required');
  if(strlen($np)<4)fail('Password must be at least 4 characters');
@@ -917,6 +946,7 @@ case 'user-password':needLogin();Auth::requireModule('users');$d=body();
  ok(['message'=>'Password changed for '.$u['full_name'].'.','state'=>accessState()]);
 
 case 'user-status':needLogin();Auth::requireModule('users');$d=body();
+ Audit::log('USER_STATUS','users',['id'=>(string)($d['id']??''),'new'=>(string)($d['status']??'')]);
  $uid=(string)($d['id']??'');$st=strtoupper((string)($d['status']??''));
  if(!in_array($st,['ACTIVE','SUSPENDED'],true))fail('status must be ACTIVE or SUSPENDED');
  if($uid==='')fail('A user is required');
@@ -935,6 +965,7 @@ case 'user-status':needLogin();Auth::requireModule('users');$d=body();
  ok(['message'=>'User '.($st==='ACTIVE'?'activate':'suspend').' done.','state'=>accessState()]);
 
 case 'user-delete':needLogin();Auth::requireModule('users');$d=body();
+ Audit::log('USER_DELETE','users',['id'=>(string)($d['id']??'')]);
  $uid=(string)($d['id']??'');
  if($uid==='')fail('A user is required');
  if($uid===(current_user()['id']??''))fail('You cannot delete your own account.');
@@ -1043,7 +1074,7 @@ case 'device-pair-claim':
  $uq=$p->prepare("SELECT * FROM users WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL");
  $uq->execute([$dev['user_id']]);$u=$uq->fetch();
  if(!$u)fail('Pairing user not found',401);
- Auth::startSessionForUser($u);
+ Audit::log('LOGIN','auth',['desc'=>'Signed in']);
  $_SESSION['device_id']=$dev['id'];$_SESSION['device_role']=$dev['device_role'];
  $p->prepare("UPDATE paired_devices SET status='ACTIVE',paired_at=COALESCE(paired_at,NOW(6)),last_seen_at=NOW(6),user_agent=? WHERE id=?")
    ->execute([substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,255),$dev['id']]);
@@ -1149,21 +1180,52 @@ case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo()
  /* V76 — shift ka id bhi wapas, taake POS wahi 80mm closing report
     khol sake jo Shift Management page kholta hai. Pehle POS apna alag
     saada slip banata tha: na category-wise sale, na payments. */
+ /* V77 — CLOSING SNAPSHOT.
+    Shift band hote hi uske totals JAMA kar ke rakh diye jate hain.
+    Warna purani closing report aaj chhapne par alag figure deti — kyunke
+    wo har dafa dobara ginti hai aur beech mein void/refund ho chuke ho
+    sakte hain. Accounts ke liye yeh na-qabil-e-qabool hai. */
+ try{
+   $snap=\Aio\Services\OpsService::shiftReport($sh['id']);
+   $ref='CL-'.date('ymd-His');
+   $p->prepare("UPDATE cashier_shifts SET snapshot_json=?, closing_ref=?,
+                    gross_sales=?, net_sales=?, discount_total=?, invoice_count=?,
+                    cash_sales=?, card_sales=?, expense_total=?
+                  WHERE id=?")
+     ->execute([json_encode($snap,JSON_UNESCAPED_UNICODE),$ref,
+                (float)($snap['total']??0),(float)(($snap['total']??0)-($snap['tax']??0)),
+                (float)($snap['discount']??0),(int)($snap['bills']??0),
+                (float)(array_sum(array_map(fn($x)=>stripos((string)$x['method'],'cash')!==false?(float)$x['amount']:0,$snap['payments']??[]))),
+                (float)(array_sum(array_map(fn($x)=>stripos((string)$x['method'],'cash')===false?(float)$x['amount']:0,$snap['payments']??[]))),
+                (float)($snap['expenses']??0),$sh['id']]);
+   $rep['closing_ref']=$ref;
+   /* WhatsApp owner ko — closing MEHFOOZ hone ke BAAD. Nakami par
+      closing phir bhi kamyab rehti hai. */
+   try{\Aio\Services\WhatsApp::queueShiftClosing($sh['id'],$snap);}catch(Throwable $e){}
+ }catch(Throwable $e){ /* snapshot na bane to bhi shift close rahe */ }
+ Audit::log('SHIFT_CLOSE','shift',['id'=>$sh['id'],'label'=>(string)$sh['shift_no'],'new'=>'counted '.$actual]);
  $rep['shift_id']=$sh['id'];
  ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
-case 'menu-category-create':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
-case 'menu-item-rate':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
+case 'menu-category-create':needLogin();
+ try{Scope::requireManagement('creating categories');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
+case 'menu-item-rate':needLogin();
+ try{Scope::requireManagement('changing prices');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
 case 'pos-table-create':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tables'))fail('Permission denied',403);$d=body();$nm=trim((string)($d['name']??''));if($nm==='')fail('Table name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$nm]);if($q->fetchColumn())fail('Table already exists');$f=$p->prepare("SELECT id FROM floors WHERE site_id=? AND is_active=1 ORDER BY sort_order LIMIT 1");$f->execute([site_id()]);$fid=$f->fetchColumn();if(!$fid){$fid=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,'Main Floor',1,1)")->execute([$fid,tenant_id(),site_id()]);}$tid=uuid();$code=strtoupper(substr(preg_replace('/[^A-Za-z0-9]/','',$nm),0,10))?:('T'.substr(str_replace('-','',$tid),0,4));$p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,'SQUARE','AVAILABLE',1)")->execute([$tid,tenant_id(),site_id(),$fid,$code,$nm,(int)($d['seats']??4)]);ok(['id'=>$tid,'name'=>$nm]);
-case 'pos-quick-item':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
+case 'pos-quick-item':needLogin();
+ try{Scope::requireManagement('creating items');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
 $itemType=($d['type']??'standard')==='weighted'?'WEIGHTED':'STANDARD';$consumption='NONE';$directId=null;$directQty=null;
 $inv=is_array($d['inventory']??null)?$d['inventory']:[];$mode=(string)($inv['mode']??'none');
 if($mode==='existing'&&!empty($inv['item_id'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$iq->execute([(string)$inv['item_id'],site_id()]);$directId=$iq->fetchColumn()?:null;if(!$directId)fail('Selected inventory item not found');$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
 elseif($mode==='new'){$invName=trim((string)($inv['name']??$name));$unitCode=strtoupper(trim((string)($inv['unit']??'PCS')))?:'PCS';$uq=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$uq->execute([$unitCode]);$unitId=$uq->fetchColumn();if(!$unitId){$uq=$p->prepare("SELECT id FROM units ORDER BY code LIMIT 1");$uq->execute();$unitId=$uq->fetchColumn();}if(!$unitId)fail('No units configured');$lq=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY name LIMIT 1");$lq->execute([site_id()]);$loc=$lq->fetchColumn();$directId=\Aio\Services\InventoryService::createItem(['category_id'=>null,'sku'=>null,'barcode'=>null,'name'=>$invName,'usage_mode'=>'DIRECT_SALE','stock_unit_id'=>$unitId,'purchase_unit_name'=>$unitCode,'purchase_factor'=>1,'avg_cost'=>(float)($inv['cost']??0),'reorder_level'=>(float)($inv['reorder']??0),'track_batch'=>0,'track_expiry'=>0,'location_id'=>$loc?:null,'opening_qty'=>(float)($inv['opening_qty']??0)]);$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
 $mid=uuid();$vn=0;DB::tx(function($p)use($d,$mid,$cid,$name,$itemType,$consumption,$directId,$directQty,$price,&$vn){$p->prepare("INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,description,item_type,consumption_type,direct_inventory_item_id,direct_inventory_qty,base_price,is_active,is_online,is_pos) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,1,1)")->execute([$mid,tenant_id(),site_id(),$cid,$name,(string)($d['desc']??''),$itemType,$consumption,$directId,$directQty,$price]);$opts=is_array($d['variants']??null)?$d['variants']:[];foreach($opts as $o){$vname=trim((string)($o['name']??''));$vprice=(float)($o['price']??0);if($vname===''||$vprice<=0)continue;$vn++;$p->prepare("INSERT INTO menu_item_variants(id,tenant_id,site_id,menu_item_id,name,price,sort_order,is_active) VALUES(?,?,?,?,?,?,?,1)")->execute([uuid(),tenant_id(),site_id(),$mid,$vname,$vprice,$vn]);}});
 ok(['id'=>$mid,'category_id'=>$cid,'inventory_item_id'=>$directId,'variants'=>$vn]);
-case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);
+case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
+ /* V77 — SHIFT KA GATE SERVER PAR.
+    Pehle yeh sirf screen par tha; koi seedha API par bill bana sakta
+    tha aur wo bill kisi shift se juda hi na hota. */
+ try{Scope::requireOpenShift();}catch(Throwable $e){fail($e->getMessage(),409);}$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);
  /* V64 — FBR: bill band hone ke BAAD, print se PEHLE.
     submit() kabhi exception nahi phenkta. FBR band ho to bill phir bhi
     chhapega, us par "FBR: PENDING" likha aayega aur entry queue mein
@@ -1172,6 +1234,7 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();$d['bill_no
  try{$fiscal=FiscalService::submit($id);}catch(Throwable $e){$fiscal=['status'=>'PENDING','invoice_no'=>'','message'=>substr($e->getMessage(),0,200)];}
  $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no']];
  /* Bill cloud par foran - 60 second wale loop ka intezar nahi. */
+ Audit::log('SALE_CREATE','pos',['id'=>$id,'label'=>(string)$d['bill_no'],'new'=>(string)($resp['dashboard']['today_sales']??'')]);
  register_shutdown_function('sync_nudge');
  ok($resp);
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();$d['bill_no']=pos_bill_guard($d);$r=PosService::sendKot($d,$d['items']??[]);$r['bill_no']=$d['bill_no'];ok($r);

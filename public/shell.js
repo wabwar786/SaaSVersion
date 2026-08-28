@@ -41,7 +41,9 @@
       ['promotions','Discounts / Promotions','discounts_promotions.html','%'],
       ['staff','Staff / Roles','staff_roles.html','⚇'],
       ['void','Void / Refund','void_refund.html','⊗'],
+      ['closing','Shift Closing History','closing_history.html','\u25F7'],
       ['reports','Reports','reports.html','▥'],
+      ['activity','User Activity Log','activity_log.html','\u2637'],
          ]},
     {title:'System',items:[
       ['printers','Printers / Devices','printer_devices.html','⎙'],
@@ -84,11 +86,20 @@
     html+='</div></details>';
   });
   html+='</nav>';
-  html+='<div class="side-foot"><div class="side-avatar" id="sideAvatar">'+initials(user.name)+'</div>'+
-        '<div class="who"><b id="sideUserName">'+esc(user.name)+'</b><span id="sideUserRole">'+esc(user.role||'User')+'</span></div>'+
+  /* V77 — sidebar ka footer saaf kiya.
+     Neeche software house ki tafseel do jagah nazar aa rahi thi (Guide
+     aur Support ke buttons dono se). Ab: user, phir chhote icons ki ek
+     hi qatar, aur uske neeche EK saaf "Sign out" button — cashier ko
+     logout ke liye screens badalni na paren. Vendor ki tafseel sirf
+     Support ke popup mein, ek hi jagah. */
+  html+='<div class="side-foot" style="flex-wrap:wrap;gap:8px">'+
+        '<div class="side-avatar" id="sideAvatar">'+initials(user.name)+'</div>'+
+        '<div class="who"><b id="sideUserName">'+esc(user.name)+'</b>'+
+        '<span id="sideUserRole">'+esc(user.role||'User')+'</span></div>'+
         '<button class="logout" id="shellGuide" title="How this screen works">?</button>'+
-        '<button class="logout" id="shellSupport" title="Support">&#9993;</button>'+
-        '<button class="logout" id="shellLogout" title="Sign out">&#9211;</button></div>';
+        '<button class="logout" id="shellSupport" title="Contact support">&#9993;</button>'+
+        '<button class="btn sm" id="shellLogout" style="flex:1 0 100%;justify-content:center">Sign out</button>'+
+        '</div>';
 
   var side=document.getElementById('side')||document.querySelector('.sidebar');
   if(side){ side.className='sidebar'; side.innerHTML=html; }
