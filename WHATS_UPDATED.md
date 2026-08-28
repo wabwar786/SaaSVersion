@@ -4557,3 +4557,38 @@ Create Business page ke neeche do buttons ek qatar mein:
 Aur neeche ek line jo batati hai ke demo kya hai — ready-made menu,
 tables aur customers ke saath, aur har 5 din baad customer ka data khud
 saaf.
+
+---
+
+# V81 — "class AdminData not found"
+
+**Wajah:** maine `AdminData::audit(...)` likha tha, magar `api.php` mein
+`AdminData` **import hi nahi** hai. Baqi poore file mein hamesha poora
+raasta likha jata hai: `\Aio\Services\AdminData::audit(...)`.
+
+Ek hi lafz ka farq, aur PHP class dhoond hi nahi paata.
+
+## Teen jagah thi — sirf ek nazar aayi thi
+
+| Kahan | Kab se |
+|---|---|
+| `sa-demo-create` | V79 |
+| `sa-demo-reset` | V79 |
+| **`sa-licence-set`** | **V66** |
+
+Teesri wali ahem hai: **licence control bhi isi wajah se toot raha tha.**
+Expiry set karne ki koshish par wahi error aata — aur yeh V66 se aisa
+hi para tha, kisi ko pata nahi chala kyunke expiry roz set nahi hoti.
+
+Teenon theek. Poore `api.php` par check chalaya — ab koi class bina
+import ya poore raste ke istemal nahi ho rahi.
+
+## Asli DB par chala kar tasdeeq
+
+    demo created       13 menu items, 8 tables, 39 seeded rows
+    audit written      ok
+    reset + audit      ok
+    licence audit      ok
+
+Yeh wahi raasta hai jo endpoint chalata hai — is dafa lint par bharosa
+nahi kiya, asal mein chala kar dekha.

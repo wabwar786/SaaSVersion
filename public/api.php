@@ -1743,7 +1743,7 @@ case 'sa-demo-create':needSuper();$d=body();
    $sq2=DB::pdo()->prepare("SELECT id FROM sites WHERE tenant_id=? LIMIT 1");$sq2->execute([$tid2]);
    $sid2=(string)$sq2->fetchColumn();
    $seeded=\Aio\Services\DemoBusiness::seed($tid2,$sid2);
-   AdminData::audit('console',$tid2,'DEMO_CREATE','Demo business with sample data');
+   \Aio\Services\AdminData::audit('console',$tid2,'DEMO_CREATE','Demo business with sample data');
    ok($r+['demo'=>true,'seeded'=>$seeded,
      'message'=>$nm.' created as a DEMO business. Customer data clears every '
        .\Aio\Services\DemoBusiness::RESET_DAYS.' days; the sample data stays.']);
@@ -1752,7 +1752,7 @@ case 'sa-demo-create':needSuper();$d=body();
 case 'sa-demo-reset':needSuper();$d=body();
  $tid2=(string)($d['tenant_id']??'');if($tid2==='')fail('tenant_id is required');
  $n=\Aio\Services\DemoBusiness::resetCustomerData($tid2);
- AdminData::audit('console',$tid2,'DEMO_RESET','Cleared '.array_sum($n).' customer rows');
+ \Aio\Services\AdminData::audit('console',$tid2,'DEMO_RESET','Cleared '.array_sum($n).' customer rows');
  ok(['cleared'=>array_sum($n),'tables'=>$n,
      'message'=>'Customer data cleared. Sample data is untouched.']);
 
@@ -1795,7 +1795,7 @@ case 'sa-licence-set':needSuper();$d=body();
      ->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Licence update',Platform::superUser()['id']]);
  }
  $p->prepare("UPDATE tenants SET status=?,updated_at=NOW(6) WHERE id=?")->execute([$status,$tid]);
- AdminData::audit('console',$tid,'LICENCE',$status.' till '.$exp.($amount>0?(' / PKR '.$amount):''));
+ \Aio\Services\AdminData::audit('console',$tid,'LICENCE',$status.' till '.$exp.($amount>0?(' / PKR '.$amount):''));
  ok(['message'=>$ten['name'].': '.($status==='SUSPENDED'?'suspended':'active').' till '.$exp,
      'licence'=>Licence::fromDb($tid)]);
 
