@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -317,6 +317,46 @@ case 'qr':
  while(ob_get_level())ob_end_clean();
  header('Content-Type: image/svg+xml');header('Cache-Control: public, max-age=86400');
  header('Content-Length: '.strlen($svg));echo $svg;exit;
+
+/* ============================================================
+   V70 — wo char modules jo ab tak sirf screens the.
+   KDS naqli `const orders=[...]` dikhata tha, Shift/Running Orders/Void
+   `ui_records` mein likhte the. Ab chaaron asli tables par.
+   ============================================================ */
+case 'kds-tickets':needLogin();
+ if(!Auth::canModule('kds')&&!Auth::canModule('pos'))fail('Permission denied',403);
+ ok(['tickets'=>OpsService::kdsTickets((int)($_GET['minutes']??240))]);
+
+case 'kds-status':needLogin();
+ if(!Auth::canModule('kds')&&!Auth::canModule('pos'))fail('Permission denied',403);
+ $d=body();
+ try{$r=OpsService::kdsSetStatus((string)($d['id']??''),(string)($d['status']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
+
+case 'shift-list':needLogin();Auth::requireModule('shift');
+ $rows=OpsService::shiftList();
+ $open=null;foreach($rows as $r){if($r['status']==='Open'){$open=$r;break;}}
+ ok(['shifts'=>$rows,'open'=>$open]);
+
+case 'shift-open':needLogin();Auth::requireModule('shift');$d=body();
+ try{$r=OpsService::shiftOpen((float)($d['opening_cash']??0));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['shifts'=>OpsService::shiftList()]);
+
+case 'shift-expected':needLogin();Auth::requireModule('shift');
+ ok(['expected'=>OpsService::shiftExpected((string)($_GET['id']??''))]);
+
+case 'shift-close':needLogin();Auth::requireModule('shift');$d=body();
+ try{$r=OpsService::shiftClose((string)($d['id']??''),(float)($d['counted']??0),(string)($d['note']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['shifts'=>OpsService::shiftList()]);
+
+case 'running-orders':needLogin();Auth::requireModule('orders');
+ ok(['orders'=>OpsService::runningOrders()]);
+
+case 'void-log':needLogin();Auth::requireModule('void');
+ ok(['rows'=>OpsService::voidLog((string)($_GET['from']??''),(string)($_GET['to']??''))]);
 
 case 'report-list':needLogin();Auth::requireModule('reports');
  ok(['reports'=>ReportService::catalog()]);

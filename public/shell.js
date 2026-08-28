@@ -42,8 +42,7 @@
       ['staff','Staff / Roles','staff_roles.html','⚇'],
       ['void','Void / Refund','void_refund.html','⊗'],
       ['reports','Reports','reports.html','▥'],
-      ['fbr','FBR / Digital Invoice','fbr.html','✓']
-    ]},
+         ]},
     {title:'System',items:[
       ['printers','Printers / Devices','printer_devices.html','⎙'],
       ['branches','Multi-Branch','multi_branch.html','⌗'],

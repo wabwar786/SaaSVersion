@@ -2,8 +2,37 @@
 namespace Aio\Services;
 use Aio\DB;use PDO;
 final class PosService {
+    /**
+     * V70 — bill ko us waqt ki OPEN shift se joro.
+     * POS ki screen `shift_id` bhejti hi nahi thi, is liye har payment
+     * `shift_id = NULL` ke saath jata tha aur shift close karte waqt
+     * "expected cash" kabhi theek nahi banta tha. Ab server khud
+     * cashier ki open shift dhoond leta hai.
+     */
+    private static function shiftFor(\PDO $p, array $d): ?string
+    {
+        $given = trim((string)($d['shift_id'] ?? ''));
+        if ($given !== '') return $given;
+        try {
+            $q = $p->prepare("SELECT id FROM cashier_shifts
+                               WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                                 AND deleted_at IS NULL
+                               ORDER BY opened_at DESC LIMIT 1");
+            $q->execute([site_id(), current_user()['id'] ?? null]);
+            $id = $q->fetchColumn();
+            if ($id) return (string)$id;
+            /* Cashier ki apni shift na ho to branch ki koi bhi open shift —
+               chhoti jagahon par ek hi till hoti hai. */
+            $q2 = $p->prepare("SELECT id FROM cashier_shifts
+                                WHERE site_id=? AND status='OPEN' AND deleted_at IS NULL
+                                ORDER BY opened_at DESC LIMIT 1");
+            $q2->execute([site_id()]);
+            return ($v = $q2->fetchColumn()) ? (string)$v : null;
+        } catch (\Throwable $e) { return null; }
+    }
+
  public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}if(!$pending)return ['order_id'=>$order,'sent'=>0];$groups=[];foreach($pending as $x){$pr=self::printerForMenu($p,$x['row']['menu_item_id']);if(!$pr)continue;$groups[$pr['id']]['printer']=$pr;$groups[$pr['id']]['items'][]=$x;} $sent=0;foreach($groups as $g){$kt=uuid();$ticket='KOT-'.strtoupper(substr(str_replace('-','',$kt),0,8));$p->prepare("INSERT INTO kitchen_tickets(id,tenant_id,site_id,order_id,ticket_no,printer_id,station_code,ticket_status,sent_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,'NEW',NOW(6),?)")->execute([$kt,tenant_id(),site_id(),$order,$ticket,$g['printer']['id'],$g['printer']['station_code'],current_user()['id']??null]);$lines=[];foreach($g['items'] as $x){$p->prepare("INSERT INTO kitchen_ticket_items(id,kitchen_ticket_id,order_item_id,qty_sent,item_status,note_snapshot) VALUES(?,?,?,?, 'NEW',?)")->execute([uuid(),$kt,$x['row']['id'],$x['pending'],$x['row']['kitchen_note']]);$p->prepare("UPDATE order_items SET sent_qty=qty,updated_at=NOW(6) WHERE id=?")->execute([$x['row']['id']]);$lines[]=$x['pending'].' x '.$x['row']['item_name_snapshot'];$sent++;}$payload=$ticket."\n".implode("\n",$lines);$p->prepare("INSERT INTO printer_jobs(id,tenant_id,site_id,printer_id,job_type,reference_type,reference_id,payload_text,status) VALUES(?,?,?,?, 'KOT','KITCHEN_TICKET',?,?, 'PENDING')")->execute([uuid(),tenant_id(),site_id(),$g['printer']['id'],$kt,$payload]);}self::queueSync($p,'orders',$order,'UPDATE');return ['order_id'=>$order,'sent'=>$sent];}); }
- public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$tax=(float)($d['tax_amount']??0);$grand=$subtotal-$discount+$service+$tax;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,$d['shift_id']?:null,$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
+ public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$tax=(float)($d['tax_amount']??0);$grand=$subtotal-$discount+$service+$tax;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
   $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$items);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
  private static function ensureOpenOrder(PDO $p,array $d):string{
     $bill=ltrim((string)$d['bill_no'],'#');
@@ -24,11 +53,11 @@ final class PosService {
     }
     $mode=self::modeCode($d['service_mode']??'Dine In');
     if($id){
-        $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")->execute([$mode,$table,$customer,$d['shift_id']?:null,$d['guest_count']?:null,$id]);
+        $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")->execute([$mode,$table,$customer,self::shiftFor($p,$d),$d['guest_count']?:null,$id]);
         return$id;
     }
     $id=uuid();
-    $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,$d['shift_id']?:null,$d['guest_count']?:null,current_user()['id']??null]);
+    $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),$d['guest_count']?:null,current_user()['id']??null]);
     return$id;
  }
  private static function resolveMenuId(PDO $p,array $i):string{

@@ -3453,3 +3453,168 @@ tasdeeq ho gaya.)
 
 **NahI chala:** Windows firewall rule (sandbox Linux hai), asli tablet
 par QR scan aur order lena, aur `sync_suite.py` / `reset_verify.py`.
+
+---
+
+# V69 — Module audit, FBR menu, printer form
+
+## 1. Left menu ka poora audit — `docs/MODULE_STATUS.md`
+
+Har page khol kar dekha gaya: data kahan se aata hai, kahan jata hai.
+Yeh raye nahi, code se nikali hui haqeeqat hai.
+
+| Halat | Kitne | Matlab |
+|---|---|---|
+| **WORKING** | 14 | asli DB par — save, sync, reports sab |
+| **PARTIAL** | 4 | chalta hai magar kuch hissa adhoora |
+| **SHELL** | 15 | sirf khoobsurat screen; data `ui_records` mein para rehta hai, POS/stock/reports se **juda nahi** |
+| **DEMO** | 2 | hardcoded naqli data |
+
+**Sab se ahem kami: Kitchen / KDS.** 1,119 lines ka page, magar usme
+`const orders=[...]` hardcoded hai. POS asli KOT `kitchen_tickets` mein
+bhejta hai — KDS unhen **parhta hi nahi**. Kitchen screen naqli orders
+dikha rahi hai.
+
+Doosri qism ki misal: "Running Orders" mein order banayein to POS ko
+pata nahi chalta; "Stock Transfer" karein to stock hilta hi nahi.
+
+Poori fehrist aur kaam ki tajweez karda tarteeb doc mein hai.
+
+## 2. FBR left menu se hata diya
+
+Aap ki baat durust thi: FBR ka apna page banta hi nahi. Wo **Sale Point
+ke saath juda hua** kaam hai — settings Settings mein hain (V64 se) aur
+invoice POS par bill close hote waqt banti hai.
+
+Menu se hata diya. `fbr.html` file rehne di gayi taake purane bookmark
+na tootein.
+
+## 3. Printer form chhota
+
+Popup mein 10 fields the — connection type, Windows printer name, paper
+width, port, status... jinme se aksar customer ko samajh hi nahi aate
+the aur ghalat bhar dete the.
+
+**Ab sirf 5:** Printer name · Type · Location · IP address · Default
+receipt printer.
+
+Baqi ki mehfooz defaults server khud lagata hai (port 9100, NETWORK,
+paper Settings se, status Active). Purani rows ki mojooda values
+mehfooz rehti hain.
+
+## 4. Super admin — modules ki asli halat saamne
+
+Features dialog mein ab har module ke saamne uska **asli tag**:
+
+    Sale Point / POS        [working]
+    Inventory               [partial]
+    Kitchen / KDS           [demo data]
+    Stock Transfer          [screen only]
+
+Aur naya **"Working only"** button — ek click mein sirf wo modules
+chunay jate hain jo waqai kaam karte hain.
+
+Faida: jo modules abhi shell hain unhen customer ke menu se band rakha
+ja sakta hai. **Adhoora feature dikhna, na dikhne se bura hai** — customer
+usay aazmata hai, kaam nahi karta, aur poore software par se bharosa
+uth jata hai.
+
+## Testing
+
+    php -l  (har PHP file)              -> 0 errors
+    php tools/check_pages.php           -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+---
+
+# V70 — Char rozana ke modules ab asli tables par
+
+Audit ke mutabiq jo char sab se ahem the, wo char kar diye. Yeh
+`ui_records` / demo data se nikal kar asli tables par aa gaye hain.
+
+## 1. Kitchen / KDS — sab se bara masla
+
+`kds.html` 1,119 lines ka poora page hai, magar us mein tha:
+
+    const orders=[ {id:'KOT-0128', bill:'#0024', ...} ]
+
+**Hardcoded naqli tickets.** POS `sendKot()` se asli KOT
+`kitchen_tickets` mein bhejta tha — KDS unhen **parhta hi nahi tha**.
+Kitchen screen us restaurant ka apna kaam dikhati hi nahi thi.
+
+Naya `public/kds_db.js` (wahi tareeqa jo `order_taker_db.js` mein hai —
+page ka UI bilkul nahi chhua):
+
+- Asli `kitchen_tickets` + `kitchen_ticket_items`, har 10 second refresh
+- Station ke hisab se (POS pehle se printer-wise group karta hai)
+- **Delayed lane asli hai**: 15 minute se purana aur ready nahi
+- Start / Ready / Done ab server par jate hain (`kds-status`)
+- Nakami par UI **wapas purani halat par** — warna cook samajhta ke
+  ticket ready ho gaya jabke database mein kuch nahi badla
+
+## 2. Opening & Closing Shift
+
+`cashier_shifts` table maujood thi, page `ui_records` mein likhta tha.
+Cash ka koi hisab hi nahi tha.
+
+Ab asli: shift open (opening float), shift close (counted cash), aur
+**expected cash server par ginta hai** — us shift ke doran ke saare
+cash payments + opening float. Variance khud nikalta hai:
+
+    Expected in till: 24,500
+    You counted:      24,300
+    Difference:         -200
+
+**Aur ek zaroori fix:** POS ki screen `shift_id` bhejti hi nahi thi, is
+liye har payment `shift_id = NULL` ke saath jata tha aur expected cash
+kabhi theek ban hi nahi sakta tha. Ab `PosService` khud cashier ki open
+shift dhoond kar bill se jor deta hai.
+
+Aur `payments` par `created_at` column hai hi nahi — `paid_at` hai.
+Yeh bhi pakra gaya (neeche testing dekhein).
+
+## 3. Running Orders
+
+Ab POS ke asli khule bills: bill no, mode, table, waiter, items, amount,
+aur **kitni der se khula hai** (45 minute se ooper laal). Pehle is page
+par banaya gaya order POS ko pata hi nahi chalta tha.
+
+## 4. Void / Refund
+
+Bill VOID karne ka asli kaam `DeleteService::voidOrder()` mein V62 se
+maujood tha — yeh page us tak pohanchta hi nahi tha.
+
+Ab pichle 7 din ke bills, aur Void button: wajah + manager password ke
+saath. Bill **delete nahi hota** — VOID hota hai, bill number history
+mein rehta hai, payments cancel hoti hain aur **stock wapas aata hai**.
+
+## Super admin + audit doc
+
+Chaaron ab `working` tag ke saath. `docs/MODULE_STATUS.md` update:
+
+| Halat | Pehle | Ab |
+|---|---|---|
+| WORKING | 14 | **18** |
+| SHELL | 15 | **11** |
+| DEMO | 2 | **1** |
+
+## Testing
+
+SQL bina jaanche nahi diya — har query schema ke khilaf column-by-column
+verify ki. **Pehle pass mein ek asli bug pakra gaya:**
+
+    payments.created_at  ->  is table par yeh column hai hi nahi
+
+Sahi column `paid_at` hai. Aur `payments.shift_id` bhi maujood hai — wo
+waqt ke muqable mein zyada pukhta rabta hai, is liye query ab pehle
+`shift_id` dekhti hai aur sirf uske na hone par waqt par jati hai.
+
+Doosre pass mein: **12 queries, 0 problems.**
+
+    php -l  (har PHP file)                -> 0 errors
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+**NahI chala:** yeh sab asli data par (MySQL sandbox mein start nahi
+hota). Column names verify ho chuke hain; natije ki tasdeeq aap ke
+data par hogi.

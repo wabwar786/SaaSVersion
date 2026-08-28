@@ -89,6 +89,11 @@ if(!in_array($name,$publicPages,true)){
 
 // restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.
 if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v17"></script>';
+// V70 — KDS ab asli kitchen_tickets par (pehle hardcoded demo orders the).
+if($name==='kds.html')$tail.='<script src="/kds_db.js?b=v70"></script>';
+// V70 — Shift / Running Orders / Void ab asli tables par (pehle ui_records).
+if(in_array($name,['shift_management.html','orders_management.html','void_refund.html'],true))
+  $tail.='<script src="/ops_db.js?b=v70"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
 $posB=strripos($html,'</body>');

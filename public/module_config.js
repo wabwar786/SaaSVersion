@@ -136,17 +136,17 @@ window.MODULE_CONFIGS={
        ki apni raye thi, haqeeqat nahi: printer band pare hone par bhi
        "Online" likha rehta tha. Ab asli haalat "Check" button se aati
        hai (TCP connect), aur "Test print" se kaghaz nikalta hai. */
+    /* V69 — form chhota kar diya. Pehle 10 fields the (connection type,
+       Windows printer name, paper width, status...) jinme se aksar
+       customer ko samajh hi nahi aate the aur ghalat bhar dete the.
+       Ab sirf wo 5 jo waqai chahiyen; baqi ki mehfooz defaults server
+       khud laga deta hai (port 9100, NETWORK, paper Settings se). */
     fields:[
       {key:'name',label:'Printer name',type:'text',required:true,full:true,placeholder:'Kitchen KOT 1'},
       {key:'type',label:'Type',type:'select',options:['Receipt Printer','KOT Printer','Bar Printer','Label Printer']},
       {key:'location',label:'Location',type:'text',placeholder:'Kitchen'},
-      {key:'conn',label:'Connection',type:'select',options:['NETWORK','WINDOWS'],default:'NETWORK'},
-      {key:'ip',label:'IP address',type:'text',placeholder:'192.168.1.20'},
-      {key:'port',label:'Port',type:'number',default:9100},
-      {key:'winname',label:'Windows printer name',type:'text',placeholder:'Only for WINDOWS connection'},
-      {key:'paper',label:'Paper width (mm)',type:'select',options:['80','58'],default:'80'},
-      {key:'default',label:'Default printer',type:'select',options:['No','Yes'],default:'No'},
-      {key:'status',label:'Status',type:'select',options:['Active','Inactive'],default:'Active'}
+      {key:'ip',label:'IP address',type:'text',required:true,placeholder:'192.168.1.20'},
+      {key:'default',label:'Default receipt printer',type:'select',options:['No','Yes'],default:'No'}
     ],
     rowActions:[
       {label:'Check',action:'printer-check'},

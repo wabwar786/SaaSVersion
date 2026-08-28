@@ -684,14 +684,40 @@ async function bizFeatures(id){
   const r=await api('sa-features-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
   const sel=r.selected;   // null = sab allowed
-  const ov=sModal('<h3>Features</h3><p class="muted">Is business ko sirf yahi features milenge. Kuch select na please to sab allowed.</p>'
-    +'<div class="row" style="margin:12px 0"><button class="btn sec mini" id="fAll">Select all</button>'
+  /* V69 — har module ke saamne uski ASLI halat.
+     Left menu ka audit (docs/MODULE_STATUS.md) batata hai ke kai modules
+     abhi sirf khoobsurat screens hain — data `ui_records` mein para
+     rehta hai, POS/stock/reports se juda nahi. Customer ko aisa module
+     dena us ke etimad ke liye theek nahi.
+     Ab yahan har module par uska tag hai, aur ek click mein sirf wo
+     modules chunay ja sakte hain jo waqai kaam karte hain. */
+  const READY={dashboard:1,pos:1,tablet:1,menu:1,tables:1,customers:1,suppliers:1,
+               expenses:1,wastage:1,printers:1,users:1,settings:1,reports:1,offline:1,
+               kds:1,shift:1,orders:1,void:1};
+  const PARTIAL={inventory:1,purchasing:1,recipe:1,customer_web:1};
+  const DEMO={customer_app:1};
+  function stTag(k){
+    if(READY[k])   return '<span class="tag green">working</span>';
+    if(PARTIAL[k]) return '<span class="tag amber">partial</span>';
+    if(DEMO[k])    return '<span class="tag red">demo data</span>';
+    return '<span class="tag">screen only</span>';
+  }
+  const ov=sModal('<h3>Modules for this business</h3>'
+    +'<p class="muted">Only the ticked modules appear in this customer\'s left menu. '
+    +'Tick nothing and everything is allowed.</p>'
+    +'<div class="row" style="margin:12px 0;gap:6px;flex-wrap:wrap">'
+    +'<button class="btn sec mini" id="fReady">Working only</button>'
+    +'<button class="btn sec mini" id="fAll">Select all</button>'
     +'<button class="btn sec mini" id="fNone">Clear all</button></div>'
     +'<div class="fgrid" id="fList">'+(r.modules||[]).map(function(m){
       const on=(sel===null)||sel.indexOf(m.module_key)>=0;
-      return '<label class="fitem"><input type="checkbox" value="'+m.module_key+'"'+(on?' checked':'')+'> '+(m.title||m.module_key)+'</label>';
+      return '<label class="fitem"><input type="checkbox" value="'+m.module_key+'"'+(on?' checked':'')+'> '
+        +(m.title||m.module_key)+' '+stTag(m.module_key)+'</label>';
     }).join('')+'</div>'
     +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="fSave">Save Features</button></div>');
+  ov.querySelector('#fReady').onclick=function(){
+    ov.querySelectorAll('#fList input').forEach(function(c){ c.checked=!!READY[c.value] });
+  };
   ov.querySelector('#fAll').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=true})};
   ov.querySelector('#fNone').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=false})};
   ov.querySelector('#fSave').onclick=async function(){
@@ -699,7 +725,7 @@ async function bizFeatures(id){
     this.disabled=true;this.textContent='Saving…';
     const rr=await api('sa-features-save',{tenant_id:id,features:f});
     this.disabled=false;this.textContent='Save Features';
-    toast(rr.ok?(f.length+' features assigned'):(rr.message||'Failed'));
+    toast(rr.ok?(f.length+' modules enabled for this business'):(rr.message||'Could not save modules'));
     if(rr.ok)ov.remove();
   };
 }

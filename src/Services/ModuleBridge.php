@@ -197,16 +197,20 @@ final class ModuleBridge
         $types = ['Receipt Printer' => 'RECEIPT', 'KOT Printer' => 'KITCHEN',
                   'Bar Printer' => 'BAR', 'Label Printer' => 'LABEL'];
         $type = $types[(string)($d['type'] ?? '')] ?? 'RECEIPT';
-        $conn = strtoupper(trim((string)($d['conn'] ?? 'NETWORK'))) ?: 'NETWORK';
+        /* V69 — form ab sirf 5 fields bhejta hai. Baqi ki mehfooz
+           defaults yahan lagti hain; purani rows ke liye jo value pehle
+           se maujood hai wo mehfooz rehti hai (neeche UPDATE mein
+           COALESCE). */
         $ip   = trim((string)($d['ip'] ?? ''));
+        $conn = $ip !== '' ? 'NETWORK' : strtoupper(trim((string)($d['conn'] ?? 'NETWORK')));
         $port = (int)($d['port'] ?? 0) ?: 9100;
         $win  = trim((string)($d['winname'] ?? ''));
         $paper= (int)($d['paper'] ?? 80) ?: 80;
         $isDef= (string)($d['default'] ?? 'No') === 'Yes' ? 1 : 0;
-        $act  = (string)($d['status'] ?? 'Active') === 'Active' ? 1 : 0;
+        $act  = array_key_exists('status', $d) ? ((string)$d['status'] === 'Active' ? 1 : 0) : 1;
 
-        if ($conn === 'NETWORK' && $ip === '' && $win === '') {
-            throw new \RuntimeException('Enter an IP address for a network printer, or a Windows printer name.');
+        if ($ip === '' && $win === '') {
+            throw new \RuntimeException('Enter the printer IP address (for example 192.168.1.20).');
         }
 
         if ($id !== '') {
