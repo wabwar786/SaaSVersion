@@ -3947,3 +3947,101 @@ ya page ke apne style block mein defined na ho.
     php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
     node --check (44 pages + public/*.js) -> 0 failures
     CSS class audit                       -> 0 invented classes
+
+---
+
+# V75 — Shift close freeze, installer, print, auto-update
+
+## 1. Close shift par popup jam ho jata tha — DO bug
+
+**(a) Maine hi endpoint chura liya tha.** V70 mein maine
+`shift-open` / `shift-close` naam se naye endpoints daale — magar POS ke
+paas **pehle se** isi naam ke endpoints the (`shift-preview` ke saath).
+PHP `switch` **pehla match** chalata hai, is liye POS ka "Close Shift"
+mere naye endpoint par ja raha tha jo bilkul alag payload maangta hai.
+Shift close hoti hi nahi thi.
+
+Ab Shift Management page `shiftmgr-*` use karta hai; POS ke purane
+endpoints jaise the waise hain. Poore `api.php` par duplicate-action
+check chalaya — ab ek bhi duplicate nahi.
+
+**(b) Khamosh JS crash.** POS ke close-shift handler mein:
+
+    clear_cash: ov.querySelector('#clrChk').checked ? 1 : 0
+
+`#clrChk` us modal mein hai hi nahi. `null.checked` parhte hi handler
+wahin mar jata tha — button "Closing..." par atak jata, koi error nahi,
+kuch nahi hota. **Bilkul wahi "freeze" jo aap ne dekha.**
+
+## 2. POS: highlight ab "+ New Bill" par
+
+Cashier din mein sainkron dafa naya bill kholta hai aur "New Item"
+kabhi kabhaar. Rang us cheez par hona chahiye jo sab se ziada dabai
+jati hai. Dono buttons ki jagah badal di, aur header wale New Bill par
+`F1` bhi likha hai.
+
+## 3. Bill par business ka naam nahi aa raha tha
+
+Slip ka header `BOOT.site.name` use karta tha — **wo BRANCH ka naam
+hai**, business ka nahi. Isi liye bill address se shuru hota tha.
+
+Ab pehli line business ka naam, phir branch, address, phone, NTN,
+receipt header — sab **Settings se** (wahi jagah jahan bill template
+chuna jata hai). Footer aur paper size bhi Settings se; pehle sirf
+localStorage mein tha, is liye har computer par alag ho jata tha aur
+Settings ka koi asar hi nahi hota tha.
+
+QR ka code pehle se tha magar `PRINT.qr` par mashroot — purani
+localStorage value se off para ho sakta tha. Ab default ON.
+
+## 4. Offline version ab KHUD update hota hai
+
+Pehle har chhoti tabdeeli par customer ko portal se poora package
+download kar ke dobara install karna parta tha. **Har baar.**
+
+- `scripts/self_update.php` — cloud se poochta hai ke naya build hai
+  ya nahi (naya `update-check` endpoint). Naya ho to package `updates/`
+  mein khud aa jata hai.
+- Launcher har start ke 45 second baad background mein yeh chalata hai.
+- Naya build tayyar ho to launcher par saaf line: **"A NEW UPDATE IS
+  READY"**.
+- `INSTALL_UPDATE.bat` usay lagata hai: pehle purani files ka backup,
+  phir nayi files, phir migrations.
+
+**Install user ke DABANE par hota hai, khud-ba-khud nahi** — chalte POS
+ko beech mein badalna kabhi theek nahi. Aur `data\`, `config\`,
+`runtime\`, `storage\` ko haath nahi lagta: customer ka data aur
+settings mehfooz.
+
+Adhoori download bhi pakri jati hai (size + ZIP signature), warna aadha
+package "ready" ban kar software tor deta.
+
+**Shortcut ka icon** — `public/assets/app.ico` bana diya (brand rang ka
+rounded square). Installer mein icon ka code pehle se tha, **file hi
+maujood nahi thi**.
+
+## 5. Installer "Remove-Item : Cannot find path" par ruk jata tha
+
+Yeh sirf temp file ki **safai** ka kaam tha. Masla asal mein yeh tha ke
+parent script native command ke **stderr ko error samajh kar** poora
+setup rok deti thi — halanke PHP bilkul theek install ho chuka hota.
+
+Do fix:
+
+1. `resolve_php.ps1` — temp zip tabhi delete karo jab wo waqai maujood
+   ho (`Test-Path -LiteralPath` + try/catch).
+2. `install_offline.ps1` — kamyabi ka faisla ab **natije se**, shor se
+   nahi: `php.exe` waqai chal raha hai aur `PHP 8` batata hai, tabhi
+   aage barho.
+
+## Testing
+
+    php -l  (har PHP file)                -> 0 errors
+    duplicate API actions                 -> 0 (pehle 2)
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+    PowerShell balance (3 scripts)        -> OK
+    app.ico                               -> valid ICO, 64x64
+
+**NahI chala:** Windows par installer, asli printer, aur auto-update ka
+poora chakkar (uske liye do alag builds chahiyen).

@@ -112,11 +112,24 @@ if ($phpText -match 'VCRUNTIME140|not compatible with this PHP build') {
   $phpText = ($phpOut | Out-String)
 }
 
-if ($LASTEXITCODE -ne 0) {
+# V75 — kamyabi ka faisla NATIJE se, stderr ke shor se nahi.
+# Pehle yahan sirf $LASTEXITCODE dekha jata tha; safai ka ek harmless
+# "Remove-Item : Cannot find path" bhi NativeCommandError ban kar poora
+# setup rok deta tha, halanke PHP bilkul theek install ho chuka hota.
+$phpReady = $false
+$phpProbe = Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+if ($phpProbe) {
+  $v = & $phpProbe.FullName -v 2>&1 | Out-String
+  if ($v -match 'PHP\s+8') { $phpReady = $true }
+}
+
+if (-not $phpReady) {
   Bad 'PHP runtime could not be prepared.'
-  $phpOut | Select-Object -Last 5 | ForEach-Object { Bad "$_" }
+  $phpOut | Select-Object -Last 8 | ForEach-Object { Bad "$_" }
   exit 1
 }
+Good 'PHP runtime ready.'
 
 # Use ONLY the private PHP inside this package. Any PHP installed on the PC
 # (XAMPP / WAMP / Laragon / Workbench bundles) is deliberately ignored.

@@ -58,7 +58,15 @@ if (-not $php) {
 
   Say 'Extracting PHP runtime...'
   Expand-Archive -Path $zip -DestinationPath $PrivateRoot -Force
-  if ($zip -ne $VendorZip) { Remove-Item $zip -ErrorAction SilentlyContinue }
+
+  # Temp zip saaf karo — magar SIRF tab jab wo waqai maujood ho.
+  # Pehle yahan sirf -ErrorAction SilentlyContinue tha, jo kaafi nahi:
+  # `Remove-Item` phir bhi STDERR par likh deta tha, aur parent script
+  # native command ke stderr ko error samajh kar poora setup rok deti
+  # thi -- halanke yeh sirf safai ka kaam tha.
+  if ($zip -and ($zip -ne $VendorZip) -and (Test-Path -LiteralPath $zip)) {
+    try { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue } catch { }
+  }
 
   $php = Get-PrivatePhp
   if (-not $php) { Say 'PHP was extracted but php.exe was not found.' 'Red'; exit 1 }

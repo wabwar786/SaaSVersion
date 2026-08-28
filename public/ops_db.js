@@ -69,7 +69,7 @@
 
   /* ==================== SHIFT ==================== */
   function shiftPage() {
-    var r = req('shift-list');
+    var r = req('shiftmgr-list');
     if (!r || !r.ok) { replace(panel('Shifts', '', '<div style="padding:18px" class="hint">'
       + esc((r && r.message) || 'Could not load shifts') + '</div>')); return; }
 
@@ -109,21 +109,21 @@
     host().addEventListener('click', function (e) {
       var b = e.target.closest('[data-shrep]');
       if (!b) return;
-      window.open('/api.php?action=shift-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
+      window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
     });
 
     var ob = document.getElementById('shOpen');
     if (ob) ob.onclick = function () {
       var v = prompt('Opening cash in the till (PKR):', '0');
       if (v === null) return;
-      var res = req('shift-open', { opening_cash: Number(v || 0) });
+      var res = req('shiftmgr-open', { opening_cash: Number(v || 0) });
       if (!res.ok) { toast(res.message || 'Could not open shift', true); return; }
       toast(res.message); shiftPage();
     };
 
     var cb = document.getElementById('shClose');
     if (cb) cb.onclick = function () {
-      var exp = req('shift-expected&id=' + encodeURIComponent(open.id));
+      var exp = req('shiftmgr-expected&id=' + encodeURIComponent(open.id));
       var expected = (exp && exp.ok) ? Number(exp.expected || 0) : null;
       /* Expected pehle DIKHATE hain, phir counted maangte hain — yehi
          tareeqa cash chori pakarta hai. Ulta karein to cashier expected
@@ -131,7 +131,7 @@
       var msg = 'Count the cash in the till and enter the total (PKR).';
       var v = prompt(msg, '');
       if (v === null) return;
-      var res = req('shift-close', { id: open.id, counted: Number(v || 0) });
+      var res = req('shiftmgr-close', { id: open.id, counted: Number(v || 0) });
       if (!res.ok) { toast(res.message || 'Could not close shift', true); return; }
       alert('Expected in till: ' + money(res.expected)
           + '\nYou counted:     ' + money(res.counted)
@@ -140,7 +140,7 @@
       /* Shift close hote hi closing report khud khul jati hai — cashier
          ko yaad rakhna na pare, aur raat ko counter par hamesha ek
          kaghaz nikle. */
-      window.open('/api.php?action=shift-report-pdf&id=' + encodeURIComponent(open.id), '_blank');
+      window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(open.id), '_blank');
       shiftPage();
     };
   }

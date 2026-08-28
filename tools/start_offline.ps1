@@ -217,6 +217,26 @@ if ($lanIp) {
   try { Set-Content -Path (Join-Path $logDir 'lan_url.txt') -Value ("http://{0}:{1}" -f $lanIp, $port) -ErrorAction SilentlyContinue } catch { }
 }
 
+# ---------- V75: auto-update ----------
+# Har start par background mein check: portal par naya build hai to
+# package khud aa jata hai. INSTALL karna phir bhi user ke DABANE par
+# hota hai -- chalte POS ko beech mein badalna kabhi theek nahi.
+if (Test-Path (Join-Path $root 'updates\ready.txt')) {
+  Write-Host ''
+  Say '  A NEW UPDATE IS READY' 'Cyan'
+  Say '  Close this window and run INSTALL_UPDATE.bat to apply it.' 'White'
+  Write-Host ''
+} else {
+  Start-Job -ScriptBlock {
+    param($root, $phpExe, $phpIni)
+    Start-Sleep -Seconds 45
+    $a = '-c "{0}" "scripts/self_update.php" --download' -f $phpIni
+    try {
+      Start-Process -FilePath $phpExe -ArgumentList $a -WorkingDirectory $root -NoNewWindow -Wait
+    } catch { }
+  } -ArgumentList $root, $phpExe, $phpIni | Out-Null
+}
+
 Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
 Say "Agar browser mein koi error aaye, koi doosra browser khol kar http://localhost:$port likhein." 'DarkGray'
 Write-Host ''

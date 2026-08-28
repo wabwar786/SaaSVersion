@@ -259,7 +259,11 @@ textarea.inp{min-height:62px;resize:vertical}
     <button class="tb" id="dupBtn">Duplicate Bill</button>
     <button class="tb amber" id="holdsBtn">Hold Bills <b id="holdCount">(0)</b></button>
     <button class="tb" id="sysBtn">System</button>
-    <button class="tb pri" id="newItemBtn">+ New Item</button>
+    <!-- V75 — highlight "+ New Bill" par. Cashier din mein sainkron dafa
+       naya bill kholta hai aur "New Item" kabhi kabhaar. Rang us cheez
+       par hona chahiye jo sab se ziada dabai jati hai. -->
+    <button class="tb pri" id="newBillTop">+ New Bill <b style="opacity:.75;font-weight:600">F1</b></button>
+    <button class="tb" id="newItemBtn">+ New Item</button>
     <div class="who"><div class="av" id="avIni">..</div><div><small id="whoRole">Cashier</small><strong id="whoName">--</strong></div></div>
   </header>
 
@@ -526,6 +530,27 @@ function applyRole(){
   var mods=(CAN.modules||[]);
   var hasMod=function(k){return CAN.manage||mods.indexOf(k)>=0};
   if(!hasMod('menu')){var e=$('#newItemBtn');if(e)e.classList.add('hide')}
+  /* Header ka New Bill wahi kaam karta hai jo strip wala. */
+  (function(){var nb=$('#newBillTop');
+    if(nb)nb.onclick=function(){var b=$('#newBillBtn'); if(b)b.click(); else if(window.newBill)newBill();};})();
+
+  /* Bill par chhapne wali business details ek dafa le lo — har print
+     par server call karna slip ko sust kar deta hai. */
+  try{
+    var __bs=DBApi.req('settings-get');
+    if(__bs&&__bs.ok){
+      window.__BILLSET=__bs.settings;
+      /* Footer aur paper Settings se — wahi jagah jahan bill template
+         chuna jata hai. Pehle yeh sirf localStorage mein tha, is liye
+         har computer par alag ho jata tha aur Settings ka koi asar nahi
+         hota tha. QR default ON hai; purani localStorage value se off
+         para ho to bhi FBR bill par QR aana chahiye. */
+      if(__bs.settings.receipt_footer)PRINT.footer=__bs.settings.receipt_footer;
+      if(__bs.settings.receipt_paper)PRINT.size=Number(String(__bs.settings.receipt_paper).replace(/\D/g,''))||80;
+      if(PRINT.qr===undefined)PRINT.qr=true;
+    }
+  }catch(e){}
+
   if(!hasMod('void')){var v=$('#voidBtn');if(v)v.classList.add('hide')}
 
   /* V72 — jo cheezein SIRF offline version par kaam karti hain, wo cloud
@@ -1156,7 +1181,19 @@ function slipHtml(kind,lines,info){
       +'<div class="c">'+esc(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))
       +' &middot; '+esc(new Date().toLocaleDateString())+'</div><hr>';
   }else{
-    head='<h4>'+esc((BOOT.site&&BOOT.site.name)||'Urban Spoon')+'</h4>'
+    /* V75 — pehli line BUSINESS ka naam hoti hai, branch ka nahi.
+       Pehle yahan `BOOT.site.name` tha — wo branch hai — is liye bill
+       address se shuru hota tha aur business ka naam kahin nahi aata tha.
+       Baqi tafseel Settings se (wahi jo bill template use karta hai). */
+    var ST=(window.__BILLSET||{});
+    var bizName=ST.business_name||(BOOT.brand&&BOOT.brand.name)||(BOOT.site&&BOOT.site.name)||'Restaurant';
+    var brName =ST.branch_name||(BOOT.site&&BOOT.site.name)||'';
+    head='<h4>'+esc(bizName)+'</h4>'
+      +(brName&&brName!==bizName?'<div class="c">'+esc(brName)+'</div>':'')
+      +(ST.address?'<div class="c">'+esc(ST.address)+'</div>':'')
+      +(ST.phone?'<div class="c">Ph: '+esc(ST.phone)+'</div>':'')
+      +(ST.ntn?'<div class="c">NTN: '+esc(ST.ntn)+'</div>':'')
+      +(ST.receipt_header?'<div class="c">'+esc(ST.receipt_header)+'</div>':'')
       +'<div class="c">SALES INVOICE</div>'
       +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+' &middot; '+esc((info&&info.mode)||mode)
       +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
@@ -1790,7 +1827,11 @@ function closeShift(){
   ov.querySelector('#cb').onclick=function(){
     this.disabled=true;this.textContent='Closing...';
     var r=api('shift-close',{actual_cash:Number(ov.querySelector('#ac').value||0),
-      note:ov.querySelector('#cn').value||'',clear_cash:ov.querySelector('#clrChk').checked?1:0});
+      /* BUG THA: `#clrChk` is modal mein hai hi nahi. `null.checked`
+         padhne par handler wahin mar jata tha — button "Closing..." par
+         atak jata aur shift kabhi close na hoti. Khamosh crash. */
+      note:ov.querySelector('#cn').value||'',
+      clear_cash:(ov.querySelector('#clrChk')&&ov.querySelector('#clrChk').checked)?1:0});
     if(!r.ok){this.disabled=false;this.textContent='Close Shift and Report';toast(r.message||'Failed');return}
     ov.remove();shift=null;renderStrip();showReport(r.report);
   };

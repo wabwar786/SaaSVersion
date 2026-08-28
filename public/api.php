@@ -336,24 +336,33 @@ case 'kds-status':needLogin();
  catch(Throwable $e){fail($e->getMessage());}
  ok($r);
 
-case 'shift-list':needLogin();Auth::requireModule('shift');
+/* V75 — YEH NAAM BADLE GAYE.
+   V70 mein maine `shift-open` / `shift-close` naam se naye endpoints
+   daal diye the — magar POS ke paas PEHLE SE isi naam ke endpoints the
+   (neeche, `shift-preview` ke saath). PHP switch pehla match chalata
+   hai, is liye POS ka "Close Shift" mere naye endpoint par ja raha tha
+   jo bilkul alag payload maangta hai. Nateeja: shift close hoti hi
+   nahi thi.
+   Shift Management page ab `shiftmgr-*` use karta hai; POS ke purane
+   endpoints jaise the waise hain. */
+case 'shiftmgr-list':needLogin();Auth::requireModule('shift');
  $rows=OpsService::shiftList();
  $open=null;foreach($rows as $r){if($r['status']==='Open'){$open=$r;break;}}
  ok(['shifts'=>$rows,'open'=>$open]);
 
-case 'shift-open':needLogin();Auth::requireModule('shift');$d=body();
+case 'shiftmgr-open':needLogin();Auth::requireModule('shift');$d=body();
  try{$r=OpsService::shiftOpen((float)($d['opening_cash']??0));}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r+['shifts'=>OpsService::shiftList()]);
 
-case 'shift-expected':needLogin();Auth::requireModule('shift');
+case 'shiftmgr-expected':needLogin();Auth::requireModule('shift');
  ok(['expected'=>OpsService::shiftExpected((string)($_GET['id']??''))]);
 
-case 'shift-report':needLogin();Auth::requireModule('shift');
+case 'shiftmgr-report':needLogin();Auth::requireModule('shift');
  try{$r=OpsService::shiftReport((string)($_GET['id']??''));}catch(Throwable $e){fail($e->getMessage());}
  ok(['report'=>$r]);
 
-case 'shift-report-pdf':needLogin();Auth::requireModule('shift');
+case 'shiftmgr-report-pdf':needLogin();Auth::requireModule('shift');
  /* V73 — closing report HAMESHA 80mm par, wahi kaghaz jo counter par
     laga hota hai. Bill ke hi Pdf/BillTemplate se banta hai taake shakl
     aur alignment ek jaisi rahe. */
@@ -368,7 +377,7 @@ case 'shift-report-pdf':needLogin();Auth::requireModule('shift');
  header('Content-Disposition: inline; filename="shift-'.$r['shift'].'.pdf"');
  header('Content-Length: '.strlen($pdf));echo $pdf;exit;
 
-case 'shift-close':needLogin();Auth::requireModule('shift');$d=body();
+case 'shiftmgr-close':needLogin();Auth::requireModule('shift');$d=body();
  try{$r=OpsService::shiftClose((string)($d['id']??''),(float)($d['counted']??0),(string)($d['note']??''));}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r+['shifts'=>OpsService::shiftList()]);
@@ -578,6 +587,15 @@ if($gk&&$gx){try{$ctx=stream_context_create(['http'=>['timeout'=>7]]);
 if(!$out){try{$ctx2=stream_context_create(['http'=>['timeout'=>6,'header'=>"User-Agent: SaaSVersion-POS\r\n"]]);$raw2=@file_get_contents('https://api.openverse.org/v1/images/?q='.rawurlencode($q.' food').'&page='.$page.'&page_size=12',false,$ctx2);if($raw2){$j2=json_decode($raw2,true);foreach(($j2['results']??[]) as $r){if(!empty($r['thumbnail'])||!empty($r['url']))$out[]=['thumb'=>$r['thumbnail']??$r['url'],'url'=>$r['url']??$r['thumbnail'],'title'=>$r['title']??''];}}}catch(Throwable $e){}}
 if(!$out){$kw=strtolower(preg_replace('/[^a-z0-9 ]/i','',$q));$kw=implode(',',array_slice(preg_split('/\s+/',trim($kw))?:['food'],0,3));for($i=0;$i<8;$i++){$u='https://loremflickr.com/400/300/'.rawurlencode($kw?:'food').',food?lock='.(1000+$i);$out[]=['thumb'=>$u,'url'=>$u,'title'=>$q];}}
 ok(['images'=>array_slice($out,0,12),'source'=>$src]);
+case 'update-check':
+ /* V75 — AUTO-UPDATE.
+    Pehle har chhoti tabdeeli par customer ko poora offline package
+    dobara download kar ke install karna parta tha. Ab node khud pooch
+    leta hai ke cloud par naya build hai ya nahi. Yeh sirf naam batata
+    hai — file tab aati hai jab user "Update now" dabaye. */
+ $v=trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'));
+ ok(['build'=>$v,'build_id'=>trim((string)@file_get_contents(dirname(__DIR__).'/public/build-id.txt'))]);
+
 case 'offline-package':needLogin();if(cfg('app.role')!=='cloud')fail('The offline version can only be downloaded from the online portal',403);if(!Auth::isManager())fail('Only an Admin or Manager can download the offline version',403);
 $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
 if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
@@ -729,8 +747,10 @@ foreach([['public/assets','public/assets']] as $pair){
 }
 foreach(glob($root.'/public/*.js') as $j)$zip->addFile($j,'public/'.basename($j));
 foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c));
+if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/app.ico','public/assets/app.ico');
+$zip->addEmptyDir('updates');
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
 foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1','fix_vcruntime.ps1'] as $ps){
