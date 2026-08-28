@@ -4045,3 +4045,85 @@ Do fix:
 
 **NahI chala:** Windows par installer, asli printer, aur auto-update ka
 poora chakkar (uske liye do alag builds chahiyen).
+
+---
+
+# V76 — Shift closing print ab wahi design jo tay hua tha
+
+## Masla
+
+POS ka "Close Shift" apna alag, saada slip chhap raha tha:
+
+    Gross Sales   PKR 58,256
+      CASH        PKR 53,806 (5)
+      CARD        PKR 4,450 (1)
+    Expected Cash PKR 53,806
+    Variance      PKR -0
+
+Yeh report thi hi nahi — sirf ek hisab tha. Malik ko yeh nazar hi nahi
+aata tha ke us shift mein **bika kya**.
+
+**Wajah:** POS ka print `printNode(#repBody)` chalata tha — yani screen
+par jo chand rows dikh rahi thin, wohi kaghaz par chhap jati thin. Jo
+80mm design maine V73 mein banaya aur test kiya tha (category-wise sale,
+items, payments), POS us tak pohanchta hi nahi tha.
+
+## Ab
+
+POS ka Print aur "Close Shift" dono **wahi 80mm closing report** kholte
+hain jo Shift Management page kholta hai:
+
+    SHIFT CLOSING REPORT
+    Shift / Counter / Cashier / Opened / Closed
+    -------------------------------------
+    SALES BY CATEGORY
+      BBQ                          24,600
+        10 x Chicken Tikka         16,000
+         8 x Seekh Kabab            8,600
+      KARAHI                       21,400
+        ...
+    -------------------------------------
+    Bills 6 / Subtotal / Discount / Sales Tax
+    =====================================
+    TOTAL SALES                    58,256
+    -------------------------------------
+    PAYMENTS
+    Cash                           53,806
+    Card                            4,450
+    -------------------------------------
+    CASH IN TILL
+    Opening float / Less: cash expenses
+    Expected / Counted
+    =====================================
+    BALANCED                            0
+
+    Note: ...
+    Cashier signature: ______________
+    Manager signature: ______________
+
+Shift band hote hi report **khud khul jati hai**.
+
+## Report mein teen izafay
+
+- **Counter ka naam** — kai counters wali jagah par kis till ki report
+  hai, yeh saaf hona chahiye.
+- **Cash expenses** — jo cash isi shift mein counter se nikla. Iske
+  baghair variance ghalat lagta hai aur cashier be-wajah shak mein
+  aata hai.
+- **Closing note** — cashier ne jo likha, report par aata hai.
+
+## Chhota magar zaroori
+
+`shift-close` ab shift ka `id` bhi wapas karta hai (pehle nahi karta
+tha), warna POS report khol hi nahi sakta tha. Aur `shiftmgr-report-pdf`
+ab POS ke cashier ke liye bhi khulta hai — usay 'shift' module ki ijazat
+na ho tab bhi apni shift ki report chhap sake.
+
+Purane build se aaye hue report (jis mein `shift_id` na ho) par purana
+screen-print fallback chalta hai — print bilkul rukta nahi.
+
+## Testing
+
+    php -l  (har PHP file)   -> 0 errors
+    node --check (POS)       -> OK
+    Report render + PDF      -> 4,328 bytes, layout saaf

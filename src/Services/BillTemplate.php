@@ -204,6 +204,7 @@ final class BillTemplate
         $L[] = ['SHIFT CLOSING REPORT', 'c', 9];
         $L[] = self::rule();
         $L[] = self::row('Shift', (string)$r['shift']);
+        if (!empty($r['counter'])) $L[] = self::row('Counter', (string)$r['counter']);
         $L[] = self::row('Cashier', (string)$r['cashier']);
         $L[] = self::row('Opened', (string)$r['opened']);
         $L[] = self::row('Closed', (string)($r['closed'] ?: '-'));
@@ -249,12 +250,22 @@ final class BillTemplate
         /* ---- cash reconciliation ---- */
         $L[] = ['CASH IN TILL', 'c', 8];
         $L[] = self::row('Opening float', self::money((float)$r['opening']));
+        if ((float)($r['expenses'] ?? 0) > 0) {
+            /* Counter se nikla hua cash — iske baghair variance ghalat
+               lagta hai aur cashier be-wajah shak mein aata hai. */
+            $L[] = self::row('Less: cash expenses', '-' . self::money((float)$r['expenses']));
+        }
         $L[] = self::row('Expected', self::money((float)$r['expected']));
         $L[] = self::row('Counted', self::money((float)$r['counted']));
         $var = (float)$r['variance'];
         $L[] = self::rule('=');
         $L[] = self::row($var == 0 ? 'BALANCED' : ($var > 0 ? 'CASH OVER' : 'CASH SHORT'),
                          ($var > 0 ? '+' : '') . self::money($var), true);
+
+        if (!empty($r['note'])) {
+            $L[] = ['', 'l', self::SZ];
+            $L = array_merge($L, self::wrap('Note: ' . (string)$r['note']));
+        }
 
         $L[] = ['', 'l', self::SZ];
         $L[] = ['Cashier signature: ______________', 'l', 8];

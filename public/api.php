@@ -362,7 +362,10 @@ case 'shiftmgr-report':needLogin();Auth::requireModule('shift');
  try{$r=OpsService::shiftReport((string)($_GET['id']??''));}catch(Throwable $e){fail($e->getMessage());}
  ok(['report'=>$r]);
 
-case 'shiftmgr-report-pdf':needLogin();Auth::requireModule('shift');
+case 'shiftmgr-report-pdf':needLogin();
+ /* POS ka cashier bhi apni shift ki report chhap sake — usay 'shift'
+    module ki ijazat na ho tab bhi. */
+ if(!Auth::canModule('shift')&&!Auth::canModule('pos'))fail('Permission denied',403);
  /* V73 — closing report HAMESHA 80mm par, wahi kaghaz jo counter par
     laga hota hai. Bill ke hi Pdf/BillTemplate se banta hai taake shakl
     aur alignment ek jaisi rahe. */
@@ -1142,7 +1145,12 @@ case 'shift-handovers':needLogin();
 case 'shift-preview':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No open shift.');ok(['report'=>shift_report($sh,null)]);
 case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
  $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
-   ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');ok(['report'=>$rep]);
+   ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');
+ /* V76 — shift ka id bhi wapas, taake POS wahi 80mm closing report
+    khol sake jo Shift Management page kholta hai. Pehle POS apna alag
+    saada slip banata tha: na category-wise sale, na payments. */
+ $rep['shift_id']=$sh['id'];
+ ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
 case 'menu-category-create':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);

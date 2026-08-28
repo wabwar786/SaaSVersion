@@ -300,8 +300,22 @@ final class OpsService
               GROUP BY method ORDER BY amount DESC");
         $pq->execute($args);
 
+        /* Expenses jo isi shift mein counter se nikle — cash count ka
+           hissa hain, is liye report par nazar aane chahiyen. */
+        $exp = 0.0;
+        try {
+            $eq = $p->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e
+                                WHERE e.site_id=? AND e.status<>'REJECTED' AND e.deleted_at IS NULL
+                                  AND e.created_at BETWEEN ? AND ?");
+            $eq->execute([site_id(), $open, $close]);
+            $exp = (float)$eq->fetchColumn();
+        } catch (\Throwable $e) {}
+
         return [
             'shift'    => (string)$sh['shift_no'],
+            'counter'  => (string)($sh['counter_name'] ?? ''),
+            'note'     => (string)($sh['close_note'] ?? ''),
+            'expenses' => $exp,
             'cashier'  => (string)$sh['cashier'],
             'date'     => (string)$sh['business_date'],
             'opened'   => substr($open, 0, 16),

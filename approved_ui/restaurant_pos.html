@@ -1867,9 +1867,30 @@ function transferShift(rep){
 function showReport(rep,transferred){
   var ov=modal('<div class="dh"><h3>Shift Report</h3><p>Cashier reconciliation summary</p></div>'
     +'<div class="db" id="repBody">'+repRows(rep)+'</div>'
-    +'<div class="df"><button class="sec" id="prn">Print</button><button class="go" id="dn">Done</button></div>',false,true);
-  ov.querySelector('#prn').onclick=function(){printNode(ov.querySelector('#repBody'))};
+    +'<div class="df"><button class="sec" id="prn">Print report</button><button class="go" id="dn">Done</button></div>',false,true);
+
+  /* V76 — Print ab wahi 80mm CLOSING REPORT khol deta hai jo Shift
+     Management page kholta hai: category-wise sale, har category ke
+     andar item aur raqam, payments, aur neeche cash reconciliation +
+     signature ki jagah.
+     Pehle yahan `printNode(#repBody)` tha — yani screen ke wohi chand
+     rows chhap jate the (Gross Sales / Cash / Expected / Variance).
+     Malik ke liye wo report thi hi nahi, sirf ek hisab tha. */
+  ov.querySelector('#prn').onclick=function(){
+    var sid=rep&&(rep.shift_id||rep.id);
+    if(sid){ window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid),'_blank'); return; }
+    /* Purane build se aaya hua report (shift_id ke baghair) — screen
+       wala fallback, taake print bilkul na ruke. */
+    printNode(ov.querySelector('#repBody'));
+  };
   ov.querySelector('#dn').onclick=function(){ov.remove();openGate()};
+
+  /* Shift band hote hi report khud khul jaye — cashier ko yaad rakhna
+     na pare, aur raat ko counter par hamesha ek kaghaz nikle. */
+  var sid0=rep&&(rep.shift_id||rep.id);
+  if(sid0)setTimeout(function(){
+    window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid0),'_blank');
+  },350);
 }
 
 /* ================= MODAL / WIRING ================= */
