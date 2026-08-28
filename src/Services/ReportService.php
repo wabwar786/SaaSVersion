@@ -439,6 +439,135 @@ final class ReportService
             $rows, self::sum($rows, ['lines','total']));
     }
 
+    /* ==================== CUSTOM REPORTS ====================
+       Customer apni marzi ki report bana sake — magar SQL likhe baghair.
+       Khula SQL dena khatarnak hai (ek galti aur poora data jal jaye),
+       is liye yahan ek MEHDOOD, mehfooz builder hai: chuni hui sources,
+       chune hue fields. Har cheez server par ginti jati hai. */
+
+    /** Kaunse data sources par report ban sakti hai. */
+    public static function sources(): array
+    {
+        return [
+            'sales' => [
+                'label' => 'Sales (bills)',
+                'group_by' => [
+                    'day'      => ['label'=>'Day',            'sql'=>"DATE(COALESCE(o.closed_at,o.created_at))"],
+                    'month'    => ['label'=>'Month',          'sql'=>"DATE_FORMAT(COALESCE(o.closed_at,o.created_at),'%Y-%m')"],
+                    'hour'     => ['label'=>'Hour of day',    'sql'=>"LPAD(HOUR(COALESCE(o.closed_at,o.created_at)),2,'0')"],
+                    'weekday'  => ['label'=>'Day of week',    'sql'=>"DAYNAME(COALESCE(o.closed_at,o.created_at))"],
+                    'mode'     => ['label'=>'Service mode',   'sql'=>"o.service_mode"],
+                    'cashier'  => ['label'=>'Cashier',        'sql'=>"COALESCE(u.full_name,'(unknown)')"],
+                    'table'    => ['label'=>'Table',          'sql'=>"COALESCE(dt.display_name,'(no table)')"],
+                    'customer' => ['label'=>'Customer',       'sql'=>"COALESCE(c.full_name,'Walk-in')"],
+                ],
+                'measures' => [
+                    'bills'    => ['label'=>'Bills',          'sql'=>"COUNT(DISTINCT o.id)"],
+                    'sales'    => ['label'=>'Sales',          'sql'=>"SUM(o.grand_total)"],
+                    'subtotal' => ['label'=>'Subtotal',       'sql'=>"SUM(o.subtotal)"],
+                    'tax'      => ['label'=>'Tax',            'sql'=>"SUM(o.tax_amount)"],
+                    'discount' => ['label'=>'Discount',       'sql'=>"SUM(o.discount_amount)"],
+                    'avg_bill' => ['label'=>'Average bill',   'sql'=>"ROUND(AVG(o.grand_total),2)"],
+                ],
+            ],
+            'items' => [
+                'label' => 'Items sold',
+                'group_by' => [
+                    'item'     => ['label'=>'Item',      'sql'=>"COALESCE(oi.item_name_snapshot,mi.name,'(deleted)')"],
+                    'category' => ['label'=>'Category',  'sql'=>"COALESCE(mc.name,'(uncategorised)')"],
+                    'day'      => ['label'=>'Day',       'sql'=>"DATE(COALESCE(o.closed_at,o.created_at))"],
+                    'month'    => ['label'=>'Month',     'sql'=>"DATE_FORMAT(COALESCE(o.closed_at,o.created_at),'%Y-%m')"],
+                ],
+                'measures' => [
+                    'qty'      => ['label'=>'Quantity',  'sql'=>"SUM(oi.qty)"],
+                    'sales'    => ['label'=>'Sales',     'sql'=>"SUM(oi.line_total)"],
+                    'lines'    => ['label'=>'Times sold','sql'=>"COUNT(*)"],
+                    'avg_rate' => ['label'=>'Average rate','sql'=>"ROUND(AVG(oi.unit_price),2)"],
+                ],
+            ],
+            'expenses' => [
+                'label' => 'Expenses',
+                'group_by' => [
+                    'category' => ['label'=>'Category','sql'=>"COALESCE(ec.name,'(uncategorised)')"],
+                    'day'      => ['label'=>'Day',     'sql'=>"DATE(e.expense_date)"],
+                    'month'    => ['label'=>'Month',   'sql'=>"DATE_FORMAT(e.expense_date,'%Y-%m')"],
+                ],
+                'measures' => [
+                    'entries' => ['label'=>'Entries','sql'=>"COUNT(*)"],
+                    'amount'  => ['label'=>'Amount', 'sql'=>"SUM(e.amount)"],
+                ],
+            ],
+        ];
+    }
+
+    private static function fromSql(string $src): string
+    {
+        return match ($src) {
+            'items' => "FROM order_items oi
+                        JOIN orders o ON o.id = oi.order_id
+                        LEFT JOIN menu_items mi      ON mi.id = oi.menu_item_id
+                        LEFT JOIN menu_categories mc ON mc.id = mi.category_id
+                       WHERE " . self::billWhere(),
+            'expenses' => "FROM expenses e
+                           LEFT JOIN expense_categories ec ON ec.id = e.category_id
+                          WHERE e.site_id = ? AND e.status <> 'REJECTED' AND e.deleted_at IS NULL
+                            AND DATE(e.expense_date) BETWEEN ? AND ?",
+            default => "FROM orders o
+                        LEFT JOIN users u          ON u.id  = o.created_by_user_id
+                        LEFT JOIN dining_tables dt ON dt.id = o.table_id
+                        LEFT JOIN customers c      ON c.id  = o.customer_id
+                       WHERE " . self::billWhere(),
+        };
+    }
+
+    /**
+     * Customer ka apna report chalao.
+     * @param array $spec ['source','group','measures'=>[],'sort','limit']
+     */
+    public static function custom(array $spec, string $from, string $to): array
+    {
+        $from = self::day($from, date('Y-m-01'));
+        $to   = self::day($to, date('Y-m-d'));
+        if ($from > $to) [$from, $to] = [$to, $from];
+
+        $srcKey = (string)($spec['source'] ?? 'sales');
+        $all = self::sources();
+        if (!isset($all[$srcKey])) throw new \RuntimeException('Unknown data source.');
+        $src = $all[$srcKey];
+
+        $gKey = (string)($spec['group'] ?? array_key_first($src['group_by']));
+        if (!isset($src['group_by'][$gKey])) throw new \RuntimeException('Unknown grouping.');
+
+        $wanted = array_values(array_filter((array)($spec['measures'] ?? []),
+            fn($m) => isset($src['measures'][$m])));
+        if (!$wanted) $wanted = [array_key_first($src['measures'])];
+        if (count($wanted) > 6) $wanted = array_slice($wanted, 0, 6);
+
+        /* Sab kuch registry se aata hai — user ka koi harf SQL mein nahi
+           jata. Isi liye yeh mehfooz hai. */
+        $cols = [['k' => 'g', 'l' => $src['group_by'][$gKey]['label']]];
+        $sel  = [$src['group_by'][$gKey]['sql'] . ' AS g'];
+        foreach ($wanted as $m) {
+            $sel[]  = $src['measures'][$m]['sql'] . ' AS ' . $m;
+            $cols[] = ['k' => $m, 'l' => $src['measures'][$m]['label'], 'n' => 1];
+        }
+
+        $sortKey = (string)($spec['sort'] ?? $wanted[0]);
+        if (!in_array($sortKey, $wanted, true) && $sortKey !== 'g') $sortKey = $wanted[0];
+        $order = $sortKey === 'g' ? 'g ASC' : ($sortKey . ' DESC');
+        $limit = max(5, min(500, (int)($spec['limit'] ?? 100)));
+
+        $sql = 'SELECT ' . implode(', ', $sel) . ' ' . self::fromSql($srcKey)
+             . ' GROUP BY g ORDER BY ' . $order . ' LIMIT ' . $limit;
+
+        $rows = self::q($sql, [site_id(), $from, $to]);
+
+        $title = 'Custom: ' . $src['label'] . ' by ' . $src['group_by'][$gKey]['label'];
+        return self::shape($title, $cols, $rows, self::sum($rows, $wanted),
+            'Your own report. Change the source, grouping or figures and run it again.')
+            + ['from' => $from, 'to' => $to];
+    }
+
     /* ==================== helpers ==================== */
 
     private static function sum(array $rows, array $keys): array

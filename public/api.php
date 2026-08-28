@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -264,7 +264,9 @@ case 'login':
         'isAdmin'=>(bool)($u['is_tenant_admin']??false)
     ]]);
 
-case 'logout':Auth::logout();ok();
+case 'logout':$__slug=(string)($_SESSION['login_tenant_slug']??'');Auth::logout();
+ /* Client ko wapas wahi business-wala login link do. */
+ ok(['redirect'=>'/login.html'.($__slug!==''?('?b='.rawurlencode($__slug)):'')]);
 case 'setup':$d=body();$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE'");$q->execute([tenant_id()]);if((int)$q->fetchColumn())fail('Administrator already exists.');if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$mods=array_column($p->query("SELECT id FROM platform_modules WHERE is_active=1")->fetchAll(),'id');UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'admin','phone'=>'','password'=>$d['password'],'role_id'=>roleIdByName('Owner / Admin'),'modules'=>$mods,'is_admin'=>1]);ok();
 case 'signup':$d=body();if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND email=?");$q->execute([tenant_id(),$d['email']]);$exists=(int)$q->fetchColumn();$q=$p->prepare("SELECT COUNT(*) FROM signup_requests WHERE email=? AND status='PENDING'");$q->execute([$d['email']]);$exists+=(int)$q->fetchColumn();if($exists)fail('Email already registered or pending.');UserService::signup(['full_name'=>$d['name'],'email'=>$d['email'],'phone'=>$d['phone']??'','business'=>$d['business']??'Restaurant','password'=>$d['password']]);$_SESSION['pending_signup_email']=$d['email'];ok();
 case 'access-state':ok(['state'=>accessState()]);
@@ -352,6 +354,52 @@ case 'shift-close':needLogin();Auth::requireModule('shift');$d=body();
  catch(Throwable $e){fail($e->getMessage());}
  ok($r+['shifts'=>OpsService::shiftList()]);
 
+case 'guide':needLogin();
+ /* V72 — har module ki apni guide, software ke andar. Pehle koi madad
+    thi hi nahi: naya customer andaza lagata tha, ghalat tareeqe se kaam
+    karta tha, aur phir support ko phone karta tha. */
+ $k=preg_replace('/[^a-z_]/','',strtolower((string)($_GET['module']??'')));
+ $g=Guide::get($k);
+ if(!$g)ok(['guide'=>null]);
+ ok(['guide'=>$g+['module'=>$k]]);
+
+case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
+ /* Bill khula rakho — kitchen ko kuch nahi jata. */
+ try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
+
+case 'tablet-tables':needLogin();
+ /* Tablet ka HOLD BILLS view — har dine-in table aur us par ab tak ka total. */
+ ok(['tables'=>OpsService::tabletTables(),'tax'=>SettingsService::taxes()]);
+
+case 'tablet-order':needLogin();
+ ok(OpsService::tabletOrder((string)($_GET['table']??'')));
+
+case 'transfer-list':needLogin();Auth::requireModule('transfer');
+ ok(['rows'=>OpsService::transferList()]);
+
+case 'transfer-create':needLogin();Auth::requireModule('transfer');$d=body();
+ try{$r=OpsService::transferCreate((string)($d['to_site']??''),(array)($d['lines']??[]),(string)($d['notes']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['rows'=>OpsService::transferList()]);
+
+case 'count-list':needLogin();Auth::requireModule('count');
+ ok(['rows'=>OpsService::countList()]);
+
+case 'count-post':needLogin();Auth::requireModule('count');$d=body();
+ try{$r=OpsService::countPost((string)($d['location']??''),(array)($d['lines']??[]),(string)($d['note']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['rows'=>OpsService::countList()]);
+
+case 'cash-book':needLogin();Auth::requireModule('accounting');
+ ok(OpsService::cashBook((string)($_GET['from']??''),(string)($_GET['to']??'')));
+
+case 'online-orders':needLogin();Auth::requireModule('online');
+ ok(['rows'=>OpsService::onlineOrders()]);
+
+case 'notification-log':needLogin();Auth::requireModule('whatsapp');
+ ok(['rows'=>OpsService::notifications()]);
+
 case 'running-orders':needLogin();Auth::requireModule('orders');
  ok(['orders'=>OpsService::runningOrders()]);
 
@@ -364,6 +412,14 @@ case 'report-list':needLogin();Auth::requireModule('reports');
 case 'report-run':needLogin();Auth::requireModule('reports');
  $id=preg_replace('/[^a-z_]/','',strtolower((string)($_GET['id']??'')));
  try{$r=ReportService::run($id,(string)($_GET['from']??''),(string)($_GET['to']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok(['report'=>$r]);
+
+case 'report-sources':needLogin();Auth::requireModule('reports');
+ ok(['sources'=>ReportService::sources()]);
+
+case 'report-custom':needLogin();Auth::requireModule('reports');$d=body();
+ try{$r=ReportService::custom((array)($d['spec']??[]),(string)($d['from']??''),(string)($d['to']??''));}
  catch(Throwable $e){fail($e->getMessage());}
  ok(['report'=>$r]);
 

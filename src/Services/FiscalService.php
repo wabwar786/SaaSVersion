@@ -188,7 +188,7 @@ final class FiscalService
         try {
             $q = DB::pdo()->prepare("SELECT pm.method_type FROM payments pay
                                       JOIN payment_methods pm ON pm.id = pay.payment_method_id
-                                     WHERE pay.order_id=? ORDER BY pay.created_at DESC LIMIT 1");
+                                     WHERE pay.order_id=? ORDER BY pay.paid_at DESC LIMIT 1");
             $q->execute([$orderId]);
             $mode = strtoupper((string)($q->fetchColumn() ?: 'CASH'));
         } catch (\Throwable $e) {}
@@ -201,7 +201,7 @@ final class FiscalService
         try {
             $q = DB::pdo()->prepare("SELECT pm.method_type FROM payments pay
                                       JOIN payment_methods pm ON pm.id = pay.payment_method_id
-                                     WHERE pay.order_id=? ORDER BY pay.created_at DESC LIMIT 1");
+                                     WHERE pay.order_id=? ORDER BY pay.paid_at DESC LIMIT 1");
             $q->execute([$orderId]);
             $m = strtoupper((string)($q->fetchColumn() ?: 'CASH'));
             return $m === 'CARD' ? 2 : 1;   // FBR: 1 = cash, 2 = card

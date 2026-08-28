@@ -66,56 +66,53 @@ window.MODULE_CONFIGS={
 
   staff:{
     key:'staff',title:'Staff / Roles',storeKey:'staff',recordName:'Staff member',addLabel:'+ Add staff',
-    listTitle:'Staff members',listSub:'Team on payroll across the branch',
-    searchPlaceholder:'Search name or role',searchFields:['name','role','phone'],emptyIcon:'⚇',
+    listTitle:'Staff',listSub:'Employees at this branch',
+    searchPlaceholder:'Search name or code',searchFields:['name','code','role'],emptyIcon:'\u263A',
     kpis:[
-      {label:'Team size',calc:function(r){return r.length}},
-      {label:'On duty',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='On duty'}).length}},
-      {label:'Monthly payroll',tone:'warn',calc:function(r,M){return M.money(M.sum(r,'salary'))}}
+      {label:'Staff',calc:function(r){return r.length}},
+      {label:'Active',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Active'}).length}},
+      {label:'With login',tone:'info',calc:function(r){return r.filter(function(x){return x.login==='Yes'}).length}}
     ],
     columns:[
-      {label:'Name',field:'name',sub:'phone'},{label:'Role',field:'role'},{label:'Branch',field:'branch'},
-      {label:'Salary',field:'salary',format:'money',align:'num'},
-      {label:'Status',field:'status',format:'tag',tags:{'On duty':'ok','Off':'neutral','On leave':'warn'}}
+      {label:'Name',field:'name',sub:'role'},{label:'Code',field:'code'},
+      {label:'Joined',field:'joined'},
+      {label:'Has login',field:'login',format:'tag',tags:{Yes:'ok',No:'info'}},
+      {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Inactive:'danger',Left:'danger'}}
     ],
     fields:[
       {key:'name',label:'Full name',type:'text',required:true,full:true},
-      {key:'role',label:'Role',type:'select',options:['Owner / Admin','Branch Manager','Cashier','Waiter','Chef / Kitchen','Storekeeper','Accountant','Rider']},
-      {key:'phone',label:'Phone',type:'tel'},{key:'branch',label:'Branch',type:'text',default:'Islamabad — F10'},
-      {key:'salary',label:'Salary',type:'money',default:0},{key:'status',label:'Status',type:'select',options:['On duty','Off','On leave'],default:'On duty'}
+      {key:'code',label:'Employee code',type:'text',placeholder:'EMP-001'},
+      {key:'role',label:'Job title',type:'text',placeholder:'Waiter'},
+      {key:'joined',label:'Joining date',type:'date'},
+      {key:'status',label:'Status',type:'select',options:['Active','Inactive','Left'],default:'Active'}
     ],
-    seed:[
-      {name:'System Administrator',role:'Owner / Admin',phone:'0300-0000000',branch:'All Branches',salary:0,status:'On duty'},
-      {name:'Ali Raza',role:'Cashier',phone:'0301-1112233',branch:'Islamabad — F10',salary:55000,status:'On duty'},
-      {name:'Fatima Noor',role:'Waiter',phone:'0302-2223344',branch:'Islamabad — F10',salary:42000,status:'Off'},
-      {name:'Imran Baig',role:'Chef / Kitchen',phone:'0303-3334455',branch:'Islamabad — F10',salary:68000,status:'On duty'}
-    ]
+    /* Login banane ka kaam Users & Access page karta hai — yahan sirf
+       employee record. Do jagah login banane se roles ka nizam toot
+       jata hai. */
+    seed:[]
   },
 
   riders:{
     key:'riders',title:'Rider Management',storeKey:'riders',recordName:'Rider',addLabel:'+ Add rider',
-    listTitle:'Riders',listSub:'Delivery riders and current load',
-    searchPlaceholder:'Search rider or zone',searchFields:['name','phone','zone'],emptyIcon:'⛟',
+    listTitle:'Delivery riders',listSub:'Riders, live jobs and cash held',
+    searchPlaceholder:'Search rider or phone',searchFields:['name','phone','vehicle'],emptyIcon:'\u26FD',
     kpis:[
       {label:'Riders',calc:function(r){return r.length}},
-      {label:'On the road',tone:'info',calc:function(r){return r.filter(function(x){return x.status==='On road'}).length}},
-      {label:'Active deliveries',tone:'warn',calc:function(r,M){return M.num(M.sum(r,'active'))}}
+      {label:'Available',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Available'}).length}},
+      {label:'On delivery',tone:'info',calc:function(r){return r.reduce(function(a,x){return a+(+x.active||0)},0)}}
     ],
     columns:[
-      {label:'Rider',field:'name',sub:'phone'},{label:'Vehicle',field:'vehicle'},{label:'Zone',field:'zone'},
-      {label:'Active',field:'active',align:'num'},
-      {label:'Status',field:'status',format:'tag',tags:{'On road':'info','Available':'ok','Off':'neutral'}}
+      {label:'Rider',field:'name',sub:'phone'},{label:'Vehicle',field:'vehicle'},
+      {label:'Active jobs',field:'active',format:'number'},{label:'Delivered today',field:'today',format:'number'},
+      {label:'Status',field:'status',format:'tag',tags:{Available:'ok',Busy:'info',Off:'danger'}}
     ],
     fields:[
-      {key:'name',label:'Rider name',type:'text',required:true,full:true},{key:'phone',label:'Phone',type:'tel',required:true},
-      {key:'vehicle',label:'Vehicle',type:'select',options:['Bike','Cycle','Car']},{key:'zone',label:'Zone',type:'text'},
-      {key:'active',label:'Active deliveries',type:'number',default:0},{key:'status',label:'Status',type:'select',options:['Available','On road','Off'],default:'Available'}
+      {key:'name',label:'Rider name',type:'text',required:true,full:true},
+      {key:'phone',label:'Phone',type:'text'},
+      {key:'vehicle',label:'Vehicle number',type:'text',placeholder:'ABC-123'},
+      {key:'status',label:'Status',type:'select',options:['Available','Busy','Off'],default:'Available'}
     ],
-    seed:[
-      {name:'Waqas Ahmed',phone:'0300-7778899',vehicle:'Bike',zone:'F-sectors',active:2,status:'On road'},
-      {name:'Bilal Hussain',phone:'0321-6665544',vehicle:'Bike',zone:'G-sectors',active:1,status:'On road'},
-      {name:'Naveed Khan',phone:'0333-1112200',vehicle:'Bike',zone:'Bahria',active:0,status:'Available'}
-    ]
+    seed:[]
   },
 
   printers:{
@@ -156,28 +153,22 @@ window.MODULE_CONFIGS={
   },
 
   branches:{
-    key:'branches',title:'Multi-Branch',storeKey:'branches',recordName:'Branch',addLabel:'+ Add branch',
-    listTitle:'Branches',listSub:'All outlets syncing to this account',
-    searchPlaceholder:'Search branch or city',searchFields:['name','city','manager'],emptyIcon:'⌗',
+    key:'branches',title:'Multi-Branch',storeKey:'branches',recordName:'Branch',addLabel:'',
+    listTitle:'Branches',listSub:'All branches of this business',
+    searchPlaceholder:'Search branch',searchFields:['name','code'],emptyIcon:'\u2317',
+    canAdd:false,
     kpis:[
       {label:'Branches',calc:function(r){return r.length}},
-      {label:'Live',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Live'}).length}},
-      {label:'Total tables',tone:'info',calc:function(r,M){return M.num(M.sum(r,'tables'))}}
+      {label:'Active',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Active'}).length}},
+      {label:'Sales today',tone:'info',calc:function(r){return r.reduce(function(a,x){return a+(+x.today||0)},0)}}
     ],
     columns:[
-      {label:'Branch',field:'name',sub:'city'},{label:'Manager',field:'manager'},{label:'Tables',field:'tables',align:'num'},
-      {label:'Status',field:'status',format:'tag',tags:{Live:'ok','Setup':'warn',Closed:'neutral'}}
+      {label:'Branch',field:'name',sub:'type'},{label:'Code',field:'code'},
+      {label:'Phone',field:'phone'},{label:'Sales today',field:'today',format:'number'},
+      {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Suspended:'danger'}}
     ],
-    fields:[
-      {key:'name',label:'Branch name',type:'text',required:true,full:true},{key:'city',label:'City',type:'text'},
-      {key:'manager',label:'Manager',type:'text'},{key:'tables',label:'Tables',type:'number',default:0},
-      {key:'status',label:'Status',type:'select',options:['Live','Setup','Closed'],default:'Live'}
-    ],
-    seed:[
-      {name:'Islamabad — F10',city:'Islamabad',manager:'Ali Raza',tables:30,status:'Live'},
-      {name:'Rawalpindi — Saddar',city:'Rawalpindi',manager:'Hina Sheikh',tables:22,status:'Live'},
-      {name:'Bahria Town',city:'Islamabad',manager:'—',tables:18,status:'Setup'}
-    ]
+    fields:[],
+    seed:[]
   },
 
   tables:{
@@ -238,29 +229,28 @@ window.MODULE_CONFIGS={
 
   reservations:{
     key:'reservations',title:'Reservations',storeKey:'reservations',recordName:'Reservation',addLabel:'+ New reservation',
-    listTitle:'Reservations',listSub:'Upcoming and past table bookings',
-    searchPlaceholder:'Search name or phone',searchFields:['name','phone','table'],emptyIcon:'◷',
+    listTitle:'Table reservations',listSub:'Bookings from today onward',
+    searchPlaceholder:'Search guest or phone',searchFields:['name','phone','ref'],emptyIcon:'\u25F7',
     kpis:[
-      {label:'Reservations',calc:function(r){return r.length}},
-      {label:'Confirmed',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Confirmed'}).length}},
-      {label:'Guests today',tone:'info',calc:function(r,M){return M.num(M.sum(r,'guests'))}}
+      {label:'Upcoming',calc:function(r){return r.filter(function(x){return x.status==='Booked'}).length}},
+      {label:'Seated',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Seated'}).length}},
+      {label:'Guests',tone:'info',calc:function(r){return r.reduce(function(a,x){return a+(+x.guests||0)},0)}}
     ],
     columns:[
-      {label:'Guest',field:'name',sub:'phone'},{label:'Date',field:'date'},{label:'Time',field:'time'},
-      {label:'Guests',field:'guests',align:'num'},{label:'Table',field:'table'},
-      {label:'Status',field:'status',format:'tag',tags:{Confirmed:'ok',Seated:'info',Cancelled:'danger','No-show':'neutral'}}
+      {label:'Guest',field:'name',sub:'phone'},{label:'Reference',field:'ref'},
+      {label:'When',field:'when'},{label:'Guests',field:'guests',format:'number'},
+      {label:'Status',field:'status',format:'tag',tags:{Booked:'info',Seated:'ok',Cancelled:'danger',No_show:'danger'}}
     ],
     fields:[
-      {key:'name',label:'Guest name',type:'text',required:true,full:true},{key:'phone',label:'Phone',type:'tel',required:true},
-      {key:'date',label:'Date',type:'text',placeholder:'25 Aug 2026'},{key:'time',label:'Time',type:'text',placeholder:'8:30 PM'},
-      {key:'guests',label:'Guests',type:'number',default:2},{key:'table',label:'Table',type:'text',placeholder:'T-05'},
-      {key:'status',label:'Status',type:'select',options:['Confirmed','Seated','Cancelled','No-show'],default:'Confirmed'}
+      {key:'name',label:'Guest name',type:'text',required:true,full:true},
+      {key:'phone',label:'Phone',type:'text'},
+      {key:'when',label:'Date & time',type:'datetime-local',required:true},
+      {key:'guests',label:'Number of guests',type:'number',default:2},
+      {key:'deposit',label:'Deposit taken',type:'number',default:0},
+      {key:'status',label:'Status',type:'select',options:['Booked','Seated','Cancelled','No_show'],default:'Booked'},
+      {key:'notes',label:'Notes',type:'textarea',full:true}
     ],
-    seed:[
-      {name:'Junaid family',phone:'0300-1122334',date:'25 Aug 2026',time:'8:30 PM',guests:6,table:'R-01',status:'Confirmed'},
-      {name:'Ahsan Raza',phone:'0321-5566778',date:'25 Aug 2026',time:'9:00 PM',guests:2,table:'T-02',status:'Confirmed'},
-      {name:'Corporate — NetSol',phone:'051-2345678',date:'26 Aug 2026',time:'1:00 PM',guests:12,table:'First Floor',status:'Seated'}
-    ]
+    seed:[]
   },
 
   expenses:{
@@ -290,55 +280,49 @@ window.MODULE_CONFIGS={
   },
 
   promotions:{
-    key:'promotions',title:'Discounts / Promotions',storeKey:'promotions',recordName:'Promotion',addLabel:'+ New promotion',
-    listTitle:'Promotions',listSub:'Discount codes and running offers',
-    searchPlaceholder:'Search name or code',searchFields:['name','code'],emptyIcon:'%',
+    key:'promotions',title:'Discounts / Promotions',storeKey:'promotions',recordName:'Promotion',addLabel:'+ Add promotion',
+    listTitle:'Promotions',listSub:'Discounts that the POS can apply',
+    searchPlaceholder:'Search promotion or code',searchFields:['name','code'],emptyIcon:'\u2605',
     kpis:[
-      {label:'Promotions',calc:function(r){return r.length}},
-      {label:'Active',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Active'}).length}},
-      {label:'Redemptions',tone:'info',calc:function(r,M){return M.num(M.sum(r,'used'))}}
+      {label:'Total',calc:function(r){return r.length}},
+      {label:'Live now',tone:'ok',calc:function(r){return r.filter(function(x){return x.status==='Live'}).length}},
+      {label:'Scheduled',tone:'info',calc:function(r){return r.filter(function(x){return x.status==='Scheduled'}).length}}
     ],
     columns:[
-      {label:'Promotion',field:'name',sub:'code'},{label:'Type',field:'type'},{label:'Value',field:'value'},
-      {label:'Used',field:'used',align:'num'},
-      {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Scheduled:'info',Expired:'neutral'}}
+      {label:'Promotion',field:'name',sub:'type'},{label:'Code',field:'code'},
+      {label:'Value',field:'value',format:'number'},{label:'From',field:'from'},{label:'To',field:'to'},
+      {label:'Status',field:'status',format:'tag',tags:{Live:'ok',Scheduled:'info',Inactive:'danger'}}
     ],
     fields:[
-      {key:'name',label:'Promotion name',type:'text',required:true,full:true},{key:'code',label:'Code',type:'text',placeholder:'EID25'},
-      {key:'type',label:'Type',type:'select',options:['Percentage','Flat amount','Buy 1 Get 1','Free delivery']},{key:'value',label:'Value',type:'text',placeholder:'25%'},
-      {key:'used',label:'Times used',type:'number',default:0},{key:'status',label:'Status',type:'select',options:['Active','Scheduled','Expired'],default:'Active'}
+      {key:'name',label:'Promotion name',type:'text',required:true,full:true,placeholder:'Weekend 10% off'},
+      {key:'type',label:'Type',type:'select',options:['Percent off','Amount off','Buy one get one','Combo deal']},
+      {key:'value',label:'Value',type:'number',placeholder:'10'},
+      {key:'code',label:'Code (optional)',type:'text',placeholder:'WEEKEND10'},
+      {key:'min',label:'Minimum bill',type:'number',default:0},
+      {key:'from',label:'Starts',type:'date'},{key:'to',label:'Ends',type:'date'},
+      {key:'status',label:'Status',type:'select',options:['Live','Inactive'],default:'Live'}
     ],
-    seed:[
-      {name:'Eid Special 25%',code:'EID25',type:'Percentage',value:'25%',used:142,status:'Active'},
-      {name:'Family Deal BOGO',code:'FAMILY',type:'Buy 1 Get 1',value:'BOGO',used:58,status:'Active'},
-      {name:'Weekend Free Delivery',code:'FREESHIP',type:'Free delivery',value:'PKR 0',used:210,status:'Scheduled'}
-    ]
+    seed:[]
   },
 
   loyalty:{
-    key:'loyalty',title:'Loyalty / Membership',storeKey:'loyalty',recordName:'Member',addLabel:'+ Add member',
-    listTitle:'Loyalty members',listSub:'Points, tiers and rewards',
-    searchPlaceholder:'Search name or phone',searchFields:['name','phone','tier'],emptyIcon:'★',
+    key:'loyalty',title:'Loyalty / Membership',storeKey:'loyalty',recordName:'Member',addLabel:'',
+    listTitle:'Customer loyalty',listSub:'Tiers and points from real spending',
+    searchPlaceholder:'Search customer or phone',searchFields:['name','phone'],emptyIcon:'\u2661',
+    canAdd:false,
     kpis:[
       {label:'Members',calc:function(r){return r.length}},
-      {label:'Points issued',tone:'info',calc:function(r,M){return M.num(M.sum(r,'points'))}},
-      {label:'Gold tier',tone:'warn',calc:function(r){return r.filter(function(x){return x.tier==='Gold'}).length}}
+      {label:'Gold',tone:'ok',calc:function(r){return r.filter(function(x){return x.tier==='Gold'}).length}},
+      {label:'Total spend',tone:'info',calc:function(r){return r.reduce(function(a,x){return a+(+x.spend||0)},0)}}
     ],
     columns:[
-      {label:'Member',field:'name',sub:'phone'},{label:'Points',field:'points',align:'num'},
-      {label:'Lifetime spend',field:'spent',format:'money',align:'num'},
-      {label:'Tier',field:'tier',format:'tag',tags:{Gold:'warn',Silver:'neutral',Bronze:'info'}}
+      {label:'Customer',field:'name',sub:'phone'},{label:'Visits',field:'visits',format:'number'},
+      {label:'Spend',field:'spend',format:'number'},{label:'Points',field:'points',format:'number'},
+      {label:'Last visit',field:'last'},
+      {label:'Tier',field:'tier',format:'tag',tags:{Gold:'ok',Silver:'info',Bronze:'info'}}
     ],
-    fields:[
-      {key:'name',label:'Member name',type:'text',required:true,full:true},{key:'phone',label:'Phone',type:'tel',required:true},
-      {key:'points',label:'Points',type:'number',default:0},{key:'spent',label:'Lifetime spend',type:'money',default:0},
-      {key:'tier',label:'Tier',type:'select',options:['Bronze','Silver','Gold'],default:'Bronze'}
-    ],
-    seed:[
-      {name:'Ayesha Khan',phone:'0300-1234567',points:426,spent:42600,tier:'Gold'},
-      {name:'Hamza Iqbal',phone:'0321-9988776',points:154,spent:15400,tier:'Silver'},
-      {name:'Zara Ali',phone:'0333-4455667',points:52,spent:5200,tier:'Bronze'}
-    ]
+    fields:[],
+    seed:[]
   },
 
   whatsapp:{

@@ -109,6 +109,11 @@
           +'<span class="hint" style="font-size:11px">'+esc(x.desc)+'</span></button>';
       });
     });
+    h+='<div style="padding:10px 12px 4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Your own</div>'
+      +'<button class="rep-item" data-rep="__custom" style="display:block;width:100%;text-align:left;'
+      +'padding:9px 12px;border:0;background:none;cursor:pointer;border-left:3px solid transparent">'
+      +'<b style="font-size:12.5px;display:block">Custom report</b>'
+      +'<span class="hint" style="font-size:11px">Build your own from your live data</span></button>';
     $('#repList').innerHTML=h;
     $('#repList').className='';
   }
@@ -171,9 +176,78 @@
     $('#repBody').innerHTML=h;
   }
 
+  /* ---------------- Custom report builder ----------------
+     Customer apni marzi ki report bana sake — magar SQL likhe baghair.
+     Sab kuch server ki registry se aata hai (source, grouping, figures),
+     is liye user ka koi harf SQL mein nahi jata. */
+  var SRC=null;
+  function customUI(){
+    current=null; mark('');
+    $('#repTitle').textContent='Custom report';
+    $('#repDesc').textContent='Build your own from your live data';
+    $('#repNote').style.display='none';
+    if(!SRC){ var s=DBApi.req('report-sources'); if(s&&s.ok)SRC=s.sources; }
+    if(!SRC){ $('#repBody').innerHTML='<span class="hint">Could not load the report builder.</span>'; return; }
+
+    var keys=Object.keys(SRC);
+    $('#repBody').innerHTML=
+      '<div class="form-grid" style="max-width:640px">'
+      +'<label class="field"><span>Data source</span><select id="cbSrc">'
+      + keys.map(function(k){return '<option value="'+esc(k)+'">'+esc(SRC[k].label)+'</option>'}).join('')
+      +'</select></label>'
+      +'<label class="field"><span>Group by</span><select id="cbGrp"></select></label>'
+      +'<div class="field full"><span>Figures to show</span><div id="cbMeas" '
+      +'style="display:flex;flex-wrap:wrap;gap:10px;padding:6px 0"></div></div>'
+      +'<label class="field"><span>Sort by</span><select id="cbSort"></select></label>'
+      +'<label class="field"><span>Max rows</span><input id="cbLimit" type="number" value="100" min="5" max="500"></label>'
+      +'<div class="field full"><button class="btn primary" id="cbRun">Run my report</button></div>'
+      +'</div><div id="cbOut" style="margin-top:14px"></div>';
+
+    function fill(){
+      var s=SRC[$('#cbSrc').value];
+      $('#cbGrp').innerHTML=Object.keys(s.group_by).map(function(k){
+        return '<option value="'+esc(k)+'">'+esc(s.group_by[k].label)+'</option>'}).join('');
+      $('#cbMeas').innerHTML=Object.keys(s.measures).map(function(k,i){
+        return '<label class="permission-row" style="gap:6px"><input type="checkbox" value="'+esc(k)+'"'
+          +(i<2?' checked':'')+'> '+esc(s.measures[k].label)+'</label>'}).join('');
+      sortOpts();
+    }
+    function sortOpts(){
+      var s=SRC[$('#cbSrc').value];
+      var on=[].slice.call(document.querySelectorAll('#cbMeas input:checked')).map(function(c){return c.value});
+      $('#cbSort').innerHTML='<option value="g">'+esc(s.group_by[$('#cbGrp').value].label)+'</option>'
+        + on.map(function(k){return '<option value="'+esc(k)+'">'+esc(s.measures[k].label)+'</option>'}).join('');
+      if(on.length)$('#cbSort').value=on[0];
+    }
+    $('#cbSrc').onchange=fill;
+    $('#cbGrp').onchange=sortOpts;
+    $('#cbMeas').onchange=sortOpts;
+    fill();
+
+    $('#cbRun').onclick=function(){
+      var meas=[].slice.call(document.querySelectorAll('#cbMeas input:checked')).map(function(c){return c.value});
+      if(!meas.length){toast('Pick at least one figure to show',true);return}
+      var r=DBApi.req('report-custom',{spec:{source:$('#cbSrc').value,group:$('#cbGrp').value,
+        measures:meas,sort:$('#cbSort').value,limit:Number($('#cbLimit').value||100)},
+        from:$('#dFrom').value,to:$('#dTo').value});
+      if(!r||!r.ok){ $('#cbOut').innerHTML='<span class="hint">'+esc((r&&r.message)||'Report failed')+'</span>'; return; }
+      var keep=$('#repBody').innerHTML;
+      draw(r.report);
+      var out=$('#repBody').innerHTML;
+      $('#repBody').innerHTML=keep;
+      $('#cbOut').innerHTML=out;
+      /* Builder screen par hi rehta hai — warna har run par form gayab
+         ho jata aur user ko dobara sab bharna parta. */
+      $('#cbSrc').onchange=fill; $('#cbGrp').onchange=sortOpts; $('#cbMeas').onchange=sortOpts;
+      $('#cbRun').onclick=arguments.callee;
+    };
+  }
+
   document.addEventListener('click',function(e){
     var b=e.target.closest('[data-rep]');
-    if(b){ run(b.getAttribute('data-rep')); }
+    if(b){ var id=b.getAttribute('data-rep');
+      if(id==='__custom'){ customUI(); return; }
+      run(id); }
   });
   $('#runBtn').onclick=function(){ current?run(current):toast('Pick a report first',true) };
   $('#csvBtn').onclick=function(){

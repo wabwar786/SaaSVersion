@@ -266,6 +266,321 @@ final class OpsService
         ], $q->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /* ==================== STOCK TRANSFER ====================
+       Pehle yeh page `ui_records` mein likhta tha — transfer karein to
+       stock HILTA HI NAHI tha. Ab asli movement dono taraf. */
+
+    public static function transferList(int $limit = 60): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT st.id, st.transfer_no, st.transfer_date, st.status, st.notes,
+                    COALESCE(f.name,'-') AS from_site, COALESCE(t.name,'-') AS to_site,
+                    COALESCE(u.full_name,'-') AS requested_by,
+                    (SELECT COUNT(*) FROM stock_transfer_items i WHERE i.transfer_id = st.id) AS lines_count
+               FROM stock_transfers st
+               LEFT JOIN sites f ON f.id = st.from_site_id
+               LEFT JOIN sites t ON t.id = st.to_site_id
+               LEFT JOIN users u ON u.id = st.requested_by_user_id
+              WHERE st.tenant_id = ? AND st.deleted_at IS NULL
+              ORDER BY st.transfer_date DESC, st.created_at DESC LIMIT $limit");
+        $q->execute([tenant_id()]);
+        return array_map(fn($x) => [
+            'id'    => $x['id'],
+            'ref'   => (string)$x['transfer_no'],
+            'date'  => substr((string)$x['transfer_date'], 0, 10),
+            'from'  => (string)$x['from_site'],
+            'to'    => (string)$x['to_site'],
+            'lines' => (int)$x['lines_count'],
+            'by'    => (string)$x['requested_by'],
+            'status'=> ucfirst(strtolower((string)$x['status'])),
+        ], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /** Transfer banayein aur stock foran hilao (single-step). */
+    public static function transferCreate(string $toSiteId, array $lines, string $notes = ''): array
+    {
+        if ($toSiteId === '' || $toSiteId === site_id()) {
+            throw new \RuntimeException('Choose a different branch to transfer to.');
+        }
+        $clean = [];
+        foreach ($lines as $l) {
+            $qty = (float)($l['qty'] ?? 0);
+            $item = (string)($l['item_id'] ?? '');
+            if ($item === '' || $qty <= 0) continue;
+            $clean[] = ['item_id' => $item, 'qty' => $qty];
+        }
+        if (!$clean) throw new \RuntimeException('Add at least one item with a quantity.');
+
+        return DB::tx(function (PDO $p) use ($toSiteId, $clean, $notes) {
+            $id = uuid();
+            $no = 'TR-' . date('ymd-His');
+            $p->prepare("INSERT INTO stock_transfers(id,tenant_id,from_site_id,to_site_id,transfer_no,
+                            transfer_date,status,requested_by_user_id,dispatched_at,received_at,notes)
+                         VALUES(?,?,?,?,?,CURDATE(),'RECEIVED',?,NOW(6),NOW(6),?)")
+              ->execute([$id, tenant_id(), site_id(), $toSiteId, $no,
+                         Auth::user()['id'] ?? null, $notes !== '' ? $notes : null]);
+
+            $out = []; $in = [];
+            foreach ($clean as $l) {
+                try {
+                    $p->prepare("INSERT INTO stock_transfer_items(id,transfer_id,inventory_item_id,
+                                    requested_qty,dispatched_qty,received_qty)
+                                 VALUES(?,?,?,?,?,?)")
+                      ->execute([uuid(), $id, $l['item_id'], $l['qty'], $l['qty'], $l['qty']]);
+                } catch (\Throwable $e) { /* items table optional */ }
+                $out[] = (object)['item_id'=>$l['item_id'],'location_id'=>null,'qty'=>-$l['qty'],'unit_cost'=>0,'source_order_item_id'=>null];
+                $in[]  = (object)['item_id'=>$l['item_id'],'location_id'=>null,'qty'=> $l['qty'],'unit_cost'=>0,'source_order_item_id'=>null];
+            }
+            /* Stock DONO taraf hilta hai — yehi wo cheez thi jo pehle
+               bilkul nahi hoti thi. */
+            InventoryService::postMovement($p,'TRANSFER_OUT','STOCK_TRANSFER',$id,$no,$out,Auth::user()['id']??null);
+            InventoryService::postMovement($p,'TRANSFER_IN','STOCK_TRANSFER',$id,$no,$in, Auth::user()['id']??null);
+
+            return ['id'=>$id,'ref'=>$no,'message'=>'Transfer '.$no.' completed - stock moved for '.count($clean).' item(s).'];
+        });
+    }
+
+    /* ==================== PHYSICAL STOCK COUNT ==================== */
+
+    public static function countList(int $limit = 40): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT cs.id, cs.count_no, cs.started_at, cs.completed_at, cs.status,
+                    COALESCE(sl.name,'-') AS location,
+                    COALESCE(u.full_name,'-') AS started_by,
+                    (SELECT COUNT(*) FROM stock_count_items i WHERE i.count_session_id = cs.id) AS lines_count
+               FROM stock_count_sessions cs
+               LEFT JOIN stock_locations sl ON sl.id = cs.stock_location_id
+               LEFT JOIN users u ON u.id = cs.started_by_user_id
+              WHERE cs.site_id = ? AND cs.deleted_at IS NULL
+              ORDER BY cs.started_at DESC LIMIT $limit");
+        $q->execute([site_id()]);
+        return array_map(fn($x) => [
+            'id'      => $x['id'],
+            'ref'     => (string)$x['count_no'],
+            'location'=> (string)$x['location'],
+            'started' => substr((string)$x['started_at'], 0, 16),
+            'done'    => $x['completed_at'] ? substr((string)$x['completed_at'], 0, 16) : '',
+            'lines'   => (int)$x['lines_count'],
+            'by'      => (string)$x['started_by'],
+            'status'  => ucfirst(strtolower((string)$x['status'])),
+        ], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /** System qty vs counted qty ka farq — aur us farq ka asli adjustment. */
+    public static function countPost(string $locationId, array $lines, string $note = ''): array
+    {
+        $clean = [];
+        foreach ($lines as $l) {
+            $item = (string)($l['item_id'] ?? '');
+            if ($item === '') continue;
+            $clean[] = ['item_id' => $item, 'counted' => (float)($l['counted'] ?? 0)];
+        }
+        if (!$clean) throw new \RuntimeException('Enter counted quantities first.');
+
+        return DB::tx(function (PDO $p) use ($locationId, $clean, $note) {
+            $id = uuid(); $no = 'SC-' . date('ymd-His');
+            $p->prepare("INSERT INTO stock_count_sessions(id,tenant_id,site_id,count_no,stock_location_id,
+                            started_at,completed_at,status,started_by_user_id)
+                         VALUES(?,?,?,?,?,NOW(6),NOW(6),'COMPLETED',?)")
+              ->execute([$id, tenant_id(), site_id(), $no, $locationId ?: null, Auth::user()['id'] ?? null]);
+
+            $moves = []; $diffs = 0;
+            foreach ($clean as $l) {
+                $bq = $p->prepare("SELECT COALESCE(SUM(qty_on_hand),0) FROM stock_balances
+                                    WHERE inventory_item_id=? AND site_id=?"
+                                 . ($locationId ? " AND stock_location_id=?" : ""));
+                $bq->execute($locationId ? [$l['item_id'], site_id(), $locationId] : [$l['item_id'], site_id()]);
+                $system = (float)$bq->fetchColumn();
+                $diff   = round($l['counted'] - $system, 3);
+                try {
+                    $p->prepare("INSERT INTO stock_count_items(id,count_session_id,inventory_item_id,
+                                    system_qty,physical_qty,variance_qty)
+                                 VALUES(?,?,?,?,?,?)")
+                      ->execute([uuid(), $id, $l['item_id'], $system, $l['counted'], $diff]);
+                } catch (\Throwable $e) {}
+                if (abs($diff) > 0.0001) {
+                    $diffs++;
+                    $moves[] = (object)['item_id'=>$l['item_id'],'location_id'=>$locationId ?: null,
+                                        'qty'=>$diff,'unit_cost'=>0,'source_order_item_id'=>null];
+                }
+            }
+            if ($moves) {
+                InventoryService::postMovement($p,'COUNT_ADJUST','STOCK_COUNT',$id,$no,$moves,Auth::user()['id']??null);
+            }
+            return ['id'=>$id,'ref'=>$no,'checked'=>count($clean),'adjusted'=>$diffs,
+                    'message'=>'Count '.$no.' posted - '.count($clean).' item(s) checked, '
+                              .$diffs.' adjusted to match the shelf.'];
+        });
+    }
+
+    /* ==================== ACCOUNTING / CASH ==================== */
+
+    public static function cashBook(string $from = '', string $to = ''): array
+    {
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) ? $from : date('Y-m-01');
+        $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)   ? $to   : date('Y-m-d');
+
+        $q = DB::pdo()->prepare(
+            "SELECT d, SUM(cash_in) cash_in, SUM(card_in) card_in, SUM(cash_out) cash_out FROM (
+                SELECT DATE(p.paid_at) d,
+                       SUM(CASE WHEN pm.method_type='CASH' THEN p.amount ELSE 0 END) cash_in,
+                       SUM(CASE WHEN pm.method_type<>'CASH' THEN p.amount ELSE 0 END) card_in,
+                       0 cash_out
+                  FROM payments p
+                  JOIN orders o ON o.id = p.order_id
+                  LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
+                 WHERE o.site_id=? AND p.status<>'CANCELLED' AND o.order_status<>'VOID'
+                   AND DATE(p.paid_at) BETWEEN ? AND ?
+                 GROUP BY d
+                UNION ALL
+                SELECT DATE(e.expense_date) d, 0, 0, SUM(e.amount)
+                  FROM expenses e
+                 WHERE e.site_id=? AND e.status<>'REJECTED' AND e.deleted_at IS NULL
+                   AND DATE(e.expense_date) BETWEEN ? AND ?
+                 GROUP BY d
+             ) x GROUP BY d ORDER BY d DESC");
+        $q->execute([site_id(), $from, $to, site_id(), $from, $to]);
+
+        $rows = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $rows[] = [
+                'date'     => (string)$r['d'],
+                'cash_in'  => (float)$r['cash_in'],
+                'card_in'  => (float)$r['card_in'],
+                'cash_out' => (float)$r['cash_out'],
+                'net'      => round((float)$r['cash_in'] + (float)$r['card_in'] - (float)$r['cash_out'], 2),
+            ];
+        }
+        return ['from' => $from, 'to' => $to, 'rows' => $rows];
+    }
+
+    /* ==================== ONLINE ORDERS ==================== */
+
+    public static function onlineOrders(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT o.id, o.bill_no, o.order_source, o.service_mode, o.order_status,
+                    o.grand_total, o.created_at,
+                    COALESCE(c.full_name,'Walk-in') AS customer, COALESCE(c.phone,'') AS phone,
+                    COALESCE(dl.delivery_status,'') AS delivery_status,
+                    COALESCE(rd.name,'') AS rider
+               FROM orders o
+               LEFT JOIN customers c        ON c.id = o.customer_id
+               LEFT JOIN delivery_orders dl ON dl.order_id = o.id
+               LEFT JOIN riders rd          ON rd.id = dl.rider_id
+              WHERE o.site_id = ?
+                AND (o.order_source <> 'POS' OR o.service_mode IN ('DELIVERY','QR'))
+                AND DATE(o.created_at) >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+              ORDER BY o.created_at DESC LIMIT 200");
+        $q->execute([site_id()]);
+        return array_map(fn($x) => [
+            'id'       => $x['id'],
+            'bill'     => (string)$x['bill_no'],
+            'source'   => (string)$x['order_source'],
+            'mode'     => (string)$x['service_mode'],
+            'customer' => (string)$x['customer'],
+            'phone'    => (string)$x['phone'],
+            'amount'   => (float)$x['grand_total'],
+            'status'   => (string)$x['order_status'],
+            'delivery' => (string)$x['delivery_status'],
+            'rider'    => (string)$x['rider'],
+            'at'       => substr((string)$x['created_at'], 0, 16),
+        ], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /* ==================== NOTIFICATIONS ==================== */
+
+    public static function notifications(int $limit = 200): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT id, channel, recipient, template_key, status, attempts,
+                    available_at, sent_at, last_error
+               FROM notification_queue
+              WHERE tenant_id=? AND site_id=?
+              ORDER BY COALESCE(sent_at, available_at) DESC LIMIT $limit");
+        $q->execute([tenant_id(), site_id()]);
+        return array_map(fn($x) => [
+            'id'        => $x['id'],
+            'channel'   => strtoupper((string)$x['channel']),
+            'to'        => (string)$x['recipient'],
+            'template'  => (string)$x['template_key'],
+            'status'    => ucfirst(strtolower((string)$x['status'])),
+            'attempts'  => (int)$x['attempts'],
+            'when'      => substr((string)($x['sent_at'] ?: $x['available_at']), 0, 16),
+            'error'     => (string)($x['last_error'] ?? ''),
+        ], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /* ==================== TABLET: HOLD BILLS ====================
+       Har dine-in table, us par khula bill, aur us bill ka abhi ka total.
+       Order taker ko yehi chahiye: "kis table par kitna ban gaya" —
+       taake customer ke poochne par foran bata sake. */
+
+    public static function tabletTables(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT dt.id, dt.display_name AS name, dt.seats,
+                    COALESCE(f.name,'Main Floor') AS floor,
+                    o.id AS order_id, o.bill_no, o.subtotal, o.grand_total,
+                    TIMESTAMPDIFF(MINUTE, COALESCE(o.opened_at,o.created_at), NOW()) AS mins,
+                    (SELECT COUNT(*)  FROM order_items oi WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS lines_count,
+                    (SELECT COALESCE(SUM(oi.qty*oi.unit_price),0) FROM order_items oi
+                      WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS running,
+                    (SELECT COALESCE(SUM(GREATEST(oi.qty-oi.sent_qty,0)),0) FROM order_items oi
+                      WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS unsent
+               FROM dining_tables dt
+               LEFT JOIN floors f ON f.id = dt.floor_id
+               LEFT JOIN orders o ON o.table_id = dt.id AND o.order_status='OPEN'
+              WHERE dt.tenant_id=? AND dt.site_id=? AND dt.deleted_at IS NULL AND dt.is_active=1
+              ORDER BY f.sort_order, dt.display_name");
+        $q->execute([tenant_id(), site_id()]);
+
+        return array_map(fn($x) => [
+            'id'       => $x['id'],
+            'name'     => (string)$x['name'],
+            'floor'    => (string)$x['floor'],
+            'seats'    => (int)$x['seats'],
+            'order_id' => (string)($x['order_id'] ?? ''),
+            'bill'     => (string)($x['bill_no'] ?? ''),
+            'items'    => (int)$x['lines_count'],
+            'running'  => (float)$x['running'],
+            'unsent'   => (float)$x['unsent'],
+            'mins'     => (int)($x['mins'] ?? 0),
+            'busy'     => !empty($x['order_id']),
+        ], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /** Ek khule bill ki poori tafseel — tablet par table kholne par. */
+    public static function tabletOrder(string $tableId): array
+    {
+        $p = DB::pdo();
+        $q = $p->prepare("SELECT id, bill_no FROM orders
+                           WHERE site_id=? AND table_id=? AND order_status='OPEN'
+                           ORDER BY created_at DESC LIMIT 1");
+        $q->execute([site_id(), $tableId]);
+        $o = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$o) return ['order_id' => '', 'bill' => '', 'items' => []];
+
+        $iq = $p->prepare(
+            "SELECT oi.id, oi.menu_item_id, oi.item_name_snapshot AS name,
+                    oi.qty, oi.sent_qty, oi.unit_price, oi.kitchen_note AS note
+               FROM order_items oi
+              WHERE oi.order_id=? AND oi.status='ACTIVE'
+              ORDER BY oi.created_at");
+        $iq->execute([$o['id']]);
+        return ['order_id' => $o['id'], 'bill' => (string)$o['bill_no'],
+                'items' => array_map(fn($x) => [
+                    'id'    => $x['id'],
+                    'menu_id' => (string)$x['menu_item_id'],
+                    'name'  => (string)$x['name'],
+                    'qty'   => (float)$x['qty'],
+                    'sent'  => (float)$x['sent_qty'],
+                    'price' => (float)$x['unit_price'],
+                    'note'  => (string)($x['note'] ?? ''),
+                ], $iq->fetchAll(PDO::FETCH_ASSOC))];
+    }
+
     /* ==================== VOID / REFUND ==================== */
 
     /** Void ho chuke bills + wo bills jo abhi void kiye ja sakte hain. */

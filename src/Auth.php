@@ -152,11 +152,24 @@ final class Auth {
         return true;
     }
 
+    /**
+     * Logout — magar business ka slug MEHFOOZ rakho.
+     *
+     * Pehle yahan poori session uda di jati thi, jis mein
+     * `login_tenant_slug` bhi chala jata tha. Nateeja: login ke waqt URL
+     * `login.html?b=akorwal-fish-point` hota tha, magar logout ke baad
+     * sirf `login.html` reh jata tha — customer apne business ke login
+     * par wapas hi nahi pohanchta tha, aur uska branding/menu bhi nahi
+     * aata tha. Yeh sirf khaali "kaunsa business" ka nishan hai, koi
+     * hifazati cheez nahi, is liye ise rakhna bilkul mehfooz hai.
+     */
     public static function logout(): void {
+        $slug = (string)($_SESSION['login_tenant_slug'] ?? '');
         $_SESSION = [];
         if (session_status() === PHP_SESSION_ACTIVE) {
-            @session_destroy();
+            @session_regenerate_id(true);   // session id nayi, cookie zinda
         }
+        if ($slug !== '') $_SESSION['login_tenant_slug'] = $slug;
     }
 
     public static function requireLogin(): void {

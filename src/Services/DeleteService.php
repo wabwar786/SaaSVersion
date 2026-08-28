@@ -223,7 +223,36 @@ final class DeleteService
             'deps' => [], 'kids' => [],
         ],
 
-        /* --- generic UI records (staff, riders, promotions, reservations...) --- */
+        'promotion' => [
+            'label' => 'Promotion', 'table' => 'promotions', 'scope' => 'site',
+            'name' => 'name', 'soft' => 'deleted_at', 'active' => 'is_active',
+            'module' => 'promotions', 'form' => 'promotions',
+            'deps' => [], 'kids' => [],
+        ],
+        'reservation' => [
+            'label' => 'Reservation', 'table' => 'reservations', 'scope' => 'site',
+            'name' => 'guest_name', 'soft' => 'deleted_at', 'active' => null,
+            'module' => 'reservations', 'form' => 'reservations',
+            'deps' => [], 'kids' => [],
+        ],
+        'rider' => [
+            'label' => 'Rider', 'table' => 'riders', 'scope' => 'site',
+            'name' => 'name', 'soft' => 'deleted_at', 'active' => null,
+            'module' => 'riders', 'form' => 'riders',
+            'deps' => [
+                ['sql' => "SELECT COUNT(*) FROM delivery_orders WHERE rider_id=? AND delivery_status IN ('ASSIGNED','PICKED_UP')",
+                 'msg' => 'this rider has {n} delivery(s) still out'],
+            ],
+            'kids' => [],
+        ],
+        'staff' => [
+            'label' => 'Staff member', 'table' => 'employee_profiles', 'scope' => 'site',
+            'name' => 'full_name', 'soft' => 'deleted_at', 'active' => null,
+            'module' => 'staff', 'form' => 'employee_profiles',
+            'deps' => [], 'kids' => [],
+        ],
+
+        /* --- generic UI records --- */
         'ui_record' => [
             'label' => 'Record', 'table' => 'ui_records', 'scope' => 'tenant',
             'name' => 'module_key', 'soft' => 'deleted_flag', 'active' => null,

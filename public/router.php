@@ -59,7 +59,7 @@ try{
 }catch(\Throwable $e){}
 
 $head='<script src="/ui_state_reset.js?b=v14"></script>'
-     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';</script>'
+     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';window.APP_ROLE='.json_encode((string)($GLOBALS['config']['app']['role']??'local')).';</script>'
      .'<script src="/db_api.js?b=v14"></script>'
      /* V62 — delete confirm har page par available hona is required (POS samet),
         warna har screen apna alag adhoora delete likhti hai. */
@@ -88,11 +88,15 @@ if(!in_array($name,$publicPages,true)){
 }
 
 // restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.
-if($name==='restaurant_order_taker_tablet.html')$tail.='<script src="/order_taker_db.js?b=v17"></script>';
+/* V72 — tablet page ab khud DB par hai; `order_taker_db.js` us purani
+   screen ke liye tha jo hardcoded PRODUCTS use karti thi. Ab zaroorat
+   nahi — do jagah se data bharne se dono ek doosre par likhte the. */
 // V70 — KDS ab asli kitchen_tickets par (pehle hardcoded demo orders the).
 if($name==='kds.html')$tail.='<script src="/kds_db.js?b=v70"></script>';
 // V70 — Shift / Running Orders / Void ab asli tables par (pehle ui_records).
-if(in_array($name,['shift_management.html','orders_management.html','void_refund.html'],true))
+if(in_array($name,['shift_management.html','orders_management.html','void_refund.html',
+                   'stock_transfer.html','stock_count.html','accounting.html',
+                   'online_orders.html','whatsapp_notifications.html'],true))
   $tail.='<script src="/ops_db.js?b=v70"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.

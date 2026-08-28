@@ -86,6 +86,7 @@
   html+='</nav>';
   html+='<div class="side-foot"><div class="side-avatar" id="sideAvatar">'+initials(user.name)+'</div>'+
         '<div class="who"><b id="sideUserName">'+esc(user.name)+'</b><span id="sideUserRole">'+esc(user.role||'User')+'</span></div>'+
+        '<button class="logout" id="shellGuide" title="How this screen works">?</button>'+
         '<button class="logout" id="shellSupport" title="Support">&#9993;</button>'+
         '<button class="logout" id="shellLogout" title="Sign out">&#9211;</button></div>';
 
@@ -147,6 +148,46 @@
       if(e.key==='Escape'){ov.remove();document.removeEventListener('keydown',k);}
     });
   }
+  /* ---------- Guide (V72) ----------
+     Har page par ek "?" button. Guide server se aati hai (Guide.php),
+     is liye har module ki madad ek hi jagah likhi hai aur screen ke
+     saath purani nahi parti. */
+  function openGuide(){
+    var mod=(document.currentScript&&document.currentScript.dataset.active)||window.__ACTIVE_MODULE||'';
+    if(!mod){var sc=document.querySelector('script[data-active]'); if(sc)mod=sc.getAttribute('data-active')||'';}
+    var g=null;
+    try{ if(window.DBApi){var r=DBApi.req('guide&module='+encodeURIComponent(mod)); if(r&&r.ok)g=r.guide;} }catch(e){}
+    if(!g){ if(window.openSupport)openSupport(); return; }
+
+    function block(title,arr,cls){
+      if(!arr||!arr.length)return '';
+      return '<div style="margin-top:14px"><div style="font-size:10.5px;letter-spacing:.06em;'
+        +'text-transform:uppercase;color:var(--muted);margin-bottom:6px">'+title+'</div>'
+        +'<ol style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.65'
+        +(cls==='warn'?';color:var(--danger)':'')+'">'
+        + arr.map(function(x){return '<li style="margin-bottom:5px">'+esc(x)+'</li>'}).join('')
+        +'</ol></div>';
+    }
+    var ov=document.createElement('div'); ov.className='modal show';
+    ov.innerHTML='<div class="dialog" style="width:min(560px,95vw);max-height:88vh;display:flex;flex-direction:column">'
+      +'<div class="dialog-head"><div><h3>'+esc(g.title)+'</h3><p>How this screen works</p></div>'
+      +'<button class="close" data-gx>&times;</button></div>'
+      +'<div class="dialog-body" style="overflow:auto">'
+      +'<p style="font-size:13px;margin:0">'+esc(g.what)+'</p>'
+      + block('Getting started', g.steps, '')
+      + block('Good to know', g.tips, '')
+      + block('Be careful', g.warn, 'warn')
+      +'</div>'
+      +'<div class="dialog-foot"><button class="btn" data-gx>Close</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){
+      if(e.target===ov||e.target.closest('[data-gx]')) ov.remove();
+    });
+  }
+  window.openGuide=openGuide;
+  var gb=document.getElementById('shellGuide');
+  if(gb) gb.onclick=openGuide;
+
   var sup=document.getElementById('shellSupport');
   if(sup) sup.onclick=openSupport;
   window.openSupport=openSupport;
@@ -186,7 +227,17 @@
   if(mb) mb.onclick=function(){document.body.classList.toggle('nav-open');};
   scrim.onclick=close;
   var lo=document.getElementById('shellLogout');
-  if(lo) lo.onclick=function(){ try{RestaurantAccess.logout();}catch(e){} location.href='login.html'; };
+  if(lo) lo.onclick=function(){
+    /* Logout ke baad usi business ke login par wapas — warna customer
+       ko har baar apna business dhoondna parta hai aur branding bhi
+       nahi aati. Slug server session mein mehfooz rehta hai. */
+    var to='login.html';
+    try{
+      if(window.DBApi){ var r=DBApi.req('logout',{}); if(r&&r.redirect)to=r.redirect; }
+    }catch(e){}
+    try{RestaurantAccess.logout();}catch(e){}
+    location.href=to;
+  };
   window.addEventListener('resize',function(){ if(innerWidth>1000) close(); });
 })();
 

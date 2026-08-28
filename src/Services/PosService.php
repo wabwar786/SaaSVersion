@@ -31,10 +31,40 @@ final class PosService {
         } catch (\Throwable $e) { return null; }
     }
 
+ /**
+  * V72 — HOLD: bill khula rakho, kitchen ko kuch mat bhejo.
+  * Tablet ka order taker items punch karta hai aur bill table par
+  * "hold" rehta hai; kitchen tab jata hai jab wo Send dabata hai.
+  * Pehle hold ka koi server-side rasta tha hi nahi.
+  */
+ public static function hold(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){
+    $order=self::ensureOpenOrder($p,$d);
+    $n=0; foreach($items as $i){ self::upsertOrderItem($p,$order,$i); $n++; }
+    self::queueSync($p,'orders',$order,'UPDATE');
+    return ['order_id'=>$order,'held'=>$n];
+ }); }
+
  public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}if(!$pending)return ['order_id'=>$order,'sent'=>0];$groups=[];foreach($pending as $x){$pr=self::printerForMenu($p,$x['row']['menu_item_id']);if(!$pr)continue;$groups[$pr['id']]['printer']=$pr;$groups[$pr['id']]['items'][]=$x;} $sent=0;foreach($groups as $g){$kt=uuid();$ticket='KOT-'.strtoupper(substr(str_replace('-','',$kt),0,8));$p->prepare("INSERT INTO kitchen_tickets(id,tenant_id,site_id,order_id,ticket_no,printer_id,station_code,ticket_status,sent_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,'NEW',NOW(6),?)")->execute([$kt,tenant_id(),site_id(),$order,$ticket,$g['printer']['id'],$g['printer']['station_code'],current_user()['id']??null]);$lines=[];foreach($g['items'] as $x){$p->prepare("INSERT INTO kitchen_ticket_items(id,kitchen_ticket_id,order_item_id,qty_sent,item_status,note_snapshot) VALUES(?,?,?,?, 'NEW',?)")->execute([uuid(),$kt,$x['row']['id'],$x['pending'],$x['row']['kitchen_note']]);$p->prepare("UPDATE order_items SET sent_qty=qty,updated_at=NOW(6) WHERE id=?")->execute([$x['row']['id']]);$lines[]=$x['pending'].' x '.$x['row']['item_name_snapshot'];$sent++;}$payload=$ticket."\n".implode("\n",$lines);$p->prepare("INSERT INTO printer_jobs(id,tenant_id,site_id,printer_id,job_type,reference_type,reference_id,payload_text,status) VALUES(?,?,?,?, 'KOT','KITCHEN_TICKET',?,?, 'PENDING')")->execute([uuid(),tenant_id(),site_id(),$g['printer']['id'],$kt,$payload]);}self::queueSync($p,'orders',$order,'UPDATE');return ['order_id'=>$order,'sent'=>$sent];}); }
  public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$tax=(float)($d['tax_amount']??0);$grand=$subtotal-$discount+$service+$tax;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
   $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$items);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
  private static function ensureOpenOrder(PDO $p,array $d):string{
+    /* V72 — TABLET table se kaam karta hai, bill number se nahi.
+       Pehle yahan `$d['bill_no']` lazmi tha; khali aane par khali bill
+       number wala order ban jata tha. Ab: bill_no na ho to us table ka
+       khula bill dhoondo, aur wo bhi na ho to naya number khud banao. */
+    if (trim((string)($d['bill_no'] ?? '')) === '') {
+        $tid = (string)($d['table_id'] ?? '');
+        if ($tid !== '') {
+            $q0 = $p->prepare("SELECT bill_no FROM orders
+                                WHERE site_id=? AND table_id=? AND order_status='OPEN'
+                                ORDER BY created_at DESC LIMIT 1");
+            $q0->execute([site_id(), $tid]);
+            $d['bill_no'] = (string)($q0->fetchColumn() ?: '');
+        }
+        if (trim((string)($d['bill_no'] ?? '')) === '') {
+            $d['bill_no'] = PageData::billPrefix() . str_pad((string)PageData::nextBill(), 4, '0', STR_PAD_LEFT);
+        }
+    }
     $bill=ltrim((string)$d['bill_no'],'#');
     $q=$p->prepare("SELECT id FROM orders WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1 FOR UPDATE");
     $q->execute([site_id(),today(),$bill]);$id=$q->fetchColumn();
@@ -101,7 +131,16 @@ final class PosService {
             $iq=$p->prepare("SELECT inventory_item_id,qty_per_yield,waste_pct FROM recipe_ingredients WHERE recipe_id=?");
             $iq->execute([$menu['recipe_id']]);$snap=$iq->fetchAll();
         }
-        $p->prepare("INSERT INTO order_items(id,tenant_id,site_id,order_id,menu_item_id,item_name_snapshot,qty,sent_qty,unit_price,line_total,kitchen_note,recipe_id_snapshot,recipe_version_snapshot,recipe_snapshot_json,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ACTIVE')")->execute([$id,tenant_id(),site_id(),$order,$mid,$name,$qty,0,$rate,$qty*$rate,$note,$menu['recipe_id']?:null,$menu['version_no']?:null,$snap?json_encode($snap):null]);
+        /* V72 — kis device/user ne yeh item daali. Ek hi table par kai order
+           takers kaam karte hain; iske baghair yeh jaanne ka koi rasta nahi
+           ke kis ne kya punch kiya. Column purane DB par na ho to insert
+           bina uske chalta rahe — migration ke intezar mein POS nahi ruk sakta. */
+        $dev=(string)($_SESSION['device_id']??'');$uid=current_user()['id']??null;
+        try{
+            $p->prepare("INSERT INTO order_items(id,tenant_id,site_id,order_id,menu_item_id,item_name_snapshot,qty,sent_qty,unit_price,line_total,kitchen_note,recipe_id_snapshot,recipe_version_snapshot,recipe_snapshot_json,device_id,created_by_user_id,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ACTIVE')")->execute([$id,tenant_id(),site_id(),$order,$mid,$name,$qty,0,$rate,$qty*$rate,$note,$menu['recipe_id']?:null,$menu['version_no']?:null,$snap?json_encode($snap):null,$dev?:null,$uid]);
+        }catch(\Throwable $e){
+            $p->prepare("INSERT INTO order_items(id,tenant_id,site_id,order_id,menu_item_id,item_name_snapshot,qty,sent_qty,unit_price,line_total,kitchen_note,recipe_id_snapshot,recipe_version_snapshot,recipe_snapshot_json,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ACTIVE')")->execute([$id,tenant_id(),site_id(),$order,$mid,$name,$qty,0,$rate,$qty*$rate,$note,$menu['recipe_id']?:null,$menu['version_no']?:null,$snap?json_encode($snap):null]);
+        }
     }
     $row=$p->prepare("SELECT * FROM order_items WHERE id=?");$row->execute([$id]);return$row->fetch();
  }

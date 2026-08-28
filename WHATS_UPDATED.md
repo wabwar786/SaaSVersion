@@ -3618,3 +3618,173 @@ Doosre pass mein: **12 queries, 0 problems.**
 **NahI chala:** yeh sab asli data par (MySQL sandbox mein start nahi
 hota). Column names verify ho chuke hain; natije ki tasdeeq aap ke
 data par hogi.
+
+---
+
+# V71 — Baqi saare shell modules asli tables par
+
+V70 mein char kiye the. Ab baqi bhi. Kisi bhi module ka data ab
+`ui_records` mein nahi jata.
+
+## Kya kaha se aata hai (ab)
+
+| Module | Asli table |
+|---|---|
+| Discounts / Promotions | `promotions` (+ rules JSON) |
+| Reservations | `reservations` |
+| Rider Management | `riders` + live jobs `delivery_orders` se |
+| Staff | `employee_profiles` + login ka link `users` se |
+| Multi-Branch | `sites` + har branch ki aaj ki sale |
+| Loyalty / Membership | `customers` + asli visits/spend |
+| Stock Transfer | `stock_transfers` + **dono taraf asli stock movement** |
+| Physical Stock Count | `stock_count_sessions` + **farq ka asli adjustment** |
+| Accounting / Cash | `payments` + `expenses` — rozana cash book |
+| Online Orders | `orders` (delivery + QR) + rider |
+| WhatsApp / Notifications | `notification_queue` — kya gaya, kya fail hua |
+
+## Do jagah jahan sirf list kaafi nahi thi
+
+**Stock Transfer.** Pehle transfer banayein to **stock hilta hi nahi
+tha**. Ab `InventoryService::postMovement()` dono taraf chalta hai —
+bhejne wali branch se minus, lene wali mein plus, ek transaction mein.
+
+**Physical Stock Count.** Ab system qty aur counted qty ka farq nikal
+kar **asli adjustment** post hota hai. Yani count karne ka matlab yeh
+hai ke stock waqai shelf ke barabar ho jata hai — pehle sirf ek record
+banta tha aur stock jaisa tha waisa hi rehta tha.
+
+## Loyalty — koi alag table nahi
+
+Tier aur points customer ke **asli kharch** se bante hain
+(`orders` se), kisi alag table se nahi. Faida: yeh hamesha sach hota hai
+aur purana nahi parta. Gold 100k+, Silver 30k+, points = spend / 100.
+
+## Staff aur login jaan-boojh kar alag
+
+Staff page sirf employee record rakhta hai. **Login banana Users &
+Access ka kaam hai.** Do jagah login banane se roles ka nizam toot jata
+hai aur yeh pata nahi chalta ke kis ke paas kya ijazat hai.
+
+## Testing — teen asli bug pakre gaye
+
+121 queries schema ke khilaf column-by-column verify kiye (7 services).
+
+    stock_transfer_items.stock_transfer_id  -> asli naam `transfer_id`
+    stock_count_items.stock_count_session_id-> asli naam `count_session_id`
+                       .counted_qty         -> asli naam `physical_qty`
+    FiscalService: payments.created_at      -> asli naam `paid_at`
+
+Aakhri wala ahem hai: **wahi bug FiscalService mein bhi tha** jo V70
+mein OpsService mein mila tha. Yani FBR submission ka payment-mode
+lookup hamesha fail ho raha hota (aur tax rate ghalat ja sakta tha).
+Ab dono jagah theek.
+
+Aakhri pass: **0 problems in 121 queries**.
+
+    php -l  (har PHP file)                -> 0 errors
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+
+## Audit ka natija
+
+| Halat | V69 | Ab |
+|---|---|---|
+| WORKING | 14 | **30** |
+| PARTIAL | 4 | 4 |
+| SHELL | 15 | **0** |
+| DEMO | 2 | 2 |
+
+---
+
+# V72 — Logout link, tablet rework, guides, custom reports
+
+## 1. Logout ke baad business ka link gum ho jata tha
+
+Login: `login.html?b=akorwal-fish-point` — customer seedha apne business
+par. Logout ke baad: sirf `login.html`.
+
+**Wajah:** `Auth::logout()` poori session uda deta tha, jis mein
+`login_tenant_slug` bhi chala jata tha.
+
+Ab logout sirf session **badalta** hai (`session_regenerate_id`), aur
+slug wapas rakh deta hai. Yeh sirf "kaunsa business" ka nishan hai, koi
+hifazati cheez nahi — is liye ise rakhna bilkul mehfooz hai. `logout`
+endpoint ab wahi link wapas deta hai aur shell usi par bhejta hai.
+
+## 2. Tablet screen dobara likhi gayi
+
+**Left rail hata diya.** Order taker sirf order leta hai — usay modules
+ke icons ki zaroorat hi nahi.
+
+**HOLD BILLS ab asli hai.** Screen khulti hi tables ke grid par: har
+dine-in table, us par khula bill, kitne items, kitni der se, aur
+**ab tak ka total** — taake customer ke poochne par foran bata sake.
+Jis table par kuch bina bheje para ho us par "not sent" ka nishan.
+
+**Koi bhi order taker, koi bhi table.** Table kholte hi **poora bill**
+aata hai, sirf apni entries nahi — warna teen waiters ek hi table par
+kaam karein to kisi ko poora total pata hi na chale.
+
+**Kis tablet ne kya punch kiya** — `order_items.device_id` aur
+`created_by_user_id` naye columns. Pehle `orders.device_id` tha magar
+item level par kuch nahi tha, is liye jhagre ka koi hal nahi tha.
+
+**Cash / Card toggle** — total foran badalta hai (`tax_cash` vs
+`tax_card`), taake customer ko theek raqam batayi ja sake.
+
+**Design POS jaisa** aur poora responsive: mobile par cart neeche se
+uthta hai, safe-area ka khayal, tap targets 36px+.
+
+Naya `pos-hold` endpoint — bill khula rehta hai, kitchen ko kuch nahi
+jata. Pehle hold ka server-side rasta tha hi nahi.
+
+`ensureOpenOrder()` ab table se bhi kaam karta hai — pehle `bill_no`
+lazmi tha aur khali aane par khali bill number wala order ban jata tha.
+
+## 3. Offline-only cheezein cloud par chhupi
+
+`window.APP_ROLE` ab har page ko maloom hai. POS par "Connect a tablet"
+cloud par nazar hi nahi aata — tablet aur printers LAN par hote hain.
+Button dikha kar phir "yeh yahan nahi chalta" kehna customer ka waqt
+zaya karna hai.
+
+## 4. Har module ki guide — `Guide.php`
+
+**33 modules** ki tafseeli rehnumai, software ke andar. Sidebar mein
+naya **?** button. Har guide ek hi shakl mein:
+
+    What    — module karta kya hai
+    Steps   — pehli dafa kya karna hai, tarteeb se
+    Tips    — wo baatein jo baad mein pata chalti hain
+    Careful — wo ghaltiyan jo waqai nuqsan deti hain
+
+Misal (Shift): *"Count first, then enter — do not look at the expected
+figure first."* Misal (POS): *"Items already sent to the kitchen cannot
+simply be reduced."*
+
+Guide server se aati hai, is liye ek hi jagah likhi hai aur screen ke
+saath purani nahi parti.
+
+## 5. Custom report builder
+
+Customer apni marzi ki report bana sake — **magar SQL likhe baghair**.
+
+Khula SQL dena khatarnak hai (ek galti aur poora data jal jaye). Is liye
+ek mehdood, mehfooz builder: teen data sources (Sales, Items sold,
+Expenses), har ek ki apni grouping (day / month / hour / weekday /
+cashier / table / customer / item / category) aur figures (bills, sales,
+tax, discount, average bill, quantity...).
+
+**User ka koi harf SQL mein nahi jata** — sab kuch server ki registry se
+banta hai. Reports list mein "Your own > Custom report".
+
+## Testing
+
+    php -l  (har PHP file)                -> 0 errors
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+    SQL schema check: 321 queries         -> 0 real problems
+      (23 flags sab `sync_tombstones` par, jo migration se banti hai)
+
+**NahI chala:** asli tablet par (WiFi + device chahiye), asli printer,
+aur MySQL (sandbox mein start nahi hota).

@@ -16,7 +16,10 @@ use PDO;
  */
 final class ModuleBridge
 {
-    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu', 'tables', 'printers'];
+    public const MODULES = ['customers', 'suppliers', 'expenses', 'wastage', 'menu', 'tables', 'printers',
+                            /* V71 — yeh sab pehle `ui_records` mein likhte the: screen bharti
+                               thi magar data POS/stock/reports kisi se juda nahi tha. */
+                            'promotions', 'reservations', 'riders', 'staff', 'branches', 'loyalty'];
 
     /**
      * UI module -> DeleteService entity.
@@ -32,6 +35,10 @@ final class ModuleBridge
         'wastage'   => 'wastage',
         'tables'    => 'table',
         'printers'  => 'printer',
+        'promotions'=> 'promotion',
+        'reservations'=>'reservation',
+        'riders'    => 'rider',
+        'staff'     => 'staff',
     ];
 
     public static function handles(string $module): bool
@@ -51,6 +58,12 @@ final class ModuleBridge
             'menu'      => self::listMenu(),
             'tables'    => self::listTables(),
             'printers'  => self::listPrinters(),
+            'promotions'=> self::listPromotions(),
+            'reservations'=>self::listReservations(),
+            'riders'    => self::listRiders(),
+            'staff'     => self::listStaff(),
+            'branches'  => self::listBranches(),
+            'loyalty'   => self::listLoyalty(),
             default     => [],
         };
     }
@@ -68,6 +81,10 @@ final class ModuleBridge
             'menu'      => self::saveMenu($id, $d),
             'tables'    => self::saveTable($id, $d),
             'printers'  => self::savePrinter($id, $d),
+            'promotions'=> self::savePromotion($id, $d),
+            'reservations'=>self::saveReservation($id, $d),
+            'riders'    => self::saveRider($id, $d),
+            'staff'     => self::saveStaff($id, $d),
             default     => throw new \RuntimeException('Unsupported module: '.$module),
         };
     }
@@ -152,6 +169,290 @@ final class ModuleBridge
                      VALUES(?,?,?,?,?,?,?,'SQUARE',?,1)")
           ->execute([$id, tenant_id(), site_id(), $fid, $code, $name, $seats, $status]);
         return $id;
+    }
+
+    /* =====================================================================
+       V71 — pehle yeh sab `ui_records` mein likhte the.
+       Screen bharti thi aur data bhi bacha rehta tha, MAGAR kisi asli
+       cheez se juda nahi tha: promotion banayein to POS ko pata nahi
+       chalta tha, rider assign karein to delivery ko pata nahi chalta
+       tha, staff banayein to login nahi banta tha. Ab asli tables par.
+       ===================================================================== */
+
+    /* ------------------------- promotions ------------------------- */
+
+    private static function listPromotions(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT id, name, promotion_type, code, starts_at, ends_at, rules_json, is_active
+               FROM promotions
+              WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL
+              ORDER BY is_active DESC, starts_at DESC");
+        $q->execute([tenant_id(), site_id()]);
+        $types = ['PERCENT'=>'Percent off','AMOUNT'=>'Amount off','BOGO'=>'Buy one get one','COMBO'=>'Combo deal'];
+        return array_map(function ($x) use ($types) {
+            $r = json_decode((string)($x['rules_json'] ?? ''), true) ?: [];
+            $now = date('Y-m-d H:i:s');
+            $live = ((int)$x['is_active'] === 1)
+                 && (!$x['starts_at'] || $x['starts_at'] <= $now)
+                 && (!$x['ends_at']   || $x['ends_at']   >= $now);
+            return [
+                'id'    => $x['id'],
+                'name'  => (string)$x['name'],
+                'type'  => $types[strtoupper((string)$x['promotion_type'])] ?? (string)$x['promotion_type'],
+                'code'  => (string)($x['code'] ?? ''),
+                'value' => (float)($r['value'] ?? 0),
+                'min'   => (float)($r['min_bill'] ?? 0),
+                'from'  => substr((string)($x['starts_at'] ?? ''), 0, 10),
+                'to'    => substr((string)($x['ends_at'] ?? ''), 0, 10),
+                'status'=> $live ? 'Live' : ((int)$x['is_active'] === 1 ? 'Scheduled' : 'Inactive'),
+            ];
+        }, $q->fetchAll());
+    }
+
+    private static function savePromotion(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Promotion name is required');
+
+        $types = ['Percent off'=>'PERCENT','Amount off'=>'AMOUNT','Buy one get one'=>'BOGO','Combo deal'=>'COMBO'];
+        $type  = $types[(string)($d['type'] ?? '')] ?? 'PERCENT';
+        $val   = (float)($d['value'] ?? 0);
+        if ($type === 'PERCENT' && ($val <= 0 || $val > 100)) {
+            throw new \RuntimeException('Percent discount must be between 0 and 100.');
+        }
+        $rules = json_encode(['value' => $val, 'min_bill' => (float)($d['min'] ?? 0)]);
+        $from  = trim((string)($d['from'] ?? '')) ?: null;
+        $to    = trim((string)($d['to'] ?? '')) ?: null;
+        if ($from && $to && $from > $to) throw new \RuntimeException('The end date is before the start date.');
+        $act   = (string)($d['status'] ?? 'Live') === 'Inactive' ? 0 : 1;
+        $code  = strtoupper(trim((string)($d['code'] ?? ''))) ?: null;
+
+        if ($id !== '') {
+            $p->prepare("UPDATE promotions SET name=?,promotion_type=?,code=?,starts_at=?,ends_at=?,
+                                rules_json=?,is_active=?,updated_at=NOW(6)
+                          WHERE id=? AND tenant_id=? AND site_id=?")
+              ->execute([$name,$type,$code,$from,$to,$rules,$act,$id,tenant_id(),site_id()]);
+            return $id;
+        }
+        $id = uuid();
+        $p->prepare("INSERT INTO promotions(id,tenant_id,site_id,name,promotion_type,code,starts_at,ends_at,rules_json,is_active)
+                     VALUES(?,?,?,?,?,?,?,?,?,?)")
+          ->execute([$id,tenant_id(),site_id(),$name,$type,$code,$from,$to,$rules,$act]);
+        return $id;
+    }
+
+    /* ------------------------- reservations ------------------------- */
+
+    private static function listReservations(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT r.id, r.reservation_no, r.guest_name, r.guest_phone, r.reservation_at,
+                    r.guest_count, r.deposit_amount, r.status, r.notes
+               FROM reservations r
+              WHERE r.tenant_id=? AND r.site_id=? AND r.deleted_at IS NULL
+                AND r.reservation_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+              ORDER BY r.reservation_at");
+        $q->execute([tenant_id(), site_id()]);
+        return array_map(fn($x) => [
+            'id'      => $x['id'],
+            'ref'     => (string)$x['reservation_no'],
+            'name'    => (string)$x['guest_name'],
+            'phone'   => (string)($x['guest_phone'] ?? ''),
+            'when'    => substr((string)$x['reservation_at'], 0, 16),
+            'guests'  => (int)$x['guest_count'],
+            'deposit' => (float)$x['deposit_amount'],
+            'status'  => ucfirst(strtolower((string)$x['status'])),
+            'notes'   => (string)($x['notes'] ?? ''),
+        ], $q->fetchAll());
+    }
+
+    private static function saveReservation(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Guest name is required');
+        $when = trim((string)($d['when'] ?? ''));
+        if ($when === '') throw new \RuntimeException('Reservation date and time are required');
+        $when = str_replace('T', ' ', $when);
+        if (strlen($when) === 16) $when .= ':00';
+
+        $status = strtoupper((string)($d['status'] ?? 'Booked'));
+        if (!in_array($status, ['BOOKED','SEATED','CANCELLED','NO_SHOW'], true)) $status = 'BOOKED';
+
+        if ($id !== '') {
+            $p->prepare("UPDATE reservations SET guest_name=?,guest_phone=?,reservation_at=?,guest_count=?,
+                                deposit_amount=?,status=?,notes=?,updated_at=NOW(6)
+                          WHERE id=? AND tenant_id=? AND site_id=?")
+              ->execute([$name,(string)($d['phone']??''),$when,max(1,(int)($d['guests']??2)),
+                         (float)($d['deposit']??0),$status,(string)($d['notes']??''),$id,tenant_id(),site_id()]);
+            return $id;
+        }
+        $id = uuid();
+        $p->prepare("INSERT INTO reservations(id,tenant_id,site_id,reservation_no,guest_name,guest_phone,
+                        reservation_at,guest_count,deposit_amount,status,notes)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+          ->execute([$id,tenant_id(),site_id(),'RS-'.date('ymd-His'),$name,(string)($d['phone']??''),
+                     $when,max(1,(int)($d['guests']??2)),(float)($d['deposit']??0),$status,(string)($d['notes']??'')]);
+        return $id;
+    }
+
+    /* ------------------------- riders ------------------------- */
+
+    private static function listRiders(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT r.id, r.name, r.phone, r.vehicle_no, r.status, r.cash_held,
+                    (SELECT COUNT(*) FROM delivery_orders d
+                      WHERE d.rider_id = r.id AND d.delivery_status IN ('ASSIGNED','PICKED_UP')) AS active_jobs,
+                    (SELECT COUNT(*) FROM delivery_orders d
+                      WHERE d.rider_id = r.id AND DATE(d.delivered_at) = CURDATE()) AS today_done
+               FROM riders r
+              WHERE r.tenant_id=? AND r.site_id=? AND r.deleted_at IS NULL
+              ORDER BY r.name");
+        $q->execute([tenant_id(), site_id()]);
+        return array_map(fn($x) => [
+            'id'       => $x['id'],
+            'name'     => (string)$x['name'],
+            'phone'    => (string)($x['phone'] ?? ''),
+            'vehicle'  => (string)($x['vehicle_no'] ?? ''),
+            'active'   => (int)$x['active_jobs'],
+            'today'    => (int)$x['today_done'],
+            'cash'     => (float)$x['cash_held'],
+            'status'   => ucfirst(strtolower((string)$x['status'])),
+        ], $q->fetchAll());
+    }
+
+    private static function saveRider(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Rider name is required');
+        $status = strtoupper((string)($d['status'] ?? 'Available'));
+        if (!in_array($status, ['AVAILABLE','BUSY','OFF'], true)) $status = 'AVAILABLE';
+
+        if ($id !== '') {
+            $p->prepare("UPDATE riders SET name=?,phone=?,vehicle_no=?,status=?,updated_at=NOW(6)
+                          WHERE id=? AND tenant_id=? AND site_id=?")
+              ->execute([$name,(string)($d['phone']??''),(string)($d['vehicle']??''),$status,$id,tenant_id(),site_id()]);
+            return $id;
+        }
+        $id = uuid();
+        $p->prepare("INSERT INTO riders(id,tenant_id,site_id,name,phone,vehicle_no,status,cash_held)
+                     VALUES(?,?,?,?,?,?,?,0)")
+          ->execute([$id,tenant_id(),site_id(),$name,(string)($d['phone']??''),(string)($d['vehicle']??''),$status]);
+        return $id;
+    }
+
+    /* ------------------------- staff ------------------------- */
+
+    private static function listStaff(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT ep.id, ep.employee_no, ep.full_name, ep.job_title, ep.employment_status, ep.hire_date,
+                    COALESCE(r.name,'-') AS role_name,
+                    CASE WHEN u.id IS NULL THEN 'No' ELSE 'Yes' END AS has_login
+               FROM employee_profiles ep
+               LEFT JOIN users u      ON u.id = ep.user_id AND u.deleted_at IS NULL
+               LEFT JOIN user_roles ur ON ur.user_id = u.id
+               LEFT JOIN roles r      ON r.id = ur.role_id
+              WHERE ep.tenant_id=? AND ep.site_id=?
+              GROUP BY ep.id
+              ORDER BY ep.full_name");
+        $q->execute([tenant_id(), site_id()]);
+        return array_map(fn($x) => [
+            'id'     => $x['id'],
+            'code'   => (string)($x['employee_no'] ?? ''),
+            'name'   => (string)$x['full_name'],
+            'role'   => (string)$x['job_title'] ?: (string)$x['role_name'],
+            'login'  => (string)$x['has_login'],
+            'joined' => substr((string)($x['hire_date'] ?? ''), 0, 10),
+            'status' => ucfirst(strtolower((string)$x['employment_status'])),
+        ], $q->fetchAll());
+    }
+
+    private static function saveStaff(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Staff name is required');
+        $status = strtoupper((string)($d['status'] ?? 'Active'));
+        if (!in_array($status, ['ACTIVE','INACTIVE','LEFT'], true)) $status = 'ACTIVE';
+        $join = trim((string)($d['joined'] ?? '')) ?: null;
+
+        if ($id !== '') {
+            $p->prepare("UPDATE employee_profiles SET employee_no=?,full_name=?,job_title=?,
+                                employment_status=?,hire_date=?,updated_at=NOW(6)
+                          WHERE id=? AND tenant_id=? AND site_id=?")
+              ->execute([(string)($d['code']??''),$name,(string)($d['role']??''),$status,$join,$id,tenant_id(),site_id()]);
+            return $id;
+        }
+        $id = uuid();
+        $p->prepare("INSERT INTO employee_profiles(id,tenant_id,site_id,employee_no,full_name,job_title,
+                        employment_status,hire_date)
+                     VALUES(?,?,?,?,?,?,?,?)")
+          ->execute([$id,tenant_id(),site_id(),(string)($d['code']??''),$name,(string)($d['role']??''),$status,$join]);
+        return $id;
+    }
+
+    /* ------------------------- branches (read-only) ------------------------- */
+
+    private static function listBranches(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT s.id, s.code, s.name, s.site_type, s.phone, s.address_text, s.status,
+                    (SELECT COUNT(*) FROM users u WHERE u.tenant_id=s.tenant_id AND u.deleted_at IS NULL) AS staff,
+                    (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
+                      WHERE o.site_id=s.id AND o.order_status<>'VOID'
+                        AND DATE(COALESCE(o.closed_at,o.created_at))=CURDATE()) AS today_sales
+               FROM sites s
+              WHERE s.tenant_id=? AND s.deleted_at IS NULL
+              ORDER BY s.name");
+        $q->execute([tenant_id()]);
+        return array_map(fn($x) => [
+            'id'     => $x['id'],
+            'code'   => (string)($x['code'] ?? ''),
+            'name'   => (string)$x['name'],
+            'type'   => (string)($x['site_type'] ?? ''),
+            'phone'  => (string)($x['phone'] ?? ''),
+            'today'  => (float)$x['today_sales'],
+            'status' => ucfirst(strtolower((string)$x['status'])),
+        ], $q->fetchAll());
+    }
+
+    /* ------------------------- loyalty (read-only) ------------------------- */
+
+    private static function listLoyalty(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT c.id, c.full_name, c.phone,
+                    COUNT(o.id) AS visits,
+                    COALESCE(SUM(o.grand_total),0) AS spend,
+                    MAX(DATE(COALESCE(o.closed_at,o.created_at))) AS last_visit
+               FROM customers c
+               LEFT JOIN orders o ON o.customer_id = c.id AND o.order_status <> 'VOID'
+              WHERE c.tenant_id=? AND c.deleted_at IS NULL
+              GROUP BY c.id
+             HAVING visits > 0
+              ORDER BY spend DESC LIMIT 200");
+        $q->execute([tenant_id()]);
+        return array_map(function ($x) {
+            $spend = (float)$x['spend'];
+            /* Tier khud kharch se banta hai — koi alag table nahi, is liye
+               yeh hamesha asli hota hai aur purana nahi parta. */
+            $tier = $spend >= 100000 ? 'Gold' : ($spend >= 30000 ? 'Silver' : 'Bronze');
+            return [
+                'id'     => $x['id'],
+                'name'   => (string)$x['full_name'],
+                'phone'  => (string)($x['phone'] ?? ''),
+                'visits' => (int)$x['visits'],
+                'spend'  => $spend,
+                'points' => (int)floor($spend / 100),
+                'last'   => (string)($x['last_visit'] ?? ''),
+                'tier'   => $tier,
+            ];
+        }, $q->fetchAll());
     }
 
     /* ------------------------- printers -------------------------

@@ -77,6 +77,21 @@ foreach ([['bill_no','VARCHAR(40) NULL'],['provider','VARCHAR(20) NULL'],
     }
 }
 
+/* V72 — kis tablet ne kaunsi item punch ki.
+   `orders.device_id` pehle se tha magar ITEM level par kuch nahi tha.
+   Ek hi table par teen order taker kaam karein to yeh jaanna zaroori
+   hai ke kis ne kya daala — warna jhagre ka koi hal nahi. */
+if ($hasTable('order_items')) {
+    if (!$hasCol('order_items', 'device_id')) {
+        $pdo->exec("ALTER TABLE order_items ADD COLUMN device_id CHAR(36) NULL");
+        echo "  + order_items.device_id\n"; $added++;
+    }
+    if (!$hasCol('order_items', 'created_by_user_id')) {
+        $pdo->exec("ALTER TABLE order_items ADD COLUMN created_by_user_id CHAR(36) NULL");
+        echo "  + order_items.created_by_user_id\n"; $added++;
+    }
+}
+
 echo "FISCAL_MIGRATION_READY added=$added\n";
 
 // build: V64 build 2026-08-27

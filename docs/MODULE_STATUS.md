@@ -18,91 +18,62 @@ Yeh raye nahi, code se nikali hui haqeeqat hai.
 
 ---
 
-## WORKING — 18 modules
+## WORKING — 30 modules
 
-| Module | Kahan likhta hai |
-|---|---|
-| **Dashboard** | asli KPIs, sync status |
-| **Sale Point / POS** | `orders`, `order_items`, `payments`, `kitchen_tickets` — 1,870 lines |
-| **Order Taker Tablet** | `pos-boot` / `pos-kot` — asli KOT (V68 se LAN par) |
-| **Menu & Categories** | `menu_items`, `menu_categories` |
-| **Tables & Floors** | `dining_tables`, `floors` (V62 mein joda gaya) |
-| **Customers** | `customers` |
-| **Suppliers** | `suppliers` |
-| **Expenses** | `expenses` |
-| **Wastage / Adjustment** | `stock_adjustments` + asli stock movement |
-| **Printers / Devices** | `printers` + routing (V66) |
-| **Users & Access** | `users`, `user_roles`, `user_module_access` |
-| **Settings** | `tenants`, `sites`, `site_settings`, `pos_settings` (V63) |
-| **Reports** | 15 reports, sab SQL se (V67) |
-| **Offline / Sync** | asli sync engine |
-| **Kitchen / KDS** | `kitchen_tickets` — POS ke asli KOT (V70) |
-| **Opening & Closing Shift** | `cashier_shifts` + asli cash reconciliation (V70) |
-| **Running Orders** | `orders` — POS ke khule bills (V70) |
-| **Void / Refund** | asli bill VOID + stock wapas (V70) |
+Sab asli tables par. Data save hota hai, sync hota hai, reports mein aata hai.
+
+**Sale & service:** Dashboard · Sale Point / POS · Order Taker Tablet ·
+Kitchen / KDS · Tables & Floors · Running Orders · Void / Refund ·
+Opening & Closing Shift · Online Orders · Reservations
+
+**Menu & stock:** Menu & Categories · Wastage / Adjustment ·
+Stock Transfer · Physical Stock Count
+
+**People:** Users & Access · Staff · Customers · Loyalty · Riders
+
+**Money:** Expenses · Accounting / Cash · Discounts / Promotions · Reports
+
+**System:** Printers / Devices · Settings · Multi-Branch ·
+WhatsApp / Notifications · Offline / Sync · Suppliers
 
 ## PARTIAL — 4 modules
 
 | Module | Kya chalta hai | Kya kami hai |
 |---|---|---|
-| **Inventory** | items/categories DB mein (`inventory-item-create`) | edit nahi, low-stock alert sirf naam ka |
-| **Purchasing** | GRN asli stock barhata hai (`purchase-receive`) | purchase order (PO) ka hissa nahi, supplier payment alag nahi |
-| **Recipe & Food Cost** | recipe DB mein (`recipe-save`) | food-cost ka hisab screen par, report mein nahi |
-| **Customer Web / QR** | QR order asli `qr_orders` banata hai | menu/branding customer ke apne data se nahi |
-
-## SHELL — 11 modules
-
-Yeh sab `ui_records` mein likhte hain. Screen bharti hai, data bhi bacha
-rehta hai — **magar kisi asli cheez se juda nahi**. Misal: "Running
-Orders" mein order banayein to POS ko pata nahi chalta; "Stock Transfer"
-karein to stock nahi hilta.
-
-- Online Orders
-- Stock Transfer
-- Physical Stock Count
-- Delivery
-- Rider Management
-- Reservations
-- Loyalty / Membership
-- WhatsApp / Notifications
-- Accounting / Cash
-- Discounts / Promotions
-- Staff / Roles
-- Multi-Branch
+| **Inventory** | items/categories DB mein | edit nahi, low-stock alert sirf naam ka |
+| **Purchasing** | GRN asli stock barhata hai | purchase order (PO) ka hissa nahi |
+| **Recipe & Food Cost** | recipe DB mein | food-cost sirf screen par, report mein nahi |
+| **Delivery** | delivery orders + rider asli hain | rider auto-assign nahi, live tracking nahi |
 
 ## DEMO — 2 modules
 
-Inme **hardcoded naqli data** hai. Customer ka apna data dikhata hi nahi.
-
 | Module | Masla |
 |---|---|
-| **Customer Mobile App** | demo screens |
-| **Customer Web / QR** | menu demo se |
+| **Customer Mobile App** | demo screens — asli app nahi bana |
+| **Customer Web / QR** | QR order asli hai, magar menu/branding demo se |
 
 ---
 
 ## FBR — left menu se hata diya gaya
 
 FBR ka apna page nahi hona chahiye tha: wo **Sale Point ke saath juda
-hua** kaam hai. Settings hai bhi Settings mein (V64 se), aur invoice
-POS par bill close hote waqt banti hai. Ab menu se hata diya —
-`fbr.html` file rehne di gayi hai taake purane bookmark na tootein.
+hua** kaam hai. Settings Settings mein hain (V64 se) aur invoice POS par
+bill close hote waqt banti hai.
 
 ---
 
 ## Mashwara — kaam ki tarteeb
 
-**~~1. KDS~~ — V70 mein ho gaya.**
-**~~2. Shift / Running Orders / Void~~ — V70 mein ho gaya.**
+**1. Inventory ka edit.** Item banane ke baad badalne ka rasta nahi —
+sirf delete kar ke dobara banana parta hai.
 
-**1. Stock Transfer / Physical Count.** Inventory ka bharosa inhi par
-hai — abhi stock haath se theek karna parta hai.
+**2. Purchase Orders.** Abhi sirf GRN (maal aaya) hai. Supplier ko
+order bhejne ka hissa nahi.
 
-**2. Baqi (Loyalty, Reservations, Delivery, Riders, WhatsApp,
-Multi-Branch).** Yeh alag alag kaam hain. Har ek se pehle poochna
-chahiye ke customer waqai use karega ya nahi — warna 14 adhoore
-modules banate rahenge.
+**3. Recipe cost report mein.** Food cost screen par nazar aata hai
+magar Profit & Loss usay recipe consumption se leta hai — jin items ki
+recipe nahi, un ka cost sifar rehta hai.
 
-**Ek raye:** jo modules abhi shell hain, unhen super admin ke
-**Features** se band kar dein. Customer ko wo menu mein nazar hi na
-aayen. Adhoora feature dikhna, na dikhne se bura hai.
+**4. Customer Mobile App.** Yeh asli mobile app ka kaam hai, web page
+ka nahi. Isse pehle tay karna chahiye ke waqai chahiye ya QR ordering
+kaafi hai.

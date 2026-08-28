@@ -111,6 +111,8 @@ $needSoftDelete = [
     'stock_locations', 'payment_methods', 'units',
     'reservations', 'riders', 'delivery_orders', 'promotions',
     'roles', 'devices', 'paired_devices',
+    /* V71 */ 'employee_profiles', 'stock_transfers', 'stock_count_sessions',
+    'delivery_orders', 'notification_queue', 'sites',
 ];
 $added = 0; $already = 0;
 foreach ($needSoftDelete as $t) {

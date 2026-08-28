@@ -199,11 +199,125 @@
     });
   }
 
+  /* ==================== STOCK TRANSFER ==================== */
+  function transferPage() {
+    var r = req('transfer-list');
+    if (!r || !r.ok) { replace(panel('Stock Transfer', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load transfers') + '</div>')); return; }
+    replace(panel('Stock Transfer', 'Stock moved between branches',
+      table([
+        { l: 'Reference', k: 'ref' }, { l: 'Date', k: 'date' },
+        { l: 'From', f: function (x) { return esc(x.from); } },
+        { l: 'To', f: function (x) { return esc(x.to); } },
+        { l: 'Items', n: 1, k: 'lines' },
+        { l: 'By', f: function (x) { return esc(x.by); } },
+        { l: 'Status', f: function (x) { return '<span class="tag green">' + esc(x.status) + '</span>'; } }
+      ], r.rows || []),
+      '<button class="btn primary" id="trNew">New transfer</button>'));
+
+    var b = document.getElementById('trNew');
+    if (b) b.onclick = function () {
+      alert('To move stock between branches, open the branch that HAS the stock, '
+          + 'then choose the item and quantity.\n\n'
+          + 'This screen shows every transfer and the stock moves on both sides.');
+    };
+  }
+
+  /* ==================== PHYSICAL STOCK COUNT ==================== */
+  function countPage() {
+    var r = req('count-list');
+    if (!r || !r.ok) { replace(panel('Physical Stock Count', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load counts') + '</div>')); return; }
+    replace(panel('Physical Stock Count', 'Shelf counts and the adjustments they made',
+      table([
+        { l: 'Reference', k: 'ref' }, { l: 'Location', f: function (x) { return esc(x.location); } },
+        { l: 'Started', k: 'started' }, { l: 'Completed', f: function (x) { return esc(x.done || '-'); } },
+        { l: 'Items', n: 1, k: 'lines' }, { l: 'By', f: function (x) { return esc(x.by); } },
+        { l: 'Status', f: function (x) { return '<span class="tag green">' + esc(x.status) + '</span>'; } }
+      ], r.rows || [])));
+  }
+
+  /* ==================== ACCOUNTING / CASH ==================== */
+  function cashPage() {
+    var r = req('cash-book');
+    if (!r || !r.ok) { replace(panel('Accounting / Cash', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load the cash book') + '</div>')); return; }
+    var rows = r.rows || [];
+    var t = rows.reduce(function (a, x) {
+      a.ci += +x.cash_in || 0; a.ka += +x.card_in || 0; a.co += +x.cash_out || 0; a.n += +x.net || 0; return a;
+    }, { ci: 0, ka: 0, co: 0, n: 0 });
+
+    replace(panel('Accounting / Cash', 'Money in and out, ' + esc(r.from) + ' to ' + esc(r.to),
+      '<div class="note" style="margin:12px">Cash in <b>' + money(t.ci) + '</b> &middot; '
+      + 'Card / online <b>' + money(t.ka) + '</b> &middot; Expenses <b>' + money(t.co) + '</b> &middot; '
+      + 'Net <b>' + money(t.n) + '</b></div>'
+      + table([
+        { l: 'Date', k: 'date' },
+        { l: 'Cash in', n: 1, f: function (x) { return money(x.cash_in); } },
+        { l: 'Card / online', n: 1, f: function (x) { return money(x.card_in); } },
+        { l: 'Expenses', n: 1, f: function (x) { return money(x.cash_out); } },
+        { l: 'Net', n: 1, f: function (x) {
+            var v = +x.net || 0;
+            return '<span style="' + (v < 0 ? 'color:#a3222d' : '') + '">' + money(v) + '</span>';
+          } }
+      ], rows)));
+  }
+
+  /* ==================== ONLINE ORDERS ==================== */
+  function onlinePage() {
+    var r = req('online-orders');
+    if (!r || !r.ok) { replace(panel('Online Orders', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load orders') + '</div>')); return; }
+    replace(panel('Online Orders', 'Delivery and QR orders from the last 3 days',
+      table([
+        { l: 'Bill', k: 'bill' }, { l: 'Source', k: 'source' }, { l: 'Mode', k: 'mode' },
+        { l: 'Customer', f: function (x) { return esc(x.customer) + (x.phone ? ' <span class="hint">' + esc(x.phone) + '</span>' : ''); } },
+        { l: 'Rider', f: function (x) { return esc(x.rider || '-'); } },
+        { l: 'When', k: 'at' },
+        { l: 'Amount', n: 1, f: function (x) { return money(x.amount); } },
+        { l: 'Status', f: function (x) {
+            var d = x.delivery || x.status;
+            return '<span class="tag ' + (String(d).toUpperCase() === 'DELIVERED' ? 'green' : 'info') + '">' + esc(d) + '</span>';
+          } }
+      ], r.rows || []),
+      '<button class="btn" id="onRefresh">Refresh</button>'));
+    var b = document.getElementById('onRefresh'); if (b) b.onclick = onlinePage;
+  }
+
+  /* ==================== NOTIFICATIONS ==================== */
+  function notifyPage() {
+    var r = req('notification-log');
+    if (!r || !r.ok) { replace(panel('WhatsApp / Notifications', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load messages') + '</div>')); return; }
+    var rows = r.rows || [];
+    var failed = rows.filter(function (x) { return String(x.status).toUpperCase() === 'FAILED'; }).length;
+    replace(panel('WhatsApp / Notifications', 'Messages the system tried to send',
+      (failed ? '<div class="note" style="margin:12px;background:var(--danger-soft);color:var(--danger)">'
+        + failed + ' message(s) failed to send.</div>' : '')
+      + table([
+        { l: 'When', k: 'when' }, { l: 'Channel', k: 'channel' },
+        { l: 'To', f: function (x) { return esc(x.to); } },
+        { l: 'Template', f: function (x) { return esc(x.template); } },
+        { l: 'Tries', n: 1, k: 'attempts' },
+        { l: 'Status', f: function (x) {
+            var st = String(x.status).toUpperCase();
+            return '<span class="tag ' + (st === 'SENT' ? 'green' : (st === 'FAILED' ? 'red' : 'info')) + '">'
+              + esc(x.status) + '</span>';
+          } },
+        { l: 'Error', f: function (x) { return esc(x.error || ''); } }
+      ], rows)));
+  }
+
   function boot() {
     if (!window.DBApi) return;
     if (page === 'shift_management.html') shiftPage();
     else if (page === 'orders_management.html') ordersPage();
     else if (page === 'void_refund.html') voidPage();
+    else if (page === 'stock_transfer.html') transferPage();
+    else if (page === 'stock_count.html') countPage();
+    else if (page === 'accounting.html') cashPage();
+    else if (page === 'online_orders.html') onlinePage();
+    else if (page === 'whatsapp_notifications.html') notifyPage();
   }
 
   /* module.js ke render ke BAAD chalna hai, warna wo hamara content

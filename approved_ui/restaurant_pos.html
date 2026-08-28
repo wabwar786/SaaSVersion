@@ -527,6 +527,15 @@ function applyRole(){
   var hasMod=function(k){return CAN.manage||mods.indexOf(k)>=0};
   if(!hasMod('menu')){var e=$('#newItemBtn');if(e)e.classList.add('hide')}
   if(!hasMod('void')){var v=$('#voidBtn');if(v)v.classList.add('hide')}
+
+  /* V72 — jo cheezein SIRF offline version par kaam karti hain, wo cloud
+     par dikhni hi nahi chahiyen. Tablet aur printers LAN par hote hain
+     aur FBR ka fiscal service localhost par — online portal se un tak
+     pohancha hi nahi ja sakta. Button dikha kar phir "yeh yahan nahi
+     chalta" kehna customer ka waqt zaya karna hai. */
+  if((window.APP_ROLE||'local')==='cloud'){
+    ['tabletBtn'].forEach(function(id){var e=$('#'+id);if(e)e.classList.add('hide')});
+  }
   if(!hasMod('settings')&&!CAN.manage){var st=$('#sysBtn');if(st)st.classList.add('hide')}
   if(CAN.manage)return;
   ['newItemBtn','sysBtn','voidBtn'].forEach(function(id){var e=$('#'+id);if(e)e.classList.add('hide')});
