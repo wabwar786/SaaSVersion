@@ -3877,3 +3877,73 @@ par "Print report" ka button bhi hai.
 
 **NahI chala:** asli printer par 80mm output, aur MySQL par reports ka
 data (sandbox mein start nahi hota).
+
+---
+
+# V74 — Reports section ka poora UI
+
+Aap ki baat theek thi: V73 mein maine sirf table sajaayi thi, poora
+section wahi purana khaka tha.
+
+## Jo galat tha
+
+- **Page ka apna chart CSS istemal hi nahi ho raha tha.** `.bars-h`,
+  `.brow`, `.track`, `.fill` — sab pehle se likha para tha aur screen par
+  kahin nazar nahi aata tha.
+- **Header ke `.seg` (Today/Week/Month) aur Export button** bhi mojood
+  the magar kisi se jure hue nahi the.
+- Na KPIs, na chart, na report ka sar-nama. `.kpis` / `.kpi` classes
+  design system mein maujood thin, maine use hi nahi ki thin.
+
+## Ab kya hai
+
+**Header** — `.seg` range switcher (Today / Week / Month / Year) ab
+waqai kaam karta hai, aur range badalte hi report dobara chal jati hai.
+Print aur Export CSV wahin.
+
+**Bayen taraf** — reports ki fehrist, group ke hisab se, sticky. Chuni
+hui report par brand rang ki patti.
+
+**Upar** — date range aur "Run report".
+
+**KPI cards** — report ke apne totals se (pehle char numeric columns).
+KPI aur table dono ek hi `totals` se aate hain, alag hisab nahi — warna
+dono ka number alag ho jata aur bharosa khatam.
+
+**Report ka sar-nama** — bayen taraf report ka naam + date range + rows,
+dayen taraf business ka naam, branch, NTN, print ki tareekh. Neeche
+kaali line. Yeh ab ek dastavez hai, table nahi.
+
+**Table** — totals ki alag `tfoot` row, numbers `tabular-nums` mein
+(columns theek line mein).
+
+**Chart** — pehle numeric column ka horizontal bar chart, top 10. Wahi
+CSS jo page mein pehle se para tha. 40 se ziada rows par chart nahi
+banta — wahan bekaar lagta hai.
+
+**Khali halat** — sirf khali table ki jagah ab saaf paighaam: "No data
+in this period — try a wider date range."
+
+**Print** — sidebar, header, buttons, nav, toast, kuch nahi chhapta;
+sirf report. Aur print par **"Prepared by / Checked by"** ki jagah khud
+aa jati hai.
+
+**Custom report** builder bhi usi shakl mein — natija form ke neeche
+aata hai, form gayab nahi hota.
+
+## Design system
+
+Sab kuch `shared.css` ki mojooda classes se: `.panel`, `.panel-head`,
+`.kpis`, `.kpi`, `.seg`, `.table`, `.tag`, `.field`, `.form-grid`,
+`.note`, `.btn`. Sirf `rep-*` ke apne chand rules page ke andar
+(scoped), aur wo bhi design system ke variables par.
+
+Tasdeeq: page ki 47 classes mein se ek bhi aisi nahi jo `shared.css`
+ya page ke apne style block mein defined na ho.
+
+## Testing
+
+    php -l  (har PHP file)                -> 0 errors
+    php tools/check_pages.php             -> PAGE_CHECK_OK files_with_scripts=44
+    node --check (44 pages + public/*.js) -> 0 failures
+    CSS class audit                       -> 0 invented classes

@@ -20,41 +20,97 @@
 .don-legend{display:grid;gap:8px}
 .leg{display:flex;align-items:center;gap:8px;font-size:12.5px}
 .leg i{width:12px;height:12px;border-radius:3px}
+
+/* ---------- V74: report document + print ---------- */
+.rep-shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.rep-shell{grid-template-columns:1fr}}
+.rep-nav{position:sticky;top:12px}
+.rep-nav .grp{padding:11px 14px 5px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);font-weight:700}
+.rep-item{display:block;width:100%;text-align:left;padding:9px 14px;border:0;background:none;
+  cursor:pointer;border-left:3px solid transparent;transition:background .12s}
+.rep-item:hover{background:var(--surface-2)}
+.rep-item.on{background:var(--brand-soft);border-left-color:var(--brand)}
+.rep-item b{display:block;font-size:12.5px;font-weight:650;color:var(--ink)}
+.rep-item span{font-size:11px;color:var(--muted);line-height:1.35;display:block;margin-top:1px}
+.rep-bar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding:14px 16px;
+  border-bottom:1px solid var(--line);background:var(--surface-2)}
+.rep-bar .field{margin:0}
+.rep-bar .field span{font-size:10.5px}
+.rep-bar input[type=date]{height:36px}
+.rep-doc{padding:18px 20px}
+.rep-title{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  padding-bottom:12px;border-bottom:2px solid var(--ink);margin-bottom:14px}
+.rep-title h2{font-size:17px;margin:0;font-weight:800;letter-spacing:-.01em}
+.rep-title p{margin:3px 0 0;font-size:11.5px;color:var(--muted)}
+.rep-title .biz{text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
+.rep-title .biz b{display:block;font-size:13px;color:var(--ink)}
+.rep-doc .table td.num,.rep-doc .table th.num{text-align:right;
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.rep-doc .table tfoot td{border-top:2px solid var(--ink);border-bottom:0;
+  font-weight:800;font-size:13.5px;background:var(--surface)}
+.rep-sign{display:none}
+.rep-empty{padding:44px 20px;text-align:center;color:var(--muted)}
+.rep-empty .ico{width:52px;height:52px;border-radius:14px;background:var(--surface-2);
+  border:1px solid var(--line);display:grid;place-items:center;margin:0 auto 12px;font-size:22px}
+
+@media print{
+  .sidebar,.header,.scrim,.toast,.rep-nav,.rep-bar,.menu-btn{display:none!important}
+  .app,.main,.content,.rep-shell{display:block!important;margin:0!important;padding:0!important}
+  .panel{border:0!important;box-shadow:none!important;margin:0!important;border-radius:0!important}
+  .rep-doc{padding:0}
+  .table th{position:static;background:transparent!important}
+  .table tbody tr:hover{background:transparent!important}
+  .rep-sign{display:flex;justify-content:space-between;margin-top:42px;font-size:11px;color:#333}
+  @page{margin:14mm}
+}
 </style>
 </head>
+
 <body>
 <div class="app">
   <aside class="sidebar" id="side"></aside>
   <main class="main">
     <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
       <div class="header-title"><h1>Reports</h1><p>Sales, profit and product performance</p></div>
       <div class="header-spacer"></div>
-      <div class="seg" id="range"><button class="active" data-r="today">Today</button><button data-r="week">Week</button><button data-r="month">Month</button></div>
-      <button class="btn" id="exportBtn">Export CSV</button>
+      <div class="seg" id="range">
+        <button data-r="today">Today</button>
+        <button data-r="week">Week</button>
+        <button class="active" data-r="month">Month</button>
+        <button data-r="year">Year</button>
+      </div>
+      <button class="btn" id="printBtn">Print</button>
+      <button class="btn primary" id="csvBtn">Export CSV</button>
     </header>
-    <div class="content">
-      <div class="split" style="grid-template-columns:260px 1fr;align-items:start">
 
-        <section class="panel">
-          <div class="panel-head"><div><h2>Reports</h2><p>Pick one</p></div></div>
-          <div class="panel-body flush"><div id="repList" class="hint" style="padding:12px">Loading...</div></div>
+    <div class="content">
+      <div class="rep-shell">
+
+        <section class="panel rep-nav">
+          <div class="panel-head"><div><h2>All reports</h2><p>Pick one</p></div></div>
+          <div class="panel-body flush">
+            <div id="repList" style="padding:6px 0 10px"><div class="rep-empty">Loading...</div></div>
+          </div>
         </section>
 
         <section class="panel">
-          <div class="panel-head">
-            <div><h2 id="repTitle">Select a report</h2><p id="repDesc">Choose a report from the list</p></div>
-            <div class="tools">
-              <label class="field" style="margin:0"><span>From</span><input type="date" id="dFrom"></label>
-              <label class="field" style="margin:0"><span>To</span><input type="date" id="dTo"></label>
-              <button class="btn" id="runBtn">Run</button>
-              <button class="btn" id="printBtn">Print</button>
-              <button class="btn" id="csvBtn">Export CSV</button>
-            </div>
+          <div class="rep-bar">
+            <label class="field"><span>From</span><input type="date" id="dFrom"></label>
+            <label class="field"><span>To</span><input type="date" id="dTo"></label>
+            <div style="flex:1"></div>
+            <button class="btn primary" id="runBtn">Run report</button>
           </div>
+          <div id="repNote" class="note" style="display:none;margin:14px 16px 0"></div>
+          <div class="kpis" id="repKpis" style="display:none;margin:16px 16px 0"></div>
           <div class="panel-body flush">
-            <div id="repNote" class="note" style="display:none;margin:12px"></div>
-            <div id="repBody" style="padding:14px" class="hint">No report loaded yet.</div>
+            <div id="repBody">
+              <div class="rep-empty"><div class="ico">&#128202;</div>
+                <h3 style="font-size:15px;color:var(--ink);margin:0">Pick a report</h3>
+                <p style="margin:6px auto 0;font-size:12.5px;max-width:320px">
+                  Choose a report on the left, set the dates, then run it.</p></div>
+            </div>
           </div>
         </section>
 
@@ -68,138 +124,152 @@
 <script src="live_store.js"></script>
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="reports"></script>
-<style>
-/* V73 — report ab professional dikhti hai aur chhap bhi sakti hai.
-   Pehle sirf ek nangi table thi: na business ka naam, na date range,
-   na totals ka farq — customer usay print kar ke kisi ko nahi de sakta
-   tha. */
-.rep-doc{padding:16px 18px}
-.rep-doc h1{font-size:17px;margin:0 0 2px;font-weight:800}
-.rep-meta{font-size:11.5px;color:var(--muted);margin-bottom:14px}
-.rep-doc .table th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--muted);border-bottom:2px solid var(--line)}
-.rep-doc .table td{font-size:12.5px}
-.rep-doc .table tbody tr:nth-child(even){background:#fbfdfc}
-.rep-doc .table td.num,.rep-doc .table th.num{text-align:right;
-  font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.rep-doc .table tfoot td{border-top:2px solid var(--line);font-weight:800;background:#fff}
-.rep-sign{display:none}
-@media print{
-  /* Sirf report chhape — sidebar, buttons, toast kuch nahi. */
-  .sidebar,.header,.scrim,.tools,.toast,#repList,.panel-head p{display:none!important}
-  .app,.main,.content,.split{display:block!important;margin:0!important;padding:0!important}
-  .panel{border:0!important;box-shadow:none!important;margin:0!important}
-  .rep-doc{padding:0}
-  .rep-doc .table tbody tr:nth-child(even){background:transparent}
-  .rep-sign{display:flex;justify-content:space-between;margin-top:36px;font-size:11px}
-  @page{margin:14mm}
-}
-</style>
 <script>
-/* V67 — Reports.
-   Pehle yeh page localStorage ke seed data par chalta tha: numbers
-   khoobsurat the magar customer ke apne karobar se un ka koi taluq nahi
-   tha. Ab har raqam database se aati hai (ReportService), aur SAB reports
-   ek hi shakl lautati hain {columns, rows, totals} — is liye ek hi UI aur
-   ek hi CSV export sab ke liye kaafi hai. */
+/* V74 — Reports ka poora UI dobara.
+   Pehle yeh sirf ek list aur ek nangi table thi: na KPIs, na chart, na
+   report ka sar-nama. Aur page mein chart ka CSS pehle se mojood tha
+   jo istemal hi nahi ho raha tha. Ab report ek DASTAVEZ hai jise
+   customer print kar ke kisi ko de sakta hai. */
 (function(){
   var $=function(s){return document.querySelector(s)};
   function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
   function toast(m,err){var t=$('#toast');t.textContent=m;
     t.className='toast show'+(err?' err':'');clearTimeout(window.__rt);
-    window.__rt=setTimeout(function(){t.className='toast'},2400)}
+    window.__rt=setTimeout(function(){t.className='toast'},2600)}
   function num(v){var n=Number(v)||0;
     return n.toLocaleString(undefined,{maximumFractionDigits:2})}
+  function short(v){var n=Number(v)||0;
+    if(Math.abs(n)>=1e7)return (n/1e7).toFixed(1)+'cr';
+    if(Math.abs(n)>=1e5)return (n/1e5).toFixed(1)+'L';
+    if(Math.abs(n)>=1000)return (n/1000).toFixed(1)+'k';
+    return String(Math.round(n))}
 
-  var current=null, CAT=[];
+  var CAT=[], current=null, SRC=null, BIZ=null, lastRep=null;
 
-  function ymd(d){return d.toISOString().slice(0,10)}
-  (function defaults(){
-    var to=new Date(), from=new Date(); from.setDate(from.getDate()-29);
+  function ymd(d){var z=new Date(d.getTime()-d.getTimezoneOffset()*6e4);return z.toISOString().slice(0,10)}
+  function setRange(key){
+    var to=new Date(), from=new Date();
+    if(key==='today'){}
+    else if(key==='week'){from.setDate(from.getDate()-6)}
+    else if(key==='year'){from=new Date(to.getFullYear(),0,1)}
+    else {from=new Date(to.getFullYear(),to.getMonth(),1)}
     $('#dFrom').value=ymd(from); $('#dTo').value=ymd(to);
-  })();
+  }
+  setRange('month');
 
+  function biz(){
+    if(BIZ===null){try{var r=DBApi.req('settings-get');BIZ=(r&&r.ok)?r.settings:{}}catch(e){BIZ={}}}
+    return BIZ||{};
+  }
+
+  /* ---------------- list ---------------- */
   function loadList(){
-    if(!window.DBApi){$('#repList').textContent='No server connection.';return}
+    if(!window.DBApi){$('#repList').innerHTML='<div class="rep-empty">No server connection.</div>';return}
     var r=DBApi.req('report-list');
-    if(!r||!r.ok){$('#repList').textContent=(r&&r.message)||'Could not load the report list.';return}
+    if(!r||!r.ok){$('#repList').innerHTML='<div class="rep-empty">'+esc((r&&r.message)||'Could not load reports')+'</div>';return}
     CAT=r.reports||[];
-    var groups={}, order=[];
-    CAT.forEach(function(x){ if(!groups[x.group]){groups[x.group]=[];order.push(x.group)} groups[x.group].push(x); });
+    var groups={},order=[];
+    CAT.forEach(function(x){if(!groups[x.group]){groups[x.group]=[];order.push(x.group)}groups[x.group].push(x)});
     var h='';
     order.forEach(function(g){
-      h+='<div style="padding:8px 12px 4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">'+esc(g)+'</div>';
+      h+='<div class="grp">'+esc(g)+'</div>';
       groups[g].forEach(function(x){
-        h+='<button class="rep-item" data-rep="'+esc(x.id)+'" style="display:block;width:100%;text-align:left;'
-          +'padding:9px 12px;border:0;background:none;cursor:pointer;border-left:3px solid transparent">'
-          +'<b style="font-size:12.5px;display:block">'+esc(x.name)+'</b>'
-          +'<span class="hint" style="font-size:11px">'+esc(x.desc)+'</span></button>';
+        h+='<button class="rep-item" data-rep="'+esc(x.id)+'"><b>'+esc(x.name)+'</b>'
+          +'<span>'+esc(x.desc)+'</span></button>';
       });
     });
-    h+='<div style="padding:10px 12px 4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Your own</div>'
-      +'<button class="rep-item" data-rep="__custom" style="display:block;width:100%;text-align:left;'
-      +'padding:9px 12px;border:0;background:none;cursor:pointer;border-left:3px solid transparent">'
-      +'<b style="font-size:12.5px;display:block">Custom report</b>'
-      +'<span class="hint" style="font-size:11px">Build your own from your live data</span></button>';
+    h+='<div class="grp">Your own</div>'
+      +'<button class="rep-item" data-rep="__custom"><b>Custom report</b>'
+      +'<span>Build your own from your live data</span></button>';
     $('#repList').innerHTML=h;
-    $('#repList').className='';
   }
-
   function mark(id){
-    Array.prototype.forEach.call(document.querySelectorAll('[data-rep]'),function(b){
-      var on=b.getAttribute('data-rep')===id;
-      b.style.borderLeftColor=on?'var(--brand)':'transparent';
-      b.style.background=on?'var(--brand-soft)':'none';
+    Array.prototype.forEach.call(document.querySelectorAll('.rep-item'),function(b){
+      b.classList.toggle('on', b.getAttribute('data-rep')===id);
     });
   }
 
+  /* ---------------- run ---------------- */
   function run(id){
     if(!id)return;
     current=id; mark(id);
-    var meta=CAT.filter(function(x){return x.id===id})[0]||{};
-    $('#repTitle').textContent=meta.name||'Report';
-    $('#repDesc').textContent=meta.desc||'';
-    $('#repBody').innerHTML='<span class="hint">Running...</span>';
     $('#repNote').style.display='none';
-
+    $('#repKpis').style.display='none';
+    $('#repBody').innerHTML='<div class="rep-empty">Running...</div>';
     var r=DBApi.req('report-run&id='+encodeURIComponent(id)
-        +'&from='+encodeURIComponent($('#dFrom').value)
-        +'&to='+encodeURIComponent($('#dTo').value));
-    /* Jawab check hota hai — nakami par asli wajah, khali table nahi. */
+      +'&from='+encodeURIComponent($('#dFrom').value)
+      +'&to='+encodeURIComponent($('#dTo').value));
     if(!r||!r.ok){
-      $('#repBody').innerHTML='<span class="hint">'+esc((r&&r.message)||'Report could not be run.')+'</span>';
+      $('#repBody').innerHTML='<div class="rep-empty"><div class="ico">&#9888;</div>'
+        +'<h3 style="font-size:15px;color:var(--ink);margin:0">Report could not run</h3>'
+        +'<p style="margin:6px auto 0;font-size:12.5px;max-width:360px">'+esc((r&&r.message)||'')+'</p></div>';
       return;
     }
-    draw(r.report);
+    lastRep=r.report; draw(r.report);
   }
 
-  var BIZ=null;
-  function bizLine(){
-    if(BIZ===null){ try{var r=DBApi.req('settings-get'); BIZ=(r&&r.ok)?r.settings:{};}catch(e){BIZ={};} }
-    var b=BIZ||{};
-    return {name:b.business_name||'',branch:b.branch_name||'',ntn:b.ntn||''};
+  /* KPIs report ke apne totals se bante hain — koi alag hisab nahi,
+     warna KPI aur table ka number alag ho jata aur bharosa khatam. */
+  function kpis(rep){
+    var nums=rep.columns.filter(function(c){return c.n});
+    if(!rep.totals||!nums.length){$('#repKpis').style.display='none';return}
+    var pick=nums.slice(0,4);
+    var tones=['','ok','info','warn'];
+    $('#repKpis').innerHTML=pick.map(function(c,i){
+      return '<div class="kpi '+tones[i%4]+'"><div class="lab">'+esc(c.l)+'</div>'
+        +'<div class="val" style="font-size:22px;font-weight:800;margin-top:6px">'
+        + short(rep.totals[c.k]) +'</div>'
+        +'<div class="sub" style="font-size:11px;color:var(--muted);margin-top:2px">'
+        + num(rep.totals[c.k]) +'</div></div>';
+    }).join('');
+    $('#repKpis').style.display='';
   }
+
+  /* Pehla numeric column ka chart — rakam ka andaza foran ho jata hai.
+     10 se ziada rows par chart bekaar lagta hai, is liye top 10. */
+  function chart(rep){
+    var col=rep.columns.filter(function(c){return c.n})[0];
+    if(!col||rep.rows.length<2||rep.rows.length>40)return '';
+    var rows=rep.rows.slice().sort(function(a,b){return (+b[col.k]||0)-(+a[col.k]||0)}).slice(0,10);
+    var max=Math.max.apply(null,rows.map(function(r){return Math.abs(+r[col.k]||0)}))||1;
+    var lab=rep.columns[0].k;
+    return '<div style="padding:16px 16px 4px"><div style="font-size:11px;font-weight:700;'
+      +'text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:10px">'
+      +'Top by '+esc(col.l)+'</div><div class="bars-h">'
+      + rows.map(function(r){
+          var v=+r[col.k]||0, pc=Math.max(2,Math.abs(v)/max*100);
+          return '<div class="brow"><div class="lab">'+esc(r[lab])+'</div>'
+            +'<div class="track"><div class="fill" style="width:'+pc.toFixed(1)+'%"></div></div>'
+            +'<div class="val">'+num(v)+'</div></div>';
+        }).join('')
+      +'</div></div>';
+  }
+
   function draw(rep){
-    if(rep.note){ $('#repNote').textContent=rep.note; $('#repNote').style.display=''; }
+    if(rep.note){$('#repNote').textContent=rep.note;$('#repNote').style.display=''}
+    kpis(rep);
+
+    var b=biz();
+    var docHead='<div class="rep-doc"><div class="rep-title">'
+      +'<div><h2>'+esc(rep.title||'Report')+'</h2>'
+      +'<p>'+esc(rep.from)+' to '+esc(rep.to)+' &middot; '+rep.rows.length+' row(s)</p></div>'
+      +'<div class="biz">'+(b.business_name?('<b>'+esc(b.business_name)+'</b>'):'')
+        +(b.branch_name?esc(b.branch_name)+'<br>':'')
+        +(b.ntn?('NTN '+esc(b.ntn)+'<br>'):'')
+        +'Printed '+new Date().toLocaleDateString()
+      +'</div></div>';
+
     if(!rep.rows||!rep.rows.length){
-      $('#repBody').innerHTML='<span class="hint">No data for '+esc(rep.from)+' to '+esc(rep.to)+'.</span>';
+      $('#repBody').innerHTML=docHead
+        +'<div class="rep-empty"><div class="ico">&#128203;</div>'
+        +'<h3 style="font-size:15px;color:var(--ink);margin:0">No data in this period</h3>'
+        +'<p style="margin:6px auto 0;font-size:12.5px">Try a wider date range.</p></div></div>';
       return;
     }
-    var b=bizLine();
-    /* Report ab ek dastavez hai, nangi table nahi: business ka naam,
-       date range, aur print par signature ki jagah. */
-    var h='<div class="rep-doc">'
-      +'<h1>'+esc(rep.title||'Report')+'</h1>'
-      +'<div class="rep-meta">'
-        +(b.name?('<b>'+esc(b.name)+'</b>'+(b.branch?(' &middot; '+esc(b.branch)):'')+'<br>'):'')
-        +(b.ntn?('NTN '+esc(b.ntn)+' &middot; '):'')
-        +esc(rep.from)+' to '+esc(rep.to)
-        +' &middot; '+rep.rows.length+' row(s)'
-        +' &middot; printed '+new Date().toLocaleString()
-      +'</div>'
-      +'<div class="table-wrap"><table class="table"><thead><tr>';
-    rep.columns.forEach(function(c){ h+='<th'+(c.n?' class="num"':'')+'>'+esc(c.l)+'</th>'; });
+
+    var h='<div class="table-wrap"><table class="table"><thead><tr>';
+    rep.columns.forEach(function(c){h+='<th'+(c.n?' class="num"':'')+'>'+esc(c.l)+'</th>'});
     h+='</tr></thead><tbody>';
     rep.rows.forEach(function(row){
       h+='<tr>';
@@ -213,52 +283,51 @@
     if(rep.totals&&Object.keys(rep.totals).length){
       h+='<tfoot><tr>';
       rep.columns.forEach(function(c,i){
-        if(i===0){h+='<td class="t-main"><b>Total</b></td>';return}
-        h+='<td'+(c.n?' class="num"':'')+'>'+(rep.totals[c.k]!==undefined?'<b>'+num(rep.totals[c.k])+'</b>':'')+'</td>';
+        if(i===0){h+='<td>Total</td>';return}
+        h+='<td'+(c.n?' class="num"':'')+'>'+(rep.totals[c.k]!==undefined?num(rep.totals[c.k]):'')+'</td>';
       });
       h+='</tr></tfoot>';
     }
-    h+='</table></div>'
+    h+='</table></div>';
+
+    $('#repBody').innerHTML=docHead+h+chart(rep)
       +'<div class="rep-sign"><span>Prepared by: ____________________</span>'
-      +'<span>Checked by: ____________________</span></div>'
-      +'</div>';
-    $('#repBody').innerHTML=h;
+      +'<span>Checked by: ____________________</span></div></div>';
   }
 
-  /* ---------------- Custom report builder ----------------
-     Customer apni marzi ki report bana sake — magar SQL likhe baghair.
-     Sab kuch server ki registry se aata hai (source, grouping, figures),
-     is liye user ka koi harf SQL mein nahi jata. */
-  var SRC=null;
+  /* ---------------- custom builder ---------------- */
   function customUI(){
-    current=null; mark('');
-    $('#repTitle').textContent='Custom report';
-    $('#repDesc').textContent='Build your own from your live data';
-    $('#repNote').style.display='none';
-    if(!SRC){ var s=DBApi.req('report-sources'); if(s&&s.ok)SRC=s.sources; }
-    if(!SRC){ $('#repBody').innerHTML='<span class="hint">Could not load the report builder.</span>'; return; }
-
+    current=null; mark('__custom');
+    $('#repNote').style.display='none'; $('#repKpis').style.display='none';
+    if(!SRC){var s=DBApi.req('report-sources'); if(s&&s.ok)SRC=s.sources}
+    if(!SRC){$('#repBody').innerHTML='<div class="rep-empty">Could not load the builder.</div>';return}
     var keys=Object.keys(SRC);
-    $('#repBody').innerHTML=
-      '<div class="form-grid" style="max-width:640px">'
+    $('#repBody').innerHTML='<div class="rep-doc">'
+      +'<div class="rep-title"><div><h2>Custom report</h2>'
+      +'<p>Build your own from your live data &mdash; no formulas needed</p></div></div>'
+      +'<div class="form-grid" style="max-width:660px">'
       +'<label class="field"><span>Data source</span><select id="cbSrc">'
       + keys.map(function(k){return '<option value="'+esc(k)+'">'+esc(SRC[k].label)+'</option>'}).join('')
       +'</select></label>'
       +'<label class="field"><span>Group by</span><select id="cbGrp"></select></label>'
-      +'<div class="field full"><span>Figures to show</span><div id="cbMeas" '
-      +'style="display:flex;flex-wrap:wrap;gap:10px;padding:6px 0"></div></div>'
+      +'<div class="field full"><span>Figures to show</span>'
+      +'<div id="cbMeas" style="display:flex;flex-wrap:wrap;gap:12px;padding:8px 0"></div></div>'
       +'<label class="field"><span>Sort by</span><select id="cbSort"></select></label>'
       +'<label class="field"><span>Max rows</span><input id="cbLimit" type="number" value="100" min="5" max="500"></label>'
-      +'<div class="field full"><button class="btn primary" id="cbRun">Run my report</button></div>'
-      +'</div><div id="cbOut" style="margin-top:14px"></div>';
-
+      +'</div>'
+      +'<div style="margin-top:12px"><button class="btn primary" id="cbRun">Run my report</button></div>'
+      +'</div><div id="cbOut"></div>';
+    wireCustom();
+  }
+  function wireCustom(){
     function fill(){
       var s=SRC[$('#cbSrc').value];
       $('#cbGrp').innerHTML=Object.keys(s.group_by).map(function(k){
         return '<option value="'+esc(k)+'">'+esc(s.group_by[k].label)+'</option>'}).join('');
       $('#cbMeas').innerHTML=Object.keys(s.measures).map(function(k,i){
-        return '<label class="permission-row" style="gap:6px"><input type="checkbox" value="'+esc(k)+'"'
-          +(i<2?' checked':'')+'> '+esc(s.measures[k].label)+'</label>'}).join('');
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px">'
+          +'<input type="checkbox" value="'+esc(k)+'"'+(i<2?' checked':'')+'> '
+          +esc(s.measures[k].label)+'</label>'}).join('');
       sortOpts();
     }
     function sortOpts(){
@@ -268,43 +337,46 @@
         + on.map(function(k){return '<option value="'+esc(k)+'">'+esc(s.measures[k].label)+'</option>'}).join('');
       if(on.length)$('#cbSort').value=on[0];
     }
-    $('#cbSrc').onchange=fill;
-    $('#cbGrp').onchange=sortOpts;
-    $('#cbMeas').onchange=sortOpts;
-    fill();
-
+    $('#cbSrc').onchange=fill; $('#cbGrp').onchange=sortOpts; $('#cbMeas').onchange=sortOpts;
     $('#cbRun').onclick=function(){
       var meas=[].slice.call(document.querySelectorAll('#cbMeas input:checked')).map(function(c){return c.value});
-      if(!meas.length){toast('Pick at least one figure to show',true);return}
+      if(!meas.length){toast('Pick at least one figure',true);return}
       var r=DBApi.req('report-custom',{spec:{source:$('#cbSrc').value,group:$('#cbGrp').value,
         measures:meas,sort:$('#cbSort').value,limit:Number($('#cbLimit').value||100)},
         from:$('#dFrom').value,to:$('#dTo').value});
-      if(!r||!r.ok){ $('#cbOut').innerHTML='<span class="hint">'+esc((r&&r.message)||'Report failed')+'</span>'; return; }
+      if(!r||!r.ok){$('#cbOut').innerHTML='<div class="rep-empty">'+esc((r&&r.message)||'Report failed')+'</div>';return}
+      lastRep=r.report;
+      /* Builder screen par rehta hai; natija neeche aata hai — warna
+         har run par form gayab ho jata aur sab dobara bharna parta. */
       var keep=$('#repBody').innerHTML;
       draw(r.report);
       var out=$('#repBody').innerHTML;
       $('#repBody').innerHTML=keep;
       $('#cbOut').innerHTML=out;
-      /* Builder screen par hi rehta hai — warna har run par form gayab
-         ho jata aur user ko dobara sab bharna parta. */
-      $('#cbSrc').onchange=fill; $('#cbGrp').onchange=sortOpts; $('#cbMeas').onchange=sortOpts;
-      $('#cbRun').onclick=arguments.callee;
+      wireCustom();
     };
+    fill();
   }
 
+  /* ---------------- events ---------------- */
   document.addEventListener('click',function(e){
     var b=e.target.closest('[data-rep]');
-    if(b){ var id=b.getAttribute('data-rep');
-      if(id==='__custom'){ customUI(); return; }
-      run(id); }
+    if(b){var id=b.getAttribute('data-rep'); if(id==='__custom')customUI(); else run(id); return}
+    var rg=e.target.closest('#range button');
+    if(rg){
+      Array.prototype.forEach.call(document.querySelectorAll('#range button'),function(x){x.classList.remove('active')});
+      rg.classList.add('active'); setRange(rg.getAttribute('data-r'));
+      if(current)run(current);
+      return;
+    }
   });
-  $('#runBtn').onclick=function(){ current?run(current):toast('Pick a report first',true) };
+  $('#runBtn').onclick=function(){current?run(current):toast('Pick a report first',true)};
   $('#printBtn').onclick=function(){
     if(!$('#repBody').querySelector('table')){toast('Run a report first',true);return}
     window.print();
   };
   $('#csvBtn').onclick=function(){
-    if(!current){toast('Pick a report first',true);return}
+    if(!current){toast('Export works on the built-in reports. Pick one from the list.',true);return}
     window.location='/api.php?action=report-csv&id='+encodeURIComponent(current)
       +'&from='+encodeURIComponent($('#dFrom').value)+'&to='+encodeURIComponent($('#dTo').value);
   };
