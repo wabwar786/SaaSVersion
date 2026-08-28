@@ -251,8 +251,20 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
               <option>Cash</option><option>Bank</option><option>Card</option><option>Raast</option></select></label>
             <label class="field full"><span>Payment reference</span><input id="f_payment_reference"></label>
           </div>
-          <button class="btn primary" id="createBtn">Create business</button>
-        <button class="btn sec" id="demoBtn" style="margin-left:8px">Create DEMO business</button>
+          <!-- V80 — DEMO business ka button.
+               Pehle iski class `btn sec` thi, jo shared.css mein hai hi
+               nahi (sirf primary / ghost / danger / sm / icon hain), is
+               liye button be-rang aur be-shakl reh jata tha aur nazar
+               hi nahi aata tha. -->
+          <div class="action-row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+            <button class="btn primary" id="createBtn">Create business</button>
+            <button class="btn" id="demoBtn">Create DEMO business</button>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0;line-height:1.6">
+            <b>Demo business</b> ready-made menu, tables aur customers ke saath banta hai.
+            Har 5 din baad customer ka daala hua data khud saaf ho jata hai aur yeh sample data
+            bacha rehta hai &mdash; demo hamesha dikhane laiq rehta hai.
+          </p>
         </div></div>
         <div class="panel hide" id="successCard" style="margin-top:14px">
           <div class="panel-head"><h2>Business created</h2><p>Share these with the owner</p></div>
@@ -660,8 +672,8 @@ async function bizBrand(id){
     +'</div>'
     +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</span><input id="brFile" type="file" accept="image/*"></div>'
     +'<div id="brPrev" style="margin-top:12px;height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;overflow:hidden"><span class="muted">Logo preview</span></div>'
-    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="brSave">Save Branding</button>'
-    +'<button class="btn sec" id="brClear">Remove Logo</button></div>');
+    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button><button class="btn" id="brSave">Save Branding</button>'
+    +'<button class="btn ghost" id="brClear">Remove Logo</button></div>');
   let logo='';
   ov.querySelector('#brFile').onchange=function(){
     const f=this.files&&this.files[0];if(!f)return;
@@ -709,15 +721,15 @@ async function bizFeatures(id){
     +'<p class="muted">Only the ticked modules appear in this customer\'s left menu. '
     +'Tick nothing and everything is allowed.</p>'
     +'<div class="row" style="margin:12px 0;gap:6px;flex-wrap:wrap">'
-    +'<button class="btn sec mini" id="fReady">Working only</button>'
-    +'<button class="btn sec mini" id="fAll">Select all</button>'
-    +'<button class="btn sec mini" id="fNone">Clear all</button></div>'
+    +'<button class="btn ghost sm" id="fReady">Working only</button>'
+    +'<button class="btn ghost sm" id="fAll">Select all</button>'
+    +'<button class="btn ghost sm" id="fNone">Clear all</button></div>'
     +'<div class="fgrid" id="fList">'+(r.modules||[]).map(function(m){
       const on=(sel===null)||sel.indexOf(m.module_key)>=0;
       return '<label class="fitem"><input type="checkbox" value="'+m.module_key+'"'+(on?' checked':'')+'> '
         +(m.title||m.module_key)+' '+stTag(m.module_key)+'</label>';
     }).join('')+'</div>'
-    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="fSave">Save Features</button></div>');
+    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button><button class="btn" id="fSave">Save Features</button></div>');
   ov.querySelector('#fReady').onclick=function(){
     ov.querySelectorAll('#fList input').forEach(function(c){ c.checked=!!READY[c.value] });
   };
@@ -742,13 +754,13 @@ async function bizWa(id){
     +'<div style="grid-column:1/-1"><label>API Base URL</span><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
     +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</span><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
     +'</div>'
-    +'<div class="row" style="margin-top:12px"><button class="btn sec" id="waT">Test Connection</button><span id="waS" class="muted"></span></div>'
+    +'<div class="row" style="margin-top:12px"><button class="btn ghost" id="waT">Test Connection</button><span id="waS" class="muted"></span></div>'
     +'<h3 style="margin-top:18px;font-size:15px">Events</h3>'
     +'<div class="fgrid" style="grid-template-columns:1fr">'+WA_EVENTS.map(function(e){
       const on=(w.events||[]).indexOf(e[0])>=0;
       return '<label class="fitem"><input type="checkbox" value="'+e[0]+'"'+(on?' checked':'')+'> <span><b>'+e[0]+'</b><br><span class="muted" style="font-size:11px">'+e[1]+'</span></span></label>';
     }).join('')+'</div>'
-    +'<div class="row" style="margin-top:16px"><button class="btn sec" data-x>Cancel</button><button class="btn" id="waSave">Save</button></div>');
+    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button><button class="btn" id="waSave">Save</button></div>');
   ov.querySelector('#waT').onclick=async function(){
     ov.querySelector('#waS').textContent='Testing…';
     const t=await api('sa-wa-test',{url:ov.querySelector('#waU').value,key:ov.querySelector('#waK').value});

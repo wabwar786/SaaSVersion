@@ -4523,3 +4523,37 @@ Reset boot par aur `scripts/demo_reset.php` se chalta hai.
     check_pages                -> 46 pages
     node --check               -> 0 failures
     END-TO-END on real MySQL   -> 76 pass, 0 real failures
+
+---
+
+# V80 — DEMO business ka button nazar nahi aa raha tha
+
+**Wajah:** button ki class `btn sec` thi — aur `sec` naam ki koi class
+`shared.css` mein hai hi nahi. Wahan sirf `primary`, `ghost`, `danger`,
+`sm`, `icon` hain.
+
+Button HTML mein maujood tha, magar bina kisi style ke — na rang, na
+border, na padding. Baqi buttons ke saath khada tha aur nazar hi nahi
+aata tha.
+
+## Aur 12 buttons bhi isi haal mein the
+
+Poore project par check chalaya: **13 buttons** do files mein aisi
+classes use kar rahe the jo maujood hi nahi:
+
+    super_admin.html   btn sec  x8    btn mini x3
+    index.html         btn sec  x2
+
+Sab theek: `sec` → `ghost`, `mini` → `sm`.
+
+Ab check clean hai — **0 unknown button classes**.
+
+## Demo ka button ab saaf nazar aata hai
+
+Create Business page ke neeche do buttons ek qatar mein:
+
+    [ Create business ]  [ Create DEMO business ]
+
+Aur neeche ek line jo batati hai ke demo kya hai — ready-made menu,
+tables aur customers ke saath, aur har 5 din baad customer ka data khud
+saaf.
