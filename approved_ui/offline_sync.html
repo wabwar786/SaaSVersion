@@ -77,7 +77,7 @@
     var head=document.querySelector('.content h2');
     if(!s.cloud_configured){
       if(head)head.textContent='Running local-first (offline mode)';
-      msg.textContent='Cloud URL not set · data is saved on this device. Set sync.cloud_api_url to upload automatically.';
+      msg.textContent='Cloud sync is not set up \u00b7 your data is saved on this device. Contact support to connect it.';
     }else{
       var e=s.engine||{};var st=(e.last_status||'IDLE');
       if(head)head.textContent = st==='OK' ? 'All data synced' : (st==='SYNCING'?'Syncing…':(st==='ERROR'?'Sync problem':'Ready to sync'));

@@ -816,7 +816,7 @@ try{$nq=$p->prepare("SELECT COUNT(DISTINCT node_ip) FROM sync_activity WHERE ten
 $base=rtrim((string)cfg('app.base_url'),'/');
 /* Config seal ke andar jata hai - sync token plaintext disk par NahI */
 $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_url'=>'http://localhost:8080',
-                 'cloud_url'=>$base,'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
+                 'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
                  /* helpers.php local mode mein yahi keys parhta hai */
                  'tenant_id'=>(string)$t['id'],'site_id'=>site_id(),'timezone'=>'Asia/Karachi',
                  /* Har offline installation ka apna bill prefix - takrao khatam */
@@ -1421,7 +1421,12 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
     jayegi. Customer counter par khara hai - bill rokna hal nahi hai. */
  $fiscal=['status'=>'NONE','invoice_no'=>'','message'=>''];
  try{$fiscal=FiscalService::submit($id);}catch(Throwable $e){$fiscal=['status'=>'PENDING','invoice_no'=>'','message'=>substr($e->getMessage(),0,200)];}
- $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),'dashboard'=>PageData::dashboard(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no']];
+ /* V96 — bill band karte waqt POORA dashboard ginna zaroori nahi.
+   Har bill par 10+ queries chalti thin sirf header ke aankron ke liye,
+   halanke cashier us waqt bill chhapne ka intezar kar raha hota hai.
+   Ab sirf wo do aankre jo header par nazar aate hain. */
+$resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),
+       'dashboard'=>PageData::posCounters(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no']];
  /* Bill cloud par foran - 60 second wale loop ka intezar nahi. */
  Audit::log('SALE_CREATE','pos',['id'=>$id,'label'=>(string)$d['bill_no'],'new'=>(string)($resp['dashboard']['today_sales']??'')]);
  register_shutdown_function('sync_nudge');
@@ -1627,7 +1632,7 @@ case 'sync-state':needLogin();
  /* POS ke live indicator ke liye halka endpoint */
  $role=cfg('app.role');
  $out=['role'=>$role,'enabled'=>false,'reason'=>'','pending'=>0,'last_run'=>null,
-       'last_status'=>null,'last_error'=>null,'cloud_online'=>false,'cloud_url'=>''];
+       'last_status'=>null,'last_error'=>null,'cloud_online'=>false];
  if($role==='cloud'){
    /* Cloud par yeh card sirf tab dikhana hai jab is business ka koi offline
       node waqai mojood ho — warna khali card sirf shor hai. */
@@ -1655,7 +1660,12 @@ case 'sync-state':needLogin();
  }
  $out['enabled']=Sync::enabled();
  $out['reason']=Sync::statusReason();
- $out['cloud_url']=(string)(($GLOBALS['config']['sync']['cloud_api_url']??'')?:'');
+ /* V96 — cloud ka PATA client tak bhejna hi nahi.
+    Pehle yeh har sync-status jawab mein jata tha, aur wahan se dashboard
+    par nazar aa jata. Server ka address hamara apna maamla hai — jo cheez
+    client ko bheji jaye wo screenshot mein bhi chali jati hai. Client ko
+    sirf itna chahiye ke rabta hai ya nahi. */
+ $out['cloud_online']=(($GLOBALS['config']['sync']['cloud_api_url']??'')!=='')&&!empty($out['cloud_online']);
  try{
    $p=DB::pdo();
    $q=$p->query("SELECT MAX(last_run_at) lr, SUM(last_status='ERROR') errs FROM sync_state");
@@ -1699,7 +1709,10 @@ case 'sync-status':needLogin();
  $st=Sync::status();
  $st['role']=cfg('app.role');
  $st['reason']=(cfg('app.role')==='cloud')?'This is the cloud server. Offline nodes push data here.':Sync::statusReason();
- $st['cloud_url']=(string)(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''));
+ /* V96 — pata nahi, sirf haalat. Offline/Sync page ko itna hi chahiye
+    ke cloud set hai ya nahi; asal address wahan dikhane ki koi wajah
+    nahi. */
+ $st['cloud_configured']=(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''))!=='';
  ok(['status'=>$st]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
 case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);

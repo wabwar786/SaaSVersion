@@ -392,7 +392,9 @@ function paintSync(){
   }
   el.innerHTML='&#9729;&#10003; Synced &middot; '+agoText(s.last_run);
   el.style.background='#eaf6ef';
-  el.title='Last sync: '+(s.last_run||'-')+(s.cloud_url?('\ncloud: '+s.cloud_url):'');
+  /* V96 — cloud ka pata NAZAR NAHI aana chahiye. Wo server ka address
+     hai; counter par khare kisi bhi bande ko us se kuch nahi lena. */
+  el.title='Last sync: '+(s.last_run||'-')+(s.cloud_online?' (connected)':' (offline)');
 }
 /* ---- Sync kyun nahi ho rahi: step-by-step check ---- */
 function syncDiagnose(){
@@ -465,6 +467,7 @@ function syncNow(manual){
     refreshSync();
   });
 }
+var paying=false;   /* V96 — ek waqt mein ek hi bill */
 var PRINT={size:80,qr:true,footer:'Thank you! Visit again.'};
 try{var _pt=localStorage.getItem('aio_print_tpl');if(_pt)PRINT=JSON.parse(_pt)}catch(e){}
 
@@ -1173,9 +1176,33 @@ $('#chargeBtn').onclick=function(){
   function pay_now(btn){
     var rcv=Number(rcvEl.value||0);
     if(rcv<t.grand-0.5){toast('Received amount kam hai');rcvEl.focus();return}
-    if(btn){btn.disabled=true;btn.textContent='Saving...'}
+    if(paying)return;               /* dobara dabane se do bill ban jate the */
+    paying=true;
+
+    /* V96 — BUTTON KA JAWAB FORAN.
+       Pehle yahan `btn.textContent='Saving...'` set hota tha aur AGLI HI
+       line par synchronous XHR browser ko rok deta tha — is liye wo matn
+       kabhi PAINT hi nahi hota. Cashier ko lagta ke button ne kuch kiya
+       hi nahi, aur wo dobara dabata (jis se do bill ban sakte the).
+
+       Ab: pehle screen ko paint karne do (double rAF), phir kaam shuru.
+       Server ka waqt utna hi hai, magar ab dikhta hai ke kuch ho raha hai. */
+    if(btn){btn.disabled=true;btn.textContent='Saving\u2026';btn.style.opacity='.75'}
+    var ovBusy=ov.querySelector('.db');
+    if(ovBusy)ovBusy.style.pointerEvents='none';
+
+    requestAnimationFrame(function(){requestAnimationFrame(function(){
+      pay_now_go(btn,rcv);
+    });});
+  }
+
+  function pay_now_go(btn,rcv){
     var r=api('pos-finalize',payload({payment_code:pay,received_amount:rcv}));
-    if(!r.ok){if(btn){btn.disabled=false;btn.textContent='Complete Payment'}toast(r.message||'Bill save nahi hua');return}
+    paying=false;
+    if(!r.ok){
+      if(btn){btn.disabled=false;btn.textContent='Complete Payment';btn.style.opacity=''}
+      var ob=ov.querySelector('.db'); if(ob)ob.style.pointerEvents='';
+      toast(r.message||'Bill save nahi hua');return}
     ov.remove();
     if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
     /* fbr_no server se aata hai (pos-finalize ka jawab). QR isi ka banta
@@ -1745,7 +1772,8 @@ $('#sysBtn').onclick=function(){
       h+=row('Cloud',s.cloud_online?'Online':'Not reachable',s.cloud_online?'var(--ok)':'var(--warn)');
       h+=row('Last sync',agoText(s.last_run));
       h+=row('Waiting to upload',(s.pending||0)+' rows',(s.pending>0)?'var(--warn)':'var(--ok)');
-      if(s.cloud_url)h+=row('Cloud URL',s.cloud_url);
+      /* Cloud ka pata yahan bhi nahi — sirf yeh ke juda hua hai ya nahi. */
+      h+=row('Cloud',s.cloud_online?'Connected':'Not connected');
       if(s.reason)h+=row('Note',s.reason,'var(--brand)');
       if(s.last_error)h+=row('Last error',s.last_error,'var(--brand)');
     }
@@ -1957,6 +1985,30 @@ function showReport(rep,transferred){
 }
 
 /* ================= MODAL / WIRING ================= */
+/* V96 — shortcuts ki fehrist. Naya cashier inhen dhoondta hai; F12 ya
+   "?" dabane par saamne aa jati hain. */
+function showKeys(){
+  var rows=[
+    ['F1','New bill'],['F2','Send to kitchen'],['F3','Charge / payment'],
+    ['F4','Hold bills'],['F6','Duplicate bill'],['F7','Change bill type / table'],
+    ['F9','Void / refund'],['F10','New item'],
+    ['Ctrl + K','Search menu'],['Ctrl + P','Charge'],['Ctrl + H','Hold bills'],
+    ['Esc','Close dialog'],
+    ['+  /  -','Last item ka qty barhao / ghatao'],
+    ['Delete','Last item hatao'],
+    ['A-Z, 0-9','Seedha talash mein likhna shuru'],
+    ['1 - 6','Payment dialog: payment method'],
+  ];
+  modal('<div class="dh"><h3>Keyboard shortcuts</h3><p>Counter par maus uthane ki zaroorat nahi</p></div>'
+    +'<div class="db"><table style="width:100%;border-collapse:collapse">'
+    +rows.map(function(r){
+      return '<tr><td style="padding:6px 0;width:130px"><b style="font-family:ui-monospace,monospace;'
+        +'background:var(--bg2,#f2f4f3);padding:2px 8px;border-radius:6px;font-size:11.5px">'
+        +r[0]+'</b></td><td style="padding:6px 0;font-size:12.5px">'+r[1]+'</td></tr>';
+    }).join('')
+    +'</table></div><div class="df"><button class="go" data-x>Theek hai</button></div>',true);
+}
+
 function modal(html,wide,noClose){
   var ov=document.createElement('div');ov.className='ov';
   ov.innerHTML='<div class="dlg'+(wide?' wide':'')+'">'+html+'</div>';
@@ -1992,11 +2044,89 @@ function myShift(){
   ov.querySelector('#msPrint').onclick=function(){printNode(ov.querySelector('#msBody'))};
   var cb=ov.querySelector('#msClose'); if(cb)cb.onclick=function(){ov.remove();closeShift()};
 }
+/* ================= V96: POORA KEYBOARD CONTROL =================
+   Busy counter par maus uthana waqt zaya karna hai. Ab Sale Point ka
+   har rozana kaam keyboard se ho sakta hai.
+
+   USOOL: jab cashier kisi khane mein LIKH raha ho, shortcuts band —
+   warna "F" likhne par bill khul jayega. Sirf Escape aur function keys
+   wahan bhi chalti hain. */
+function inField(el){
+  if(!el)return false;
+  var t=(el.tagName||'').toUpperCase();
+  return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||el.isContentEditable;
+}
+function click(sel){var b=$(sel);if(b&&!b.disabled&&!b.classList.contains('hide'))b.click();return !!b}
+
 document.addEventListener('keydown',function(e){
-  if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#q').focus()}
-  if(e.key==='F1'){e.preventDefault();onNewBill()}
-  if(e.key==='F2'){e.preventDefault();if(!$('#kotBtn').disabled)$('#kotBtn').click()}
-  if(e.key==='F3'){e.preventDefault();if(!$('#chargeBtn').disabled)$('#chargeBtn').click()}
+  var typing=inField(e.target);
+  var modal=document.querySelector('.ov');   /* koi dialog khula hai? */
+
+  /* --- yeh hamesha chalti hain --- */
+  if(e.key==='Escape'){
+    if(modal){var x=modal.querySelector('[data-x]');if(x){e.preventDefault();x.click();return}}
+    if(typing){e.target.blur();return}
+  }
+  if(e.key==='F1'){e.preventDefault();onNewBill();return}
+  if(e.key==='F2'){e.preventDefault();click('#kotBtn');return}
+  if(e.key==='F3'){e.preventDefault();click('#chargeBtn');return}
+  if(e.key==='F4'){e.preventDefault();click('#holdsBtn');return}
+  if(e.key==='F6'){e.preventDefault();click('#dupBtn');return}
+  if(e.key==='F7'){e.preventDefault();click('#ctxMode');return}   /* bill ka context / customer */
+  if(e.key==='F9'){e.preventDefault();click('#voidBtn');return}
+  if(e.key==='F10'){e.preventDefault();click('#newItemBtn');return}
+  if(e.key==='F12'||e.key==='?'){e.preventDefault();showKeys();return}
+
+  if(e.ctrlKey||e.metaKey){
+    var k=(e.key||'').toLowerCase();
+    if(k==='k'){e.preventDefault();var q=$('#q');if(q){q.focus();q.select()}return}
+    if(k==='p'){e.preventDefault();click('#chargeBtn');return}
+    if(k==='h'){e.preventDefault();click('#holdsBtn');return}
+    if(k==='d'){e.preventDefault();click('#dupBtn');return}
+    if(k==='enter'){e.preventDefault();click('#chargeBtn');return}
+    return;
+  }
+
+  if(typing)return;   /* likhte waqt neeche wali kuch na chalen */
+
+  /* --- cart ka control --- */
+  if(e.key==='Delete'||e.key==='Backspace'){
+    var last=document.querySelector('#cart .citem:last-child [data-rm]');
+    if(last){e.preventDefault();last.click()}
+    return;
+  }
+  if(e.key==='+'||e.key==='='){
+    var p1=document.querySelector('#cart .citem:last-child [data-inc]');
+    if(p1){e.preventDefault();p1.click()}
+    return;
+  }
+  if(e.key==='-'){
+    var m1=document.querySelector('#cart .citem:last-child [data-dec]');
+    if(m1){e.preventDefault();m1.click()}
+    return;
+  }
+  /* Koi bhi harf/adad dabate hi seedha talash mein — cashier barcode
+     scanner bhi isi tarah chalata hai. */
+  if(e.key.length===1&&/[a-z0-9]/i.test(e.key)&&!modal){
+    var qq=$('#q');
+    if(qq&&document.activeElement!==qq){qq.focus();}
+  }
+});
+
+/* Payment dialog ke apne shortcuts — wahan cashier sab se ziada
+   jaldi mein hota hai. */
+document.addEventListener('keydown',function(e){
+  var pd=document.querySelector('#doPay');
+  if(!pd)return;
+  if(e.key==='F3'||(e.ctrlKey&&(e.key||'').toLowerCase()==='enter')){
+    e.preventDefault();if(!pd.disabled)pd.click();return;
+  }
+  /* Payment method 1-6 se */
+  if(!inField(e.target)&&/^[1-6]$/.test(e.key)){
+    var btns=document.querySelectorAll('[data-pm]');
+    var i=Number(e.key)-1;
+    if(btns[i]){e.preventDefault();btns[i].click()}
+  }
 });
 boot();
 </script>

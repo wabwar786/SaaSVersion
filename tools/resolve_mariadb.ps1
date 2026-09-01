@@ -58,6 +58,37 @@ if ($StopServer) {
 # ---------- 1) EXTRACT ----------
 $mysqld = Get-MysqldPath
 if (-not $mysqld) {
+  # V95 -- JAGAH PEHLE CHECK KARO, baad mein nahi.
+  #
+  # Pehle setup 100 MB download karta, phir nikalne ki koshish karta,
+  # AUR PHIR batata ke disk bhari hai. Customer ka waqt aur data dono
+  # zaya. Ab shuru mein hi saaf batao.
+  #
+  # MariaDB: zip ~100 MB, khulne ke baad ~800 MB. 1.2 GB maangte hain
+  # taake database banane ke liye bhi kuch bache.
+  try {
+    $drive = (Get-Item $Root -ErrorAction SilentlyContinue).PSDrive
+    if (-not $drive) { $drive = Get-PSDrive -Name ((Get-Location).Path.Substring(0,1)) -ErrorAction SilentlyContinue }
+    if ($drive -and $drive.Free) {
+      $freeGB = [math]::Round($drive.Free / 1GB, 2)
+      if ($drive.Free -lt 1.2GB) {
+        Say '' 'Gray'
+        Say ("Not enough space on drive " + $drive.Name + ": -- only " + $freeGB + " GB free.") 'Red'
+        Say 'The database needs about 1.2 GB to install.' 'Red'
+        Say '' 'Gray'
+        Say 'What usually frees the most space:' 'Yellow'
+        Say '  1. Delete old SmartPOS packages from your Downloads folder' 'White'
+        Say '  2. Empty the Recycle Bin' 'White'
+        Say '  3. Clear temporary files (Windows key + R, type %temp%, delete all)' 'White'
+        Say '' 'Gray'
+        Say 'Or move this package to another drive that has more space,' 'Yellow'
+        Say 'and run INSTALL_OFFLINE.bat from there.' 'Yellow'
+        exit 1
+      }
+      Say ("Free space on " + $drive.Name + ": " + $freeGB + " GB -- enough.") 'DarkGray'
+    }
+  } catch { }
+
   New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
   $zip = $null
 
@@ -173,6 +204,22 @@ if (-not $mysqld) {
   if (-not $mysqld) {
     Say 'Database files could not be extracted.' 'Red'
     if ($zipErr) { Say ("Reason: " + $zipErr) 'Red' }
+
+    # V95 -- disk bhar jane par aadhi nikli hui files ULTA nuqsan deti
+    # hain: wo jagah bhi ghere rehti hain aur agli koshish par
+    # "already exists" de kar usay bhi rok deti hain. Saaf kar do.
+    if ("$zipErr" -like '*not enough space*' -or "$zipErr" -like '*space on the disk*') {
+      Say '' 'Gray'
+      Say 'The disk filled up part way through.' 'Yellow'
+      Say 'Removing the half-extracted files so they do not waste space...' 'Yellow'
+      try { Remove-Item -LiteralPath $RuntimeDir -Recurse -Force -ErrorAction SilentlyContinue } catch { }
+      Say '' 'Gray'
+      Say 'Free up about 1.2 GB, then run INSTALL_OFFLINE.bat again:' 'Yellow'
+      Say '  1. Delete old SmartPOS packages from your Downloads folder' 'White'
+      Say '  2. Empty the Recycle Bin' 'White'
+      Say '  3. Clear temporary files (Windows key + R, type %temp%, delete all)' 'White'
+      exit 1
+    }
 
     # Customer ko batao ke waqai hua kya -- khali "nakaam" bekaar hai.
     $found = Get-ChildItem -Path $RuntimeDir -Recurse -ErrorAction SilentlyContinue |

@@ -13,6 +13,32 @@ final class PageData {
   $po=$p->prepare("SELECT gr.id,gr.grn_no,s.name supplier,DATE_FORMAT(gr.received_at,'%d %b %Y') date,gr.total_amount amount,gr.status,(SELECT COUNT(*) FROM goods_receipt_items gi WHERE gi.goods_receipt_id=gr.id) `lines` FROM goods_receipts gr JOIN suppliers s ON s.id=gr.supplier_id WHERE gr.site_id=? ORDER BY gr.received_at DESC LIMIT 100");$po->execute([site_id()]);
   /* V62: sirf naam kaafi nahi tha - delete/edit ke liye ids bhi is required. */
   return ['inventoryCategories'=>array_column($catRows,'name'),'inventoryCategoryRows'=>$catRows,'inventoryItems'=>$items,'menuCategories'=>$menuCats,'menuCategoryRows'=>$menuCatRows,'recipes'=>$recipes,'purchaseOrders'=>$po->fetchAll()]; }
+ /**
+  * V96 — SIRF wo aankre jo POS ke header par nazar aate hain.
+  *
+  * `dashboard()` 10+ queries chalata hai (payment mix, kitchen, tables,
+  * profit...). Bill band karte waqt un mein se kuch bhi nazar nahi aata,
+  * magar cashier ka intezar us se lamba ho jata tha. Yeh do queries
+  * kaafi hain.
+  */
+ public static function posCounters(): array {
+    $p=DB::pdo();
+    $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s, COUNT(*) c
+                      FROM orders
+                     WHERE site_id=? AND business_date=? AND order_status='CLOSED'");
+    $q->execute([site_id(), today()]);
+    $r=$q->fetch(\PDO::FETCH_ASSOC) ?: ['s'=>0,'c'=>0];
+
+    $o=$p->prepare("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status='OPEN'");
+    $o->execute([site_id()]);
+
+    return [
+        'today_sales'  => (float)$r['s'],
+        'today_bills'  => (int)$r['c'],
+        'running'      => (int)$o->fetchColumn(),
+    ];
+ }
+
  public static function dashboard(): array { $p=DB::pdo();$date=today();
   $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND business_date=? AND order_status='CLOSED'");$q->execute([site_id(),$date]);$a=$q->fetch();
   $cnt=function($sql,$args=[])use($p){$q=$p->prepare($sql);$q->execute($args);return (int)$q->fetchColumn();};

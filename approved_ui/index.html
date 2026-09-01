@@ -306,7 +306,10 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
     else { pill.className='syncPill sp-ok'; pill.textContent='up to date'; }
 
     sub.textContent = state.enabled
-      ? (state.cloud_online ? ('Connected to '+(state.cloud_url||'cloud')+' - runs automatically every 2 minutes.')
+      /* V96 — server ka pata dashboard par nazar nahi aana chahiye.
+         Wo hamara infrastructure hai; customer ke kaam ka nahi, aur jo
+         cheez nazar aati hai wo screenshot mein bhi chali jati hai. */
+      ? (state.cloud_online ? 'Connected - runs automatically every 2 minutes.'
                             : 'Cloud not reachable right now. Data is safe locally and uploads automatically when the internet returns.')
       : (state.reason||'Sync is disabled in this installation.');
 

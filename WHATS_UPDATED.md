@@ -5323,3 +5323,128 @@ Regression: licence keys 12/12, backup 15/15.
   **khali** aati thi.
 - `pos-holds` endpoint **do dafa** lag gaya tha (pehla patch bhi laga
   tha). Duplicate check ne pakra.
+
+---
+
+# V95 — Disk full: pehle batao, baad mein nahi
+
+V92 ne asli wajah pakar li:
+
+    Reason: Exception calling "ExtractToDirectory" ...
+            "There is not enough space on the disk."
+
+Yeh code ka masla nahi — us computer ki disk bhari hui thi. Magar setup
+ka **tareeqa** ghalat tha.
+
+## Do sudhaar
+
+**1. Jagah PEHLE check hoti hai.** Pehle setup 100 MB download karta,
+phir nikalne ki koshish karta, **aur phir** batata ke disk bhari hai.
+Customer ka waqt aur data dono zaya. Ab shuru mein hi:
+
+    Not enough space on drive C: -- only 0.6 GB free.
+    The database needs about 1.2 GB to install.
+
+    What usually frees the most space:
+      1. Delete old SmartPOS packages from your Downloads folder
+      2. Empty the Recycle Bin
+      3. Clear temporary files (Windows key + R, type %temp%, delete all)
+
+    Or move this package to another drive that has more space.
+
+Kaamyabi par bhi ek line: *"Free space on C: 24.3 GB -- enough."*
+
+**2. Adhi nikli hui files saaf hoti hain.** Disk beech mein bhar jaye to
+aadhe folders pare reh jate hain. Wo **ulta nuqsan** dete hain: jagah
+bhi ghere rehte hain, aur agli koshish par `.NET` ka "already exists"
+de kar usay bhi rok dete hain. Ab disk-full ki soorat mein wo khud
+hat jate hain.
+
+## Testing
+
+    PowerShell balance (4 scripts) -> OK
+
+**NahI chala:** asli Windows par. Magar V92 ne yeh saabit kiya ke wajah
+dikhana kaam karta hai — isi liye is dafa masla foran samajh mein aa
+gaya.
+
+---
+
+# V96 — Complete Payment ki raftaar, keyboard control, links chhupaye
+
+## 1. Complete Payment "slow" kyun lagta tha
+
+Maine har hisse ka waqt maapa:
+
+    PosService::finalize()      13.8 ms
+    FiscalService::submit()      1.4 ms
+    PageData::dashboard()        7.2 ms
+    nextBill / holds             1.3 ms
+
+Yani server **tez hai** — poora kaam 25ms. Masla client par tha:
+
+**`x.open(..., false)` — synchronous XHR.** Browser bilkul jam jata hai.
+Aur code mein `btn.textContent='Saving...'` **agli hi line** par tha, is
+liye wo matn **kabhi paint hi nahi hota**. Cashier ko lagta ke button ne
+kuch kiya hi nahi — aur wo dobara dabata, jis se **do bill** ban sakte
+the.
+
+Ab: pehle screen ko paint karne do (double `requestAnimationFrame`),
+phir kaam shuru. Server ka waqt utna hi hai, magar ab **dikhta hai** ke
+kuch ho raha hai. Aur `paying` guard — dobara dabane se doosra bill
+nahi banta.
+
+**Server par bhi bojh kam:** `pos-finalize` har bill par POORA dashboard
+ginta tha (payment mix, kitchen, tables, profit) — halanke us waqt un
+mein se kuch nazar hi nahi aata. Naya `posCounters()` sirf do queries:
+
+    dashboard()    7.2 ms  ->  posCounters()  0.4 ms
+
+## 2. Poora keyboard control
+
+    F1   New bill              F9   Void / refund
+    F2   Send to kitchen       F10  New item
+    F3   Charge / payment      F12  Yeh fehrist
+    F4   Hold bills            Esc  Dialog band
+    F6   Duplicate bill
+    F7   Bill type / table
+
+    Ctrl+K  Search        Ctrl+P  Charge      Ctrl+H  Hold bills
+    +  -    Last item ka qty     Delete  Last item hatao
+    A-Z 0-9 Seedha talash mein likhna shuru (barcode scanner bhi)
+    1-6     Payment dialog mein payment method
+
+**Ek usool jo ahem hai:** jab cashier kisi khane mein LIKH raha ho,
+shortcuts band — warna naam mein "F" likhne par bill khul jata. Sirf
+Escape aur function keys wahan bhi chalti hain.
+
+F12 ya "?" dabane par poori fehrist saamne aa jati hai.
+
+## 3. Server ka pata chhupaya
+
+Dashboard par `saasversion-production.up.railway.app` nazar aa raha tha.
+Wo hamara infrastructure hai — customer ke kaam ka nahi, aur jo cheez
+screen par hoti hai wo **screenshot mein bhi chali jati hai**.
+
+Sirf UI se chhupana kaafi nahi tha: server har `sync-status` jawab mein
+`cloud_url` bhej raha tha. Ab **wo bheja hi nahi jata** — client ko sirf
+itna milta hai ke rabta hai ya nahi.
+
+    Pehle : "Connected to https://saasversion-production.up.railway.app"
+    Ab    : "Connected - runs automatically every 2 minutes."
+
+Char jagah theek: dashboard, POS ka sync icon, POS ka diagnostics
+dialog, aur Offline/Sync page.
+
+## Testing
+
+    perf maap (asli DB)     -> dashboard 7.2ms -> 0.4ms
+    regression: hold bills  -> 12/12
+    regression: licence key -> 12/12
+    regression: backup      -> 15/15
+    php -l / node --check   -> 0 failures
+    cloud_url poore code par-> 0 baqi
+
+**NahI chala:** asli browser mein shortcuts (mere paas browser nahi).
+Har shortcut ka target maujood hai, yeh gin kar tasdeeq kiya — magar
+chala kar nahi dekha.
