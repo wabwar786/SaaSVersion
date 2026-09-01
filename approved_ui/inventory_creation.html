@@ -58,7 +58,7 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Track</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
+      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th></th><th>Track</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
     <div class="inventory-cards" id="cards"></div>
   </section>
@@ -120,7 +120,8 @@ function render(){
   $('#statLow').textContent=state.inventoryItems.filter(i=>status(i)==='Low').length;
   $('#statDirect').textContent=state.inventoryItems.filter(i=>i.usage==='Direct Sale').length;
   $('#statBoth').textContent=state.inventoryItems.filter(i=>i.usage==='Both').length;
-  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><button class="btn sm" data-track="'+i.id+'" data-on="'+(i.tracked?1:0)+'" title="Watch this item on the closing report">'+(i.tracked?'&#9679; Tracked':'Track')+'</button></td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
+  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><button class="btn sm" data-editi="'+i.id+'" title="Edit this item">Edit</button></td>'
+      +'<td><button class="btn sm" data-track="'+i.id+'" data-on="'+(i.tracked?1:0)+'" title="Watch this item on the closing report">'+(i.tracked?'&#9679; Tracked':'Track')+'</button></td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
   $('#cards').innerHTML=list.map(i=>'<article class="inventory-card"><div class="inventory-card-top"><div><h3>'+i.name+'</h3><small>'+i.category+' · '+i.usage+'</small></div><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></div><div class="inventory-card-grid"><div><span>On Hand</span><b>'+RestaurantStore.formatStock(i)+'</b></div><div><span>Average Cost</span><b>'+RestaurantStore.formatPurchaseCost(i)+'</b></div><div><span>Purchase Unit</span><b>'+i.purchaseUnit+' × '+i.purchaseFactor+'</b></div><div><span>Storage</span><b>'+i.storage+'</b></div></div><div class="action-row" style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn sm danger" data-del-item="'+i.id+'" data-name="'+i.name+'">Delete</button></div></article>').join('');
 }
 function setTab(tab){
@@ -148,6 +149,56 @@ document.addEventListener('click',e=>{
      Malik har item ka hisab nahi chahta, sirf qeemti ya chori ke
      andesha wali cheezon ka. Jo item yahan "Tracked" hai wahi shift
      closing report aur WhatsApp ke khulase mein aata hai. */
+  /* esc() is page par kahin define nahi thi — mere naye dialog mein
+     use ho rahi thi aur runtime par ReferenceError deti. Yahan local. */
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  /* V83 — INVENTORY EDIT.
+     Pehle item banane ke BAAD badalne ka koi rasta nahi tha: naam ghalat
+     ho ya reorder level, item delete kar ke dobara banana parta tha — aur
+     us ke saath stock history ka rishta toot jata. */
+  const eb=e.target.closest('[data-editi]');
+  if(eb){
+    const g=DBApi.req('inventory-item-get&id='+encodeURIComponent(eb.dataset.editi));
+    if(!g||!g.ok){toast((g&&g.message)||'Could not load the item');return}
+    const it=g.item;
+    const ov=document.createElement('div'); ov.className='modal show';
+    ov.innerHTML='<div class="dialog" style="width:min(560px,95vw)">'
+      +'<div class="dialog-head"><div><h3>Edit item</h3>'
+      +'<p>In stock: '+Number(it.on_hand||0).toLocaleString()+'</p></div>'
+      +'<button class="close" data-x>&times;</button></div>'
+      +'<div class="dialog-body"><div class="form-grid">'
+      +'<label class="field full"><span>Item name</span><input id="eName" value="'+esc(it.name||'')+'"></label>'
+      +'<label class="field"><span>Item code</span><input id="eSku" value="'+esc(it.sku||'')+'"></label>'
+      +'<label class="field"><span>Barcode</span><input id="eBar" value="'+esc(it.barcode||'')+'"></label>'
+      +'<label class="field"><span>Purchase unit</span><input id="ePU" value="'+esc(it.purchase_unit_name||'')+'"></label>'
+      +'<label class="field"><span>Units per purchase</span><input id="eFac" type="number" step="0.001" value="'+(it.purchase_factor||1)+'"></label>'
+      +'<label class="field"><span>Reorder level</span><input id="eRe" type="number" step="0.01" value="'+(it.reorder_level||0)+'"></label>'
+      +'<label class="field"><span>Status</span><select id="eAct">'
+        +'<option value="1"'+(Number(it.is_active)===1?' selected':'')+'>Active</option>'
+        +'<option value="0"'+(Number(it.is_active)===1?'':' selected')+'>Inactive</option></select></label>'
+      +'<label class="field full" style="flex-direction:row;align-items:center;gap:8px">'
+        +'<input id="eTr" type="checkbox"'+(Number(it.is_tracked)===1?' checked':'')+'>'
+        +'<span style="margin:0">Watch this item on the closing report</span></label>'
+      +'</div></div>'
+      +'<div class="dialog-foot"><button class="btn" data-x>Cancel</button>'
+      +'<button class="btn primary" id="eSave">Save changes</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',ev=>{if(ev.target===ov||ev.target.closest('[data-x]'))ov.remove()});
+    ov.querySelector('#eSave').onclick=function(){
+      const r=DBApi.req('inventory-item-save',{id:it.id,
+        name:ov.querySelector('#eName').value,sku:ov.querySelector('#eSku').value,
+        barcode:ov.querySelector('#eBar').value,purchase_unit_name:ov.querySelector('#ePU').value,
+        purchase_factor:ov.querySelector('#eFac').value,reorder_level:ov.querySelector('#eRe').value,
+        is_active:ov.querySelector('#eAct').value,is_tracked:ov.querySelector('#eTr').checked?1:0});
+      if(!r||!r.ok){toast((r&&r.message)||'Could not save');return}
+      toast(r.message||'Item updated'); ov.remove();
+      setTimeout(()=>location.reload(),400);
+    };
+    return;
+  }
+
   const tb=e.target.closest('[data-track]');
   if(tb){
     const on=tb.getAttribute('data-on')==='1';

@@ -413,6 +413,107 @@
     if (a) document.getElementById('alAct').value = a.value;
   }
 
+  /* ==================== PURCHASE ORDERS ====================
+     Ab tak sirf GRN tha ("maal aa gaya"). Supplier ko order bhejne ka
+     rasta nahi tha, aur na yeh pata chalta tha ke kya mangwaya hua hai
+     magar aaya nahi. */
+  function poPage() {
+    var r = req('po-list');
+    if (!r || !r.ok) { replace(panel('Purchase Orders', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load purchase orders') + '</div>')); return; }
+    var rows = r.rows || [];
+    var open = rows.filter(function (x) { return x.status !== 'Received' && x.status !== 'Cancelled'; });
+
+    replace(panel('Purchase Orders', open.length + ' order(s) still awaiting delivery',
+      table([
+        { l: 'PO', k: 'po_no' },
+        { l: 'Supplier', f: function (x) { return esc(x.supplier); } },
+        { l: 'Ordered', k: 'date' },
+        { l: 'Expected', f: function (x) { return esc(x.expected || '-'); } },
+        { l: 'Items', n: 1, k: 'items' },
+        { l: 'Received', f: function (x) {
+            var pc = x.ordered > 0 ? Math.round(x.received / x.ordered * 100) : 0;
+            return pc + '%';
+          } },
+        { l: 'Amount', n: 1, f: function (x) { return money(x.amount); } },
+        { l: 'Status', f: function (x) {
+            var t = x.status === 'Received' ? 'green' : (x.status === 'Cancelled' ? 'red' : 'info');
+            return '<span class="tag ' + t + '">' + esc(x.status) + '</span>';
+          } },
+        { l: '', f: function (x) {
+            return (x.status === 'Received' || x.status === 'Cancelled') ? ''
+              : '<button class="btn sm danger" data-pocancel="' + esc(x.id) + '" data-no="' + esc(x.po_no) + '">Cancel</button>';
+          } }
+      ], rows),
+      '<button class="btn primary" id="poNew">New purchase order</button>'));
+
+    var nb = document.getElementById('poNew');
+    if (nb) nb.onclick = poNew;
+
+    host().addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pocancel]');
+      if (!b) return;
+      var why = prompt('Why is ' + b.getAttribute('data-no') + ' being cancelled?');
+      if (why === null || !why.trim()) { toast('A reason is required', true); return; }
+      var res = req('po-cancel', { id: b.getAttribute('data-pocancel'), reason: why });
+      if (!res.ok) { toast(res.message || 'Could not cancel', true); return; }
+      toast(res.message); poPage();
+    });
+  }
+
+  function poNew() {
+    var st = req('store-state');
+    var s = (st && st.ok && st.state) ? st.state : {};
+    var sup = s.suppliers || [], items = s.inventoryItems || [];
+    if (!sup.length) { toast('Add a supplier first', true); return; }
+    if (!items.length) { toast('Add inventory items first', true); return; }
+
+    var ov = document.createElement('div'); ov.className = 'modal show';
+    ov.innerHTML = '<div class="dialog" style="width:min(680px,96vw)">'
+      + '<div class="dialog-head"><div><h3>New purchase order</h3>'
+      + '<p>What to order, and from whom</p></div><button class="close" data-x>&times;</button></div>'
+      + '<div class="dialog-body"><div class="form-grid">'
+      + '<label class="field"><span>Supplier</span><select id="poSup">'
+      + sup.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>'; }).join('')
+      + '</select></label>'
+      + '<label class="field"><span>Expected date</span><input id="poExp" type="date"></label>'
+      + '</div><div id="poLines" style="margin-top:12px"></div>'
+      + '<button class="btn sm" id="poAdd" style="margin-top:8px">+ Add item</button>'
+      + '</div><div class="dialog-foot"><button class="btn" data-x>Cancel</button>'
+      + '<button class="btn primary" id="poSave">Create order</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov || e.target.closest('[data-x]')) ov.remove(); });
+
+    function addLine() {
+      var d = document.createElement('div');
+      d.className = 'po-line';
+      d.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+      d.innerHTML = '<select class="poItem" style="flex:2">'
+        + items.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>'; }).join('')
+        + '</select>'
+        + '<input class="poQty" type="number" step="0.01" placeholder="Qty" style="flex:1">'
+        + '<input class="poCost" type="number" step="0.01" placeholder="Unit cost" style="flex:1">'
+        + '<button class="btn sm" data-rm>&times;</button>';
+      d.querySelector('[data-rm]').onclick = function () { d.remove(); };
+      document.getElementById('poLines').appendChild(d);
+    }
+    ov.querySelector('#poAdd').onclick = addLine;
+    addLine();
+
+    ov.querySelector('#poSave').onclick = function () {
+      var lines = [].slice.call(ov.querySelectorAll('.po-line')).map(function (d) {
+        return { item_id: d.querySelector('.poItem').value,
+                 qty: Number(d.querySelector('.poQty').value || 0),
+                 cost: Number(d.querySelector('.poCost').value || 0) };
+      }).filter(function (l) { return l.qty > 0; });
+      if (!lines.length) { toast('Add at least one item with a quantity', true); return; }
+      var res = req('po-create', { supplier_id: ov.querySelector('#poSup').value,
+                                   expected_date: ov.querySelector('#poExp').value, items: lines });
+      if (!res.ok) { toast(res.message || 'Could not create the order', true); return; }
+      toast(res.message); ov.remove(); poPage();
+    };
+  }
+
   function boot() {
     if (!window.DBApi) return;
     if (page === 'shift_management.html') shiftPage();
@@ -425,6 +526,7 @@
     else if (page === 'whatsapp_notifications.html') notifyPage();
     else if (page === 'closing_history.html') closingPage();
     else if (page === 'activity_log.html') auditPage();
+    else if (page === 'purchase_orders.html') poPage();
   }
 
   /* module.js ke render ke BAAD chalna hai, warna wo hamara content

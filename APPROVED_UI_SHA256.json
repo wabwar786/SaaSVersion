@@ -42,7 +42,7 @@
   "multi_branch.html": "4320c96c63a196793d01e1e1347fdfdadab51d8daae2cdeca6be9c100be2ad84",
   "users_access.html": "984b75ad39aa5954d32d4bd1afdb11744cbc6d2f08ff8f7d5beb35d28e35596c",
   "online_orders.html": "10fce0603118345b76fdc30b3ce95d16d15c751bda4231f45d0114e114bbf5bb",
-  "inventory_creation.html": "40d786015d11e9d66b9efe65aff863c810c89dbce7e52b556b08fb70219fc934",
+  "inventory_creation.html": "188994c565767416061f6cbaabb9a8cb58bcd6bb7f1146c97463fccc6185cf7a",
   "assets/menu_01.jpg": "ee564a2ed6b60c0a24c01b7226731a5b02d9f9e69645ae4f0a9d15b3030167aa",
   "assets/menu_11.jpg": "10a1e185080235978dd5894c543cf6ba3d98ef46574c445ab15cd5fff6dd69b1",
   "assets/menu_06.jpg": "51b41266052bf8e23c2a9a0f42efb881d9bb6dfbb9fa9fe7e6ff5785c71426c6",
@@ -63,5 +63,6 @@
   "setup.html": "e4fdc371680e7a8c2d8ed4a49089aaca99d60cf0c0c48785280a2307071e097b",
   "closing_history.html": "b9d85bc83e156d75a3b40cb7cdbc54497368894ef9699acdccff8f15846c83b9",
   "pair.html": "afa5bf50187ddfcdfad2638dacb9478fa9ae211d046912d9b8f78c671c94f0e6",
-  "activity_log.html": "32f26c64c40cbcf37ef18824824c4c19fac71623759a1644119351d842aa2b1e"
+  "activity_log.html": "32f26c64c40cbcf37ef18824824c4c19fac71623759a1644119351d842aa2b1e",
+  "purchase_orders.html": "3e59580c0cd5dc00a501ba2641cef6f8eb2af0bcb391e83115628316475ba600"
 }

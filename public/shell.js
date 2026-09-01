@@ -18,6 +18,7 @@
     {title:'Inventory & Menu',items:[
       ['inventory','Inventory','inventory_creation.html','▣'],
       ['purchasing','Purchasing','purchasing.html','⇩'],
+      ['po','Purchase Orders','purchase_orders.html','\u2637'],
       ['recipe','Recipe & Food Cost','recipe_making.html','✧'],
       ['menu','Menu & Categories','menu_management.html','☰'],
       ['wastage','Wastage / Adjustment','wastage_adjustment.html','⊘'],

@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -466,6 +466,56 @@ case 'running-orders':needLogin();Auth::requireModule('orders');
 
 case 'void-log':needLogin();Auth::requireModule('void');
  ok(['rows'=>OpsService::voidLog((string)($_GET['from']??''),(string)($_GET['to']??''))]);
+
+case 'inventory-item-get':needLogin();
+ try{ok(['item'=>CatalogService::inventoryItem((string)($_GET['id']??''))]);}
+ catch(Throwable $e){fail($e->getMessage(),404);}
+
+case 'inventory-item-save':needLogin();$d=body();
+ /* V83 — item ab EDIT ho sakta hai. Pehle sirf create tha: naam ghalat
+    ho ya reorder level, item delete kar ke dobara banana parta tha — aur
+    us ke saath stock history ka rishta toot jata. */
+ try{ok(CatalogService::saveInventoryItem((string)($d['id']??''),$d));}
+ catch(Throwable $e){fail($e->getMessage());}
+
+case 'food-cost-refresh':needLogin();
+ try{Scope::requireManagement('recalculating food cost');}catch(Throwable $e){fail($e->getMessage(),403);}
+ ok(CatalogService::refreshFoodCosts());
+
+case 'recipe-coverage':needLogin();
+ ok(['coverage'=>CatalogService::recipeCoverage()]);
+
+case 'po-list':needLogin();Auth::requireModule('purchasing');
+ ok(['rows'=>CatalogService::poList((string)($_GET['status']??''))]);
+
+case 'po-create':needLogin();Auth::requireModule('purchasing');$d=body();
+ try{ok(CatalogService::poCreate($d));}catch(Throwable $e){fail($e->getMessage());}
+
+case 'po-pending':needLogin();Auth::requireModule('purchasing');
+ ok(['rows'=>CatalogService::poPending((string)($_GET['id']??''))]);
+
+case 'po-cancel':needLogin();Auth::requireModule('purchasing');$d=body();
+ try{ok(CatalogService::poCancel((string)($d['id']??''),(string)($d['reason']??'')));}
+ catch(Throwable $e){fail($e->getMessage());}
+
+case 'reservation-tables':needLogin();
+ /* Kaunse tables us waqt khali hain — booking banate waqt. */
+ $when=str_replace('T',' ',(string)($_GET['when']??''));
+ if(strlen($when)===16)$when.=':00';
+ $mins=(int)($_GET['mins']??90)?:90;
+ $p=DB::pdo();$q=$p->prepare("SELECT dt.id,dt.display_name,dt.seats,COALESCE(f.name,'') fl
+   FROM dining_tables dt LEFT JOIN floors f ON f.id=dt.floor_id
+   WHERE dt.site_id=? AND dt.is_active=1 AND dt.deleted_at IS NULL ORDER BY f.sort_order,dt.display_name");
+ $q->execute([site_id()]);$rows=[];
+ foreach($q->fetchAll() as $t){
+   $free=$when===''?true:CatalogService::tableFree((string)$t['id'],$when,$mins,(string)($_GET['ignore']??''));
+   $rows[]=['id'=>$t['id'],'name'=>$t['display_name'],'seats'=>(int)$t['seats'],
+            'floor'=>$t['fl'],'free'=>$free];
+ }
+ ok(['tables'=>$rows,'when'=>$when]);
+
+case 'reservations-upcoming':needLogin();
+ ok(['by_table'=>CatalogService::upcomingByTable((int)($_GET['hours']??6))]);
 
 case 'item-tracking':needLogin();$d=body();
  /* V78 — kis item par nazar rakhni hai. Malik har item ka hisab nahi

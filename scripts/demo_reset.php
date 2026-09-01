@@ -12,14 +12,14 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Aio\Services\DemoBusiness;
 
-$args=[];
-foreach(array_slice($argv,1) as $a)
-    if(preg_match('/^--([a-z-]+)(?:=(.*))?$/i',$a,$m)) $args[strtolower($m[1])]=$m[2]??'1';
+/* V84 — sealed build mein $argv maujood nahi hota. */
+$args = cli_args();
 
-if(!empty($args['tenant'])){
-    $n=DemoBusiness::resetCustomerData((string)$args['tenant']);
+/* Ek business foran — testing aur support ke liye. */
+if (!empty($args['tenant'])) {
+    $n = DemoBusiness::resetCustomerData((string)$args['tenant']);
     echo "DEMO_RESET tenant=".substr((string)$args['tenant'],0,8)." rows=".array_sum($n)."\n";
-    foreach($n as $t=>$c) echo "  $t: $c\n";
+    foreach ($n as $t => $c) echo "  $t: $c\n";
     return;
 }
 

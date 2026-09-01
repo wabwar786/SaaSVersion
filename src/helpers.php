@@ -81,3 +81,37 @@ function require_module(string $module): void { Auth::requireModule($module); }
 function json_response(array $data,int $status=200): never { http_response_code($status); header('Content-Type: application/json'); echo json_encode($data,JSON_UNESCAPED_UNICODE); exit; }
 
 // build: V17.1 build 2026-08-25
+
+/**
+ * V84 — command line ke flags, SEALED build mein bhi.
+ *
+ * Sealed offline build scripts ko `php -r "...require sealed://..."` se
+ * chalati hai, aur us soorat mein `$argv` maujood HI NAHI hota. Har
+ * script apne tor par `$argv` parh rahi thi, is liye offline setup
+ * "Undefined variable $argv" par ruk jata tha.
+ *
+ * Ab sab yahan se maangti hain. `$argv` na ho to khali array — script
+ * apne default par chal padti hai (jo boot ke liye bilkul theek hai).
+ *
+ * @return array<string,string>  ['tenant'=>'abc','download'=>'1']
+ */
+function cli_args(): array
+{
+    $argv = $GLOBALS['argv'] ?? ($_SERVER['argv'] ?? null);
+    if (!is_array($argv)) return [];
+
+    $out = [];
+    foreach (array_slice($argv, 1) as $a) {
+        if (preg_match('/^--([a-zA-Z][a-zA-Z0-9_-]*)(?:=(.*))?$/', (string)$a, $m)) {
+            $out[strtolower($m[1])] = $m[2] ?? '1';
+        }
+    }
+    return $out;
+}
+
+/** Ek flag ki value (ya default). */
+function cli_arg(string $name, string $default = ''): string
+{
+    $a = cli_args();
+    return (string)($a[strtolower($name)] ?? $default);
+}

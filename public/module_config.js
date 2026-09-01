@@ -238,7 +238,7 @@ window.MODULE_CONFIGS={
     ],
     columns:[
       {label:'Guest',field:'name',sub:'phone'},{label:'Reference',field:'ref'},
-      {label:'When',field:'when'},{label:'Guests',field:'guests',format:'number'},
+      {label:'When',field:'when'},{label:'Table',field:'table_name'},{label:'Guests',field:'guests',format:'number'},
       {label:'Status',field:'status',format:'tag',tags:{Booked:'info',Seated:'ok',Cancelled:'danger',No_show:'danger'}}
     ],
     fields:[
@@ -246,6 +246,10 @@ window.MODULE_CONFIGS={
       {key:'phone',label:'Phone',type:'text'},
       {key:'when',label:'Date & time',type:'datetime-local',required:true},
       {key:'guests',label:'Number of guests',type:'number',default:2},
+      /* V83 — booking ab TABLE se jurti hai. Pehle koi table nahi
+         chunta tha, is liye POS ko pata hi nahi chalta tha ke table
+         8 baje reserved hai. */
+      {key:'table',label:'Table',type:'select',options:[],dynamic:'reservation-tables'},
       {key:'deposit',label:'Deposit taken',type:'number',default:0},
       {key:'status',label:'Status',type:'select',options:['Booked','Seated','Cancelled','No_show'],default:'Booked'},
       {key:'notes',label:'Notes',type:'textarea',full:true}

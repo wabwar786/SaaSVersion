@@ -249,8 +249,10 @@ final class ModuleBridge
     {
         $q = DB::pdo()->prepare(
             "SELECT r.id, r.reservation_no, r.guest_name, r.guest_phone, r.reservation_at,
-                    r.guest_count, r.deposit_amount, r.status, r.notes
+                    r.guest_count, r.deposit_amount, r.status, r.notes,
+                    r.table_id, COALESCE(dt.display_name,'') AS table_name
                FROM reservations r
+               LEFT JOIN dining_tables dt ON dt.id = r.table_id
               WHERE r.tenant_id=? AND r.site_id=? AND r.deleted_at IS NULL
                 AND r.reservation_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
               ORDER BY r.reservation_at");
@@ -265,6 +267,8 @@ final class ModuleBridge
             'deposit' => (float)$x['deposit_amount'],
             'status'  => ucfirst(strtolower((string)$x['status'])),
             'notes'   => (string)($x['notes'] ?? ''),
+            'table'   => (string)($x['table_id'] ?? ''),
+            'table_name' => (string)($x['table_name'] ?? ''),
         ], $q->fetchAll());
     }
 
@@ -281,20 +285,28 @@ final class ModuleBridge
         $status = strtoupper((string)($d['status'] ?? 'Booked'));
         if (!in_array($status, ['BOOKED','SEATED','CANCELLED','NO_SHOW'], true)) $status = 'BOOKED';
 
+        /* V83 — ek hi table par do bookings na lag jayen. */
+        $table = trim((string)($d['table'] ?? '')) ?: null;
+        if ($table && !CatalogService::tableFree($table, $when, 90, $id)) {
+            throw new \RuntimeException('That table is already booked around this time. Pick another table or time.');
+        }
+
         if ($id !== '') {
             $p->prepare("UPDATE reservations SET guest_name=?,guest_phone=?,reservation_at=?,guest_count=?,
-                                deposit_amount=?,status=?,notes=?,updated_at=NOW(6)
+                                deposit_amount=?,status=?,notes=?,table_id=?,updated_at=NOW(6)
                           WHERE id=? AND tenant_id=? AND site_id=?")
               ->execute([$name,(string)($d['phone']??''),$when,max(1,(int)($d['guests']??2)),
-                         (float)($d['deposit']??0),$status,(string)($d['notes']??''),$id,tenant_id(),site_id()]);
+                         (float)($d['deposit']??0),$status,(string)($d['notes']??''),$table,
+                         $id,tenant_id(),site_id()]);
             return $id;
         }
         $id = uuid();
         $p->prepare("INSERT INTO reservations(id,tenant_id,site_id,reservation_no,guest_name,guest_phone,
-                        reservation_at,guest_count,deposit_amount,status,notes)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+                        reservation_at,guest_count,deposit_amount,status,notes,table_id)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
           ->execute([$id,tenant_id(),site_id(),'RS-'.date('ymd-His'),$name,(string)($d['phone']??''),
-                     $when,max(1,(int)($d['guests']??2)),(float)($d['deposit']??0),$status,(string)($d['notes']??'')]);
+                     $when,max(1,(int)($d['guests']??2)),(float)($d['deposit']??0),$status,
+                     (string)($d['notes']??''),$table]);
         return $id;
     }
 

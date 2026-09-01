@@ -342,11 +342,29 @@ final class ReportService
             ['line'=>'Net profit',             'amount'=>$profit],
         ];
 
-        $note = 'Cost of sales comes from recipe consumption at the time of sale. '
-              . 'Items without a recipe contribute no cost, so gross profit will look high for them.';
-        if ((float)$cost <= 0) {
-            $note = 'No recipe cost was recorded for this period, so cost of sales is zero. '
-                  . 'Add recipes to your menu items to get a true profit figure.';
+        /* V83 — PROFIT KA SACH SAAF LIKHO.
+           Cost of sales recipe consumption se aata hai. Jin items ki
+           recipe nahi, un ka cost SIFAR rehta hai — yani profit asal se
+           ZYADA dikhta hai. Pehle report yeh baat aam alfaz mein kehti
+           thi; ab GINTI ke saath batati hai, taake malik jaan sake ke
+           yeh figure kitna qabil-e-etimad hai. */
+        $cov = CatalogService::recipeCoverage();
+
+        if ($cov['total'] === 0) {
+            $note = 'No menu items yet, so there is nothing to cost.';
+        } elseif ($cov['without_recipe'] === 0) {
+            $note = 'All ' . $cov['total'] . ' menu items have a recipe, so this profit figure is reliable.';
+        } else {
+            $note = $cov['without_recipe'] . ' of ' . $cov['total'] . ' menu items have NO recipe ('
+                  . (100 - $cov['pct']) . '%). Those items are counted as sales but cost nothing, '
+                  . 'so the profit shown here is HIGHER than the real profit. '
+                  . 'Add recipes to your top sellers first.';
+        }
+
+        /* Report ke andar bhi ek line — note nazar-andaz ho jata hai. */
+        if ($cov['without_recipe'] > 0) {
+            $rows[] = ['line' => '\u{2014} ' . $cov['without_recipe'] . ' item(s) without a recipe: cost not counted',
+                       'amount' => 0];
         }
         return self::shape('Profit and loss',
             [['k'=>'line','l'=>'Line'],['k'=>'amount','l'=>'Amount','n'=>1]],

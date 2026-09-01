@@ -6,7 +6,10 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Aio\DB;
 
-$sqlFile = $argv[1] ?? (dirname(__DIR__).'/docs/02_local_mysql_schema.sql');
+/* V84 — sealed build mein $argv maujood hi nahi hota (scripts `php -r`
+   se chalti hain). Guard ke baghair yeh "Undefined variable" deta tha
+   aur offline setup wahin ruk jata tha. */
+$sqlFile = ($GLOBALS['argv'][1] ?? null) ?: (dirname(__DIR__).'/docs/02_local_mysql_schema.sql');
 if (!is_file($sqlFile)) { fwrite(STDERR, "Schema file not found: $sqlFile\n"); exit(1); }
 
 $sql = file_get_contents($sqlFile);

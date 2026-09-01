@@ -32,10 +32,8 @@ use Aio\DB;
 use Aio\Services\AdminData;
 
 /* ---------------- args ---------------- */
-$args = [];
-foreach (array_slice($argv, 1) as $a) {
-    if (preg_match('/^--([a-z-]+)(?:=(.*))?$/i', $a, $m)) $args[strtolower($m[1])] = $m[2] ?? '1';
-}
+/* V84 — sealed build mein $argv maujood nahi hota. */
+$args = cli_args();
 $what    = strtolower((string)($args['what'] ?? 'txn'));
 $confirm = (string)($args['confirm'] ?? '');
 $before  = (string)($args['before'] ?? '');

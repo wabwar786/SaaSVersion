@@ -6,7 +6,8 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 use Aio\DB;
 use Aio\Services\UserService;
 
-$force = in_array('--force', $argv ?? [], true);
+/* V84 — sealed build: $argv hai hi nahi. */
+$force = (bool)cli_arg('force');
 $marker = dirname(__DIR__) . '/storage/.approved_v6_admin_repaired';
 
 if (!$force && is_file($marker)) {

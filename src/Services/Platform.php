@@ -174,7 +174,7 @@ final class Platform
         $roles = [
             'Owner / Admin'  => null,   // null = sab kuch
             'Branch Manager' => ['dashboard','shift','pos','tablet','kds','tables','orders','online',
-                                 'inventory','purchasing','recipe','menu','wastage','transfer','count',
+                                 'inventory','purchasing','po','recipe','menu','wastage','transfer','count',
                                  'suppliers','customers','expenses','accounting','promotions','reservations',
                                  'riders','delivery','loyalty','whatsapp','printers','reports','closing',
                                  'void','staff','settings','offline','branches'],

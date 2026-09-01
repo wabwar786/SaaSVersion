@@ -4636,3 +4636,139 @@ Expiry na di jaye to console **saaf batata hai**:
 
     $ delete console-test-shop --confirm "Console Test Shop"
       Deleted "Console Test Shop" — 21 rows from 8 tables
+
+---
+
+# V83 — Char adhoore module mukammal
+
+## 1. Inventory edit (pehle rasta hi nahi tha)
+
+Item banane ke **baad** badalne ka koi rasta nahi tha. Naam ghalat ho ya
+reorder level, item **delete kar ke dobara banana** parta tha — aur us ke
+saath stock history ka rishta toot jata.
+
+Ab har item ke saamne **Edit**: naam, code, barcode, purchase unit,
+units-per-purchase, reorder level, tracking, active/inactive.
+
+Item code (SKU) unique rakha jata hai — warna purchasing aur reports
+mein do items ek jaise nazar aate hain.
+
+## 2. Profit & Loss ab apni sacchai khud batata hai
+
+Cost of sales recipe consumption se aata hai. Jin items ki recipe nahi,
+un ka cost **sifar** rehta hai — yani **profit asal se ZYADA dikhta
+hai**. Pehle report yeh baat aam alfaz mein kehti thi.
+
+Ab **ginti ke saath**:
+
+    13 of 13 menu items have NO recipe (100%). Those items are counted
+    as sales but cost nothing, so the profit shown here is HIGHER than
+    the real profit. Add recipes to your top sellers first.
+
+Aur report ke andar bhi ek line — note aksar nazar-andaz ho jata hai.
+
+Saath mein: `menu_items.food_cost` ab mehfooz hota hai, aur
+**Recalculate food cost** se sab dobara ginta hai.
+
+## 3. Purchase Orders (bilkul naya)
+
+Ab tak sirf GRN tha — "maal aa gaya". Supplier ko **order bhejne** ka
+koi rasta nahi tha, aur na yeh pata chalta tha ke kya mangwaya hua hai
+magar aaya nahi.
+
+Naya page: PO banayein (supplier, expected date, items + qty + cost),
+list mein **kitna aaya kitna baqi** (%), aur cancel (wajah ke saath,
+magar receive ho chuka PO cancel nahi hota).
+
+Purchase unit item se khud aata hai — warna PO par "10" likha hota aur
+kisi ko pata na chalta ke 10 bag hain ya 10 kg.
+
+## 4. Reservation ab TABLE se jurti hai
+
+Booking kisi table se juri hi nahi hoti thi, is liye POS ko pata nahi
+chalta tha ke table 8 baje reserved hai.
+
+Ab booking par table chunte hain, aur **ek hi table par do bookings nahi
+lag sakteen** — waqt ka overlap check hota hai (default 90 minute).
+`reservations-upcoming` se POS agle chand ghanton ki bookings dekh sakta
+hai.
+
+## Testing — asli DB par, aur do bug nikle
+
+    [A] inventory edit          2/2
+    [B] food cost + coverage    3/3
+    [C] purchase orders         5/5
+    [D] reservation -> table    4/4
+                               14/14
+
+**Do asli bug jo sirf chala kar nikle:**
+
+1. `purchase_order_items` par `tenant_id`/`site_id` hai hi nahi — wo
+   parent PO se aate hain. Schema dump mein yeh columns agli table ki
+   lines ke saath mil gaye the aur maine ghalat maan liya.
+2. `purchase_unit_name` ka koi default nahi — insert wahin ruk jata tha.
+
+**Regression:** isolation + 20 reports = **28/28 pass**.
+
+(Ek dafa 4 fails aaye the — wo container ki date badalne se the, bills
+28 Aug ke aur "today" 1 Sep. Sahi date se sab pass.)
+
+## Ab baqi
+
+- **Customer Mobile App** — bana hi nahi (QR ordering asli hai)
+- **#13** POS ki client-side raftaar
+- **#18** Expiry aur Due Payments reports
+- **#25** UI consistency pass
+
+---
+
+# V84 — Offline setup "Undefined variable $argv" par ruk jata tha
+
+**Wajah:** sealed offline build scripts ko is tarah chalati hai —
+
+    php -r "require 'sealed://scripts/demo_reset.php';"
+
+Aur `-r` se chalane par **`$argv` maujood hi nahi hota**. Script us par
+`$args` bana rahi thi, PHP warning deti, aur installer native command ka
+stderr dekh kar poora setup rok deta.
+
+## Saat scripts mein yehi tha
+
+    demo_reset  self_update  install_schema  node_reset
+    reset_super_admin  ensure_v13_login  repair_default_admin
+
+Yani `self_update` aur `node_reset` bhi sealed build mein isi tarah
+tootte — auto-update aur node reset dono. Sirf `demo_reset` boot par
+chalti thi, is liye wahi nazar aayi.
+
+## Fix — ek jagah
+
+`src/helpers.php` mein naya `cli_args()`:
+
+- `$GLOBALS['argv']` ya `$_SERVER['argv']` se leta hai
+- na mile to **khali array** — script apne default par chal padti hai
+  (jo boot ke liye bilkul theek hai)
+
+Saat ki saat scripts ab yahi use karti hain. Aage koi nayi script `$argv`
+seedha nahi parhegi.
+
+## Testing
+
+    sealed mode (php -r, koi $argv nahi)     7/7 scripts clean
+    flags normal tareeqe se                   --tenant= kaam karta hai
+    poora boot chain (17 scripts)             0 warnings
+
+Ek cheez khud pakri: mera pehla regex `demo_reset.php` ka `--tenant`
+wala block bhi kha gaya tha. Chala kar dekhne par pata chala (flag kaam
+karna band ho gaya) aur wapas daal diya.
+
+## V85 — `seed_roles` boot chain mein tha hi nahi
+
+Package ki tasdeeq karte waqt pakra gaya: `seed_roles.php` na
+`docker-entrypoint.sh` mein tha, na offline installer mein.
+
+V79 se `provisionBusiness()` khud roles banati hai, is liye **naye**
+businesses theek hain. Magar **jo businesses us se pehle bane the** un
+ke paas roles ho hi nahi sakte — script sirf haath se chalti thi.
+
+Ab boot par chalti hai (idempotent, aur khali DB par saaf skip).

@@ -6,7 +6,8 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 use Aio\DB;
 
 $marker = dirname(__DIR__) . '/storage/.v13_workable_ready';
-$force = in_array('--force', $argv ?? [], true);
+/* V84 — sealed build: $argv hai hi nahi. */
+$force = (bool)cli_arg('force');
 
 if (!$force && is_file($marker)) {
     echo "V13_LOGIN_ACCOUNT_ALREADY_READY\n";
