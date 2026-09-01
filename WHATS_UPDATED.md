@@ -4772,3 +4772,123 @@ businesses theek hain. Magar **jo businesses us se pehle bane the** un
 ke paas roles ho hi nahi sakte — script sirf haath se chalti thi.
 
 Ab boot par chalti hai (idempotent, aur khali DB par saaf skip).
+
+---
+
+# V86 — Customer khud register kare, khud renew kare
+
+Poora self-service nizam: koi bhi khud account banaye, 14 din trial
+chalaye, aur khud payment bhej kar activate karwaye.
+
+## Kaise chalta hai
+
+    1. Customer  register.html  ->  14-day trial, sample data ke saath
+    2. Software    3 din pehle  ->  peela banner: "expires in 2 days"
+    3. Customer  activate.html  ->  payment ki tafseel + transaction ID
+    4. Aap    super admin queue ->  ek click: "Approve & activate"
+    5. Software                 ->  chalu, aur data waisa ka waisa
+
+## Do faisle jo maine jaan-boojh kar liye
+
+**1. Transaction ID par KHUD-BA-KHUD activate nahi hota.**
+
+Customer likh sakta hai "12345, paisay bhej diye". Us par software chalu
+kar dena **muft mein de dene ke barabar hai**. Is liye darkhwast PENDING
+rehti hai aur aap ek click mein manzoor karte hain — **12 ghante ka waada
+aap ka hai, system ka nahi.**
+
+Super admin ki screen par confirm karte waqt saaf likha aata hai:
+*"Check the payment in your bank/wallet first — this reference is what
+the customer typed."*
+
+**2. Trial khatam hone par software band, DATA NAHI.**
+
+Customer ka menu, bills, sab wahin rehta hai; payment ke baad wahin se
+chalta hai. Data mitana dabao ka tareeqa hai, hamara nahi. Aur activation
+par `is_demo` bhi hat jata hai — warna 5 din baad us ka apna data saaf ho
+jata (yeh maine khaas dekha).
+
+## Abuse se rok — public endpoint hai
+
+- **Ek email = ek business.** Warna ek hi bandah bar bar naya trial le kar
+  hamesha muft chalata rahega.
+- **Ek IP se rozana 3.** Test mein 4 mein se 2 bane, teesri par ruk gaya.
+- Naam, phone, email, password sab par validation.
+
+## Aap ke liye
+
+Super admin mein naya **Activations** page, waiting ki ginti badge ke
+saath. Har darkhwast par: business, reference, method, amount, abhi ki
+expiry, customer ka phone (**Call** button ke saath). Approve karte waqt
+months chun sakte hain, aur **mojooda expiry se aage** barhta hai —
+customer ke bache hue din zaya nahi hote.
+
+**Payment details** button se apna bank / Easypaisa / JazzCash aur qeemat
+set karein — customer ko activation screen par yehi dikhta hai. Khali
+chhorein to usay sirf phone number milega aur wo call karega.
+
+## Testing — asli DB par, 20/20
+
+    [1] register + trial + sample data + login    5/5
+    [2] abuse rok (email, input, IP throttle)     3/3
+    [3] expiry warning aur expired                2/2
+    [4] payment ki ittila                         4/4
+    [5] manzoori aur activation                   6/6
+
+**Khaas tasdeeq:** transaction ID bhejne ke baad bhi licence **expired
+hi raha** — jab tak manzoori na mili. Yehi is design ka poora nuqta hai.
+
+Ek bug pakra: `mb_strlen` bina fallback ke — mbstring har PHP build par
+nahi hoti. Chala kar nikla, lint se nahi.
+
+---
+
+# V87 — FBR: connection test ab sach batata hai
+
+## Pehle apni ghalti durust
+
+Maine kaha tha ke QR mein fallback matn ja raha hai. **Wo ghalat tha.**
+Jo number QR mein aaya — `82055826090113502220*Test*` — wo FBR ki apni
+service se hi aaya hai. Chain kaam kar rahi hai.
+
+## Asli masla service ki setting mein hai
+
+**1. `*Test*` ka lahiq** — FiscalizationService (IMS.exe) khud lagati hai
+jab wo **test/sandbox mode** mein ho. Us haalat mein invoices FBR ko
+waqai report NAHI hotin. Yeh us service ki apni configuration hai.
+
+**2. Number POS ID se shuru nahi hota** — `82055826...` mein `158823`
+kahin nahi. Iska matlab: service apna **khud ka registered POS** use kar
+rahi hai, hamara bheja hua POSID nahi.
+
+Dono cheezein service ki config hain, hamare code ki nahi. Magar hamara
+software yeh baat **saaf nahi bata raha tha** — yahi meri kami thi.
+
+## Mera bug: connection test adhoora payload bhejta tha
+
+Pehle test sirf `POSID`, `USIN` aur khali `Items` bhejta tha. Is liye
+service hamesha yeh deti:
+
+    Code 402 — Model validation failed
+    Required property 'DateTime' not found
+
+Yani test se kuch pata hi nahi chalta tha, chahe sab theek ho.
+
+Ab test **poora, valid model** bhejta hai (DateTime, totals, ek item
+sameet) aur jawab parh kar saaf batata hai:
+
+- Invoice number mila ya nahi
+- Number mein `Test` hai to: *"service is in TEST mode, invoices are NOT
+  being reported to FBR for real"*
+- Number POS ID se shuru nahi hota to: *"the service is using its own
+  registered POS — not the one entered here"*
+
+Aur Settings par ab yeh poora jawab ek box mein dikhta hai; pehle ek
+line mein kat jata tha aur asli wajah nazar hi nahi aati thi.
+
+## Testing
+
+    php -l   -> 0 errors
+    node --check (settings) -> OK
+
+**NahI chala:** asli FiscalizationService par (mere paas nahi hai).

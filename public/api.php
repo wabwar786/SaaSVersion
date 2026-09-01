@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -269,6 +269,57 @@ case 'logout':
  /* Client ko wapas wahi business-wala login link do. */
  ok(['redirect'=>'/login.html'.($__slug!==''?('?b='.rawurlencode($__slug)):'')]);
 case 'setup':$d=body();$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND status='ACTIVE'");$q->execute([tenant_id()]);if((int)$q->fetchColumn())fail('Administrator already exists.');if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$mods=array_column($p->query("SELECT id FROM platform_modules WHERE is_active=1")->fetchAll(),'id');UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'admin','phone'=>'','password'=>$d['password'],'role_id'=>roleIdByName('Owner / Admin'),'modules'=>$mods,'is_admin'=>1]);ok();
+case 'self-register':
+ /* V86 — customer KHUD register karta hai. Public endpoint: koi login
+    nahi. Is liye rok SelfService ke andar hai (ek email = ek business,
+    ek IP se rozana chand). */
+ if((string)cfg('app.role')!=='cloud')fail('Registration happens on the online portal.',400);
+ $d=body();
+ try{$r=SelfService::register($d);}catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['message'=>'Your '.$r['trial_days'].'-day trial is ready. Sign in and start using it.']);
+
+case 'payment-info':needLogin();
+ ok(['payment'=>SelfService::paymentInfo(),
+     'licence'=>\Aio\Services\Licence::current(),
+     'request'=>SelfService::myActivation()]);
+
+case 'activation-request':needLogin();$d=body();
+ /* Yeh sirf DARKHWAST hai. Licence yahan se nahi barhta — koi bhi
+    transaction id likh kar software nahi chala sakta. */
+ try{Scope::requireManagement('sending activation details');}catch(Throwable $e){fail($e->getMessage(),403);}
+ try{ok(SelfService::requestActivation($d));}catch(Throwable $e){fail($e->getMessage());}
+
+case 'sa-billing-get':needSuper();
+ ok(['payment'=>SelfService::paymentInfo()]);
+
+case 'sa-billing-save':needSuper();$d=body();
+ /* Bank / easypaisa ki tafseel — customer ki activation screen par yehi
+    dikhti hai. Yeh khali chhor dein to customer ko sirf phone number
+    milega aur wo call karega. */
+ $p=DB::pdo();$n=0;
+ foreach(['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price','yearly_price'] as $k){
+   if(!array_key_exists($k,$d))continue;
+   $p->prepare("INSERT INTO platform_settings(id,setting_group,setting_key,value_json)
+                VALUES(?,'billing',?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json)")
+     ->execute([uuid(),$k,json_encode(trim((string)$d[$k]))]);$n++;
+ }
+ ok(['saved'=>$n,'payment'=>SelfService::paymentInfo()]);
+
+case 'sa-activations':needSuper();
+ ok(['rows'=>SelfService::pendingActivations((string)($_GET['status']??'PENDING'))]);
+
+case 'sa-activation-approve':needSuper();$d=body();
+ try{$r=SelfService::approve((string)($d['id']??''),(int)($d['months']??0),
+        (string)(Platform::superUser()['email']??'super'),(string)($d['note']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['rows'=>SelfService::pendingActivations()]);
+
+case 'sa-activation-reject':needSuper();$d=body();
+ try{$r=SelfService::reject((string)($d['id']??''),
+        (string)(Platform::superUser()['email']??'super'),(string)($d['note']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok($r+['rows'=>SelfService::pendingActivations()]);
+
 case 'signup':$d=body();if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND email=?");$q->execute([tenant_id(),$d['email']]);$exists=(int)$q->fetchColumn();$q=$p->prepare("SELECT COUNT(*) FROM signup_requests WHERE email=? AND status='PENDING'");$q->execute([$d['email']]);$exists+=(int)$q->fetchColumn();if($exists)fail('Email already registered or pending.');UserService::signup(['full_name'=>$d['name'],'email'=>$d['email'],'phone'=>$d['phone']??'','business'=>$d['business']??'Restaurant','password'=>$d['password']]);$_SESSION['pending_signup_email']=$d['email'];ok();
 case 'access-state':ok(['state'=>accessState()]);
 case 'user-create':needLogin();Auth::requireModule('users');$d=body();$id=applyUser('', $d,true);ok(['id'=>$id,'state'=>accessState()]);

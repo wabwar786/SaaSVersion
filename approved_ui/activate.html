@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Activate your software</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Activate your software</h1>
+        <p>Pay, then send us the transaction reference</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content"><div id="actBody" class="hint" style="padding:18px">Loading...</div></div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
+<script src="shell.js" data-active="activate"></script>
+<script>
+/* V86 — customer khud renew karta hai.
+   Yahan se licence NAHI barhta: customer transaction reference bhejta
+   hai, aur wo Wabwar ke paas manzoori ke liye jati hai. Koi bhi
+   transaction id likh kar software chalu nahi kar sakta. */
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function toast(m,err){var t=$('#toast');t.textContent=m;
+    t.className='toast show'+(err?' err':'');clearTimeout(window.__t);
+    window.__t=setTimeout(function(){t.className='toast'},3000)}
+
+  function row(k,v){ return v ? ('<div style="display:flex;justify-content:space-between;gap:14px;'
+    +'padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">'
+    +'<span style="color:var(--muted)">'+k+'</span><b style="text-align:right;word-break:break-all">'
+    +v+'</b></div>') : ''; }
+
+  function draw(){
+    if(!window.DBApi){$('#actBody').textContent='No server connection.';return}
+    var r=DBApi.req('payment-info');
+    if(!r||!r.ok){$('#actBody').innerHTML='<div class="hint" style="padding:18px">'
+      +esc((r&&r.message)||'Could not load billing details')+'</div>';return}
+
+    var pay=r.payment||{}, lic=r.licence||{}, req=r.request||null;
+    var tel=(pay.phone||'').replace(/\s/g,'');
+
+    /* Pehle halat — customer ko sab se pehle yeh jaanna hota hai. */
+    var head='';
+    if(lic.expired){
+      head='<div class="note" style="background:var(--danger-soft);color:var(--danger);margin:0 0 16px">'
+        +'<b>Your software has expired.</b> Billing is paused until it is activated.</div>';
+    }else if(lic.warn){
+      head='<div class="note" style="background:#fff6e5;color:#8a5a00;margin:0 0 16px">'
+        +'<b>'+esc(lic.message||'')+'</b></div>';
+    }else if(lic.expiry_date){
+      head='<div class="note" style="margin:0 0 16px">Your software is active until <b>'
+        +esc(lic.expiry_date)+'</b>'+(lic.days_left!=null?(' &middot; '+lic.days_left+' days left'):'')+'.</div>';
+    }
+
+    /* Agar darkhwast bheji ja chuki hai to form ki jagah uski halat. */
+    if(req && String(req.status).toUpperCase()==='PENDING'){
+      $('#actBody').innerHTML='<div style="padding:18px;max-width:640px">'+head
+        +'<section class="panel"><div class="panel-head"><div>'
+        +'<h2>We have your payment details</h2>'
+        +'<p>Sent on '+esc(String(req.created_at).slice(0,16))+'</p></div></div>'
+        +'<div class="panel-body">'
+        +row('Reference', esc(req.txn_reference))
+        +row('Months', esc(String(req.months)))
+        +row('Amount', req.amount>0?esc(String(req.amount)):'')
+        +'<p style="font-size:13px;line-height:1.7;margin:14px 0 0">'
+        +'Your software will be activated <b>within 12 hours</b>. '
+        +'You can keep working in the meantime. There is no need to send this again.</p>'
+        +'<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">'
+        +'In a hurry? Call '+esc(pay.company||'')+' at '
+        +'<a href="tel:'+esc(tel)+'">'+esc(pay.phone||'')+'</a>.</p>'
+        +'</div></section></div>';
+      return;
+    }
+
+    var rejected = req && String(req.status).toUpperCase()==='REJECTED';
+
+    $('#actBody').innerHTML='<div style="padding:18px"><div class="split" style="align-items:start">'
+      + head
+      /* ---- kahan bhejein ---- */
+      +'<section class="panel"><div class="panel-head"><div><h2>1. Send the payment</h2>'
+      +'<p>Any one of these</p></div></div><div class="panel-body">'
+      + row('Monthly', pay.monthly_price?('PKR '+esc(pay.monthly_price)):'')
+      + row('Yearly', pay.yearly_price?('PKR '+esc(pay.yearly_price)):'')
+      + row('Bank', esc(pay.bank_name||''))
+      + row('Account title', esc(pay.account_title||''))
+      + row('Account number', esc(pay.account_number||''))
+      + row('IBAN', esc(pay.iban||''))
+      + row('Easypaisa', esc(pay.easypaisa||''))
+      + row('JazzCash', esc(pay.jazzcash||''))
+      +'<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
+      +'<a class="btn primary" href="tel:'+esc(tel)+'">Call '+esc(pay.phone||'')+'</a>'
+      +'<a class="btn" href="mailto:'+esc(pay.email||'')+'">'+esc(pay.email||'')+'</a></div>'
+      +'</div></section>'
+
+      /* ---- reference bhejein ---- */
+      +'<section class="panel"><div class="panel-head"><div><h2>2. Tell us you paid</h2>'
+      +'<p>We activate within 12 hours</p></div></div><div class="panel-body">'
+      + (rejected?('<div class="note" style="background:var(--danger-soft);color:var(--danger);margin-bottom:12px">'
+          +'<b>Your last request was not accepted.</b><br>'+esc(req.review_note||'')+'</div>'):'')
+      +'<div class="form-grid">'
+      +'<label class="field"><span>How did you pay</span><select id="aMethod">'
+      +'<option>Bank transfer</option><option>Easypaisa</option><option>JazzCash</option>'
+      +'<option>Cash</option><option>Other</option></select></label>'
+      +'<label class="field"><span>Transaction ID / reference</span><input id="aRef" placeholder="e.g. 8842193017"></label>'
+      +'<label class="field"><span>Amount paid (PKR)</span><input id="aAmt" type="number" min="0"></label>'
+      +'<label class="field"><span>Paid on</span><input id="aDate" type="date"></label>'
+      +'<label class="field"><span>Activate for</span><select id="aMonths">'
+      +'<option value="1">1 month</option><option value="3">3 months</option>'
+      +'<option value="6">6 months</option><option value="12">1 year</option></select></label>'
+      +'<label class="field"><span>Your phone</span><input id="aPhone" placeholder="0300 1234567"></label>'
+      +'<label class="field full"><span>Anything we should know</span><textarea id="aNote" rows="2"></textarea></label>'
+      +'</div>'
+      +'<button class="btn primary" id="aSend" style="margin-top:12px">Send payment details</button>'
+      +'<p style="font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.6">'
+      +'We check the payment before activating, so please send the exact reference from your receipt.</p>'
+      +'</div></section></div></div>';
+
+    var d=$('#aDate'); if(d)d.value=new Date().toISOString().slice(0,10);
+
+    $('#aSend').onclick=function(){
+      var ref=$('#aRef').value.trim();
+      if(!ref){toast('Enter the transaction ID from your receipt',true);return}
+      this.disabled=true; this.textContent='Sending...';
+      var res=DBApi.req('activation-request',{
+        txn_reference:ref, method:$('#aMethod').value, amount:$('#aAmt').value,
+        paid_on:$('#aDate').value, months:$('#aMonths').value,
+        contact_phone:$('#aPhone').value, note:$('#aNote').value});
+      this.disabled=false; this.textContent='Send payment details';
+      if(!res||!res.ok){toast((res&&res.message)||'Could not send. Please try again.',true);return}
+      toast(res.message||'Sent'); draw();
+    };
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

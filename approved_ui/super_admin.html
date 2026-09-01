@@ -153,6 +153,10 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <h4>Businesses</h4>
       <button class="side-link" data-nav="biz"><span class="i">⌂</span> All Businesses</button>
       <button class="side-link" data-nav="create"><span class="i">＋</span> Create Business</button>
+      <!-- V86 — customer khud register karta hai aur khud payment ki
+           ittila bhejta hai. Yahan wo darkhwastein aati hain. -->
+      <button class="side-link" data-nav="activations"><span class="i">&#9873;</span> Activations
+        <b id="actBadge" class="tag" style="margin-left:auto;display:none">0</b></button>
     </div>
     <div class="side-group">
       <h4>Data</h4>
@@ -228,6 +232,26 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
             <th>Status</th><th style="min-width:380px">Actions</th></tr></thead>
           <tbody id="bizRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
         </table></div></div></div>
+      </section>
+
+      <!-- ---------- ACTIVATIONS (V86) ----------
+           Customer khud register karta hai, khud payment karta hai, aur
+           yahan uski transaction reference aati hai. Ek click par
+           licence barh jata hai — yehi 12 ghante ka waada hai. -->
+      <section class="sec" data-sec="activations">
+        <div class="pagehead"><div><h2>Activations</h2>
+          <p class="lead">Customers who have paid and are waiting to be activated</p></div>
+          <div class="row" style="gap:8px">
+            <select id="actFilter" style="height:36px">
+              <option value="PENDING">Waiting</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+            <button class="btn ghost" id="actRefresh">Refresh</button>
+            <button class="btn ghost" id="billBtn">Payment details</button>
+          </div>
+        </div>
+        <div id="actList" class="muted" style="padding:14px">Loading...</div>
       </section>
 
       <!-- ---------- CREATE ---------- -->
@@ -459,6 +483,7 @@ var TITLES={dash:['Dashboard','Platform overview'],
   sync:['Sync Monitor','Branch computers and data transfers'],
   biz:['All Businesses','Every tenant on the platform'],
   create:['Create Business','New tenant setup'],
+  activations:['Activations','Customers who have paid and are waiting'],
   backup:['Backup & Reset','Download data, then wipe safely'],
   import:['Import Data','Load master data from a backup file'],
   console:['Command Console','Run platform commands'],
@@ -1077,6 +1102,102 @@ $('demoBtn') && ($('demoBtn').onclick=async function(){
   if(!r.ok){toast(r.message||'Failed');return}
   toast(r.message||'Demo business created');
   loadBiz&&loadBiz();
+});
+
+/* ---------- V86: activations ---------- */
+async function loadActivations(){
+  var st=($('actFilter')&&$('actFilter').value)||'PENDING';
+  var r=await api('sa-activations&status='+encodeURIComponent(st));
+  var box=$('actList');
+  if(!r.ok){box.textContent=r.message||'Could not load';return}
+  var rows=r.rows||[];
+  var badge=$('actBadge');
+  if(badge){ if(st==='PENDING'&&rows.length){badge.textContent=rows.length;badge.style.display=''}
+             else if(st==='PENDING'){badge.style.display='none'} }
+  if(!rows.length){box.innerHTML='<div class="muted" style="padding:20px">Nothing '
+    +(st==='PENDING'?'waiting':'here')+'.</div>';return}
+
+  box.innerHTML=rows.map(function(x){
+    var pend=String(x.status).toUpperCase()==='PENDING';
+    return '<div class="panel" style="margin-bottom:12px"><div class="panel-body">'
+      +'<div class="row" style="justify-content:space-between;gap:14px;flex-wrap:wrap">'
+      +'<div><b style="font-size:15px">'+esc(x.business_name||'')+'</b>'
+        +'<div class="muted" style="font-size:12px">'+esc(x.slug||'')
+        +' &middot; sent '+esc(String(x.created_at).slice(0,16))+'</div></div>'
+      +'<div style="text-align:right"><b style="font-size:15px">'
+        +(x.amount>0?('PKR '+Number(x.amount).toLocaleString()):'&mdash;')+'</b>'
+        +'<div class="muted" style="font-size:12px">'+esc(x.months||1)+' month(s)</div></div>'
+      +'</div>'
+      +'<div class="fgrid" style="margin-top:12px;font-size:12.5px">'
+      +'<div><span class="muted">Reference</span><br><b>'+esc(x.txn_reference||'')+'</b></div>'
+      +'<div><span class="muted">Method</span><br><b>'+esc(x.method||'-')+'</b></div>'
+      +'<div><span class="muted">Paid on</span><br><b>'+esc(x.paid_on||'-')+'</b></div>'
+      +'<div><span class="muted">Contact</span><br><b>'+esc(x.contact_phone||x.contact_email||'-')+'</b></div>'
+      +'<div><span class="muted">Expires now</span><br><b>'+esc(x.current_expiry||'not set')+'</b></div>'
+      +'</div>'
+      +(x.note?('<p class="muted" style="font-size:12.5px;margin:10px 0 0">'+esc(x.note)+'</p>'):'')
+      +(x.review_note?('<p class="muted" style="font-size:12.5px;margin:10px 0 0">Note: '+esc(x.review_note)+'</p>'):'')
+      +(pend?('<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">'
+        +'<select class="actMonths" data-id="'+esc(x.id)+'" style="height:36px">'
+        +[1,3,6,12].map(function(m){return '<option value="'+m+'"'+(Number(x.months)===m?' selected':'')+'>'
+            +m+' month'+(m>1?'s':'')+'</option>'}).join('')
+        +'</select>'
+        +'<button class="btn primary" data-approve="'+esc(x.id)+'">Approve &amp; activate</button>'
+        +'<button class="btn ghost" data-reject="'+esc(x.id)+'">Reject</button>'
+        +(x.contact_phone?('<a class="btn ghost" href="tel:'+esc(String(x.contact_phone).replace(/\s/g,''))+'">Call</a>'):'')
+        +'</div>'):('<div class="muted" style="margin-top:10px;font-size:12px">'
+        +esc(x.status)+' by '+esc(x.reviewed_by||'')+' on '+esc(String(x.reviewed_at||'').slice(0,16))+'</div>'))
+      +'</div></div>';
+  }).join('');
+}
+document.addEventListener('click',async function(e){
+  var a=e.target.closest('[data-approve]');
+  if(a){
+    var id=a.getAttribute('data-approve');
+    var sel=document.querySelector('.actMonths[data-id="'+id+'"]');
+    var months=sel?Number(sel.value):1;
+    if(!confirm('Activate this business for '+months+' month(s)?\n\n'
+      +'Check the payment in your bank/wallet first — this reference is what the customer typed.'))return;
+    a.disabled=true;a.textContent='Activating...';
+    var r=await api('sa-activation-approve',{id:id,months:months});
+    a.disabled=false;a.textContent='Approve & activate';
+    toast(r.ok?(r.message||'Activated'):(r.message||'Failed'));
+    if(r.ok)loadActivations();
+    return;
+  }
+  var rj=e.target.closest('[data-reject]');
+  if(rj){
+    var why=prompt('Why? The customer will see this.');
+    if(why===null||!why.trim())return;
+    var r2=await api('sa-activation-reject',{id:rj.getAttribute('data-reject'),note:why});
+    toast(r2.ok?(r2.message||'Rejected'):(r2.message||'Failed'));
+    if(r2.ok)loadActivations();
+  }
+});
+$('actRefresh') && ($('actRefresh').onclick=loadActivations);
+$('actFilter') && ($('actFilter').onchange=loadActivations);
+
+$('billBtn') && ($('billBtn').onclick=async function(){
+  var r=await api('sa-billing-get');
+  var p=(r&&r.payment)||{};
+  var ov=sModal('<h3 style="margin:0 0 4px">Payment details</h3>'
+    +'<p class="lead" style="margin:0 0 14px">Customers see these on their activation screen</p>'
+    +['bank_name|Bank name','account_title|Account title','account_number|Account number',
+      'iban|IBAN','easypaisa|Easypaisa number','jazzcash|JazzCash number',
+      'monthly_price|Monthly price (PKR)','yearly_price|Yearly price (PKR)']
+      .map(function(f){var k=f.split('|')[0],l=f.split('|')[1];
+        return '<label class="field"><span>'+l+'</span><input id="bs_'+k+'" value="'+esc(p[k]||'')+'"></label>'}).join('')
+    +'<div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">'
+    +'<button class="btn ghost" data-x>Cancel</button>'
+    +'<button class="btn primary" id="bsSave">Save</button></div>');
+  ov.querySelector('#bsSave').onclick=async function(){
+    var body={};
+    ['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price','yearly_price']
+      .forEach(function(k){body[k]=ov.querySelector('#bs_'+k).value});
+    var s2=await api('sa-billing-save',body);
+    toast(s2.ok?'Saved':(s2.message||'Failed'));
+    if(s2.ok)ov.remove();
+  };
 });
 
 $('createBtn').onclick=async function(){

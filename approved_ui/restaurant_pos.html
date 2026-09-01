@@ -1275,9 +1275,12 @@ function slipHtml(kind,lines,info){
         +(L.expired?'background:#fdecee;color:#a3222d;border-bottom:1px solid #f3c3c7'
                    :'background:#fff6e5;color:#8a5a00;border-bottom:1px solid #f0d9a8'));
       bar.innerHTML='<b>'+esc(L.message||'')+'</b>'
-        +(L.expired?('<span>Contact '+esc(v.company||'')+' - '+esc(v.person||'')+'</span>'
-          +'<a class="tb" href="tel:'+esc(tel)+'">Call '+esc(v.phone||'')+'</a>'
-          +'<a class="tb" href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>'):'');
+        /* Cashier ko sirf number dena kaafi nahi — malik khud renew kar
+           sake, is liye seedha activation screen ka link. */
+        /* Renew malik/manager ka kaam hai — cashier ko link dikha kar
+           permission denied par bhejna be-maani hai. Usay sirf number. */
+        +((CAN&&CAN.manage)?('<a class="tb" href="/activate.html">'+(L.expired?'Activate now':'Renew')+'</a>'):'')
+        +(L.expired?('<a class="tb" href="tel:'+esc(tel)+'">Call '+esc(v.phone||'')+'</a>'):'');
     }catch(e){}
   })();
 

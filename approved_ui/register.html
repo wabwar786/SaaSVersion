@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#e23744">
+<title>Start your free trial — SmartPOS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* V86 — public registration. Koi login nahi; customer khud yahan se
+   shuru karta hai. */
+.reg-wrap{min-height:100vh;display:grid;place-items:center;background:var(--bg);padding:22px}
+.reg-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-lg);width:100%;max-width:560px;overflow:hidden}
+.reg-head{padding:26px 28px 20px;border-bottom:1px solid var(--line)}
+.reg-head .mark{width:46px;height:46px;border-radius:13px;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-weight:800;font-size:19px;margin-bottom:14px}
+.reg-head h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+.reg-head p{margin:0;font-size:13px;color:var(--muted);line-height:1.6}
+.reg-body{padding:22px 28px}
+.reg-foot{padding:16px 28px 24px}
+.reg-foot .btn{width:100%;justify-content:center;height:46px;font-size:14.5px}
+.perks{display:grid;gap:7px;margin:16px 0 0;padding:14px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:12px}
+.perks div{font-size:12.5px;color:var(--ink2);display:flex;gap:8px;align-items:flex-start}
+.perks b{color:var(--ink)}
+.done{display:none;padding:26px 28px}
+.done.show{display:block}
+.done h2{font-size:18px;margin:0 0 10px}
+.cred{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+  padding:14px;margin:14px 0;font-size:13px}
+.cred div{display:flex;justify-content:space-between;padding:5px 0;gap:14px}
+.cred b{font-variant-numeric:tabular-nums;text-align:right;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="reg-wrap">
+  <div class="reg-card">
+
+    <div id="formSide">
+      <div class="reg-head">
+        <div class="mark">S</div>
+        <h1>Start your free trial</h1>
+        <p>Set up your restaurant in about a minute. No card, no phone call.</p>
+      </div>
+
+      <div class="reg-body">
+        <div id="err" class="note" style="display:none;margin-bottom:14px"></div>
+        <div class="form-grid">
+          <label class="field full"><span>Restaurant / business name</span>
+            <input id="rBiz" placeholder="Royal Grill" autocomplete="organization"></label>
+          <label class="field"><span>Your name</span>
+            <input id="rOwner" placeholder="Faheem Ahmed" autocomplete="name"></label>
+          <label class="field"><span>Mobile number</span>
+            <input id="rPhone" placeholder="0300 1234567" autocomplete="tel" inputmode="tel"></label>
+          <label class="field full"><span>Email <span class="hint">&middot; this is your sign-in</span></span>
+            <input id="rEmail" type="email" placeholder="you@example.com" autocomplete="email"></label>
+          <label class="field full"><span>Choose a password <span class="hint">&middot; at least 6 characters</span></span>
+            <input id="rPass" type="password" autocomplete="new-password"></label>
+        </div>
+
+        <div class="perks">
+          <div><b>14 days free.</b> Everything works &mdash; billing, kitchen, reports.</div>
+          <div><b>Ready to use.</b> Sample menu and tables are already set up so you can try it straight away.</div>
+          <div><b>Your data stays.</b> When the trial ends the software pauses, your data is not deleted.</div>
+        </div>
+      </div>
+
+      <div class="reg-foot">
+        <button class="btn primary" id="goBtn">Create my account</button>
+        <p style="text-align:center;font-size:12px;color:var(--muted);margin:12px 0 0">
+          Already have an account? <a href="/login.html">Sign in</a></p>
+      </div>
+    </div>
+
+    <div class="done" id="doneSide">
+      <div class="reg-head" style="padding:0 0 18px;border:0">
+        <div class="mark" style="background:var(--ok)">&#10003;</div>
+        <h2 id="dTitle">Your account is ready</h2>
+        <p id="dSub" style="color:var(--muted);font-size:13px"></p>
+      </div>
+      <div class="cred" id="dCred"></div>
+      <p style="font-size:12.5px;color:var(--muted);line-height:1.65">
+        Write these down. You will need the email and password to sign in.</p>
+      <a class="btn primary" id="dGo" href="/login.html"
+         style="width:100%;justify-content:center;height:46px;margin-top:8px">Sign in now</a>
+    </div>
+
+  </div>
+</div>
+
+<script src="db_api.js"></script>
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function err(m){var e=$('#err');e.textContent=m;e.style.display='';e.scrollIntoView({block:'nearest'})}
+
+  $('#goBtn').onclick=function(){
+    $('#err').style.display='none';
+    var b=this; b.disabled=true; b.textContent='Creating your account...';
+    var r;
+    try{
+      r=DBApi.req('self-register',{
+        business_name:$('#rBiz').value.trim(), owner_name:$('#rOwner').value.trim(),
+        phone:$('#rPhone').value.trim(), email:$('#rEmail').value.trim(),
+        password:$('#rPass').value});
+    }catch(e){ r={ok:false,message:'Could not reach the server. Check your internet and try again.'}; }
+    b.disabled=false; b.textContent='Create my account';
+
+    /* Jawab CHECK hota hai — nakami par asli wajah, khali screen nahi. */
+    if(!r||!r.ok){ err((r&&r.message)||'Something went wrong. Please try again.'); return; }
+
+    $('#formSide').style.display='none';
+    $('#doneSide').classList.add('show');
+    $('#dTitle').textContent=r.business+' is ready';
+    $('#dSub').textContent='Your free trial runs until '+r.expires+' ('+r.trial_days+' days).';
+    $('#dCred').innerHTML=
+       '<div><span>Sign in with</span><b>'+esc(r.login)+'</b></div>'
+      +'<div><span>Password</span><b>the one you just chose</b></div>'
+      +'<div><span>Your address</span><b>'+esc(location.origin)+'/login.html?b='+esc(r.slug)+'</b></div>';
+    $('#dGo').href='/login.html?b='+encodeURIComponent(r.slug);
+  };
+
+  /* Enter se bhi chale — form par yeh na ho to log chirh jate hain. */
+  ['rBiz','rOwner','rPhone','rEmail','rPass'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();$('#goBtn').click()}};
+  });
+})();
+</script>
+</body>
+</html>

@@ -55,6 +55,7 @@ php scripts/migrate_print_rule_default.php || echo "[boot] print_rule migrate sk
 php scripts/migrate_fiscal.php || echo "[boot] fiscal migrate skipped"
 php scripts/migrate_security.php || echo "[boot] security migrate skipped"
 php scripts/migrate_modules.php || echo "[boot] modules migrate skipped"
+php scripts/migrate_selfservice.php || echo "[boot] selfservice migrate skipped"
 # V85 — roles har boot par tasdeeq. V79 se provisionBusiness khud roles
 # banati hai, magar JO businesses us se PEHLE bane the un ke paas roles
 # ho hi nahi sakte (script sirf haath se chalti thi). Yeh idempotent hai.

@@ -335,9 +335,65 @@ final class FiscalService
         if (!$cfg['service_url']) return ['ok' => false, 'message' => 'Enter the fiscal service URL.'];
         if (!$cfg['pos_id'])      return ['ok' => false, 'message' => 'Enter the POS ID.'];
 
-        $r = self::post((string)$cfg['service_url'], ['POSID' => (int)$cfg['pos_id'], 'USIN' => 'TEST', 'Items' => []], 5);
+        /* V87 — POORA model bhejo, adhoora nahi.
+           Pehle sirf POSID/USIN/khali Items jate the, is liye service
+           hamesha `Code 402 - Model validation failed, Required property
+           'DateTime'` deti thi - chahe sab kuch theek ho. Yani test se
+           kuch pata hi nahi chalta tha.
+           Ab ek asli (magar nishan-zada) invoice bhejte hain, taake
+           jawab se saaf ho ke service kya lauta rahi hai. */
+        $probe = [
+            'POSID'            => (int)$cfg['pos_id'],
+            'USIN'             => 'TEST-' . date('ymdHis'),
+            'DateTime'         => date('Y-m-d H:i:s'),
+            'BuyerNTN' => '', 'BuyerCNIC' => '', 'BuyerName' => 'Test', 'BuyerPhoneNumber' => '',
+            'TotalBillAmount'  => 1.00,
+            'TotalQuantity'    => 1,
+            'TotalSaleValue'   => 1.00,
+            'TotalTaxCharged'  => 0.00,
+            'Discount' => 0.00, 'FurtherTax' => 0.00,
+            'PaymentMode'      => 1,
+            'InvoiceType'      => 1,
+            'Items' => [[
+                'ItemCode' => 'TEST', 'ItemName' => 'Connection test', 'Quantity' => 1,
+                'PCTCode' => (string)($cfg['default_pct'] ?: '98016000'),
+                'TaxRate' => 0, 'SaleValue' => 1.00, 'TotalAmount' => 1.00,
+                'TaxCharged' => 0.00, 'Discount' => 0.00, 'FurtherTax' => 0.00, 'InvoiceType' => 1,
+            ]],
+        ];
+
+        $r = self::post((string)$cfg['service_url'], $probe, 8);
         if (!$r['ok']) return ['ok' => false, 'message' => $r['error']];
-        return ['ok' => true, 'message' => 'The fiscal service responded. Reply: '.substr($r['body'], 0, 120)];
+
+        $j = json_decode($r['body'], true);
+        $no = '';
+        if (is_array($j)) {
+            foreach (['InvoiceNumber','FBRInvoiceNumber','invoiceNumber','Invoice_Number'] as $k) {
+                if (!empty($j[$k]) && strcasecmp((string)$j[$k], 'Not Available') !== 0) { $no = (string)$j[$k]; break; }
+            }
+        }
+        if ($no === '') {
+            $why = is_array($j)
+                 ? trim((string)($j['Response'] ?? '') . ' ' . (string)($j['Errors'] ?? ''))
+                 : substr($r['body'], 0, 140);
+            return ['ok' => false, 'message' => 'The service answered but gave no invoice number. ' . $why];
+        }
+
+        /* Do cheezein saaf batao - yeh aksar ghalat-fehmi ka sabab banti hain. */
+        $notes = [];
+        if (stripos($no, 'test') !== false) {
+            $notes[] = 'The FiscalizationService is in TEST mode (the number is marked *Test*), '
+                     . 'so invoices are NOT being reported to FBR for real. Switch that service to production.';
+        }
+        $pid = trim((string)$cfg['pos_id']);
+        if ($pid !== '' && strpos($no, $pid) !== 0) {
+            $notes[] = 'The number does not start with your POS ID (' . $pid . '), so the service is using its own '
+                     . 'registered POS - not the one entered here. Check the POS ID inside FiscalizationService.';
+        }
+
+        return ['ok' => empty($notes), 'invoice_no' => $no,
+                'message' => 'Service replied with invoice number: ' . $no
+                           . ($notes ? ' -- ' . implode(' ', $notes) : ' -- looks correct.')];
     }
 
     /* ---------------- log + order ---------------- */

@@ -51,7 +51,8 @@
       ['branches','Multi-Branch','multi_branch.html','⌗'],
       ['offline','Offline / Sync','offline_sync.html','⟳'],
       ['users','Users & Access','users_access.html','⚿'],
-      ['settings','Settings','settings.html','⚙']
+      ['settings','Settings','settings.html','⚙'],
+      ['settings','Activate / Renew','activate.html','\u2691']
     ]}
   ];
 
@@ -225,7 +226,11 @@
       +(L.expired?('<span>Contact '+esc(v.company||'')+' &mdash; '+esc(v.person||'')+'</span>'
         +'<a class="btn sm primary" href="tel:'+esc((v.phone||'').replace(/\s/g,''))+'">Call '+esc(v.phone||'')+'</a>'
         +'<a class="btn sm" href="mailto:'+esc(v.email||'')+'">'+esc(v.email||'')+'</a>'):'')
-      +'<button class="btn sm" id="licAbout" style="margin-left:auto">Support</button>';
+      /* V86 — banner se seedha activation screen par. Pehle sirf phone
+         number tha; ab customer khud renew kar sakta hai. */
+      +'<a class="btn sm primary" href="/activate.html" style="margin-left:auto">'
+      +(L.expired?'Activate now':'Renew')+'</a>'
+      +'<button class="btn sm" id="licAbout">Support</button>';
     var main=document.querySelector('.main')||document.body;
     main.insertBefore(bar,main.firstChild);
     var la=document.getElementById('licAbout'); if(la) la.onclick=openSupport;

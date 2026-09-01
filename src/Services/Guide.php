@@ -200,6 +200,23 @@ final class Guide
  'tips'=>['A user with zero modules sees an empty menu. If someone reports a blank screen, check this first.'],
  'warn'=>['The last remaining admin cannot be deleted or suspended, otherwise nobody could get back in.']],
 
+'activate' => ['title'=>'Activate / Renew',
+ 'what'=>'Pay for your software and tell us, so we can activate it.',
+ 'steps'=>[
+   'Send the payment using any of the accounts shown on the left of that screen.',
+   'Fill in the transaction ID exactly as it appears on your receipt, the amount, and how many months you want.',
+   'Press "Send payment details". You can keep working while we check.',
+ ],
+ 'tips'=>[
+   'Activation happens within 12 hours once we can see the payment.',
+   'Any days left on your current period are added on top, so nothing is wasted.',
+   'Send the request once. Sending it again does not make it faster.',
+ ],
+ 'warn'=>[
+   'Enter the exact reference from your receipt. A wrong reference is the usual reason a request is held up.',
+   'When your period ends the software pauses, but your data is never deleted.',
+ ]],
+
 'settings' => ['title'=>'Settings',
  'what'=>'Business details, tax rates, receipt layout and FBR.',
  'steps'=>[

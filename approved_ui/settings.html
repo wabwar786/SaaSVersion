@@ -184,8 +184,22 @@
     var r=DBApi.req('fiscal-test');
     if(!r.ok){st.textContent='';toast(r.message||'The test could not be run',true);return}
     var res=r.result||{};
-    st.textContent=res.message||'';
-    toast(res.message||'',!res.ok);
+    /* V87 — poora jawab dikhao. Pehle yeh `.hint` mein ek line thi aur
+       asli wajah (TEST mode, ghalat POS ID) kat jati thi. */
+    st.innerHTML='';
+    var box=document.getElementById('fiscalResult');
+    if(!box){
+      box=document.createElement('div'); box.id='fiscalResult';
+      box.className='note'; box.style.marginTop='10px';
+      st.parentNode.parentNode.appendChild(box);
+    }
+    box.style.display='';
+    box.style.background=res.ok?'var(--ok-soft,#eaf6ef)':'#fdf4e9';
+    box.style.color=res.ok?'var(--ok,#0f7a3d)':'#8a5a00';
+    box.innerHTML='<b>'+(res.ok?'Connected':'Needs attention')+'</b><br>'
+      +String(res.message||'').replace(/[&<>]/g,function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]});
+    toast(res.ok?'Fiscal service connected':'Check the message below',!res.ok);
   };
 
   var fr=$('#fiscalRetry');
