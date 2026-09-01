@@ -2,8 +2,15 @@
 REM ============================================================
 REM  RESET_PASSWORD.bat -- password bhool gaye to yahan se.
 REM
-REM  Yeh USI computer par chalta hai aur internet ki zaroorat NAHI.
-REM  Software band ho to bhi chalta hai (database chalu hona chahiye).
+REM  Yeh USI computer par chalta hai. Internet ki zaroorat NAHI.
+REM
+REM  V91 -- pehle yahan mysqld.exe ka rasta SEEDHA likha hua tha
+REM  (runtime\mariadb\bin\mysqld.exe). Wo ghalat tha: MariaDB apne
+REM  version wale folder mein khulta hai, jaise
+REM  runtime\mariadb\mariadb-11.4.2-winx64\bin\. Is liye Windows
+REM  "cannot find" kehta tha.
+REM  Ab wahi script use hoti hai jo software khud use karta hai
+REM  (resolve_mariadb.ps1) -- wo exe ko DHOOND kar chalati hai.
 REM ============================================================
 setlocal
 cd /d "%~dp0"
@@ -23,11 +30,23 @@ echo   ============================================
 echo    SmartPOS - SIGN-IN RECOVERY
 echo   ============================================
 echo.
-echo   Database chalu kar rahe hain...
-start /B "" "runtime\mariadb\bin\mysqld.exe" --defaults-file=runtime\mariadb\my.ini >nul 2>&1
-timeout /t 6 /nobreak >nul
 
+REM Agar software pehle se chal raha hai to database bhi chalu hai.
+echo   Checking the local database...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools\resolve_mariadb.ps1"
+if errorlevel 1 (
+  echo.
+  echo   Local database chalu nahi ho saki.
+  echo   START_RESTAURANT.bat chala kar software kholein, phir yeh
+  echo   file dobara chalayein.
+  echo.
+  pause
+  exit /b 1
+)
+
+echo.
 "%PHPEXE%" -c "%PHPINI%" scripts\reset_local_admin.php
+if errorlevel 1 goto :done
 
 echo.
 set /p U=  Sign-in name (khali chhorein to bahar):

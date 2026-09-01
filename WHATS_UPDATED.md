@@ -5105,3 +5105,41 @@ aaye hi nahi the** — mere pichle do patch chup-chaap fail ho gaye the
 (anchor match nahi hua aur maine natija check nahi kiya). Ab dono
 maujood hain, aur maine har migration ko dono jagah (Docker + installer)
 gin kar tasdeeq kiya.
+
+---
+
+# V91 — RESET_PASSWORD.bat chal hi nahi raha tha
+
+    Windows cannot find 'runtime\mariadb\bin\mysqld.exe'
+
+**Meri ghalti:** maine `mysqld.exe` ka rasta **andaze se** likh diya tha.
+MariaDB apne version wale folder mein khulta hai —
+`runtime\mariadb\mariadb-11.4.2-winx64\bin\` — is liye seedha rasta kabhi
+sahi nahi hota.
+
+Software khud yeh kaam theek karta hai: `resolve_mariadb.ps1` exe ko
+**dhoond kar** (`-Recurse`) chalati hai. Ab `RESET_PASSWORD.bat` bhi
+wahi script use karti hai, apna rasta nahi banati.
+
+## Ek aur masla jo test karte waqt nikla
+
+Database band ho to script **latak** jati thi — PHP connect ka intezar
+karta rehta, na error, na kuch. Customer ke liye yeh sab se bura tajurba
+hai.
+
+Ab 5 second mein saaf jawab:
+
+    Local database se rabta nahi ho saka.
+    START_RESTAURANT.bat chala kar software kholein, phir yeh
+    file dobara chalayein.
+
+## Chala kar tasdeeq
+
+    DB band  ->  saaf paighaam, 5 second mein (pehle latakta tha)
+    DB chalu ->  users ki fehrist:
+
+      SIGN IN WITH    NAME                    ROLE      STATUS
+      demo            Demo Restaurant Owner   -         ACTIVE (owner)
+      democash        Demo Cashier            Cashier   ACTIVE
+
+    password reset  ->  LOGIN OK

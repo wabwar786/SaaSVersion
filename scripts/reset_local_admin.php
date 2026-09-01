@@ -23,7 +23,21 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Aio\DB;
 
 $a = cli_args();
-$p = DB::pdo();
+
+/* V91 — DB band ho to yahan LATAK jata tha (PHP connect ka intezar
+   karta rehta hai). Customer ko na error milta tha na kuch hota tha.
+   Ab: chhota timeout aur saaf paighaam. */
+try {
+    $p = DB::pdo();
+    $p->setAttribute(PDO::ATTR_TIMEOUT, 5);
+    $p->query('SELECT 1');
+} catch (\Throwable $e) {
+    echo "\n  Local database se rabta nahi ho saka.\n";
+    echo "  START_RESTAURANT.bat chala kar software kholein, phir yeh\n";
+    echo "  file dobara chalayein.\n\n";
+    echo "  (" . substr($e->getMessage(), 0, 120) . ")\n\n";
+    exit(1);
+}
 
 $user = trim((string)($a['user'] ?? ''));
 $pass = (string)($a['password'] ?? '');
