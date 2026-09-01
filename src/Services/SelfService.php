@@ -104,7 +104,8 @@ final class SelfService
 
         /* Owner ka apna password — provisioning ka random password nahi. */
         try {
-            $p->prepare("UPDATE users SET password_hash=?, username=COALESCE(NULLIF(username,''),?)
+            $p->prepare("UPDATE users SET password_hash=?, username=COALESCE(NULLIF(username,''),?),
+                                 row_version=row_version+1, updated_at=NOW(6)
                           WHERE tenant_id=? AND is_tenant_admin=1")
               ->execute([password_hash($pass, PASSWORD_DEFAULT), explode('@', $email)[0], $tid]);
         } catch (\Throwable $e) {}

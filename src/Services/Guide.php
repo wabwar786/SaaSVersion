@@ -200,6 +200,25 @@ final class Guide
  'tips'=>['A user with zero modules sees an empty menu. If someone reports a blank screen, check this first.'],
  'warn'=>['The last remaining admin cannot be deleted or suspended, otherwise nobody could get back in.']],
 
+'backup' => ['title'=>'Backup & Restore',
+ 'what'=>'A full copy of your data, saved automatically every time a shift is closed.',
+ 'steps'=>[
+   'Nothing to do day to day - a backup is saved each time a shift closes.',
+   'Press "Back up now" any time you want an extra copy.',
+   'Use "Settings" to change the folder, or to turn the automatic backup off.',
+   'To go back to an earlier day, find that backup and press Restore.',
+ ],
+ 'tips'=>[
+   'Backups go to D:\\Backup by default. If that drive does not exist, they go into the software folder instead.',
+   'Download a backup and keep it somewhere else too - a backup on the same computer does not survive a dead hard disk.',
+   'Backups older than 60 days are removed on their own.',
+ ],
+ 'warn'=>[
+   'Restore REPLACES everything you have now with what was in that backup. Anything entered since then is lost.',
+   'Your current data is saved as a safety backup first, so a wrong restore can be undone.',
+   'You must type the business name exactly to confirm. That is deliberate.',
+ ]],
+
 'activate' => ['title'=>'Activate / Renew',
  'what'=>'Pay for your software and tell us, so we can activate it.',
  'steps'=>[

@@ -52,7 +52,8 @@
       ['offline','Offline / Sync','offline_sync.html','⟳'],
       ['users','Users & Access','users_access.html','⚿'],
       ['settings','Settings','settings.html','⚙'],
-      ['settings','Activate / Renew','activate.html','\u2691']
+      ['settings','Activate / Renew','activate.html','\u2691'],
+      ['settings','Backup & Restore','backup_restore.html','\u2913']
     ]}
   ];
 

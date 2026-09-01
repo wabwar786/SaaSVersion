@@ -103,6 +103,24 @@ foreach ([
     } catch (\Throwable $e) {}
 }
 
+/* V88 — backup ka record. Sirf file rakhna kaafi nahi: kis waqt, kis
+   wajah se, kitni rows — yeh maloom hona chahiye, warna 40 files mein
+   se sahi wali dhoondna namumkin ho jata hai. */
+$pdo->exec("CREATE TABLE IF NOT EXISTS backup_log (
+  id         CHAR(36)     NOT NULL PRIMARY KEY,
+  tenant_id  CHAR(36)     NULL,
+  site_id    CHAR(36)     NULL,
+  file_name  VARCHAR(200) NOT NULL,
+  file_path  VARCHAR(400) NULL,
+  reason     VARCHAR(40)  NOT NULL DEFAULT 'MANUAL',
+  row_count  INT          NOT NULL DEFAULT 0,
+  byte_size  BIGINT       NOT NULL DEFAULT 0,
+  checksum   VARCHAR(80)  NULL,
+  created_at DATETIME(6)  NOT NULL,
+  KEY ix_bl_time (tenant_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+echo "  = backup_log ready\n";
+
 echo "SELFSERVICE_MIGRATION_READY added=$added\n";
 
 // build: V86 build 2026-09-01

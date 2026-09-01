@@ -399,6 +399,44 @@ case 'kds-status':needLogin();
    nahi thi.
    Shift Management page ab `shiftmgr-*` use karta hai; POS ke purane
    endpoints jaise the waise hain. */
+case 'backup-list':needLogin();
+ try{Scope::requireManagement('viewing backups');}catch(Throwable $e){fail($e->getMessage(),403);}
+ ok(\Aio\Services\BackupService::listBackups());
+
+case 'backup-now':needLogin();
+ try{Scope::requireManagement('creating a backup');}catch(Throwable $e){fail($e->getMessage(),403);}
+ $r=\Aio\Services\BackupService::create('MANUAL');
+ if(empty($r['ok']))fail((string)$r['message']);
+ ok($r+\Aio\Services\BackupService::listBackups());
+
+case 'backup-settings':needLogin();$d=body();
+ try{
+   if(array_key_exists('backup_path',$d))\Aio\Services\BackupService::saveSetting('backup_path',(string)$d['backup_path']);
+   if(array_key_exists('auto_on_close',$d))\Aio\Services\BackupService::saveSetting('auto_on_close',(string)$d['auto_on_close']);
+ }catch(Throwable $e){fail($e->getMessage(),403);}
+ ok(\Aio\Services\BackupService::listBackups());
+
+case 'backup-download':needLogin();
+ try{Scope::requireManagement('downloading backups');}catch(Throwable $e){fail($e->getMessage(),403);}
+ try{$body=\Aio\Services\BackupService::read((string)($_GET['file']??''));}
+ catch(Throwable $e){fail($e->getMessage(),404);}
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/json');
+ header('Content-Disposition: attachment; filename="'.basename((string)($_GET['file']??'backup.json')).'"');
+ header('Content-Length: '.strlen($body));echo $body;exit;
+
+case 'backup-restore':needLogin();$d=body();
+ /* Restore MOJOODA DATA PAR LIKH DETA HAI. Is liye: business ka naam
+    hu-ba-hu, aur pehle khud-ba-khud safety backup. */
+ $json=(string)($d['json']??'');
+ if($json===''&&!empty($d['file'])){
+   try{$json=\Aio\Services\BackupService::read((string)$d['file']);}
+   catch(Throwable $e){fail($e->getMessage(),404);}
+ }
+ if($json==='')fail('Choose a backup file first.');
+ try{ok(\Aio\Services\BackupService::restore($json,(string)($d['confirm']??'')));}
+ catch(Throwable $e){fail($e->getMessage());}
+
 case 'shiftmgr-list':needLogin();Auth::requireModule('shift');
  $rows=OpsService::shiftList();
  $open=null;foreach($rows as $r){if($r['status']==='Open'){$open=$r;break;}}
@@ -901,7 +939,7 @@ foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c
 if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/app.ico','public/assets/app.ico');
 $zip->addEmptyDir('updates');
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
 foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1','fix_vcruntime.ps1'] as $ps){
@@ -1061,7 +1099,12 @@ case 'user-password':needLogin();Auth::requireModule('users');$d=body();
  $q->execute([$uid,tenant_id()]);$u=$q->fetch();
  if(!$u)fail('User not found');
  [$h,$alg]=UserService::passwordHash($np);
- $p->prepare("UPDATE users SET password_hash=?,password_algo=?,must_change_password=?,updated_at=NOW(6) WHERE id=?")
+ /* V89 — `row_version` BHI barhao.
+    Sync yehi ginti dekh kar faisla karti hai ke row nayi hai ya nahi.
+    Sirf `updated_at` badalne se cloud par badla hua password branch
+    computer tak pohanchta hi nahi tha — malik online password reset
+    karta aur local par purana hi chalta rehta. */
+ $p->prepare("UPDATE users SET password_hash=?,password_algo=?,must_change_password=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")
    ->execute([$h,$alg,!empty($d['must_change'])?1:0,$uid]);
  ok(['message'=>'Password changed for '.$u['full_name'].'.','state'=>accessState()]);
 
@@ -1079,7 +1122,7 @@ case 'user-status':needLogin();Auth::requireModule('users');$d=body();
    $isAdm=$p->prepare("SELECT is_tenant_admin FROM users WHERE id=? AND tenant_id=?");$isAdm->execute([$uid,tenant_id()]);
    if((int)$isAdm->fetchColumn()===1&&(int)$c->fetchColumn()===0)fail('This is the last active admin and cannot be suspended.');
  }
- $st2=$p->prepare("UPDATE users SET status=?,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
+ $st2=$p->prepare("UPDATE users SET status=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
  $st2->execute([$st,$uid,tenant_id()]);
  if($st2->rowCount()<1)fail('User not found, or already in that state.');
  ok(['message'=>'User '.($st==='ACTIVE'?'activate':'suspend').' done.','state'=>accessState()]);
@@ -1324,6 +1367,11 @@ case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo()
    try{\Aio\Services\WhatsApp::queueShiftClosing($sh['id'],$snap);}catch(Throwable $e){}
  }catch(Throwable $e){ /* snapshot na bane to bhi shift close rahe */ }
  Audit::log('SHIFT_CLOSE','shift',['id'=>$sh['id'],'label'=>(string)$sh['shift_no'],'new'=>'counted '.$actual]);
+ /* V88 — POS ka apna shift-close raasta hai (OpsService se alag), is
+    liye backup ka hook YAHAN bhi lazmi hai. Warna counter se band ki
+    gayi shift ka backup banta hi nahi — aur rozana yehi raasta chalta
+    hai. */
+ \Aio\Services\BackupService::afterShiftClose((string)$sh['shift_no']);
  $rep['shift_id']=$sh['id'];
  ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
@@ -1905,7 +1953,7 @@ case 'sa-licence-get':needSuper();
  ok(['licence'=>Licence::fromDb($tid)]);
 
 case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');$exp=trim((string)($d['expiry_date']??''));if($tid===''||$exp==='')fail('tenant_id and expiry_date required');$amount=(float)($d['amount']??0);$p=DB::pdo();$q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");$q->execute([$tid]);$sub=$q->fetchColumn();if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);}else{$sub=uuid();$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);}if($amount>0){$p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Renewal',Platform::superUser()['id']]);}$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);ok(['message'=>'Renewed till '.$exp]);
-case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
+case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
 case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);
 case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations','sites','users','platform_users','platform_modules','subscription_plans','tenant_subscriptions','subscription_payments','orders','order_items','payments','payment_methods','customers','suppliers','menu_items','menu_categories','inventory_items','stock_balances','kitchen_tickets','cashier_shifts','expenses','ui_records','sync_state'];$missing=[];foreach($need as $t){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$t]);if(!(int)$q->fetchColumn())$missing[]=$t;}$cols=[];foreach([['tenants','slug'],['tenants','industry_code'],['tenants','sync_token'],['tenants','owner_email'],['suppliers','city'],['suppliers','category']] as $c){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");$q->execute($c);if(!(int)$q->fetchColumn())$cols[]=implode('.',$c);}ok(['db'=>cfg('db.database'),'php'=>PHP_VERSION,'role'=>cfg('app.role'),'missing_tables'=>$missing,'missing_columns'=>$cols,'healthy'=>!$missing&&!$cols]);
 default:fail('Unknown API action',404);}

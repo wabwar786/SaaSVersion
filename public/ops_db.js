@@ -514,6 +514,106 @@
     };
   }
 
+  /* ==================== BACKUP & RESTORE ====================
+     Shift close par backup khud banta hai. Restore mojooda data par
+     LIKH DETA HAI, is liye us par do rukawatein hain: business ka naam
+     hu-ba-hu, aur pehle khud-ba-khud safety backup. */
+  function backupPage() {
+    var r = req('backup-list');
+    if (!r || !r.ok) { replace(panel('Backup & Restore', '', '<div style="padding:18px" class="hint">'
+      + esc((r && r.message) || 'Could not load backups') + '</div>')); return; }
+
+    var rows = r.rows || [];
+    var head = '<div class="note" style="margin:12px">'
+      + 'Backups are saved to <b>' + esc(r.dir) + '</b>'
+      + (r.writable ? '' : ' &mdash; <span style="color:var(--danger)">this folder is not writable, '
+        + 'so backups are failing</span>')
+      + '.<br>Automatic backup on shift close is <b>' + (r.auto ? 'ON' : 'OFF') + '</b>. '
+      + 'Backups older than 60 days are removed by themselves.</div>';
+
+    replace(panel('Backup &amp; Restore', rows.length + ' backup(s) kept',
+      head + table([
+        { l: 'When', k: 'when' },
+        { l: 'File', f: function (x) { return esc(x.file); } },
+        { l: 'Reason', f: function (x) {
+            var m = { SHIFT_CLOSE: 'Shift close', MANUAL: 'Manual', BEFORE_RESTORE: 'Before a restore' };
+            return m[x.reason] || esc(x.reason);
+          } },
+        { l: 'Records', n: 1, k: 'records' },
+        { l: 'Size', n: 1, f: function (x) { return Math.round((x.size || 0) / 1024) + ' KB'; } },
+        { l: '', f: function (x) {
+            if (!x.exists) return '<span class="hint">file missing</span>';
+            return '<button class="btn sm" data-bdl="' + esc(x.file) + '">Download</button> '
+                 + '<button class="btn sm danger" data-brs="' + esc(x.file) + '">Restore</button>';
+          } }
+      ], rows),
+      '<button class="btn primary" id="bkNow">Back up now</button>'
+      + '<button class="btn" id="bkSet">Settings</button>'
+      + '<button class="btn" id="bkUp">Restore from a file</button>'));
+
+    var n = document.getElementById('bkNow');
+    if (n) n.onclick = function () {
+      this.disabled = true; this.textContent = 'Saving...';
+      var res = req('backup-now', {});
+      this.disabled = false; this.textContent = 'Back up now';
+      toast(res && res.ok ? (res.message || 'Backup saved') : ((res && res.message) || 'Backup failed'), !(res && res.ok));
+      if (res && res.ok) backupPage();
+    };
+
+    var st = document.getElementById('bkSet');
+    if (st) st.onclick = function () {
+      var path = prompt('Where should backups be saved?\n\nLeave blank to use D:\\Backup '
+        + '(or the software folder if D: does not exist).', r.dir);
+      if (path === null) return;
+      var auto = confirm('Create a backup automatically every time a shift is closed?\n\nOK = yes, Cancel = no');
+      var res = req('backup-settings', { backup_path: path.trim(), auto_on_close: auto ? 'Yes' : 'No' });
+      toast(res && res.ok ? 'Saved' : ((res && res.message) || 'Could not save'), !(res && res.ok));
+      if (res && res.ok) backupPage();
+    };
+
+    /* Apne computer se file utha kar restore — dusre PC ka backup bhi. */
+    var up = document.getElementById('bkUp');
+    if (up) up.onclick = function () {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.json,application/json';
+      inp.onchange = function () {
+        var f = inp.files && inp.files[0]; if (!f) return;
+        var fr = new FileReader();
+        fr.onload = function () { doRestore(null, String(fr.result || '')); };
+        fr.readAsText(f);
+      };
+      inp.click();
+    };
+
+    host().addEventListener('click', function (e) {
+      var d = e.target.closest('[data-bdl]');
+      if (d) { window.location = '/api.php?action=backup-download&file='
+        + encodeURIComponent(d.getAttribute('data-bdl')); return; }
+      var rs = e.target.closest('[data-brs]');
+      if (rs) { doRestore(rs.getAttribute('data-brs'), null); }
+    });
+  }
+
+  function doRestore(file, json) {
+    var biz = '';
+    try { var s = req('settings-get'); if (s && s.ok) biz = (s.settings || {}).business_name || ''; } catch (e) {}
+
+    if (!confirm('RESTORE WILL REPLACE YOUR CURRENT DATA.\n\n'
+      + 'Everything now in the system \u2014 bills, menu, stock, shifts \u2014 will be replaced '
+      + 'by what is in this backup.\n\n'
+      + 'Your current data will be saved as a safety backup first, so this can be undone.\n\n'
+      + 'Continue?')) return;
+
+    var typed = prompt('To confirm, type the business name exactly:\n\n' + biz);
+    if (typed === null) return;
+
+    var res = req('backup-restore', file ? { file: file, confirm: typed }
+                                         : { json: json, confirm: typed });
+    if (!res || !res.ok) { toast((res && res.message) || 'Restore failed', true); return; }
+    alert(res.message + '\n\nThe page will reload.');
+    location.reload();
+  }
+
   function boot() {
     if (!window.DBApi) return;
     if (page === 'shift_management.html') shiftPage();
@@ -527,6 +627,7 @@
     else if (page === 'closing_history.html') closingPage();
     else if (page === 'activity_log.html') auditPage();
     else if (page === 'purchase_orders.html') poPage();
+    else if (page === 'backup_restore.html') backupPage();
   }
 
   /* module.js ke render ke BAAD chalna hai, warna wo hamara content

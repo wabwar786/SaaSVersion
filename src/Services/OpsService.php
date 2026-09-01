@@ -261,6 +261,12 @@ final class OpsService
         Audit::log('SHIFT_CLOSE', 'shift', ['id' => $shiftId, 'label' => (string)$s['shift_no'],
                                             'new' => 'counted ' . $counted]);
 
+        /* V88 — shift band hote hi poore data ka backup, tareekh ke saath.
+           Yeh KABHI shift close nahi rokta: disk bhari ho ya D: drive na
+           ho, shift phir bhi band rehti hai aur nakami audit mein jati
+           hai. Cashier ko counter par rok dena hal nahi hai. */
+        BackupService::afterShiftClose((string)$s['shift_no']);
+
         $word = $var == 0 ? 'exactly balanced'
               : ($var > 0 ? ('over by ' . number_format(abs($var), 2))
                           : ('short by ' . number_format(abs($var), 2)));

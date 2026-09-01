@@ -95,32 +95,30 @@
       return JSON.parse(x.responseText||'{}');
     }catch(e){return {ok:false}}
   }
+  /* V89 — USER KA DROPDOWN HATA DIYA GAYA.
+     Pehle offline par login screen sab users ki fehrist dikhati thi
+     (naam aur role ke saath). Do wajah se yeh ghalat tha:
+       - Har aane wale ko pata chal jata tha ke kaun kaun kaam karta hai
+         aur kis ka kya darja hai. Aadha password khud hi de dena hai.
+       - Malik ne kaha yeh nahi chahiye.
+     Ab saada khana: username likhein, password likhein. Password bhool
+     jayen to us computer par RESET_PASSWORD.bat hai. */
   function install(){
     var emailInput=document.querySelector('#email')||document.querySelector('input[name=email]');
-    if(!emailInput||document.getElementById('userSelect'))return;
-    var r=req('users-list');
-    if(!r.ok||!r.users||!r.users.length)return;   /* cloud par yahin ruk jata hai */
+    if(!emailInput)return;
+    /* Purana dropdown kisi purane build se para ho to hata do. */
+    var old=document.getElementById('userSelect');
+    if(old&&old.parentNode)old.parentNode.removeChild(old);
+    if(emailInput.type==='hidden')emailInput.type='text';
 
-    var sel=document.createElement('select');
-    sel.id='userSelect';
-    sel.className=emailInput.className;
-    sel.style.cssText=(emailInput.getAttribute('style')||'')+';width:100%';
-    sel.innerHTML='<option value="">-- Select user --</option>'+r.users.map(function(u){
-      return '<option value="'+String(u.login).replace(/"/g,'&quot;')+'">'
-        +String(u.name||u.login)+(u.role?(' - '+u.role):'')+'</option>';
-    }).join('');
-
-    emailInput.type='hidden';
-    emailInput.parentNode.insertBefore(sel,emailInput);
-    sel.onchange=function(){
-      emailInput.value=this.value;
-      var pw=document.querySelector('#password')||document.querySelector('input[type=password]');
-      if(pw)pw.focus();
-    };
-    /* agar sirf ek hi user hai to pehle se select kar do */
-    if(r.users.length===1){sel.selectedIndex=1;emailInput.value=r.users[0].login;}
-    var lbl=sel.previousElementSibling;
-    if(lbl&&lbl.tagName==='LABEL')lbl.textContent='User';
+    /* Offline par sign-in username se hota hai, email lazmi nahi. */
+    emailInput.setAttribute('autocomplete','username');
+    emailInput.setAttribute('autocapitalize','off');
+    if(emailInput.type==='email')emailInput.type='text';
+    if(!emailInput.value)emailInput.placeholder='username';
+    var lbl=emailInput.closest('label');
+    var sp=lbl&&lbl.querySelector('span');
+    if(sp)sp.textContent='Username';
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
   else install();

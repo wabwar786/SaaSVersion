@@ -4892,3 +4892,127 @@ line mein kat jata tha aur asli wajah nazar hi nahi aati thi.
     node --check (settings) -> OK
 
 **NahI chala:** asli FiscalizationService par (mere paas nahi hai).
+
+---
+
+# V88 — Shift close par khud-ba-khud backup, aur restore
+
+Backup pehle se tha (console `backup <slug>`), magar **restore bilkul
+nahi tha** — yani backup lena be-maani tha.
+
+## Ab kya hota hai
+
+Har dafa shift band hoti hai, poore business ka backup ban kar
+**`D:\Backup\`** mein chala jata hai, tareekh ke saath:
+
+    Royal-Grill_2026-09-01_14-12_SH-260901-141225.json
+
+Online aur offline dono par. Naya page: **Backup & Restore**.
+
+## Teen faisle
+
+**1. Backup KABHI shift close nahi rokega.** Disk bhari ho, D: drive na
+ho, folder par ijazat na ho — shift phir bhi band hogi. Cashier ko
+counter par rok dena hal nahi hai. Magar nakami **khamoshi se nahi
+jati**: audit log mein jati hai aur Backup page par laal mein nazar
+aati hai.
+
+**2. D: har PC par nahi hota.** Pehli koshish `D:\Backup`, na mile to
+software ka apna folder. Aur customer khud rasta badal sakta hai.
+Cloud par `D:\` ka sawaal hi nahi — wahan backup server par banta hai
+aur download ho sakta hai.
+
+**3. Restore mojooda data par LIKH DETA HAI.** Is liye do rukawatein:
+- Pehle **khud-ba-khud safety backup** — ghalat file se restore ho jaye
+  to wapasi ka rasta khula rahe
+- Business ka naam **hu-ba-hu** likhna parta hai
+
+Restore sirf Owner/Manager, aur sirf apne business ka data (`tenant_id`
+se scoped).
+
+## Do ehtiyat jo jaan-boojh kar rakhe
+
+- `read()` sirf **file ka naam** leta hai, poora rasta nahi — warna koi
+  `../../config/local.php` maang kar server ki file parh leta. Test mein
+  yeh koshish rok di gayi.
+- 60 din se purane backups khud hat jate hain, warna disk bhar jati hai
+  aur kisi ko pata nahi chalta.
+
+## Testing — asli DB par, 15/15
+
+    [1] folder (D: / fallback)          2/2
+    [2] backup + log + list             4/4
+    [3] data mita kar RESTORE           4/4
+    [4] kharab file aur path escape     2/2
+    [5] shift close par khud-ba-khud    2/2
+
+**Asli tasdeeq:** 13 menu items delete kiye, phir backup se restore —
+**13 wapas aa gaye**, aur purana data safety backup mein mehfooz raha.
+
+**Ek cheez jo maine khud pakri:** POS ka apna shift-close raasta
+`OpsService` se alag hai. Sirf ek jagah hook lagata to counter se band
+ki gayi shift ka backup banta hi nahi — aur rozana wahi raasta chalta
+hai. Dono jagah hook hai.
+
+---
+
+# V89 — Login recovery, dropdown hataya, naya icon
+
+## 1. Cloud par password badalne se local par kuch nahi hota tha
+
+**Bug:** password update `updated_at` badalta tha magar **`row_version`
+nahi**. Sync usi ginti se faisla karti hai ke row nayi hai ya nahi. Is
+liye cloud par badla hua password branch computer tak pohanchta hi nahi
+tha.
+
+Char jagah yehi kami thi: user ka password change, super admin ka
+business-admin reset, self-signup ka password, aur user suspend/activate.
+Chaaron theek.
+
+## 2. Password bhool jane par local recovery
+
+Sync theek hone se bhi kaafi nahi tha: **branch par internet ho hi na**,
+to cloud se koi madad nahi milti.
+
+Naya `RESET_PASSWORD.bat` — usi computer par, internet ke baghair:
+
+    SIGN IN WITH         NAME              ROLE       STATUS
+    owner                Faheem Ahmed      Owner      ACTIVE  (owner)
+    counter1             Ali Raza          Cashier    ACTIVE
+
+    Sign-in name: counter1
+    New password: Naya@123
+
+`row_version` yahan bhi barhta hai — warna agli sync par cloud ka purana
+password wapas aa kar isay mita deta.
+
+Hifazat par ek baat: yeh sirf us ke haath mein hai jis ke paas computer
+ka access hai. Jis ke paas computer hai, us ke paas database bhi hai —
+yahan koi aur taala lagana sirf malik ko takleef deta.
+
+## 3. Login screen se user ka dropdown hata diya
+
+Offline par login screen **sab users ki fehrist** dikhati thi, naam aur
+role ke saath. Do wajah se ghalat tha: har aane wale ko pata chal jata
+tha ke kaun kaam karta hai aur kis ka kya darja hai (aadha password khud
+hi de dena hai), aur aap ne kaha yeh nahi chahiye.
+
+Ab saada khana: **Username** aur **Password**. Aur "Demo login —
+admin@urbanspoon.local / Admin@123" wali line bhi hata di — asli
+customer ki login screen par kisi aur ka password likha hona theek nahi.
+
+## 4. Icon
+
+Aap ka `pos.ico` **102x89** tha — Windows ko murabba chahiye, warna
+shortcut par khinch kar bigra hua dikhta hai. Aur us mein sirf ek size
+thi.
+
+Ab wahi design, magar:
+
+- **Saat sizes** — 16, 24, 32, 48, 64, 128, 256
+- Rounded square, wahi neela (`#00A2FF`)
+- Font se dobara likha gaya, is liye har size par kinare saaf
+- **16 aur 24px par sirf "POS"** — "smart" itna chhota ho kar parha hi
+  nahi jata, aur taskbar par yehi size chalti hai
+
+`RESET_PASSWORD.bat` offline package mein bhi jata hai.
