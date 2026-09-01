@@ -229,7 +229,15 @@ textarea.inp{min-height:62px;resize:vertical}
 .lrow button{padding:6px 12px;background:var(--okbg);color:var(--ok);border-radius:8px;font-weight:800;font-size:10.5px}
 /* slip */
 .slip{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;background:#fff;border:1px dashed var(--l);border-radius:8px;padding:14px}
-.slip h4{text-align:center;font-size:13px;margin-bottom:2px}
+/* V93 — business ka naam sab se numaya cheez ho.
+   Pehle 13px tha, yani address aur NTN se muskil se bara. Bill haath
+   mein aate hi sab se pehle yeh nazar aana chahiye ke bill KIS KA hai. */
+.slip h4{text-align:center;font-size:19px;font-weight:800;letter-spacing:.3px;
+  line-height:1.2;margin:0 0 5px;text-transform:uppercase}
+.slip .addr{text-align:center;font-size:10.5px;line-height:1.45;margin-bottom:1px}
+.slip .meta{text-align:center;font-size:10px;line-height:1.5;margin-top:3px}
+.slip .doc{text-align:center;font-size:10.5px;font-weight:700;letter-spacing:1.2px;
+  margin:5px 0 2px}
 .slip .kotType{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px}
 .slip .kotTag{text-align:center;font-size:12px;font-weight:800;margin:3px 0 4px;border:2px solid #000;padding:2px}
 .slip .kq{font-size:16px;font-weight:800;width:42px;vertical-align:top}
@@ -1210,16 +1218,22 @@ function slipHtml(kind,lines,info){
     var ST=(window.__BILLSET||{});
     var bizName=ST.business_name||(BOOT.brand&&BOOT.brand.name)||(BOOT.site&&BOOT.site.name)||'Restaurant';
     var brName =ST.branch_name||(BOOT.site&&BOOT.site.name)||'';
+    /* V93 — header ka dhancha.
+       Naam bara aur ooper; niche address; phir Ph aur NTN apni apni
+       line par (ek line mein jor dene se 80mm par toot jate hain);
+       phir bill ki tafseel. Branch ka naam sirf tab jab wo business ke
+       naam se alag ho — warna do dafa wahi cheez chhapti hai. */
     head='<h4>'+esc(bizName)+'</h4>'
-      +(brName&&brName!==bizName?'<div class="c">'+esc(brName)+'</div>':'')
-      +(ST.address?'<div class="c">'+esc(ST.address)+'</div>':'')
-      +(ST.phone?'<div class="c">Ph: '+esc(ST.phone)+'</div>':'')
-      +(ST.ntn?'<div class="c">NTN: '+esc(ST.ntn)+'</div>':'')
-      +(ST.receipt_header?'<div class="c">'+esc(ST.receipt_header)+'</div>':'')
-      +'<div class="c">SALES INVOICE</div>'
-      +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+' &middot; '+esc((info&&info.mode)||mode)
+      +(brName&&brName!==bizName?'<div class="addr">'+esc(brName)+'</div>':'')
+      +(ST.address?'<div class="addr">'+esc(ST.address)+'</div>':'')
+      +(ST.phone?'<div class="meta">Ph : '+esc(ST.phone)+'</div>':'')
+      +(ST.ntn?'<div class="meta">NTN : '+esc(ST.ntn)+'</div>':'')
+      +(ST.receipt_header?'<div class="meta">'+esc(ST.receipt_header)+'</div>':'')
+      +'<div class="doc">SALES INVOICE</div>'
+      +'<div class="meta">Bill No : '+esc((info&&info.billNo)||billNo)
+      +' &middot; '+esc((info&&info.mode)||mode)
       +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
-      +'<div class="c">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
+      +'<div class="meta">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
   }
   var rows=lines.map(function(l){
     return kind==='KOT'
@@ -1334,7 +1348,12 @@ function printNode(node,wide){
   var st=d.createElement('style');
   st.textContent='body{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;padding:10px;margin:0}'
     +'table{width:100%;border-collapse:collapse}td{padding:2px 0;vertical-align:top}.r{text-align:right}'
-    +'h4{text-align:center;font-size:13px;margin:0 0 2px}.c{text-align:center;font-size:10px;color:#555}'
+    +'h4{text-align:center;font-size:19px;font-weight:800;letter-spacing:.3px;'
+      +'line-height:1.2;margin:0 0 5px;text-transform:uppercase}'
+    +'.c{text-align:center;font-size:10px;color:#333;line-height:1.5}'
+    +'.addr{text-align:center;font-size:10.5px;line-height:1.45}'
+    +'.meta{text-align:center;font-size:10px;line-height:1.5;margin-top:3px}'
+    +'.doc{text-align:center;font-size:10.5px;font-weight:700;letter-spacing:1.2px;margin:5px 0 2px}'
     +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}'
     +'@page{size:'+(wide?'auto':mm+' auto')+';margin:'+(wide?'8mm':'2mm')+'}'
     +(wide?'':'body{width:'+mm+'}')
@@ -1395,8 +1414,13 @@ function onNewBill(){
   }else newBill();
 }
 function loadHolds(){
-  var r=api('records-list&module='+HOLD);
-  holds=(r.ok&&r.rows)?r.rows:[];
+  /* V94 — ASLI khule orders se, `ui_records` se nahi.
+     Tablet `pos-hold` se seedha `orders` mein likhta hai; POS yahan
+     `ui_records` parh raha tha (jahan sirf counter ke apne hold jate
+     hain). Do alag jagahein — is liye tablet ka order counter par
+     kahin nazar nahi aata tha. */
+  var r=api('pos-holds');
+  holds=(r&&r.ok&&r.rows)?r.rows:[];
   $('#holdCount').textContent='('+holds.length+')';
 }
 function holdCurrent(silent){
@@ -1415,21 +1439,35 @@ function holdCurrent(silent){
 $('#holdsBtn').onclick=function(){
   loadHolds();
   var body=holds.length?holds.map(function(h,i){
+    /* Cashier ke liye do cheezein sab se ahem: kitchen ko ja chuka hai
+       ya nahi, aur kis ne liya. */
     return '<div class="lrow"><div><b>Bill #'+esc(h.billNo)+' &middot; '+esc(h.table||h.mode)+'</b>'
-      +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)+' &middot; '+esc(h.at||'')+'</small></div>'
+      +(h.sent?' <span style="color:var(--ok);font-size:10px;font-weight:800">KITCHEN</span>':'')
+      +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)
+      +(h.by?(' &middot; '+esc(h.by)):'')+' &middot; '+esc(h.at||'')+'</small></div>'
       +'<button data-res="'+i+'">Resume</button></div>';
-  }).join(''):'<div class="cempty">Koi held bill nahi</div>';
+  }).join(''):'<div class="cempty">Koi khula bill nahi</div>';
   var ov=modal('<div class="dh"><h3>Held Bills</h3><p>Rukay hue orders resume please</p></div><div class="db">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button>'+(cart.length?'<button class="go" id="hNow">Hold Current Bill</button>':'')+'</div>',true);
   var hb=ov.querySelector('#hNow'); if(hb)hb.onclick=function(){if(holdCurrent())ov.remove()};
   Array.prototype.forEach.call(ov.querySelectorAll('[data-res]'),function(b){b.onclick=function(){
     var h=holds[this.dataset.res];
-    curHoldId=h.id;                 /* hold record zinda rehta hai jab tak bill clear na ho */
-    try{cart=JSON.parse(h.cart||'[]')}catch(e){cart=[]}
-    billNo=h.billNo;mode=h.mode||'Dine In';curTable=h.table||'';
-    curCustId=h.cust||'walkin';curCustName=h.custName||'Walk-in Customer';curCustPhone=h.custPhone||'';
+    /* V94 — items SERVER se. Pehle yahan `ui_records` mein rakha hua
+       cart JSON parha jata tha; asli order mein wo hai hi nahi, is liye
+       tablet ka bill kholne par cart khali aata. */
+    var r=api('pos-hold-open&id='+encodeURIComponent(h.id));
+    if(!r||!r.ok){toast((r&&r.message)||'Yeh bill khul nahi saka');return}
+    curHoldId=h.id;
+    cart=(r.items||[]).map(function(x){
+      return {id:x.id,name:x.name,qty:x.qty,price:x.price,
+              sentQty:x.sentQty||0,note:x.note||''};
+    });
+    billNo=r.billNo;mode=r.mode||'Dine In';curTable=r.table||'';
+    curCustId=r.cust||'walkin';curCustName=r.custName||'Walk-in Customer';
+    curCustPhone=r.custPhone||'';
     billStarted=true;
-    ov.remove();loadHolds();renderCart();toast('Bill #'+billNo+' resumed (hold list mein maujood rahega)');
+    ov.remove();loadHolds();renderCart();
+    toast('Bill #'+billNo+' resumed'+(curTable?(' — '+curTable):''));
   }});
 };
 $('#dupBtn').onclick=function(){

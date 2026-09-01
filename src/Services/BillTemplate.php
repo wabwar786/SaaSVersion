@@ -125,12 +125,19 @@ final class BillTemplate
         };
 
         $biz = trim((string)($ctx['business'] ?? '')) ?: (string)($ctx['site'] ?? 'Restaurant');
-        $put($biz, 12);
+        /* V93 — business ka naam sab se numaya. Pehle 12 tha, yani
+           address (8) se muskil se bara. Bill haath mein aate hi sab se
+           pehle yeh nazar aana chahiye ke bill KIS KA hai.
+           `head()` dobara aane wali line khud rok deta hai, is liye
+           branch ka naam business ke naam jaisa ho to chhap nahi hoga. */
+        $put(strtoupper($biz), 15);
         if ($full) {
             $put((string)($ctx['site'] ?? ''), 8);
             $put((string)($ctx['address'] ?? ''), 8);
-            if (!empty($ctx['phone'])) $put('Ph: '.(string)$ctx['phone'], 8);
-            if (!empty($ctx['ntn']))   $put('NTN: '.(string)$ctx['ntn'], 8);
+            /* Ph aur NTN apni apni line par — 80mm par jor dene se toot
+               jate hain aur parhe nahi jate. */
+            if (!empty($ctx['phone'])) $put('Ph : '.(string)$ctx['phone'], 8);
+            if (!empty($ctx['ntn']))   $put('NTN : '.(string)$ctx['ntn'], 8);
         }
         $put((string)($ctx['header'] ?? ''), 8);
         return $L;
@@ -157,12 +164,16 @@ final class BillTemplate
     {
         $cur = (string)($ctx['currency'] ?? 'PKR');
         $L = [];
-        $L[] = self::row('Subtotal', self::money((float)$o['subtotal']));
-        if ((float)$o['discount_amount'] > 0) $L[] = self::row('Discount', '-'.self::money((float)$o['discount_amount']));
-        if ((float)$o['service_charge']  > 0) $L[] = self::row('Service Charge', self::money((float)$o['service_charge']));
-        if ((float)$o['tax_amount']      > 0) $L[] = self::row('Sales Tax', self::money((float)$o['tax_amount']));
+        /* V93 — har key `??` ke saath. POS to sab bhejta hai, magar
+           purane orders ya doosre raste (shift report, duplicate print)
+           se aaya order adhoora ho sakta hai — us par bill warning se
+           bharna nahi chahiye. */
+        $L[] = self::row('Subtotal', self::money((float)($o['subtotal'] ?? 0)));
+        if ((float)($o['discount_amount'] ?? 0) > 0) $L[] = self::row('Discount', '-'.self::money((float)$o['discount_amount']));
+        if ((float)($o['service_charge']  ?? 0) > 0) $L[] = self::row('Service Charge', self::money((float)$o['service_charge']));
+        if ((float)($o['tax_amount']      ?? 0) > 0) $L[] = self::row('Sales Tax', self::money((float)$o['tax_amount']));
         $L[] = self::rule('=');
-        $L[] = self::row('TOTAL '.$cur, self::money((float)$o['grand_total']), true);
+        $L[] = self::row('TOTAL '.$cur, self::money((float)($o['grand_total'] ?? 0)), true);
         return $L;
     }
 
@@ -302,7 +313,7 @@ final class BillTemplate
         $L[] = self::row('ITEM', 'AMOUNT', true);
         $L[] = self::rule();
         foreach ($items as $it) {
-            $L = array_merge($L, self::wrap((string)$it['nm']));
+            $L = array_merge($L, self::wrap((string)($it['nm'] ?? $it['name'] ?? '-')));
             $L[] = self::row('   '.self::qty((float)$it['qty']).' x '.self::money((float)$it['unit_price']),
                              self::money((float)$it['line_total']));
         }
@@ -340,7 +351,7 @@ final class BillTemplate
         $L[] = self::rule();
         foreach ($items as $it) {
             $rate = isset($it['tax_rate']) ? (float)$it['tax_rate'] : (float)($ctx['tax_rate'] ?? 0);
-            $L = array_merge($L, self::wrap((string)$it['nm']));
+            $L = array_merge($L, self::wrap((string)($it['nm'] ?? $it['name'] ?? '-')));
             $L[] = self::row('   '.self::qty((float)$it['qty']).' x '.self::money((float)$it['unit_price'])
                              .' @'.rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.').'%',
                              self::money((float)$it['line_total']));

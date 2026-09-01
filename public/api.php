@@ -513,6 +513,25 @@ case 'guide':needLogin();
  if(!$g)ok(['guide'=>null]);
  ok(['guide'=>$g+['module'=>$k]]);
 
+case 'pos-hold-open':needLogin();Auth::requireModule('pos');
+ /* Held bill kholne ke liye us ke items chahiyen. Pehle POS `ui_records`
+    mein rakha hua cart JSON parhta tha; asli order mein wo hai hi nahi. */
+ $oid=(string)($_GET['id']??'');
+ if($oid==='')fail('Which bill?');
+ if(!Scope::isManagement()){
+   $chk=DB::pdo()->prepare("SELECT COUNT(*) FROM orders WHERE id=? AND site_id=? AND created_by_user_id=?");
+   $chk->execute([$oid,site_id(),Scope::userId()]);
+   if((int)$chk->fetchColumn()===0)fail('That bill belongs to another user.',403);
+ }
+ ok(OpsService::holdBillItems($oid));
+
+case 'pos-holds':needLogin();Auth::requireModule('pos');
+ /* V94 — POS ka Hold Bills ab ASLI khule orders se. Pehle yeh
+    `ui_records` se aata tha, jahan sirf counter ke apne hold jate hain.
+    Tablet asli `orders` mein likhta hai, is liye us ka bheja hua order
+    counter par kahin nazar nahi aata tha. */
+ ok(['rows'=>OpsService::holdBills()]);
+
 case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
  try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(Throwable $e){fail($e->getMessage());}

@@ -398,6 +398,111 @@ final class OpsService
         ];
     }
 
+    /** Ek held bill ke items — POS use resume karne ke liye. */
+    public static function holdBillItems(string $orderId): array
+    {
+        $p = DB::pdo();
+        $q = $p->prepare(
+            "SELECT o.id, o.bill_no, o.service_mode, o.tax_amount, o.discount_amount,
+                    COALESCE(dt.display_name,'') AS table_name,
+                    COALESCE(c.id,'')   AS cust_id,
+                    COALESCE(c.full_name,'') AS cust_name,
+                    COALESCE(c.phone,'')     AS cust_phone
+               FROM orders o
+               LEFT JOIN dining_tables dt ON dt.id = o.table_id
+               LEFT JOIN customers c      ON c.id = o.customer_id
+              WHERE o.id=? AND o.site_id=? AND o.order_status='OPEN' LIMIT 1");
+        $q->execute([$orderId, site_id()]);
+        $o = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$o) throw new \RuntimeException('That bill is not open any more.');
+
+        $iq = $p->prepare(
+            "SELECT oi.menu_item_id, oi.item_name_snapshot AS name, oi.qty,
+                    oi.sent_qty, oi.unit_price, oi.kitchen_note AS note
+               FROM order_items oi
+              WHERE oi.order_id=? AND oi.status='ACTIVE'
+              ORDER BY oi.created_at");
+        $iq->execute([$orderId]);
+
+        $mode = ucwords(strtolower(str_replace('_', ' ', (string)$o['service_mode'])));
+        return [
+            'order_id' => (string)$o['id'],
+            'billNo'   => (string)$o['bill_no'],
+            'mode'     => $mode,
+            'table'    => (string)$o['table_name'],
+            'cust'     => (string)($o['cust_id'] ?: 'walkin'),
+            'custName' => (string)($o['cust_name'] ?: 'Walk-in Customer'),
+            'custPhone'=> (string)$o['cust_phone'],
+            'items'    => array_map(fn($x) => [
+                'id'       => (string)$x['menu_item_id'],
+                'name'     => (string)$x['name'],
+                'qty'      => (float)$x['qty'],
+                'sentQty'  => (float)$x['sent_qty'],
+                'price'    => (float)$x['unit_price'],
+                'note'     => (string)($x['note'] ?? ''),
+            ], $iq->fetchAll(PDO::FETCH_ASSOC)),
+        ];
+    }
+
+
+    /**
+     * POS ka "Hold Bills" - ASLI khule bills.
+     *
+     * V94 - POS yeh fehrist `ui_records` se parhta tha, jahan sirf wo
+     * bills jate hain jo counter par KHUD hold kiye jayen. Tablet
+     * `pos-hold` se ASLI `orders` table mein likhta hai. Do bilkul alag
+     * jagahein - is liye tablet ka bheja hua order counter par kahin
+     * nazar hi nahi aata tha: na Hold Bills mein, na kisi aur jagah.
+     *
+     * Ab dono ek hi jagah se: khule orders.
+     */
+    public static function holdBills(): array
+    {
+        [$w, $a] = Scope::orderWhere('o');
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT o.id, o.bill_no, o.service_mode,
+                        COALESCE(dt.display_name,'') AS table_name,
+                        COALESCE(o.grand_total,0) AS total,
+                        COALESCE(c.full_name,'') AS customer,
+                        COALESCE(u.full_name,'') AS taken_by,
+                        COALESCE(o.opened_at, o.created_at) AS opened_at,
+                        (SELECT COUNT(*) FROM order_items oi
+                          WHERE oi.order_id = o.id AND oi.status = 'ACTIVE') AS line_count,
+                        (SELECT COALESCE(SUM(oi.sent_qty),0) FROM order_items oi
+                          WHERE oi.order_id = o.id) AS sent_qty
+                   FROM orders o
+                   LEFT JOIN dining_tables dt ON dt.id = o.table_id
+                   LEFT JOIN customers c      ON c.id = o.customer_id
+                   LEFT JOIN users u          ON u.id = o.created_by_user_id
+                  WHERE o.site_id = ? AND o.order_status = 'OPEN'
+                    AND $w
+                  ORDER BY COALESCE(o.opened_at,o.created_at) DESC
+                  LIMIT 100");
+            $q->execute(array_merge([site_id()], $a));
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) { return []; }
+
+        return array_map(function ($r) {
+            $mode = str_replace('_', ' ', (string)$r['service_mode']);
+            return [
+                'id'       => (string)$r['id'],
+                'billNo'   => (string)$r['bill_no'],
+                'mode'     => ucwords(strtolower($mode)),
+                'table'    => (string)$r['table_name'],
+                'customer' => (string)$r['customer'],
+                'by'       => (string)$r['taken_by'],
+                'total'    => (float)$r['total'],
+                'lines'    => (int)$r['line_count'],
+                /* Kitchen ko ja chuka hai ya nahi - cashier ke liye yeh
+                   sab se ahem cheez hai. */
+                'sent'     => (float)$r['sent_qty'] > 0,
+                'at'       => substr((string)$r['opened_at'], 0, 16),
+            ];
+        }, $rows);
+    }
+
+
     /**
      * Closing history — purani closing reports dobara chhapne ke liye.
      *
