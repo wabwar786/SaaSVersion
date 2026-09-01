@@ -939,7 +939,7 @@ foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c
 if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/app.ico','public/assets/app.ico');
 $zip->addEmptyDir('updates');
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
 foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1','fix_vcruntime.ps1'] as $ps){
@@ -1904,6 +1904,26 @@ case 'sa-demo-reset':needSuper();$d=body();
  \Aio\Services\AdminData::audit('console',$tid2,'DEMO_RESET','Cleared '.array_sum($n).' customer rows');
  ok(['cleared'=>array_sum($n),'tables'=>$n,
      'message'=>'Customer data cleared. Sample data is untouched.']);
+
+case 'sa-licence-key':needSuper();$d=body();
+ /* V90 — OFFLINE RENEWAL.
+    Branch par internet na ho to sync se licence nahi barh sakta. Yahan
+    ek key banti hai; aap wo customer ko phone/WhatsApp par de dete hain
+    aur wo software mein daal deta hai. */
+ $tid2=(string)($d['tenant_id']??'');if($tid2==='')fail('tenant_id is required');
+ $days=(int)($d['days']??30);
+ try{ok(\Aio\Services\LicenceKey::generate($tid2,$days,
+      (string)(Platform::superUser()['email']??'super')));}
+ catch(Throwable $e){fail($e->getMessage());}
+
+case 'sa-licence-keys':needSuper();
+ $tid2=(string)($_GET['tenant_id']??'');if($tid2==='')fail('tenant_id is required');
+ ok(['rows'=>\Aio\Services\LicenceKey::history($tid2)]);
+
+case 'licence-key-apply':needLogin();$d=body();
+ /* Customer apni key yahan daalta hai. Internet ki zaroorat nahi. */
+ try{ok(\Aio\Services\LicenceKey::apply((string)($d['key']??'')));}
+ catch(Throwable $e){fail($e->getMessage());}
 
 case 'sa-licence-set':needSuper();$d=body();
  /* V66 — har customer ka licence control ek jagah se.

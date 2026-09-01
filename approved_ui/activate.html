@@ -105,6 +105,22 @@
       +'<a class="btn" href="mailto:'+esc(pay.email||'')+'">'+esc(pay.email||'')+'</a></div>'
       +'</div></section>'
 
+      /* ---- V90: offline key ----
+         Branch par internet na ho to sync se licence nahi barh sakta.
+         Malik phone/WhatsApp par key deta hai, customer yahan daal deta
+         hai, aur software chalu ho jata hai. */
+      +'<section class="panel"><div class="panel-head"><div><h2>Have an activation key?</h2>'
+      +'<p>Works without internet</p></div></div><div class="panel-body">'
+      +'<p style="font-size:12.5px;color:var(--muted);line-height:1.65;margin:0 0 12px">'
+      +'If ' + esc(pay.company||'your supplier') + ' gave you a key over the phone or WhatsApp, '
+      +'type it here. Your software will be activated straight away &mdash; no internet needed.</p>'
+      +'<label class="field full"><span>Activation key</span>'
+      +'<input id="lkKey" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" '
+      +'style="font-family:ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase"></label>'
+      +'<button class="btn primary" id="lkGo" style="margin-top:10px">Activate</button>'
+      +'<div id="lkMsg" class="note" style="display:none;margin-top:10px"></div>'
+      +'</div></section>'
+
       /* ---- reference bhejein ---- */
       +'<section class="panel"><div class="panel-head"><div><h2>2. Tell us you paid</h2>'
       +'<p>We activate within 12 hours</p></div></div><div class="panel-body">'
@@ -129,6 +145,27 @@
       +'</div></section></div></div>';
 
     var d=$('#aDate'); if(d)d.value=new Date().toISOString().slice(0,10);
+
+    var lk=$('#lkGo');
+    if(lk)lk.onclick=function(){
+      var k=$('#lkKey').value.trim();
+      if(!k){toast('Type the key first',true);return}
+      this.disabled=true; this.textContent='Activating...';
+      var res=DBApi.req('licence-key-apply',{key:k});
+      this.disabled=false; this.textContent='Activate';
+      var box=$('#lkMsg'); box.style.display='';
+      if(!res||!res.ok){
+        box.style.background='var(--danger-soft)'; box.style.color='var(--danger)';
+        box.textContent=(res&&res.message)||'That key could not be used.';
+        return;
+      }
+      box.style.background='var(--ok-soft,#eaf6ef)'; box.style.color='var(--ok,#0f7a3d)';
+      box.textContent=res.message||'Activated';
+      toast(res.message||'Activated');
+      setTimeout(draw,1500);
+    };
+    var ki=$('#lkKey');
+    if(ki)ki.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();$('#lkGo').click()}};
 
     $('#aSend').onclick=function(){
       var ref=$('#aRef').value.trim();

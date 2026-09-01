@@ -243,6 +243,9 @@ final class Sync
            modules kabhi cloud tak pohanchte hi nahi the aur online har
            user "0 Modules" dikhata tha. Purani config wale nodes ko bhi
            yeh milna is required. */
+        /* V90 — `licence_keys_used` sync mein KABHI na jaye: wo us
+           computer ki apni yaad-dasht hai. Warna node reset kar ke wahi
+           key dobara lagai ja sakti. */
         $force = [
             'sync_tombstones',
             'users', 'user_roles', 'roles', 'role_modules',

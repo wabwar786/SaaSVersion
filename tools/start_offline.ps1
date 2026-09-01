@@ -223,14 +223,28 @@ if ($lanIp) {
 # hota hai -- chalte POS ko beech mein badalna kabhi theek nahi.
 if (Test-Path (Join-Path $root 'updates\ready.txt')) {
   Write-Host ''
-  Say '  A NEW UPDATE IS READY' 'Cyan'
+  Say '  A NEW UPDATE IS DOWNLOADED AND READY' 'Cyan'
   Say '  Close this window and run INSTALL_UPDATE.bat to apply it.' 'White'
+  Write-Host ''
+} elseif (Test-Path (Join-Path $root 'updates\available.txt')) {
+  # Naya build hai magar utara nahi gaya - faisla user ka.
+  $av = (Get-Content (Join-Path $root 'updates\available.txt') -ErrorAction SilentlyContinue |
+         Select-Object -First 1)
+  Write-Host ''
+  Say ("  A NEW UPDATE IS AVAILABLE: " + $av) 'Cyan'
+  Say '  It has NOT been downloaded. To get it, run GET_UPDATE.bat' 'White'
+  Say '  (or ignore this - your software keeps working as it is).' 'DarkGray'
   Write-Host ''
 } else {
   Start-Job -ScriptBlock {
     param($root, $phpExe, $phpIni)
     Start-Sleep -Seconds 45
-    $a = '-c "{0}" "scripts/self_update.php" --download' -f $phpIni
+    # V90 — SIRF CHECK, download NAHI.
+    # Pehle yahan `--download` tha: naya build khud aa jata tha. Malik ne
+    # kaha yeh us ki marzi honi chahiye — kisi ka internet mehnga hai,
+    # kisi ka slow, aur 20 MB bina poochhe utaar lena theek nahi.
+    # Ab: sirf pata karo ke naya build hai. Download tab jab user kahe.
+    $a = '-c "{0}" "scripts/self_update.php"' -f $phpIni
     try {
       Start-Process -FilePath $phpExe -ArgumentList $a -WorkingDirectory $root -NoNewWindow -Wait
     } catch { }

@@ -146,6 +146,8 @@ final class AdminData
         'tenant_subscriptions', 'subscription_payments', 'signup_requests',
         'admin_audit', 'admin_backups', 'admin_imports',
         'sync_nodes', 'sync_activity', 'sync_runs', 'sync_state', 'sync_cursors',
+        /* V90 — reset ke baad wahi licence key dobara na chal sake. */
+        'licence_keys', 'licence_keys_used',
         'migration_state', 'sync_retries',
         /* V62 — yeh reset mein kabhi na jayen. Agar factory reset khud
            tombstones uda de to node ko delete ki khabar hi na pohanche. */

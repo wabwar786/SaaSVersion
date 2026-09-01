@@ -220,7 +220,7 @@ final class Guide
  ]],
 
 'activate' => ['title'=>'Activate / Renew',
- 'what'=>'Pay for your software and tell us, so we can activate it.',
+ 'what'=>'Pay for your software and activate it - online or with a key.',
  'steps'=>[
    'Send the payment using any of the accounts shown on the left of that screen.',
    'Fill in the transaction ID exactly as it appears on your receipt, the amount, and how many months you want.',
@@ -230,6 +230,7 @@ final class Guide
    'Activation happens within 12 hours once we can see the payment.',
    'Any days left on your current period are added on top, so nothing is wasted.',
    'Send the request once. Sending it again does not make it faster.',
+   'No internet at your branch? Ask for an activation key instead. Type it in and the software works straight away.',
  ],
  'warn'=>[
    'Enter the exact reference from your receipt. A wrong reference is the usual reason a request is held up.',

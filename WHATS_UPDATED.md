@@ -5016,3 +5016,92 @@ Ab wahi design, magar:
   nahi jata, aur taskbar par yehi size chalti hai
 
 `RESET_PASSWORD.bat` offline package mein bhi jata hai.
+
+---
+
+# V90 — Update ab poochta hai, aur offline renewal key
+
+## 1. Update khud download nahi hota
+
+Pehle launcher `self_update.php --download` chalata tha — naya build
+**khud** aa jata tha. Aap ne kaha yeh customer ki marzi honi chahiye,
+aur baat theek hai: kisi ka internet mehnga hai, kisi ka slow, aur
+bina poochhe utaar lena theek nahi.
+
+Ab teen halatein:
+
+| Launcher par | Matlab |
+|---|---|
+| kuch nahi | aap ke paas latest build hai |
+| **A NEW UPDATE IS AVAILABLE: V91** | naya build hai, **utara nahi gaya**. `GET_UPDATE.bat` |
+| **DOWNLOADED AND READY** | utar chuka, `INSTALL_UPDATE.bat` |
+
+`GET_UPDATE.bat` pehle **poochta hai**: *"Yeh internet se download hoga
+(taqreeban 2-5 MB). Download karein? (Y/N)"*. `N` par: *"Theek hai. Aap
+ka software waise hi chalta rahega."*
+
+Yani teen alag faisle, teenon customer ke: check (khud), download
+(poocha jata hai), install (poocha jata hai).
+
+## 2. Offline renewal key
+
+**Masla:** branch par internet na ho aur licence khatam ho jaye. Sync se
+licence barh hi nahi sakta, portal khulta nahi. Customer ne paisay bhej
+diye aur software band para hai.
+
+**Hal:** aap super admin se ek key banate hain, phone ya WhatsApp par
+customer ko dete hain, wo software mein daal deta hai — **internet ki
+koi zaroorat nahi**.
+
+    Licence control -> "Make activation key" -> 30/90/180/365 days
+
+    P9X0-07G0-A3CY-CS67-Z868-BWJC
+
+Customer ke liye: **Activate / Renew** page par "Have an activation key?"
+
+### Key kaise mehfooz hai
+
+- **Har business ka apna raaz** (`tenants.licence_secret`) — ek business
+  ki key doosre par **nahi** chalti (test mein rok di gayi)
+- **Ek key, ek dafa** (`licence_keys_used`) — dobara daalne par inkaar
+- **Key ki apni miyaad 30 din** — purani parhi hui key baad mein bekaar
+- Factory reset se bhi `licence_keys_used` nahi mitti, warna wahi key
+  dobara chal jati
+
+### Likhne ki ghalatiyan maaf
+
+Customer phone par sun kar likhta hai, aur `O`/`0`, `I`/`1` mein farq
+nazar nahi aata. Key ka alphabet inhen shamil hi nahi karta, aur jo
+likha jaye wo khud sudhar jata hai. Chhote harf, spaces, dashes — sab
+chalte hain.
+
+Computer ki tareekh peeche ho to saaf batata hai: *"This computer's date
+looks wrong. Fix the date and try again."* — warna key "mustaqbil ki"
+lagti aur customer ko wajah samajh na aati.
+
+### Ek baat saaf
+
+Raaz customer ke apne computer par hoti hai. Jo bandah waqai chahe aur
+jaanta ho, apni key bana sakta hai. Yeh nizam **suhoolat** ke liye hai,
+chori rokne ka taala nahi. Asli hifazat yeh hai ke har business ka raaz
+alag hai — ek jagah ka masla baqi customers tak nahi jata.
+
+## Testing — 12/12
+
+    [1] key banao                     2/2
+    [2] expired licence + key lagao   3/3
+    [3] jo rukna chahiye              3/3   (dobara, jaali, adhoori)
+    [4] doosre business ki key        1/1   REJECTED
+    [5] likhne ki ghalatiyan          1/1
+    [6] bache hue din zaya nahi hote  1/1   (2026-10-16 -> 2026-10-26)
+    [7] server par record             1/1
+
+Regression: backup 15/15.
+
+## Ek cheez jo package karte waqt pakri
+
+`migrate_selfservice` aur `seed_roles` **offline installer ki list mein
+aaye hi nahi the** — mere pichle do patch chup-chaap fail ho gaye the
+(anchor match nahi hua aur maine natija check nahi kiya). Ab dono
+maujood hain, aur maine har migration ko dono jagah (Docker + installer)
+gin kar tasdeeq kiya.
