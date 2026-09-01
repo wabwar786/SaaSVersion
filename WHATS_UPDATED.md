@@ -5143,3 +5143,60 @@ Ab 5 second mein saaf jawab:
       democash        Demo Cashier            Cashier   ACTIVE
 
     password reset  ->  LOGIN OK
+
+---
+
+# V92 — "Database files could not be extracted" — bina wajah ke
+
+    Extracting........ done.
+    Database files could not be extracted.
+
+Yeh do lines ek saath aana hi bata deta hai ke kuch ghalat hai: " done."
+chhap gaya, phir nakami — **aur koi wajah nahi**.
+
+## Wajah
+
+    Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
+
+`Expand-Archive` ki **asli ghalti phenk di jati thi**. Job khatam hota,
+hum " done." likh dete, phir `mysqld.exe` na milne par khali "could not
+be extracted" keh dete. Customer ke paas koi rasta nahi bachta tha.
+
+## Teen fix
+
+**1. Asli ghalti ab dikhti hai.** Job ka natija parha jata hai aur wajah
+saaf likhi jati hai: `Reason: ...`
+
+**2. Doosra tareeqa.** Expand-Archive nakaam ho to .NET ka
+`ZipFile::ExtractToDirectory` aazmaya jata hai. Purane Windows
+PowerShell 5.1 par Expand-Archive bare zip par nakaam ho jata hai;
+.NET wala wahan bhi chal jata hai. Yehi ehtiyat **PHP runtime** ke liye
+bhi lagayi — wahan bilkul yehi masla ho sakta tha.
+
+**3. Download ki tasdeeq.** "Database : 100% complete" ka matlab yeh
+**nahi** ke file waqai ZIP hai. Server HTML error page bhej de, ya
+connection beech mein toote, to file ban jati hai magar khulti nahi. Ab
+size (20MB+) aur ZIP ka nishan (`PK`) dono check hote hain, aur saaf
+paighaam milta hai:
+
+    The downloaded database file is not usable (incomplete or blocked).
+    This usually means the internet dropped, or a firewall replaced
+    the download.
+
+## Aur nakami par madad
+
+Ab agar phir bhi mysqld na mile to:
+
+- Jo files nikleen un ke naam dikhata hai (ya batata hai ke kuch nahi nikla)
+- Path 250 se lamba ho to: *"Move this package somewhere shorter, for
+  example C:\\SmartPOS"* — Windows 260 characters se aage nahi jata, aur
+  `Downloads` ka lamba naam is masle ki aam wajah hai
+
+## Testing
+
+    PowerShell balance (4 scripts)  -> OK
+    php -l                          -> 0 errors
+
+**NahI chala:** asli Windows par (mere paas nahi hai). Magar ab nakami
+par **wajah nazar aayegi**, jo pehle nahi aati thi — aur wahi asal
+tabdeeli hai.

@@ -57,7 +57,23 @@ if (-not $php) {
   }
 
   Say 'Extracting PHP runtime...'
-  Expand-Archive -Path $zip -DestinationPath $PrivateRoot -Force
+  # V92 -- yahan bhi wahi ehtiyat jo database ke liye ki.
+  # Expand-Archive purane Windows PowerShell par nakaam ho sakta hai;
+  # bina try/catch ke ghalti ajeeb shakl mein aage jati hai.
+  try {
+    Expand-Archive -Path $zip -DestinationPath $PrivateRoot -Force -ErrorAction Stop
+  } catch {
+    Say '      First method did not work, trying another...' 'DarkYellow'
+    try {
+      Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $PrivateRoot)
+    } catch {
+      if ("$($_.Exception.Message)" -notlike '*already exists*') {
+        Say ('PHP runtime could not be extracted: ' + $_.Exception.Message) 'Red'
+        exit 1
+      }
+    }
+  }
 
   # Temp zip saaf karo — magar SIRF tab jab wo waqai maujood ho.
   # Pehle yahan sirf -ErrorAction SilentlyContinue tha, jo kaafi nahi:

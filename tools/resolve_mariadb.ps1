@@ -80,22 +80,119 @@ if (-not $mysqld) {
       Say 'or place vendor\mariadb.zip next to this package.' 'Red'
       exit 1
     }
+
+    # V92 -- "100% complete" ka matlab yeh NAHI ke file waqai ZIP hai.
+    # Server ne HTML error page bhej diya ho, ya connection beech mein
+    # toot gaya ho, to file to ban jati hai magar khulti nahi. Pehle
+    # yeh baat extract ke waqt ajeeb ghalti ban kar samne aati thi.
+    $bad = $false
+    if (-not (Test-Path -LiteralPath $zip)) { $bad = $true }
+    else {
+      $len = (Get-Item -LiteralPath $zip).Length
+      if ($len -lt 20MB) { $bad = $true }
+      else {
+        try {
+          $fs = [System.IO.File]::OpenRead($zip)
+          $sig = New-Object byte[] 2
+          $fs.Read($sig, 0, 2) | Out-Null
+          $fs.Close()
+          if ($sig[0] -ne 0x50 -or $sig[1] -ne 0x4B) { $bad = $true }   # 'PK'
+        } catch { $bad = $true }
+      }
+    }
+    if ($bad) {
+      Say 'The downloaded database file is not usable (incomplete or blocked).' 'Red'
+      Say 'This usually means the internet dropped, or a firewall replaced' 'Red'
+      Say 'the download. Try again, or place vendor\mariadb.zip next to' 'Red'
+      Say 'this package and run the setup again.' 'Red'
+      if (Test-Path -LiteralPath $zip) {
+        try { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue } catch { }
+      }
+      exit 1
+    }
   }
 
+  # V92 -- EXTRACT.
+  #
+  # Pehle yahan `Receive-Job ... | Out-Null` tha, yani Expand-Archive ki
+  # ASLI GHALTI phenk di jati thi. Nateeja: " done." chhap jata tha aur
+  # phir "Database files could not be extracted" -- bina kisi wajah ke.
+  # Customer ke paas koi rasta nahi bachta tha.
+  #
+  # Ab: ghalti pakri jati hai, aur agar Expand-Archive nakaam ho to
+  # .NET ka ZipFile aazmaya jata hai. Purane Windows PowerShell 5.1 par
+  # Expand-Archive bare zip aur lambe raston par nakaam ho jata hai;
+  # .NET wala tareeqa wahan bhi chal jata hai.
   Dots 'Extracting'
-  $job = Start-Job -ScriptBlock {
-    param($z,$d)
-    $ProgressPreference = 'SilentlyContinue'
-    Expand-Archive -Path $z -DestinationPath $d -Force
-  } -ArgumentList $zip, $RuntimeDir
-  while ($job.State -eq 'Running') { Write-Host '.' -NoNewline -ForegroundColor Gray; Start-Sleep -Seconds 2 }
-  Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
-  Remove-Job $job -Force -ErrorAction SilentlyContinue
-  Write-Host ' done.' -ForegroundColor Green
+  $zipErr = $null
 
-  if ($zip -ne $VendorZip) { Remove-Item $zip -ErrorAction SilentlyContinue }
+  $job = Start-Job -ScriptBlock {
+    param($z, $d)
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+      Expand-Archive -Path $z -DestinationPath $d -Force -ErrorAction Stop
+      return 'OK'
+    } catch {
+      return 'ERR: ' + $_.Exception.Message
+    }
+  } -ArgumentList $zip, $RuntimeDir
+
+  while ($job.State -eq 'Running') { Write-Host '.' -NoNewline -ForegroundColor Gray; Start-Sleep -Seconds 2 }
+  $res = Receive-Job $job -ErrorAction SilentlyContinue
+  Remove-Job $job -Force -ErrorAction SilentlyContinue
+  if ($res -is [array]) { $res = $res[-1] }
+  if ("$res" -like 'ERR:*') { $zipErr = "$res".Substring(5).Trim() }
+
+  # Doosra tareeqa -- .NET seedha.
+  if ($zipErr -or -not (Get-MysqldPath)) {
+    Write-Host ''
+    Say '      First method did not work, trying another...' 'DarkYellow'
+    try {
+      Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $RuntimeDir)
+      $zipErr = $null
+    } catch {
+      # Files pehle se mojood hon to yeh "already exists" deta hai --
+      # us soorat mein pehla tareeqa waqai chal chuka hai.
+      if ("$($_.Exception.Message)" -notlike '*already exists*') {
+        $zipErr = $_.Exception.Message
+      } else {
+        $zipErr = $null
+      }
+    }
+  }
+
+  Write-Host ' done.' -ForegroundColor Green
+  if ($zip -ne $VendorZip) {
+    if ($zip -and (Test-Path -LiteralPath $zip)) {
+      try { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue } catch { }
+    }
+  }
+
   $mysqld = Get-MysqldPath
-  if (-not $mysqld) { Say 'Database files could not be extracted.' 'Red'; exit 1 }
+  if (-not $mysqld) {
+    Say 'Database files could not be extracted.' 'Red'
+    if ($zipErr) { Say ("Reason: " + $zipErr) 'Red' }
+
+    # Customer ko batao ke waqai hua kya -- khali "nakaam" bekaar hai.
+    $found = Get-ChildItem -Path $RuntimeDir -Recurse -ErrorAction SilentlyContinue |
+             Select-Object -First 5
+    if ($found) {
+      Say 'These files did come out, but mysqld.exe is not among them:' 'DarkYellow'
+      foreach ($f in $found) { Say ('  ' + $f.Name) 'DarkGray' }
+    } else {
+      Say 'Nothing came out of the archive at all.' 'DarkYellow'
+    }
+
+    $len = (Join-Path $RuntimeDir 'mariadb-10.11.8-winx64\bin\mysqld.exe').Length
+    if ($len -gt 250) {
+      Say '' 'Gray'
+      Say 'The folder path is very long, and Windows cannot handle paths' 'Yellow'
+      Say 'over 260 characters. Move this package somewhere shorter,' 'Yellow'
+      Say 'for example C:\SmartPOS, and run the setup again.' 'Yellow'
+    }
+    exit 1
+  }
 }
 $BinDir = Split-Path $mysqld
 
