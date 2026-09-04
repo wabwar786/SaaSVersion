@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>User Activity Log · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>User Activity Log</h1><p>Kis ne kya kiya</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content">
+      <div class="note" style="margin-bottom:14px">
+        <b>Duplicate bill</b>, void aur price change yahan darj hote hain. Reprint cash chori ka
+        aam raasta hai &mdash; har copy ginti mein aati hai.
+      </div>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Recent activity</h2><p>Sab se naya upar</p></div></div>
+        <div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead><tr><th>When</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody id="rows"></tbody></table></div></div>
+      </section>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="activity"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore,R=window.Region,money=R.money;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  var rows=[];
+  (S.get('sales')||[]).forEach(function(s){
+    rows.push([s.sold_at,s.cashier||'—','SALE',s.bill_no+' · '+money(s.total)]);
+    if(Number(s.reprint_count)>0)
+      rows.push([s.last_reprint_at||s.sold_at,s.cashier||'—','REPRINT',
+                 s.bill_no+' · copy '+s.reprint_count]);
+  });
+  rows.sort(function(a,b){return String(b[0]).localeCompare(String(a[0]))});
+  var tone={SALE:'ok',REPRINT:'warn',VOID:'danger'};
+  $('rows').innerHTML=rows.length? rows.slice(0,80).map(function(r){
+    return '<tr><td>'+esc(r[0]||'')+'</td><td>'+esc(r[1])+'</td>'+
+      '<td><span class="tag '+(tone[r[2]]||'neutral')+'">'+esc(r[2])+'</span></td>'+
+      '<td style="color:var(--muted)">'+esc(r[3])+'</td></tr>';
+  }).join('') : '<tr><td colspan="4"><div class="empty" style="padding:26px"><h3>Abhi koi activity nahi</h3></div></td></tr>';
+})();
+</script>
+</body>
+</html>

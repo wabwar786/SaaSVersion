@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Settings</h1><p>Business, receipt aur region</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content">
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Business</h2><p>Super Admin se set hota hai</p></div></div>
+          <div class="panel-body">
+            <div id="biz"></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>Region profile</h2><p>Currency aur tax isi se chalte hain</p></div></div>
+          <div class="panel-body"><div id="reg"></div>
+            <div class="note" style="margin-top:12px">Region business banate waqt chuna jata hai. Badalna ho to
+              Super Admin se &mdash; currency aur tax mode is se bandhe hue hain.</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Receipt</h2><p>80 mm thermal par kya chhape</p></div>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn primary" id="btnSave">Save</button></div>
+        <div class="panel-body"><div class="form-grid">
+          <label class="field full"><span>Receipt header (store ka naam)</span><input id="rHead"></label>
+          <label class="field"><span>Address line</span><input id="rAddr"></label>
+          <label class="field"><span>Tax number (NTN / VAT)</span><input id="rTax"></label>
+          <label class="field full"><span>Footer message</span><input id="rFoot" value="Exchange within 7 days with receipt"></label>
+        </div></div>
+      </section>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="settings"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore,R=window.Region;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function cell(l,v){return '<div style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">'+
+    '<span style="color:var(--muted);font-size:11px">'+l+'</span>'+
+    '<b style="display:block;margin-top:3px;font-family:var(--display);font-size:15px">'+v+'</b></div>'}
+  var b=(S.boot&&S.boot.business)||{name:'Demo Store',industry:'RETAIL',region:'PK'};
+  var br=(S.boot&&S.boot.branch)||'Main Branch';
+  $('biz').innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    cell('Business',esc(b.name))+cell('Branch',esc(br))+
+    cell('Industry',b.industry==='RETAIL'?'Supermarket / Retail':'Restaurant')+
+    cell('Slug',esc(b.slug||'—'))+'</div>';
+  var r=(S.boot&&S.boot.region)||R.current();
+  $('reg').innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    cell('Region',esc(r.label))+cell('Currency',esc(r.currency))+
+    cell('Price mode',r.price_mode==='EXCLUSIVE'?'Tax exclusive':'Tax inclusive')+
+    cell(esc(r.tax_label)+' rate',r.default_tax+'%')+
+    cell('Barcode',esc(r.barcode))+cell('Weight unit',esc(r.weight_unit))+'</div>';
+  $('rHead').value=b.name; $('rAddr').value=br;
+  $('btnSave').onclick=function(){
+    var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+    t.textContent='Receipt settings saved';t.className='toast show';setTimeout(function(){t.className='toast'},1700);
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opening &amp; Closing Shift · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Opening &amp; Closing Shift</h1><p>Counter kholna, cash count aur handover</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content">
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Shift status</div><div class="val" id="kStat">—</div><div class="sub" id="kStatSub">—</div></div>
+        <div class="kpi ok"><div class="lab">Cash sales</div><div class="val" id="kCash">—</div><div class="sub">is shift mein</div></div>
+        <div class="kpi info"><div class="lab">Card sales</div><div class="val" id="kCard">—</div><div class="sub">is shift mein</div></div>
+        <div class="kpi warn"><div class="lab">Bills</div><div class="val" id="kBills">—</div><div class="sub">counter par</div></div>
+      </div>
+
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Shift kholein / band karein</h2><p>Counter par cash ki jawabdehi isi se banti hai</p></div></div>
+          <div class="panel-body">
+            <label class="field"><span>Counter</span><select id="fCounter"></select></label>
+            <label class="field"><span>Opening cash <span class="hint">drawer mein daali gayi raqam</span></span>
+              <input id="fOpen" type="number" min="0" step="any" placeholder="0"></label>
+            <button class="btn primary" id="btnOpen" style="width:100%;height:44px">Shift kholein</button>
+            <div class="hr" style="height:1px;background:var(--line);margin:16px 0"></div>
+            <label class="field"><span>Counted cash <span class="hint">drawer ginne ke baad</span></span>
+              <input id="fCount" type="number" min="0" step="any" placeholder="0"></label>
+            <div class="note" id="varNote" style="margin-bottom:12px">Expected cash = opening + cash sales &minus; cash expenses.</div>
+            <button class="btn" id="btnClose" style="width:100%;height:44px">Shift band karein</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Aaj ke bills</h2><p>Is counter par</p></div></div>
+          <div class="panel-body flush"><div class="table-wrap"><table class="table">
+            <thead><tr><th>Bill</th><th>Customer</th><th class="num">Total</th><th>Status</th></tr></thead>
+            <tbody id="rows"></tbody></table></div></div>
+        </section>
+      </div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="shift"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore,R=window.Region,money=R.money;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  var sales=S.get('sales')||[], counters=S.get('counters')||[];
+  $('fCounter').innerHTML=counters.map(function(c){return '<option>'+esc(c.name)+'</option>'}).join('')||'<option>Counter 1</option>';
+  var open=counters.filter(function(c){return c.status==='Open'})[0];
+  $('kStat').textContent=open?'Open':'Closed';
+  $('kStatSub').textContent=open?(open.name+' · '+(open.cashier||'—')):'koi counter khula nahi';
+  var cash=sales.reduce(function(a,s){return a+Number(s.paid_cash||0)},0);
+  var card=sales.reduce(function(a,s){return a+Number(s.paid_card||0)},0);
+  $('kCash').textContent=money(cash); $('kCard').textContent=money(card); $('kBills').textContent=sales.length;
+  $('rows').innerHTML=sales.slice(0,12).map(function(s){
+    return '<tr><td><span class="t-main">'+esc(s.bill_no)+'</span><span class="t-sub">'+esc(s.sold_at||'')+'</span></td>'+
+      '<td>'+esc(s.customer||'Walk-in')+'</td><td class="num"><b>'+money(s.total)+'</b></td>'+
+      '<td><span class="tag '+(s.status==='Credit'?'warn':'ok')+'">'+esc(s.status||'')+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="4"><div class="empty" style="padding:24px"><h3>Aaj koi bill nahi</h3></div></td></tr>';
+
+  function toast(m,e){var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+    t.textContent=m;t.className='toast show'+(e?' err':'');setTimeout(function(){t.className='toast'},1800)}
+  $('fCount').oninput=function(){
+    var counted=Number(this.value||0), expected=Number($('fOpen').value||0)+cash;
+    var v=counted-expected;
+    $('varNote').innerHTML='Expected <b>'+money(expected)+'</b> · counted <b>'+money(counted)+'</b> · variance '+
+      (v===0?'<b style="color:var(--ok)">match</b>':'<b style="color:var(--'+(v<0?'danger':'warn')+')">'+money(v)+'</b>');
+  };
+  $('btnOpen').onclick=function(){toast('Shift open — counter ready')};
+  $('btnClose').onclick=function(){toast('Shift closed — report Shift Closing History mein')};
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tax / Digital Invoice · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.gate{border:1px solid var(--warn-line);background:var(--warn-soft);border-radius:var(--r-lg);padding:18px;margin-bottom:14px}
+.gate h2{font-size:16px;color:var(--warn)}
+.gate p{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:#7a4a05}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv .cell{padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.kv .cell span{color:var(--muted);font-size:11px}
+.kv .cell b{display:block;margin-top:3px;font-family:var(--display);font-size:15px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1 id="pgTitle">Tax / Digital Invoice</h1><p id="pgSub">Region ke hisaab se</p></div>
+      <div class="header-spacer"></div>
+      <span class="live-pill" id="pill">—</span>
+    </header>
+
+    <div class="content">
+      <div class="gate" id="gate" style="display:none">
+        <h2>Yeh module sirf offline version par chalta hai</h2>
+        <p id="gateText"></p>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Tax mode</div><div class="val" id="kMode">—</div><div class="sub" id="kModeSub">—</div></div>
+        <div class="kpi info"><div class="lab" id="kRateLab">Tax rate</div><div class="val" id="kRate">—</div><div class="sub">default rate</div></div>
+        <div class="kpi warn"><div class="lab">Pending invoices</div><div class="val" id="kPending">—</div><div class="sub">queue mein</div></div>
+        <div class="kpi ok"><div class="lab">Provider</div><div class="val" id="kProv">—</div><div class="sub" id="kProvSub">—</div></div>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2 id="setTitle">Settings</h2><p id="setSub">—</p></div>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn" id="btnTest">Test connection</button>
+          <button class="btn primary" id="btnSave">Save</button></div>
+        <div class="panel-body">
+          <div class="form-grid" id="frm"></div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Bill kabhi nahi rukta</h2></div></div>
+        <div class="panel-body">
+          <div class="note">
+            Customer counter par khara hai. Fiscal service band ho, net na ho, kuch bhi ho —
+            <b>bill chhapega</b>. Us par sirf <b>PENDING</b> likha aayega, entry queue mein jayegi aur
+            retry hoti rahegi. Jo cheez nahi hogi wo hai khamosh nakami: pending ka pata usi waqt
+            chalta hai, mahine ke aakhir mein nahi.
+          </div>
+          <div class="kv" style="margin-top:12px">
+            <div class="cell"><span>Tax ka hisaab</span><b>Har line ka alag, phir jama</b></div>
+            <div class="cell"><span>Header</span><b>Usi jama se banta hai</b></div>
+          </div>
+          <p style="color:var(--muted);font-size:12px;margin-top:10px;line-height:1.6">
+            Header alag se dobara nahi ginta — isi se wo mismatch khatam hota hai jo per-line
+            rounding se paida hota hai aur jis par FBR invoice reject kar deta hai.
+          </p>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="fbr"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore, R=window.Region;
+  var region=(S&&S.boot&&S.boot.region)||R.current();
+  var isCloud=(window.APP_ROLE==='cloud');
+
+  /* Region tay karta hai ke yeh screen kis cheez ki hai. Pakistan mein FBR
+     ka localhost fiscal service, UK mein VAT records, US mein manual
+     sales-tax rate table. Teeno ek jaisi nahi hain. */
+  var CFG={
+    PK:{title:'FBR / Digital Invoice',sub:'Pakistan — FBR / PRA / KPRA',
+        provider:'FBR',providerSub:'localhost fiscal service',offlineOnly:true,
+        note:'FBR ka fiscal service usi computer par hota hai jahan POS chal raha hai (localhost:8524). '+
+             'Cloud (Railway) se us tak pohancha hi nahi ja sakta — is liye yeh module sirf offline version par chalta hai.',
+        fields:[['provider','Provider','select',['NONE','FBR','KPRA','PRA']],
+                ['service_url','Fiscal service URL','text','http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel'],
+                ['pos_id','POS ID','text',''],['ntn','NTN','text',''],
+                ['access_key','Access key','text',''],
+                ['default_pct','Default PCT code','text','98016000'],
+                ['pos_fee','POS fee','select',['Off','On']]]},
+    UK:{title:'VAT Records',sub:'United Kingdom — MTD ready',
+        provider:'HMRC',providerSub:'VAT records',offlineOnly:false,
+        note:'',
+        fields:[['vat_number','VAT registration number','text','GB123456789'],
+                ['vat_scheme','VAT scheme','select',['Standard','Flat rate','Cash accounting']],
+                ['default_rate','Default VAT rate %','number','20']]},
+    US:{title:'Sales Tax',sub:'United States — manual rate table',
+        provider:'Manual',providerSub:'state / county rate',offlineOnly:false,
+        note:'',
+        fields:[['state','State','text',''],['county','County','text',''],
+                ['state_rate','State rate %','number','6.25'],
+                ['county_rate','County rate %','number','2.00'],
+                ['tax_id','Sales tax permit no.','text','']]}
+  };
+  var c=CFG[region.code]||CFG.PK;
+
+  $('pgTitle').textContent=c.title;
+  $('pgSub').textContent=c.sub;
+  $('setTitle').textContent=c.title+' settings';
+  $('setSub').textContent=c.sub;
+  $('kMode').textContent=region.price_mode==='EXCLUSIVE'?'Exclusive':'Inclusive';
+  $('kModeSub').textContent=region.price_mode==='EXCLUSIVE'?'tax checkout par add hoti hai':'shelf price mein tax shamil';
+  $('kRateLab').textContent=region.tax_label+' rate';
+  $('kRate').textContent=region.default_tax+'%';
+  $('kProv').textContent=c.provider;
+  $('kProvSub').textContent=c.providerSub;
+  $('pill').textContent=isCloud?'Online (cloud)':'Offline node';
+
+  /* Cloud par PK ka fiscal module band — screen khulti hai magar saaf
+     bata deti hai ke kyun kaam nahi karega. 404 dena is se bura hai. */
+  var blocked = c.offlineOnly && isCloud;
+  if(blocked){
+    $('gate').style.display='block';
+    $('gateText').textContent=c.note;
+    $('btnTest').disabled=true; $('btnSave').disabled=true;
+  }
+
+  $('frm').innerHTML=c.fields.map(function(f){
+    var key=f[0],lab=f[1],type=f[2],extra=f[3];
+    var inp;
+    if(type==='select'){
+      inp='<select data-k="'+key+'"'+(blocked?' disabled':'')+'>'+extra.map(function(o){return '<option>'+o+'</option>'}).join('')+'</select>';
+    }else{
+      inp='<input data-k="'+key+'" type="'+(type==='number'?'number':'text')+'" value="'+
+          (type==='number'?extra:'')+'" placeholder="'+(type==='number'?'':extra)+'"'+(blocked?' disabled':'')+'>';
+    }
+    return '<label class="field"><span>'+lab+'</span>'+inp+'</label>';
+  }).join('');
+
+  function toast(m,err){
+    var t=document.getElementById('toast');
+    if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+    t.textContent=m;t.className='toast show'+(err?' err':'');
+    setTimeout(function(){t.className='toast'},1800);
+  }
+
+  /* Pending queue sirf offline node par maani rakhti hai */
+  if(S&&S.online&&!blocked){
+    try{ var r=S.api('fiscal-pending'); $('kPending').textContent=(r.pending&&r.pending.length)||0; }
+    catch(e){ $('kPending').textContent='0'; }
+  }else $('kPending').textContent=blocked?'—':'0';
+
+  $('btnTest').onclick=function(){
+    if(blocked)return;
+    try{ S.api('fiscal-test'); toast('Connection ok'); }
+    catch(e){ toast(e.message||'Connection failed',true); }
+  };
+  $('btnSave').onclick=function(){ if(!blocked) toast('Settings saved'); };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Offline &amp; Sync · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.dl-hero{background:linear-gradient(135deg,var(--brand-ink),var(--brand));color:#fff;border-radius:var(--r-lg);
+  padding:22px;box-shadow:var(--sh);margin-bottom:14px;position:relative;overflow:hidden}
+.dl-hero:after{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.09)}
+.dl-hero h2{font-size:24px;margin:6px 0 0}
+.dl-hero p{margin:9px 0 0;color:#d3ede2;font-size:12.5px;line-height:1.6;max-width:620px}
+.dl-hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bfe8d8;font-weight:600}
+.dl-hero .btn{margin-top:16px;height:46px;padding:0 20px;font-size:14px;font-weight:800;background:#fff;color:var(--brand-ink);border-color:#fff}
+.dl-hero .btn:hover{background:#eefaf5}
+.dl-hero .btn[disabled]{opacity:.55;cursor:not-allowed}
+.steps{counter-reset:s}
+.step{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.step:last-child{border-bottom:0}
+.step .n{width:26px;height:26px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
+.step b{font-size:13px}
+.step p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
+.modtable td:first-child{font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Offline &amp; Sync</h1><p>Counter kabhi na ruke — internet ho ya na ho</p></div>
+      <div class="header-spacer"></div>
+      <span class="live-pill" id="modePill">Checking…</span>
+    </header>
+
+    <div class="content">
+
+      <!-- ============ DOWNLOAD ============ -->
+      <div class="dl-hero" id="dlHero">
+        <div class="eyebrow">Offline version</div>
+        <h2>Counter PC ke liye offline software</h2>
+        <p>
+          Yeh package aapke store ke PC par chalta hai. Bill, stock, khata aur receipt —
+          sab kuch internet ke baghair chalta hai. Jab internet aata hai, sara data
+          khud-ba-khud cloud par chala jata hai. Package mein aapke business ka naam,
+          branch aur sync token pehle se seal hain — kuch configure nahi karna.
+        </p>
+        <button class="btn" id="btnDownload">⤓ Download offline version</button>
+        <div id="dlNote" style="margin-top:10px;font-size:12px;color:#d3ede2"></div>
+      </div>
+
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Install kaise karein</h2><p>Counter PC par, ek dafa</p></div></div>
+          <div class="panel-body"><div class="steps">
+            <div class="step"><div class="n">1</div><div><b>ZIP download kar ke extract karein</b>
+              <p>Counter PC par kisi bhi folder mein — misal <code>C:\RetailOS</code>. Network drive par na rakhein.</p></div></div>
+            <div class="step"><div class="n">2</div><div><b>START_RESTAURANT.bat par double click</b>
+              <p>Pehli dafa PHP, MariaDB aur database khud install/taiyar hote hain. Kuch minute lagte hain — CMD ka koi ilm nahi chahiye.</p></div></div>
+            <div class="step"><div class="n">3</div><div><b>Browser khud khul jayega</b>
+              <p>Wahi email aur password jo aapko yahan online diya gaya tha.</p></div></div>
+            <div class="step"><div class="n">4</div><div><b>Hardware laga dein</b>
+              <p>Barcode scanner (keyboard-wedge — koi driver nahi), receipt printer, cash drawer aur label printer.
+                 Setup <b>Printers &amp; Devices</b> se.</p></div></div>
+            <div class="step"><div class="n">5</div><div><b>Sync khud chalti rahegi</b>
+              <p>Internet aate hi bills upar jate hain aur head-office ka catalog neeche aata hai. Kuch dabana nahi parta.</p></div></div>
+          </div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Sync status</h2><p>Is node ka haal</p></div></div>
+          <div class="panel-body">
+            <div class="mix" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
+                <span style="color:var(--muted);font-size:11px">Mode</span>
+                <b id="sMode" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
+              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
+                <span style="color:var(--muted);font-size:11px">Business</span>
+                <b id="sBiz" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
+              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
+                <span style="color:var(--muted);font-size:11px">Branch</span>
+                <b id="sBranch" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
+              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
+                <span style="color:var(--muted);font-size:11px">Region</span>
+                <b id="sRegion" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
+            </div>
+            <div class="note" style="margin-top:12px">
+              <b>Bill kabhi nahi rukta.</b> Internet band ho to bill local database mein banta hai aur receipt
+              chhapti hai. Jaise hi net aata hai, wo bill cloud par chala jata hai. Bills sirf
+              <b>upar</b> jate hain — cloud se wapas neeche nahi aate, warna do branch ek doosre ke
+              bill mita dete.
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============ OFFLINE-ONLY MODULES ============ -->
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Kaunse modules sirf offline chalte hain</h2>
+          <p>Kuch cheezein counter ke hardware se judi hain — cloud se un tak pohancha hi nahi ja sakta</p></div></div>
+        <div class="panel-body flush"><div class="table-wrap"><table class="table modtable">
+          <thead><tr><th>Module</th><th>Kahan chalta hai</th><th>Wajah</th></tr></thead>
+          <tbody>
+            <tr><td>Tax / Digital Invoice (FBR, PRA, KPRA)</td>
+                <td><span class="tag warn">Sirf offline</span></td>
+                <td>FBR ka fiscal service usi PC par hota hai jahan POS chal raha hai (localhost). Cloud us tak pohanch hi nahi sakta.</td></tr>
+            <tr><td>Receipt printer &amp; cash drawer</td>
+                <td><span class="tag warn">Sirf offline</span></td>
+                <td>Printer USB/serial se counter PC se juda hota hai. Drawer usi printer ke kick command se khulta hai.</td></tr>
+            <tr><td>Barcode &amp; shelf label printing</td>
+                <td><span class="tag warn">Sirf offline</span></td>
+                <td>TSPL/ZPL label printer local device hai.</td></tr>
+            <tr><td>Weighing scale (live read)</td>
+                <td><span class="tag warn">Sirf offline</span></td>
+                <td>Scale serial/USB se juda hota hai. <b>Scale ka chhapa hua label</b> cloud par bhi scan ho jata hai — us mein weight barcode ke andar hota hai.</td></tr>
+            <tr><td>POS, stock, khata, GRN, reports</td>
+                <td><span class="tag ok">Dono</span></td>
+                <td>Local par bhi, cloud par bhi — data sync hota rehta hai.</td></tr>
+            <tr><td>Offline version download</td>
+                <td><span class="tag info">Sirf online</span></td>
+                <td>Package cloud par banta hai kyunke usi mein aapka sync token seal hota hai.</td></tr>
+          </tbody>
+        </table></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="offline"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore, isCloud=(window.APP_ROLE==='cloud');
+
+  $('modePill').textContent = isCloud ? 'Online (cloud)' : 'Offline node';
+  $('sMode').textContent    = isCloud ? 'Cloud' : 'Local (offline-first)';
+
+  if(S && S.boot){
+    $('sBiz').textContent=S.boot.business.name;
+    $('sBranch').textContent=S.boot.branch;
+    $('sRegion').textContent=(S.boot.region&&S.boot.region.label)||S.boot.business.region;
+  }
+
+  /* Package SIRF cloud par banta hai — us mein tenant ka sync token seal
+     hota hai, jo offline node ke paas pehle se hai hi. */
+  if(!isCloud){
+    $('btnDownload').disabled=true;
+    $('btnDownload').textContent='Aap pehle se offline version par hain';
+    $('dlNote').textContent='Download online portal se hota hai. Yeh PC pehle se offline node hai.';
+  }else{
+    $('dlNote').textContent='ZIP taiyar hone mein kuch second lagte hain. Sirf Admin ya Manager download kar sakta hai.';
+  }
+
+  $('btnDownload').onclick=function(){
+    if(this.disabled)return;
+    this.textContent='Package ban raha hai…';
+    var b=this;
+    setTimeout(function(){ b.textContent='⤓ Download offline version'; },6000);
+    window.location.href='/api.php?action=offline-package';
+  };
+})();
+</script>
+</body>
+</html>

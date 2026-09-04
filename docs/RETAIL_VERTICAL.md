@@ -329,3 +329,66 @@ Fix: card ab `r.business || r` parhta hai (dono shaklein qubool, kyunke
 `sa-demo-create` flat bhejta hai). Sath hi industry aur region bhi card
 par dikhte hain, aur "Copy credentials" ab link + email + password teeno
 copy karta hai.
+
+---
+
+## 12. Saari screens ab maujood
+
+Pehle sidebar 39 links dikhata tha magar sirf 11 pages bane hue the —
+baaki 28 par **Page not found** aata tha. Ab 41 pages hain, sab 200
+dete hain (HTTP test se tasdeeq).
+
+| Tarah | Screens |
+|---|---|
+| Pehle se bani | Dashboard, POS, Products, Departments, Categories, Brands, UOM, Batches, Suppliers, Customers, Counters, Promotions, Sales |
+| Nayi — catalog/stock | Stock on Hand, Price Management, Scale Items, **Barcode & Shelf Labels** |
+| Nayi — purchasing | Purchasing, Purchase Orders, GRN, Purchase Return, Stock Transfer, Stock Count, Write-off |
+| Nayi — sale | Shift, Closing History, Returns/Void, Khata |
+| Nayi — finance | Expenses, Accounting, **Tax / Digital Invoice**, Reports |
+| Nayi — system | Staff, Users, Printers, Branches, **Offline & Sync**, Activity, Settings |
+
+**Kis level par:** Labels, Reports, Accounting, Shift, Settings, Tax aur
+Offline & Sync asli data par chalti hain. Purchasing, PO, GRN, Purchase
+Return, Transfer, Count aur Returns abhi generic record store par hain
+(wahi jagah jahan restaurant ke kai modules aaj bhi hain) — data mehfooz
+rehta hai aur sync hota hai, magar line-by-line GRN posting aur PO se
+stock auto-receive agli batch mein real `rtl_` tables par jayenge.
+
+---
+
+## 13. Offline version download
+
+**Offline & Sync** screen par download button hai. Yeh `offline-package`
+endpoint chalata hai jo:
+
+- ZIP banata hai jismein **poora app sealed** hota hai (code raw nahi milta)
+- Us tenant ka **sync token seal ke andar** rakhta hai — plaintext disk par nahi
+- Retail UI ki saari 48 files bundle mein jati hain
+- `migrate_retail.php` + `seed_industry_modules.php` bhi saath jate hain,
+  aur `windows_bootstrap.ps1` unhein har start par chalata hai — is liye
+  purane offline nodes bhi khud supermarket ke qabil ho jate hain
+
+Test: retail tenant se download kiya — 1.2 MB ZIP,
+`SmartPOS_demosupermarket_<date>.zip`.
+
+Download **sirf online portal se** hota hai (package cloud par banta hai)
+aur **sirf Admin/Manager** kar sakta hai. Offline node par button khud
+disable ho jata hai.
+
+---
+
+## 14. Sirf offline chalne wale modules (retail)
+
+Restaurant ki tarah retail mein bhi kuch cheezein counter ke hardware se
+bandhi hain. Yeh **Offline & Sync** screen par table ki shakl mein saaf
+likhi hain, aur `tax.html` cloud par khud ko block kar leta hai (404
+dene ke bajaye wajah batata hai):
+
+| Module | Kahan | Wajah |
+|---|---|---|
+| Tax / FBR / PRA / KPRA | Sirf offline | Fiscal service usi PC par hota hai (localhost:8524); cloud us tak pohanch hi nahi sakta |
+| Receipt printer + cash drawer | Sirf offline | USB/serial se counter PC se juda; drawer printer ke kick command se |
+| Label printing | Sirf offline | TSPL/ZPL label printer local device hai (cloud par browser print milta hai) |
+| Weighing scale (live read) | Sirf offline | Serial/USB. **Scale ka chhapa hua label** cloud par bhi scan ho jata hai |
+| POS, stock, khata, GRN, reports | Dono | Sync hoti rehti hai |
+| Offline download | Sirf online | Package cloud par banta hai, sync token us mein seal hota hai |

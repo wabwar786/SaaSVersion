@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Users &amp; Access · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Users &amp; Access</h1><p>Login aur har role ki ijazat</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content">
+      <div class="note" style="margin-bottom:14px">
+        Roles business banate waqt khud ban jate hain. Har role ko sirf wahi modules milte hain
+        jo supermarket ke liye hain &mdash; restaurant ke KDS/Tables yahan maujood hi nahi.
+      </div>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Roles aur unki ijazat</h2><p>Retail vertical ke default roles</p></div></div>
+        <div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead><tr><th>Role</th><th>Kya kar sakta hai</th></tr></thead>
+          <tbody id="roles"></tbody></table></div></div>
+      </section>
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Aap</h2><p>Is waqt logged-in user</p></div></div>
+        <div class="panel-body"><div id="me"></div></div>
+      </section>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="users"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  var ROLES=[
+    ['Owner / Admin','Sab kuch'],
+    ['Store Manager','POS, catalog, pricing, stock, purchasing, khata, reports, staff, settings'],
+    ['Cashier','Shift, POS counter, khata sale, sales list, closing'],
+    ['Floor Staff','Products dekhein, price, labels, stock count, scale items'],
+    ['Storekeeper','Stock, GRN, batches, transfer, count, write-off'],
+    ['Purchase Officer','Purchasing, POs, purchase return, suppliers, GRN']
+  ];
+  $('roles').innerHTML=ROLES.map(function(r){
+    return '<tr><td><b>'+esc(r[0])+'</b></td><td style="color:var(--muted)">'+esc(r[1])+'</td></tr>';
+  }).join('');
+  var u=(S.boot&&S.boot.user)||{name:'Demo User',modules:[]};
+  $('me').innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">'+
+    '<span style="color:var(--muted);font-size:11px">Name</span><b style="display:block;margin-top:3px;font-family:var(--display);font-size:15px">'+esc(u.name||'')+'</b></div>'+
+    '<div style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">'+
+    '<span style="color:var(--muted);font-size:11px">Modules allowed</span><b style="display:block;margin-top:3px;font-family:var(--display);font-size:15px">'+((u.modules||[]).length)+'</b></div></div>'+
+    '<p style="color:var(--muted);font-size:12px;margin-top:10px">Naye user banane aur permissions badalne ka screen agli batch mein &mdash; abhi roles business ke saath khud ban jate hain.</p>';
+})();
+</script>
+</body>
+</html>

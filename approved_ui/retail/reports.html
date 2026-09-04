@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Reports</h1><p>Sale, margin, stock aur khata</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content">
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Gross sale</div><div class="val" id="rSale">—</div><div class="sub" id="rBills">—</div></div>
+        <div class="kpi ok"><div class="lab">Avg basket</div><div class="val" id="rBasket">—</div><div class="sub">per bill</div></div>
+        <div class="kpi warn"><div class="lab">Khata receivable</div><div class="val" id="rKhata">—</div><div class="sub">outstanding</div></div>
+        <div class="kpi info"><div class="lab">Stock value</div><div class="val" id="rStock">—</div><div class="sub">cost par</div></div>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2>Reports</h2><p>Kisi bhi report par click karein</p></div></div>
+        <div class="panel-body"><div class="module-grid" id="grid"></div></div>
+      </section>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2 id="repTitle">Fast &amp; slow movers</h2><p id="repSub">Margin ke hisaab se</p></div></div>
+        <div class="panel-body flush"><div class="table-wrap"><table class="table">
+          <thead id="repHead"></thead><tbody id="repRows"></tbody></table></div></div>
+      </section>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="reports"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore,R=window.Region,money=R.money,qty=R.qty;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  var sales=S.get('sales')||[], prods=S.get('products')||[], custs=S.get('customers')||[], batches=S.get('batches')||[];
+  var gross=sales.reduce(function(a,s){return a+Number(s.total||0)},0);
+  $('rSale').textContent=money(gross);
+  $('rBills').textContent=sales.length+' bills';
+  $('rBasket').textContent=money(sales.length?gross/sales.length:0);
+  $('rKhata').textContent=money(custs.reduce(function(a,c){return a+Number(c.balance||0)},0));
+  $('rStock').textContent=money(prods.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0));
+
+  var REPORTS={
+    movers:{t:'Fast & slow movers',s:'Margin ke hisaab se',
+      head:['Product','Dept','Cost','Retail','Margin %'],
+      rows:function(){ return prods.slice().sort(function(a,b){
+        return ((b.retail_price-b.cost_price)/(b.retail_price||1))-((a.retail_price-a.cost_price)/(a.retail_price||1));
+      }).map(function(p){ var m=p.retail_price?((p.retail_price-p.cost_price)/p.retail_price*100):0;
+        return [esc(p.name),esc(S.name('departments',p.department_id)),money(p.cost_price),money(p.retail_price),m.toFixed(1)+'%'] }) }},
+    dead:{t:'Dead stock',s:'Jo bik nahi raha aur paisa roke hue hai',
+      head:['Product','On hand','Cost value','Reorder at'],
+      rows:function(){ return prods.filter(function(p){return p.stock_qty>p.max_stock*0.8})
+        .map(function(p){return [esc(p.name),qty(p.stock_qty),money(p.stock_qty*p.cost_price),qty(p.min_stock)]}) }},
+    expiry:{t:'Expiry report',s:'Kaunsa batch kab khatam ho raha hai',
+      head:['Product','Batch','Expiry','Days left','Qty'],
+      rows:function(){ return batches.map(function(b){ var d=S.daysTo(b.expiry_date); var p=S.byId('products',b.product_id);
+        return [esc(p?p.name:'—'),esc(b.batch_no),esc(b.expiry_date),(d<0?'expired':d+' days'),qty(b.qty)] }) }},
+    lowstock:{t:'Low stock / reorder',s:'Jo abhi mangwana hai',
+      head:['Product','On hand','Reorder at','To order'],
+      rows:function(){ return prods.filter(function(p){return p.stock_qty<=p.min_stock})
+        .map(function(p){return [esc(p.name),qty(p.stock_qty),qty(p.min_stock),qty(Math.max(0,p.max_stock-p.stock_qty))]}) }},
+    khata:{t:'Khata receivable',s:'Kis par kitna baqaya',
+      head:['Customer','Phone','Limit','Outstanding'],
+      rows:function(){ return custs.filter(function(c){return Number(c.balance)>0})
+        .map(function(c){return [esc(c.name),esc(c.phone||''),money(c.credit_limit),money(c.balance)]}) }},
+    bills:{t:'Bill-wise sale',s:'Har bill ka record',
+      head:['Bill','Customer','Counter','Total','Status'],
+      rows:function(){ return sales.map(function(s){return [esc(s.bill_no),esc(s.customer||''),esc(s.counter||''),money(s.total),esc(s.status||'')]}) }}
+  };
+
+  $('grid').innerHTML=Object.keys(REPORTS).map(function(k){
+    return '<div class="module-card"><h3>'+esc(REPORTS[k].t)+'</h3><p>'+esc(REPORTS[k].s)+'</p>'+
+      '<a href="#" data-rep="'+k+'">Open</a></div>';
+  }).join('');
+
+  function show(k){
+    var r=REPORTS[k]; if(!r)return;
+    $('repTitle').textContent=r.t; $('repSub').textContent=r.s;
+    $('repHead').innerHTML='<tr>'+r.head.map(function(h,i){return '<th'+(i>1?' class="num"':'')+'>'+h+'</th>'}).join('')+'</tr>';
+    var rows=r.rows();
+    $('repRows').innerHTML=rows.length? rows.map(function(row){
+      return '<tr>'+row.map(function(c,i){return '<td'+(i>1?' class="num"':'')+'>'+c+'</td>'}).join('')+'</tr>';
+    }).join('') : '<tr><td colspan="'+r.head.length+'"><div class="empty" style="padding:24px"><h3>Is report mein abhi kuch nahi</h3></div></td></tr>';
+  }
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('[data-rep]'); if(!a)return; e.preventDefault(); show(a.getAttribute('data-rep'));
+    document.getElementById('repTitle').scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+  show('movers');
+})();
+</script>
+</body>
+</html>

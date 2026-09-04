@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Barcode &amp; Shelf Labels · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.lab-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+.pick{max-height:420px;overflow:auto}
+.pi{display:flex;align-items:center;gap:11px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.pi:last-child{border-bottom:0}
+.pi b{font-size:13px}.pi small{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+.pi .qn{width:64px;height:32px;text-align:center;font-weight:700}
+.pi .add{margin-left:auto}
+.queue-item{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;font-size:12.5px}
+.queue-item .x{margin-left:auto;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+/* label sheet — print par yehi nazar aata hai */
+.sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.lbl{border:1px dashed var(--line-strong);border-radius:4px;padding:8px;text-align:center;background:#fff}
+.lbl .nm{font-size:10px;font-weight:700;line-height:1.2;height:24px;overflow:hidden;color:#111}
+.lbl .pr{font-family:var(--display);font-weight:900;font-size:17px;margin:3px 0;color:#111}
+.lbl .bc{font-family:"Courier New",monospace;font-size:8.5px;letter-spacing:.5px;color:#111}
+.lbl .bars{height:26px;margin:3px 0;background:repeating-linear-gradient(90deg,#111 0 1px,#fff 1px 3px,#111 3px 4px,#fff 4px 7px)}
+.lbl .sku{font-size:8px;color:#555}
+@media print{
+  .sidebar,.header,.no-print{display:none!important}
+  .app{display:block}.content{padding:0}
+  .sheet{grid-template-columns:repeat(3,1fr);gap:2mm}
+  .lbl{border:1px solid #bbb;break-inside:avoid}
+}
+@media(max-width:1000px){.lab-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Barcode &amp; Shelf Labels</h1><p>Rate badalne ke baad shelf tag dobara chhapna zaroori hai</p></div>
+      <div class="header-spacer"></div>
+      <span class="live-pill" id="devPill">—</span>
+      <button class="btn" id="btnClear">Clear</button>
+      <button class="btn primary" id="btnPrint">⎙ Print labels</button>
+    </header>
+
+    <div class="content">
+      <div class="note no-print" id="devNote" style="margin-bottom:14px"></div>
+
+      <div class="lab-grid no-print">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Products chunein</h2><p>Kitne label chahiye wo qty mein likhein</p></div>
+            <span class="spacer" style="flex:1"></span>
+            <div class="search" style="width:240px"><input id="q" placeholder="Search product or SKU"></div></div>
+          <div class="panel-body flush"><div class="pick" id="pick"></div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Print queue</h2><p id="qCount">0 labels</p></div></div>
+          <div class="panel-body">
+            <div id="queue"><div class="empty" style="padding:26px"><div class="ico">⌗</div>
+              <h3>Queue khali hai</h3><p>Left se product add karein.</p></div></div>
+            <label class="field" style="margin-top:12px"><span>Label size</span>
+              <select id="size">
+                <option value="3">3 per row — shelf tag (38×25 mm)</option>
+                <option value="2">2 per row — bara tag (50×30 mm)</option>
+                <option value="4">4 per row — chhota (30×20 mm)</option>
+              </select></label>
+            <label class="field"><span>Kya chhapna hai</span>
+              <select id="what">
+                <option value="both">Naam + rate + barcode</option>
+                <option value="price">Sirf naam + rate</option>
+                <option value="code">Sirf barcode</option>
+              </select></label>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head no-print"><div><h2>Preview</h2><p>Print par bilkul aisa hi aayega</p></div></div>
+        <div class="panel-body"><div class="sheet" id="sheet"></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="labels"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore,R=window.Region,money=R.money;
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  var queue=[];
+
+  /* Label printer local device hai (TSPL/ZPL). Cloud se us tak pohanchna
+     mumkin nahi — is liye online par sirf browser print/PDF milta hai. */
+  var isCloud=(window.APP_ROLE==='cloud');
+  $('devPill').textContent=isCloud?'Browser print':'Label printer';
+  $('devNote').innerHTML = isCloud
+    ? '<b>Aap online portal par hain.</b> Label printer (TSC/Zebra) counter PC se juda hota hai, is liye yahan se sirf browser ka print / PDF milta hai. Seedha label printer par bhejne ke liye <b>offline version</b> istemal karein.'
+    : 'Label printer <b>Printers &amp; Devices</b> se set karein. Yahan se seedha us par bheja ja sakta hai.';
+
+  function products(){ return S.get('products')||[]; }
+
+  function paintPick(){
+    var q=($('q').value||'').toLowerCase();
+    var rows=products().filter(function(p){
+      if(!q)return true;
+      return p.name.toLowerCase().indexOf(q)>-1||String(p.sku||'').toLowerCase().indexOf(q)>-1;
+    }).slice(0,60);
+    $('pick').innerHTML=rows.length? rows.map(function(p){
+      var bc=(p.barcodes&&p.barcodes[0])||(p.is_scale_item?('PLU '+p.plu_code):'no barcode');
+      return '<div class="pi"><div style="min-width:0;flex:1"><b>'+esc(p.name)+'</b>'+
+        '<small>'+esc(p.sku)+' · '+esc(bc)+' · '+money(p.retail_price)+'</small></div>'+
+        '<input class="qn" type="number" min="1" value="1" data-q="'+p.id+'">'+
+        '<button class="btn sm add" data-add="'+p.id+'">Add</button></div>';
+    }).join('') : '<div class="empty" style="padding:26px"><h3>Koi product nahi mila</h3></div>';
+  }
+
+  function paintQueue(){
+    var total=queue.reduce(function(a,x){return a+x.qty},0);
+    $('qCount').textContent=total+(total===1?' label':' labels');
+    $('queue').innerHTML=queue.length? queue.map(function(x,i){
+      return '<div class="queue-item"><b>'+esc(x.p.name)+'</b>'+
+        '<span style="color:var(--faint)">×'+x.qty+'</span>'+
+        '<button class="x" data-del="'+i+'">×</button></div>';
+    }).join('') : '<div class="empty" style="padding:26px"><div class="ico">⌗</div><h3>Queue khali hai</h3><p>Left se product add karein.</p></div>';
+    paintSheet();
+  }
+
+  function paintSheet(){
+    var cols=$('size').value, what=$('what').value;
+    $('sheet').style.gridTemplateColumns='repeat('+cols+',1fr)';
+    var out='';
+    queue.forEach(function(x){
+      var bc=(x.p.barcodes&&x.p.barcodes[0])||(x.p.plu_code||'');
+      for(var i=0;i<x.qty;i++){
+        out+='<div class="lbl">'+
+          (what!=='code'?'<div class="nm">'+esc(x.p.name)+'</div>':'')+
+          (what!=='code'?'<div class="pr">'+money(x.p.retail_price)+'</div>':'')+
+          (what!=='price'?'<div class="bars"></div><div class="bc">'+esc(bc||'—')+'</div>':'')+
+          '<div class="sku">'+esc(x.p.sku)+'</div></div>';
+      }
+    });
+    $('sheet').innerHTML=out||'<div class="empty" style="grid-column:1/-1;padding:26px"><h3>Preview yahan aayega</h3></div>';
+  }
+
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('[data-add]');
+    if(a){
+      var id=a.getAttribute('data-add');
+      var p=products().filter(function(x){return x.id===id})[0];
+      var n=Number(document.querySelector('[data-q="'+id+'"]').value||1);
+      if(!p||n<1)return;
+      var ex=queue.filter(function(x){return x.p.id===id})[0];
+      if(ex)ex.qty+=n; else queue.push({p:p,qty:n});
+      paintQueue(); return;
+    }
+    var d=e.target.closest('[data-del]');
+    if(d){ queue.splice(+d.getAttribute('data-del'),1); paintQueue(); }
+  });
+  $('q').oninput=paintPick;
+  $('size').onchange=paintSheet;
+  $('what').onchange=paintSheet;
+  $('btnClear').onclick=function(){queue=[];paintQueue()};
+  $('btnPrint').onclick=function(){
+    if(!queue.length){alert('Queue khali hai — pehle product add karein.');return}
+    window.print();
+  };
+
+  paintPick(); paintQueue();
+})();
+</script>
+</body>
+</html>
