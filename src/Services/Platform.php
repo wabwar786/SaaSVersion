@@ -99,9 +99,29 @@ final class Platform
             $tenantId = \uuid(); $orgId = \uuid(); $siteId = \uuid(); $userId = \uuid();
             $code = \strtoupper(\preg_replace('/[^A-Z0-9]+/','-', \strtoupper($slug)));
 
-            $pdo->prepare("INSERT INTO tenants(id,code,name,slug,industry_code,region_profile,sync_token,owner_email,status,timezone,default_currency)
-                           VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',?,?)")
-                ->execute([$tenantId,$code,$name,$slug,$industry,$region,$syncToken,$ownerEmail,$tz,$currency]);
+            /* `region_profile` naya column hai. Agar deploy purana ho aur
+               migration abhi na chali ho, to yahan "Unknown column
+               region_profile" par POORA business creation gir jata tha —
+               restaurant bhi. Ab column ki maujoodgi dekh kar likhte hain,
+               taake ek pending migration puri console ko na maar de. */
+            $hasRegion = false;
+            try {
+                $cq = $pdo->prepare("SELECT COUNT(*) FROM information_schema.columns
+                                      WHERE table_schema=DATABASE() AND table_name='tenants'
+                                        AND column_name='region_profile'");
+                $cq->execute();
+                $hasRegion = (int)$cq->fetchColumn() > 0;
+            } catch (\Throwable $e) {}
+
+            if ($hasRegion) {
+                $pdo->prepare("INSERT INTO tenants(id,code,name,slug,industry_code,region_profile,sync_token,owner_email,status,timezone,default_currency)
+                               VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',?,?)")
+                    ->execute([$tenantId,$code,$name,$slug,$industry,$region,$syncToken,$ownerEmail,$tz,$currency]);
+            } else {
+                $pdo->prepare("INSERT INTO tenants(id,code,name,slug,industry_code,sync_token,owner_email,status,timezone,default_currency)
+                               VALUES(?,?,?,?,?,?,?, 'ACTIVE',?,?)")
+                    ->execute([$tenantId,$code,$name,$slug,$industry,$syncToken,$ownerEmail,$tz,$currency]);
+            }
 
             $pdo->prepare("INSERT INTO organizations(id,tenant_id,organization_type,industry_code,name,email,phone,address_text,status)
                            VALUES(?,?,?,?,?,?,?,?, 'ACTIVE')")
@@ -136,7 +156,10 @@ final class Platform
             self::seedSiteDefaults($pdo, $tenantId, $siteId);
             self::ensureRoles($pdo, $tenantId, $industry);
             if ($industry === 'RETAIL') {
-                \Aio\Services\RetailCatalog::seedDefaults($pdo, $tenantId, $siteId);
+                /* Agar retail migration abhi nahi chali to yahan bhi na girein —
+                   business ban jaye, defaults agle boot par aa jayenge. */
+                try { \Aio\Services\RetailCatalog::seedDefaults($pdo, $tenantId, $siteId); }
+                catch (\Throwable $e) { \error_log('retail defaults skipped: '.$e->getMessage()); }
             }
             return ['tenant'=>$tenantId,'org'=>$orgId,'site'=>$siteId,'user'=>$userId,'sub'=>$subId];
         });

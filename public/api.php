@@ -1913,24 +1913,66 @@ case 'sa-sync-monitor':needSuper();
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
 case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
 case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
+case 'sa-demo-list':needSuper();
+ /* Kaunse business types ka demo pehle se maujood hai. UI isi se
+    batata hai ke kis par "Create" aur kis par "Open" dikhana hai. */
+ $types=[
+   ['code'=>'RESTAURANT','name'=>'Restaurant','desc'=>'Menu, tables, KDS, riders aur customers ke saath'],
+   ['code'=>'RETAIL','name'=>'Supermarket / Retail','desc'=>'Barcode products, scale item, batch expiry aur khata ke saath'],
+ ];
+ $p=DB::pdo();
+ $base=rtrim((string)cfg('app.base_url'),'/');
+ foreach($types as &$t){
+   $q=$p->prepare("SELECT id,name,slug,owner_email,created_at FROM tenants
+                    WHERE is_demo=1 AND industry_code=? AND status<>'DELETED' LIMIT 1");
+   $q->execute([$t['code']]);
+   $d=$q->fetch();
+   $t['demo']=$d?['tenant_id'=>$d['id'],'name'=>$d['name'],'slug'=>$d['slug'],
+                  'owner_email'=>$d['owner_email'],'created_at'=>$d['created_at'],
+                  'client_link'=>$base.'/login.html?b='.$d['slug']]:null;
+ }
+ unset($t);
+ ok(['types'=>$types]);
+
 case 'sa-demo-create':needSuper();$d=body();
- /* V79 — DEMO BUSINESS.
-    Customer ko dikhane ke liye poora bhara hua software. Har 5 din baad
-    jo kuch CUSTOMER ne daala wo mit jata hai aur system ka demo data
-    bacha rehta hai — yani demo hamesha dikhane laiq rehta hai. */
- $nm=trim((string)($d['business_name']??''));if($nm==='')fail('Business name is required');
+ /* V79 — DEMO BUSINESS. Customer ko dikhane ke liye poora bhara hua
+    software. Har 5 din baad jo kuch CUSTOMER ne daala wo mit jata hai
+    aur sample data bacha rehta hai — demo hamesha dikhane laiq.
+
+    NAYA: har business type ka apna demo, aur HAR TYPE KA SIRF EK.
+    Do restaurant demos ka koi faida nahi, aur teesra banate rehna
+    console ko kachra bana deta hai. */
+ $industry=strtoupper(trim((string)($d['industry']??$d['industry_code']??'RESTAURANT')));
+ if(!in_array($industry,['RESTAURANT','RETAIL'],true))fail('Unknown business type');
+ $region=strtoupper(trim((string)($d['region']??'PK')));
+ if(!in_array($region,['PK','UK','US'],true))$region='PK';
+
+ $p=DB::pdo();
+ $ex=$p->prepare("SELECT name,slug FROM tenants WHERE is_demo=1 AND industry_code=? AND status<>'DELETED' LIMIT 1");
+ $ex->execute([$industry]);
+ if($row=$ex->fetch()){
+   fail('Is business type ka demo pehle se maujood hai: "'.$row['name'].'". '
+       .'Har type ka sirf ek demo ho sakta hai — purana delete karein ya usi ko istemal karein.',409);
+ }
+
+ $defName=['RESTAURANT'=>'Demo Restaurant','RETAIL'=>'Demo Supermarket'][$industry];
+ $nm=trim((string)($d['business_name']??''))?:$defName;
+ $mail=trim((string)($d['owner_email']??''))?:('demo.'.strtolower($industry).'@demo.local');
  try{
-   $r=Platform::provisionBusiness(['business_name'=>$nm,
-       'owner_email'=>(string)($d['owner_email']??''),'owner_name'=>(string)($d['owner_name']??'Demo Owner')]);
+   $r=Platform::provisionBusiness(['business_name'=>$nm,'owner_email'=>$mail,
+       'owner_name'=>(string)($d['owner_name']??'Demo Owner'),
+       'industry'=>$industry,'region'=>$region]);
    $tid2=(string)($r['tenant_id']??'');
    DB::pdo()->prepare("UPDATE tenants SET is_demo=1, demo_last_reset=NOW(6) WHERE id=?")->execute([$tid2]);
    $sq2=DB::pdo()->prepare("SELECT id FROM sites WHERE tenant_id=? LIMIT 1");$sq2->execute([$tid2]);
    $sid2=(string)$sq2->fetchColumn();
-   $seeded=\Aio\Services\DemoBusiness::seed($tid2,$sid2);
-   \Aio\Services\AdminData::audit('console',$tid2,'DEMO_CREATE','Demo business with sample data');
-   ok($r+['demo'=>true,'seeded'=>$seeded,
-     'message'=>$nm.' created as a DEMO business. Customer data clears every '
-       .\Aio\Services\DemoBusiness::RESET_DAYS.' days; the sample data stays.']);
+   $seeded = $industry==='RETAIL'
+     ? \Aio\Services\DemoBusiness::seedRetail($tid2,$sid2)
+     : \Aio\Services\DemoBusiness::seed($tid2,$sid2);
+   \Aio\Services\AdminData::audit('console',$tid2,'DEMO_CREATE',$industry.' demo with sample data');
+   ok($r+['demo'=>true,'industry'=>$industry,'seeded'=>$seeded,
+     'message'=>$nm.' ('.$industry.') demo ban gaya. Customer ka daala hua data har '
+       .\Aio\Services\DemoBusiness::RESET_DAYS.' din baad saaf hota hai; sample data rehta hai.']);
  }catch(Throwable $e){fail($e->getMessage());}
 
 case 'sa-demo-reset':needSuper();$d=body();

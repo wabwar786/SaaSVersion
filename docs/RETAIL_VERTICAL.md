@@ -253,3 +253,52 @@ Audit ka nateeja: **0 unscoped queries** in `RetailCatalog` aur
 
 Iske ilawa: agar koi id kisi aur tenant ki nikle to us row par likhne
 ke bajaye nayi id banti hai — purani row kabhi overwrite nahi hoti.
+
+---
+
+## 9. Demo business — har type ka ek
+
+Super Admin → **Demo business** button → modal khulta hai jismein
+business types ki list hai. Jis type ka demo chahiye us par
+**Create demo**. Jo pehle se maujood hai us par **Open** (client link).
+
+| Type | Demo mein kya milta hai |
+|---|---|
+| Restaurant | Menu (13 items), 5 categories, 8 tables, customers, suppliers |
+| Supermarket / Retail | 14 products (barcode + 3 scale items), 10 brands, carton barcode (×24), 3 batches (ek near-expiry), khata wale customers, suppliers |
+
+**Har type ka sirf EK demo.** Doosri koshish par server saaf inkar karta
+hai aur maujooda demo ka naam batata hai. Do restaurant demos ka koi
+faida nahi, aur teesra banate rehna console ko kachra bana deta hai.
+Naya chahiye to purana Businesses list se delete karein.
+
+**Reset ka usool retail par bhi wahi:** har 5 din baad customer ka daala
+hua data (`rtl_sales`, `rtl_sale_items`, `rtl_held_bills`,
+`rtl_customer_ledger`, bill reprints) saaf ho jata hai — magar sample
+catalog (`rtl_products`, brands, departments, batches) bacha rehta hai,
+taake demo hamesha dikhane laiq rahe. Test: reset ke baad bhi 14 products
+salamat rahe.
+
+---
+
+## 10. "Unknown column region_profile" ka hal
+
+Yeh error is liye aata tha ke **deploy par retail migration chalti hi
+nahi thi** — `tools/docker-entrypoint.sh` ki migration list mein woh
+shamil nahi thi.
+
+Do jagah theek kiya gaya:
+
+1. **Entrypoint** — `migrate_retail.php` aur `seed_industry_modules.php`
+   ab FAST section mein hain (Apache start se pehle). Agla deploy khud
+   column bana dega.
+
+2. **Platform.php** — ab column ki maujoodgi dekh kar likhta hai. Agar
+   migration kisi wajah se na chali ho to business phir bhi ban jata hai
+   (region default PK), poori console nahi girti. Yeh isliye zaroori tha
+   ke **restaurant** business creation bhi isi error se ruk gayi thi —
+   ek pending migration ne wo cheez bhi maar di jiska retail se koi
+   taalluq nahi tha.
+
+Test: column jaan-boojh kar `DROP` kar ke dono industries ke business
+banaye gaye — dono bane.

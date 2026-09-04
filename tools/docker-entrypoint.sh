@@ -57,6 +57,11 @@ php scripts/migrate_security.php || echo "[boot] security migrate skipped"
 php scripts/migrate_modules.php || echo "[boot] modules migrate skipped"
 php scripts/migrate_selfservice.php || echo "[boot] selfservice migrate skipped"
 php scripts/migrate_licence_key.php || echo "[boot] licence key migrate skipped"
+# RETAIL vertical. Yeh FAST section mein hain (Apache start se pehle) kyunke
+# `tenants.region_profile` ke baghair koi bhi business create nahi hota —
+# na retail, na restaurant. Dono idempotent hain.
+php scripts/migrate_retail.php || echo "[boot] retail migrate skipped"
+php scripts/seed_industry_modules.php || echo "[boot] industry modules seed skipped"
 # V85 — roles har boot par tasdeeq. V79 se provisionBusiness khud roles
 # banati hai, magar JO businesses us se PEHLE bane the un ke paas roles
 # ho hi nahi sakte (script sirf haath se chalti thi). Yeh idempotent hai.

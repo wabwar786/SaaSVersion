@@ -283,11 +283,12 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
                hi nahi aata tha. -->
           <div class="action-row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
             <button class="btn primary" id="createBtn">Create business</button>
-            <button class="btn" id="demoBtn">Create DEMO business</button>
+            <button class="btn" id="demoBtn">Demo business</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0;line-height:1.6">
-            <b>Demo business</b> ready-made menu, tables aur customers ke saath banta hai.
-            Har 5 din baad customer ka daala hua data khud saaf ho jata hai aur yeh sample data
+            <b>Demo business</b> par click karein to business types ki list khulti hai &mdash;
+            jis type ka demo chahiye wo chunein. Har type ka <b>ek</b> demo ban sakta hai.
+            Har 5 din baad customer ka daala hua data khud saaf ho jata hai aur sample data
             bacha rehta hai &mdash; demo hamesha dikhane laiq rehta hai.
           </p>
         </div></div>
@@ -1118,18 +1119,52 @@ $('pwSave').onclick=async function(){
    customers, suppliers, printer. Har 5 din baad jo kuch CUSTOMER ne
    daala wo mit jata hai aur yeh sample data bacha rehta hai — yani demo
    hamesha dikhane laiq rehta hai. */
+/* ---------- DEMO BUSINESS PICKER ----------
+   Pehle yeh seedha form ke naam se demo bana deta tha, aur sirf
+   restaurant ka. Ab pehle list dikhti hai: kaunse business type ka demo
+   chahiye, aur kis type ka pehle se maujood hai. */
+function demoClose(){ var m=$('demoModal'); if(m)m.classList.remove('show'); }
+document.addEventListener('click',function(e){ if(e.target.closest('[data-dclose]'))demoClose(); });
+
+async function demoLoad(){
+  var box=$('demoTypes');
+  box.innerHTML='Loading…';
+  var r=await api('sa-demo-list');
+  if(!r.ok){ box.innerHTML='<div class="note">'+(r.message||'Could not load')+'</div>'; return; }
+  box.innerHTML=r.types.map(function(t){
+    var d=t.demo;
+    var right = d
+      ? '<div style="text-align:right"><span class="tag green">demo ready</span>'
+        + '<div style="margin-top:6px"><a class="btn sm" href="'+d.client_link+'" target="_blank">Open</a></div></div>'
+      : '<button class="btn primary sm" data-democreate="'+t.code+'">Create demo</button>';
+    var sub = d
+      ? ('<b>'+esc(d.name)+'</b> &middot; '+esc(d.owner_email))
+      : esc(t.desc);
+    return '<div style="display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);'
+      + 'border-radius:10px;margin-bottom:9px">'
+      + '<div style="flex:1;min-width:0"><b style="font-size:14px">'+esc(t.name)+'</b>'
+      + '<div style="color:var(--muted);font-size:12px;margin-top:3px">'+sub+'</div></div>'
+      + right + '</div>';
+  }).join('')
+  + '<p class="muted" style="font-size:11.5px;margin-top:4px">Har business type ka sirf ek demo ban sakta hai. '
+  + 'Naya banane ke liye purana Businesses list se delete karein.</p>';
+}
+
 $('demoBtn') && ($('demoBtn').onclick=async function(){
-  var nm=$('f_business_name').value.trim();
-  if(!nm){toast('Enter a business name first');return}
-  if(!confirm('Create "'+nm+'" as a DEMO business?\n\n'
-    +'It will be filled with sample menu, tables and customers.\n'
-    +'Every 5 days, anything the customer adds is cleared and the sample data stays.'))return;
-  this.disabled=true;this.textContent='Creating…';
-  var r=await api('sa-demo-create',{business_name:nm,
-    owner_name:$('f_owner_name').value,owner_email:$('f_owner_email').value});
-  this.disabled=false;this.textContent='Create DEMO business';
-  if(!r.ok){toast(r.message||'Failed');return}
+  $('demoModal').classList.add('show');
+  await demoLoad();
+});
+
+document.addEventListener('click',async function(e){
+  var b=e.target.closest('[data-democreate]');
+  if(!b)return;
+  var code=b.getAttribute('data-democreate');
+  b.disabled=true; b.textContent='Creating…';
+  var r=await api('sa-demo-create',{industry:code,region:($('f_region')?$('f_region').value:'PK')});
+  b.disabled=false; b.textContent='Create demo';
+  if(!r.ok){ toast(r.message||'Failed'); await demoLoad(); return; }
   toast(r.message||'Demo business created');
+  await demoLoad();
   loadBiz&&loadBiz();
 });
 
@@ -1258,5 +1293,15 @@ $('createBtn').onclick=async function(){
   if(me&&me.ok&&me.user)enterDash(me.user);else show('login');
 })();
 </script>
+
+<!-- ============ DEMO BUSINESS PICKER ============ -->
+<div class="modal" id="demoModal"><div class="dialog" style="width:min(620px,100%)">
+  <div class="dialog-head">
+    <div><h3>Demo business</h3><p>Kis business ka demo chahiye? Har type ka ek demo.</p></div>
+    <button class="close" data-dclose>&times;</button>
+  </div>
+  <div class="dialog-body"><div id="demoTypes">Loading&hellip;</div></div>
+  <div class="dialog-foot"><button class="btn" data-dclose>Close</button></div>
+</div></div>
 </body>
 </html>
