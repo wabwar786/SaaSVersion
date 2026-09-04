@@ -302,3 +302,30 @@ Do jagah theek kiya gaya:
 
 Test: column jaan-boojh kar `DROP` kar ke dono industries ke business
 banaye gaye — dono bane.
+
+---
+
+## 11. "Business created" card ka purana bug
+
+Card mein **Business: [object Object]**, Client link khali, aur Password
+hamesha "(set by owner)" dikhta tha.
+
+Wajah: `sa-business-create` jawab is shakl mein deta hai —
+
+```json
+{ "ok": true, "business": { "client_link": "...", "admin_password": "...", ... } }
+```
+
+— magar UI `r.client_link` seedha **top level** se parh rahi thi, jo hai
+hi nahi. `r.business` ek object tha, is liye `[object Object]` chhap gaya.
+
+**Yeh sirf badsurti nahi thi.** `admin_password` server sirf **ek dafa**
+bhejta hai — DB mein sirf bcrypt hash hai, dobara nikala nahi ja sakta.
+Yani har naye business ka password bante hi zaya ho jata tha, aur owner
+ko login dene ke liye `reset_super_admin.php` jaisa koi rasta dhoondna
+parta tha.
+
+Fix: card ab `r.business || r` parhta hai (dono shaklein qubool, kyunke
+`sa-demo-create` flat bhejta hai). Sath hi industry aur region bhi card
+par dikhte hain, aur "Copy credentials" ab link + email + password teeno
+copy karta hai.

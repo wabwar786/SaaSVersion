@@ -1164,6 +1164,9 @@ document.addEventListener('click',async function(e){
   b.disabled=false; b.textContent='Create demo';
   if(!r.ok){ toast(r.message||'Failed'); await demoLoad(); return; }
   toast(r.message||'Demo business created');
+  /* Demo ka password bhi sirf ab dikhta hai — card mein daal do warna
+     demo kholne ke liye reset script chalani parti hai. */
+  if(typeof showCreated==='function') showCreated(r.business||r);
   await demoLoad();
   loadBiz&&loadBiz();
 });
@@ -1276,17 +1279,36 @@ $('createBtn').onclick=async function(){
     payment_reference:$('f_payment_reference').value});
   this.disabled=false;this.textContent='Create business';
   if(!r.ok){toast(r.message||'Failed');return}
-  $('successCard').classList.remove('hide');
-  $('s_name').textContent=r.business||$('f_business_name').value;
-  $('s_link').textContent=r.client_link||'';
-  $('s_email').textContent=r.admin_email||$('f_owner_email').value;
-  $('s_pass').textContent=r.admin_password||'(set by owner)';
-  $('s_token').textContent=r.sync_token||'';
-  $('copyLink').onclick=function(){copyText(r.client_link||'')};
-  $('copyCreds').onclick=function(){copyText((r.admin_email||'')+' / '+(r.admin_password||''))};
+
+  /* BUG (purana): `sa-business-create` jawab `{ok:true, business:{...}}`
+     ki shakl mein deta hai, magar yeh code `r.client_link` seedha upar se
+     parhta tha. Nateeja: "Business [object Object]", client link khali,
+     aur password kabhi nazar hi nahi aata tha — halanke server usay ek
+     hi dafa bhejta hai (DB mein sirf hash hai, dobara nahi mil sakta).
+     `sa-demo-create` flat bhejta hai, is liye dono shaklein qubool. */
+  var b = r.business || r;
+  showCreated(b);
   toast('Business created');
   loadBiz();
 };
+
+function showCreated(b){
+  $('successCard').classList.remove('hide');
+  $('s_name').textContent = b.business_name || $('f_business_name').value || '';
+  $('s_link').textContent = b.client_link || '';
+  $('s_email').textContent = b.admin_email || $('f_owner_email').value || '';
+  $('s_pass').textContent  = b.admin_password || '(set by owner)';
+  $('s_token').textContent = b.sync_token || '';
+  var extra = [];
+  if(b.industry_code)  extra.push(b.industry_code==='RETAIL'?'Supermarket / Retail':'Restaurant');
+  if(b.region_profile) extra.push(b.region_profile);
+  if(extra.length) $('s_name').textContent += '  \u00b7  ' + extra.join(' \u00b7 ');
+  $('copyLink').onclick  = function(){ copyText(b.client_link||'') };
+  $('copyCreds').onclick = function(){
+    copyText((b.client_link||'')+'\n'+(b.admin_email||'')+' / '+(b.admin_password||''));
+  };
+  $('successCard').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 
 (async function(){
   var me=await api('sa-me');
