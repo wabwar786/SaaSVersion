@@ -199,3 +199,57 @@ Stock transfer/count/wastage (retail version).
 
 Inke module keys aur permissions pehle se seed hain, is liye screen
 banate hi chal parenge.
+
+---
+
+## 8. Tenant isolation — kya test hua
+
+Requirement: **kisi business ka 1% data bhi doosre business ko nazar
+nahi aana chahiye.** Yeh farz nahi kiya gaya, chala kar dekha gaya.
+
+### Attack test — Store B ne Store A ki asli IDs le kar hamla kiya
+
+| Koshish | Nateeja |
+|---|---|
+| A ka product id se parhna | blocked |
+| A ka bill id se parhna | blocked |
+| A ka bill duplicate print karna | blocked |
+| A ke customer ka khata ledger | blocked |
+| A ke customer ka khata chhoona | blocked |
+| A ka product bech kar uska stock ghatana | blocked |
+| A ke product ko overwrite karna | blocked |
+| A ka batch badalna | blocked |
+| A ki unit badalna | blocked |
+| A ka product delete karna | blocked |
+
+### Teen asli bugs jo in tests ne pakre
+
+**1. Session switch leak (sanjeeda).** Cache sirf
+`$_SESSION['tenant_industry']` mein thi. Ek hi browser mein pehle
+restaurant ka login page kholein, phir usi session mein supermarket ke
+user se login karein — cache purani reh jati thi. Supermarket wale user
+ko restaurant ke **39 modules** milte the aur `canModule('kds')` TRUE
+aata tha, yani doosre business ki screen khul jati.
+→ Ab cache tenant id ke saath bandhi hai (`$_SESSION['tenant_ctx']`),
+aur login/logout par saaf hoti hai.
+
+**2. Global unit cross-tenant edit.** `saveUnit()` ke update par tenant
+check nahi tha. Ek supermarket global KG ka `conversion_factor` 999 kar
+sakta tha — aur woh **har business** par lagta, restaurant samet.
+→ Ab: apni unit edit hoti hai, global unit nahi (saaf message ke saath),
+kisi aur ki milti hi nahi.
+
+**3. Doosra supermarket ban hi nahi sakta tha.** `units` par unique
+index sirf `code` par tha, is liye doosre tenant ke default units pehle
+tenant se takra kar poora business creation gira dete the.
+→ Index ab `(code, tenant_id)` par.
+
+### Defence in depth
+
+Har child query par bhi `tenant_id` laga diya gaya — chahe uska parent
+pehle se tenant-scoped ho. Ek layer par bharosa nahi kiya jata.
+Audit ka nateeja: **0 unscoped queries** in `RetailCatalog` aur
+`RetailPos`.
+
+Iske ilawa: agar koi id kisi aur tenant ki nikle to us row par likhne
+ke bajaye nayi id banti hai — purani row kabhi overwrite nahi hoti.

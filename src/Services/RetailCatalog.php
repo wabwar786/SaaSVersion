@@ -119,8 +119,9 @@ final class RetailCatalog
     private static function hydrate(array $r): array
     {
         $b = DB::pdo()->prepare(
-            "SELECT barcode FROM rtl_product_barcodes WHERE product_id=? AND deleted_at IS NULL ORDER BY created_at");
-        $b->execute([$r['id']]);
+            "SELECT barcode FROM rtl_product_barcodes
+             WHERE product_id=? AND tenant_id=? AND deleted_at IS NULL ORDER BY created_at");
+        $b->execute([$r['id'], tenant_id()]);
         $r['barcodes'] = \array_column($b->fetchAll(PDO::FETCH_ASSOC), 'barcode');
         foreach (['tax_rate','cost_price','retail_price','wholesale_price','mrp',
                   'stock_qty','min_stock','max_stock'] as $n) {
@@ -174,8 +175,9 @@ final class RetailCatalog
     /** 1 CTN24 = 24 PCS — base unit mein badalne ka factor. */
     public static function toBase(string $unitId, float $qty): float
     {
-        $q = DB::pdo()->prepare("SELECT conversion_factor FROM units WHERE id=? LIMIT 1");
-        $q->execute([$unitId]);
+        $q = DB::pdo()->prepare("SELECT conversion_factor FROM units
+                                  WHERE id=? AND (tenant_id=? OR tenant_id IS NULL) LIMIT 1");
+        $q->execute([$unitId, tenant_id()]);
         $f = (float)($q->fetchColumn() ?: 1);
         return $qty * ($f > 0 ? $f : 1);
     }
@@ -215,7 +217,7 @@ final class RetailCatalog
                 $pdo->prepare("UPDATE rtl_products SET $set WHERE id=? AND tenant_id=?")
                     ->execute([...\array_values($vals), $id, $tid]);
             } else {
-                $id = $id ?: \uuid();
+                $id = \uuid();   /* di gayi id is tenant ki nahi thi -> nayi banao */
                 $ph = \implode(',', \array_fill(0, \count($cols), '?'));
                 $cl = \implode(',', \array_map(fn($c) => "`$c`", $cols));
                 $pdo->prepare("INSERT INTO rtl_products(id,tenant_id,site_id,$cl) VALUES(?,?,?,$ph)")
@@ -276,7 +278,7 @@ final class RetailCatalog
               ->execute([...\array_values($vals), $id, $tid]);
             return $id;
         }
-        $id = $id ?: \uuid();
+        $id = \uuid();   /* wahi wajah: kisi aur tenant ki row par likhne ka mauqa na rahe */
         $cl = \implode(',', \array_map(fn($f) => "`$f`", $fields));
         $ph = \implode(',', \array_fill(0, \count($fields), '?'));
         $hasSite = \in_array($module, ['departments','categories','batches','counters'], true);
@@ -303,11 +305,29 @@ final class RetailCatalog
         $v['decimal_places'] = (int)($v['decimal_places'] ?? 0);
         $v['unit_type'] = $v['unit_type'] ?: 'COUNT';
 
-        $c = $p->prepare("SELECT COUNT(*) FROM units WHERE id=?");
+        /* TENANT GUARD.
+           Yeh cross-tenant leak asal test mein pakra gaya: update par koi
+           tenant check nahi tha, is liye ek supermarket global KG ka
+           conversion_factor 999 kar sakta tha — aur woh HAR business par
+           lagta, restaurant samet. Ab:
+             - apni unit    -> edit ho jati hai
+             - global unit  -> edit nahi hoti; tenant apni copy banaye
+             - kisi aur ki  -> milti hi nahi */
+        $c = $p->prepare("SELECT tenant_id FROM units WHERE id=? LIMIT 1");
         $c->execute([$id]);
-        if ($id !== '' && (int)$c->fetchColumn() > 0) {
-            $p->prepare("UPDATE units SET code=?,name=?,unit_type=?,base_unit_id=?,conversion_factor=?,decimal_places=? WHERE id=?")
-              ->execute([...\array_values($v), $id]);
+        $owner = $c->fetch(\PDO::FETCH_COLUMN);
+        if ($id !== '' && $owner !== false) {
+            if ($owner === null) {
+                throw new \RuntimeException(
+                    'Yeh ek standard (global) unit hai aur sab businesses istemal karti hain. ' .
+                    'Isay badla nahi ja sakta — apna naya unit banayein.');
+            }
+            if ((string)$owner !== (string)$tid) {
+                throw new \RuntimeException('Unit not found');
+            }
+            $p->prepare("UPDATE units SET code=?,name=?,unit_type=?,base_unit_id=?,conversion_factor=?,decimal_places=?
+                          WHERE id=? AND tenant_id=?")
+              ->execute([...\array_values($v), $id, $tid]);
             return $id;
         }
         $id = $id ?: \uuid();

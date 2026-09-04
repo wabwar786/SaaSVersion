@@ -173,8 +173,8 @@ final class RetailPos
             if ($method === 'CREDIT' && $customerId) {
                 $pdo->prepare("UPDATE customers SET balance = balance + ? WHERE id=? AND tenant_id=?")
                     ->execute([$tot['total'], $customerId, tenant_id()]);
-                $bq = $pdo->prepare("SELECT balance FROM customers WHERE id=?");
-                $bq->execute([$customerId]);
+                $bq = $pdo->prepare("SELECT balance FROM customers WHERE id=? AND tenant_id=?");
+                $bq->execute([$customerId, tenant_id()]);
                 $pdo->prepare(
                     "INSERT INTO rtl_customer_ledger(id,tenant_id,site_id,customer_id,entry_type,
                         ref_table,ref_id,ref_no,debit,credit,balance_after,note,entry_at)
@@ -211,7 +211,8 @@ final class RetailPos
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $b) {
             if ($qty <= 0) break;
             $take = \min($qty, (float)$b['qty']);
-            $pdo->prepare("UPDATE rtl_batches SET qty = qty - ? WHERE id=?")->execute([$take, $b['id']]);
+            $pdo->prepare("UPDATE rtl_batches SET qty = qty - ? WHERE id=? AND tenant_id=?")
+                ->execute([$take, $b['id'], tenant_id()]);
             $qty -= $take;
         }
     }
@@ -234,8 +235,8 @@ final class RetailPos
         $q->execute([tenant_id(), $idOrBill, $idOrBill]);
         $s = $q->fetch(PDO::FETCH_ASSOC);
         if (!$s) return null;
-        $i = DB::pdo()->prepare("SELECT * FROM rtl_sale_items WHERE sale_id=? ORDER BY created_at");
-        $i->execute([$s['id']]);
+        $i = DB::pdo()->prepare("SELECT * FROM rtl_sale_items WHERE sale_id=? AND tenant_id=? ORDER BY created_at");
+        $i->execute([$s['id'], tenant_id()]);
         $s['items'] = $i->fetchAll(PDO::FETCH_ASSOC);
         return $s;
     }
@@ -255,8 +256,8 @@ final class RetailPos
 
         return DB::tx(function (PDO $pdo) use ($sale, $reason, $user) {
             $copy = (int)$sale['reprint_count'] + 1;
-            $pdo->prepare("UPDATE rtl_sales SET reprint_count=?, last_reprint_at=NOW(6) WHERE id=?")
-                ->execute([$copy, $sale['id']]);
+            $pdo->prepare("UPDATE rtl_sales SET reprint_count=?, last_reprint_at=NOW(6) WHERE id=? AND tenant_id=?")
+                ->execute([$copy, $sale['id'], tenant_id()]);
             $pdo->prepare(
                 "INSERT INTO rtl_bill_reprints(id,tenant_id,site_id,sale_id,bill_no,copy_no,
                     user_id,user_name,counter_name,reason)
@@ -339,7 +340,8 @@ final class RetailPos
             $bal = $cq->fetchColumn();
             if ($bal === false) throw new \RuntimeException('Customer not found');
 
-            $pdo->prepare("UPDATE customers SET balance = balance - ? WHERE id=?")->execute([$amount, $customerId]);
+            $pdo->prepare("UPDATE customers SET balance = balance - ? WHERE id=? AND tenant_id=?")
+                ->execute([$amount, $customerId, tenant_id()]);
             $after = (float)$bal - $amount;
             $pdo->prepare(
                 "INSERT INTO rtl_customer_ledger(id,tenant_id,site_id,customer_id,entry_type,

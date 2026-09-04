@@ -62,6 +62,7 @@ final class Auth {
     public static function startSessionForUser(array $u): void
     {
         $pdo = DB::pdo();
+        self::forgetTenantContext();
         $u['modules'] = [];
         if (session_status() === PHP_SESSION_ACTIVE) @session_regenerate_id(true);
         $_SESSION['user'] = $u;
@@ -86,6 +87,10 @@ final class Auth {
     public static function login(string $login, string $password): bool {
         $pdo = DB::pdo();
         $login = trim($login);
+        /* Naya login = naya business ho sakta hai. Purani tenant cache
+           yahin girana zaroori hai, warna pichle business ka industry
+           chipka reh jata hai. */
+        self::forgetTenantContext();
         self::resolveCloudTenant($pdo, $login);
 
         $q = $pdo->prepare(
@@ -166,6 +171,7 @@ final class Auth {
     public static function logout(): void {
         $slug = (string)($_SESSION['login_tenant_slug'] ?? '');
         $_SESSION = [];
+        self::forgetTenantContext();
         if (session_status() === PHP_SESSION_ACTIVE) {
             @session_regenerate_id(true);   // session id nayi, cookie zinda
         }
@@ -191,39 +197,62 @@ final class Auth {
      *
      * Session mein cache hai — har page par ek query bachti hai.
      */
-    public static function tenantIndustry(): string
+    /** Abhi kaunsa tenant zer-e-ghaur hai. */
+    private static function currentTenantId(): ?string
     {
-        if (!empty($_SESSION['tenant_industry'])) return (string)$_SESSION['tenant_industry'];
         $tid = self::user()['tenant_id'] ?? ($_SESSION['login_tenant_id'] ?? null);
         if (!$tid) { try { $tid = tenant_id(); } catch (\Throwable $e) { $tid = null; } }
-        $ind = 'RESTAURANT';
+        return $tid ? (string)$tid : null;
+    }
+
+    /**
+     * Cache HAMESHA tenant id ke saath rakhi jati hai.
+     *
+     * BUG JO ASAL TEST MEIN PAKRA GAYA:
+     * pehle cache sirf `$_SESSION['tenant_industry']` thi. Ek hi browser
+     * mein pehle restaurant ka login page kholein (cache = RESTAURANT),
+     * phir usi session mein SUPERMARKET ke user se login karein — to
+     * cache purani hi rehti thi. Nateeja: supermarket wale user ko
+     * restaurant ke 39 modules milte the aur `canModule('kds')` TRUE
+     * aata tha, yani doosre business ki screen khul jati.
+     *
+     * Ab cache ke saath tenant id bhi mehfooz hai; tenant badla to cache
+     * apne aap bekaar ho jati hai. Login/logout par bhi saaf hoti hai.
+     */
+    public static function tenantIndustry(): string
+    {
+        $tid = self::currentTenantId();
+        $c = $_SESSION['tenant_ctx'] ?? null;
+        if (\is_array($c) && ($c['tid'] ?? null) === $tid && !empty($c['industry'])) {
+            return (string)$c['industry'];
+        }
+        $ind = 'RESTAURANT'; $reg = 'PK';
         if ($tid) {
             try {
-                $q = DB::pdo()->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");
+                $q = DB::pdo()->prepare("SELECT industry_code, region_profile FROM tenants WHERE id=? LIMIT 1");
                 $q->execute([$tid]);
-                $ind = \strtoupper((string)($q->fetchColumn() ?: 'RESTAURANT'));
+                if ($r = $q->fetch(\PDO::FETCH_ASSOC)) {
+                    $ind = \strtoupper((string)($r['industry_code'] ?: 'RESTAURANT'));
+                    $reg = \strtoupper((string)($r['region_profile'] ?: 'PK'));
+                }
             } catch (\Throwable $e) {}
         }
-        $_SESSION['tenant_industry'] = $ind;
+        $_SESSION['tenant_ctx'] = ['tid' => $tid, 'industry' => $ind, 'region' => $reg];
         return $ind;
+    }
+
+    /** Tenant badalne par (login/logout) cache girana LAZMI hai. */
+    public static function forgetTenantContext(): void
+    {
+        unset($_SESSION['tenant_ctx'], $_SESSION['tenant_industry'], $_SESSION['region_profile']);
+        self::$moduleIndustryMap = null;
     }
 
     /** Tenant ka region profile (PK / UK / US) — currency aur tax isi se. */
     public static function tenantRegion(): string
     {
-        if (!empty($_SESSION['region_profile'])) return (string)$_SESSION['region_profile'];
-        $tid = self::user()['tenant_id'] ?? ($_SESSION['login_tenant_id'] ?? null);
-        if (!$tid) { try { $tid = tenant_id(); } catch (\Throwable $e) { $tid = null; } }
-        $reg = 'PK';
-        if ($tid) {
-            try {
-                $q = DB::pdo()->prepare("SELECT region_profile FROM tenants WHERE id=? LIMIT 1");
-                $q->execute([$tid]);
-                $reg = \strtoupper((string)($q->fetchColumn() ?: 'PK'));
-            } catch (\Throwable $e) {}
-        }
-        $_SESSION['region_profile'] = $reg;
-        return $reg;
+        self::tenantIndustry();                 // wahi tenant-keyed cache bhar deta hai
+        return (string)($_SESSION['tenant_ctx']['region'] ?? 'PK');
     }
 
     public static function moduleKeys(string $userId): array {
@@ -283,18 +312,20 @@ final class Auth {
     }
 
     /** module_key -> industry_code (ek dafa load, phir cache). */
+    private static ?array $moduleIndustryMap = null;
+
     private static function moduleIndustry(string $key): ?string
     {
-        static $map = null;
-        if ($map === null) {
+        if (self::$moduleIndustryMap === null) {
             $map = [];
             try {
                 foreach (DB::pdo()->query("SELECT module_key, industry_code FROM platform_modules")->fetchAll() as $r) {
                     $map[(string)$r['module_key']] = \strtoupper((string)$r['industry_code']);
                 }
             } catch (\Throwable $e) { $map = []; }
+            self::$moduleIndustryMap = $map;
         }
-        return $map[$key] ?? null;
+        return self::$moduleIndustryMap[$key] ?? null;
     }
 
     public static function canModule(string $key): bool {
