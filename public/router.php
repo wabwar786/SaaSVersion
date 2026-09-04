@@ -9,6 +9,24 @@ $static=__DIR__.'/'.$name;
 // PHP endpoints, CSS, JS, images: serve directly; don't bootstrap twice.
 if(is_file($static)&&!str_ends_with(strtolower($name),'.html'))return false;
 
+/* RETAIL ke assets: /retail/shared.css, /retail/store.js waghera.
+   Yeh `public/` mein nahi, `approved_ui/retail/` mein rehte hain — wahi
+   ek jagah jahan retail UI hai, do copies rakhne se drift hoti hai.
+   Sirf known extensions, aur path traversal ka koi mauqa nahi. */
+if(str_starts_with($name,'retail/')){
+  $asset=basename(substr($name,7));
+  $ext=strtolower(pathinfo($asset,PATHINFO_EXTENSION));
+  $types=['css'=>'text/css','js'=>'application/javascript','svg'=>'image/svg+xml',
+          'png'=>'image/png','jpg'=>'image/jpeg','ico'=>'image/x-icon','woff2'=>'font/woff2'];
+  $f=dirname(__DIR__).'/approved_ui/retail/'.$asset;
+  if(isset($types[$ext]) && is_file($f)){
+    header('Content-Type: '.$types[$ext]);
+    header('Cache-Control: public, max-age=3600');
+    readfile($f); exit;
+  }
+  http_response_code(404); exit('Not found');
+}
+
 require_once dirname(__DIR__).'/src/bootstrap.php';
 if(($name==='login.html') && isset($_GET['b']) && (($GLOBALS['config']['app']['role']??'')==='cloud')){ $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)$_GET['b'])); $_SESSION['login_tenant_slug']=$slug; $tid=\Aio\Services\Platform::tenantIdBySlug($slug); if($tid){$_SESSION['login_tenant_id']=$tid;} }
 
@@ -19,6 +37,30 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
+/* ============================================================
+   RETAIL vertical.
+   Supermarket ki screens `approved_ui/retail/` mein hain. Restaurant ki
+   files ko haath nahi lagaya gaya — dono verticals apni apni directory
+   mein rehte hain aur tenant ka industry_code tay karta hai kaunsi
+   directory se page uthega.
+   ============================================================ */
+$retailModule=[
+  'index.html'=>'dashboard','pos.html'=>'rpos','counters.html'=>'counters',
+  'sales.html'=>'sales','khata.html'=>'khata','products.html'=>'products',
+  'departments.html'=>'departments','categories.html'=>'departments','brands.html'=>'brands',
+  'uom.html'=>'uom','pricing.html'=>'pricing','scale.html'=>'scale','labels.html'=>'labels',
+  'batches.html'=>'batches','grn.html'=>'grn','purchase_return.html'=>'preturn',
+  'stock.html'=>'inventory','purchasing.html'=>'purchasing','purchase_orders.html'=>'po',
+  'suppliers.html'=>'suppliers','customers.html'=>'customers','loyalty.html'=>'loyalty',
+  'promotions.html'=>'promotions','returns.html'=>'void','shift.html'=>'shift',
+  'closing.html'=>'closing','expenses.html'=>'expenses','accounting.html'=>'accounting',
+  'reports.html'=>'reports','tax.html'=>'fbr','whatsapp.html'=>'whatsapp',
+  'stock_transfer.html'=>'transfer','stock_count.html'=>'count','wastage.html'=>'wastage',
+  'staff.html'=>'staff','users.html'=>'users','printers.html'=>'printers',
+  'branches.html'=>'branches','offline_sync.html'=>'offline','activity.html'=>'activity',
+  'settings.html'=>'settings',
+];
+
 $publicPages=['login.html','signup.html','signup_pending.html','setup.html','super_admin.html','qr.html','pair.html',
   /* V86 — customer khud yahan se register karta hai; login ka sawaal hi nahi. */
   'register.html'];
@@ -26,7 +68,12 @@ $fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_mana
 
 if(!in_array($name,$publicPages,true)){
   if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
-  $key=$fileModule[$name]??null;
+  /* Retail tenant ki apni module map. Warna supermarket ka
+     `products.html` restaurant ke map mein dhoonda jata aur permission
+     check khamoshi se skip ho jata. */
+  $isRetail=false;
+  try{ $isRetail=(Auth::tenantIndustry()==='RETAIL'); }catch(\Throwable $e){}
+  $key=$isRetail ? ($retailModule[$name]??null) : ($fileModule[$name]??null);
   /* V78 — DASHBOARD par bhi ijazat check hoti hai.
      Pehle yahan `$key!=='dashboard'` tha, yani dashboard HAMESHA khula
      rehta tha. Cashier wahan se poore branch ki sale dekh sakta tha —
@@ -35,9 +82,12 @@ if(!in_array($name,$publicPages,true)){
      bhej diya jata hai (khali 403 se behtar). */
   if($key&&!Auth::canModule($key)){
     $home=null;
-    foreach(['pos'=>'/restaurant_pos.html','shift'=>'/shift_management.html',
-             'closing'=>'/closing_history.html','tablet'=>'/restaurant_order_taker_tablet.html',
-             'kds'=>'/kds.html'] as $mk=>$path){
+    $fallbacks = $isRetail
+      ? ['rpos'=>'/pos.html','shift'=>'/shift.html','sales'=>'/sales.html','products'=>'/products.html']
+      : ['pos'=>'/restaurant_pos.html','shift'=>'/shift_management.html',
+         'closing'=>'/closing_history.html','tablet'=>'/restaurant_order_taker_tablet.html',
+         'kds'=>'/kds.html'];
+    foreach($fallbacks as $mk=>$path){
       if(Auth::canModule($mk)){$home=$path;break;}
     }
     if($home&&$home!=='/'.$name){header('Location: '.$home);exit;}
@@ -46,17 +96,28 @@ if(!in_array($name,$publicPages,true)){
   }
 }
 
-$file=dirname(__DIR__).'/approved_ui/'.$name;
+$uiDir = 'approved_ui';
+try{ if(Auth::user() && Auth::tenantIndustry()==='RETAIL') $uiDir='approved_ui/retail'; }catch(\Throwable $e){}
+$file=dirname(__DIR__).'/'.$uiDir.'/'.$name;
+/* Retail mein woh page na ho to restaurant wali common screen par mat
+   giro — 404 behtar hai. Warna supermarket ka user achanak KDS dekh leta. */
 if(!is_file($file)){http_response_code(404);exit('Page not found');}
 
 $html=file_get_contents($file);
 
 // Only path/cache-bust rewriting; approved HTML structure is not replaced.
+if($uiDir==='approved_ui/retail'){
+  /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
+     /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
+  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|module\.js|module_config\.js|shell\.js)"/',
+                     '$1="/retail/$2?b=r1"', $html);
+}else{
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"'],
  ['href="/shared.css?b=v14"','src="/shared_store.js?b=v14"','src="/live_store.js?b=v14"','src="/access_store.js?b=v14"'],
  $html
 );
+}
 $html=preg_replace('/(["\'])assets\//','$1/assets/',$html);
 
 // ---- Tenant branding (naam / logo / colors) ----
@@ -86,7 +147,7 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
 // DB-first hydration only on authenticated app pages (source of truth = DB).
 // db_boot POS par NahI is required: POS khud pos-boot se hydrate hota hai, aur
 // db_boot ki 2 synchronous XHRs page load ko slow karti thin.
-if(!in_array($name,$publicPages,true) && Auth::user() && $name!=='restaurant_pos.html'){
+if(!in_array($name,$publicPages,true) && Auth::user() && $name!=='restaurant_pos.html' && $uiDir!=='approved_ui/retail'){
   $head.='<script src="/db_boot.js?b=v16"></script>';
 }
 // SIRF pehla </head> replace hota hai. str_replace HAR occurrence badal deta
@@ -99,7 +160,7 @@ if($pos!==false)$html=substr($html,0,$pos).$head.substr($html,$pos);
 $tail='';
 if($name==='login.html')$tail.='<script src="/login_form_bridge.js?b=v14"></script>';
 
-if(!in_array($name,$publicPages,true)){
+if(!in_array($name,$publicPages,true) && $uiDir!=='approved_ui/retail'){
   $tail.='<script src="/approved_auth_exact.js?b=v14"></script>';
   $tail.='<script src="/db_mirror_bridge.js?b=v15"></script>';
   $tail.='<script src="/ui_action_modal.js?b=v14"></script>';

@@ -261,7 +261,8 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
         <div class="panel"><div class="panel-body">
           <div class="form-grid">
             <label class="field"><span>Business name</span><input id="f_business_name" placeholder="Royal Grill"></label>
-            <label class="field"><span>Industry</span><select id="f_industry"><option value="RESTAURANT">Restaurant</option></select></label>
+            <label class="field"><span>Industry</span><select id="f_industry"><option value="RESTAURANT">Restaurant</option><option value="RETAIL">Supermarket / Retail</option></select></label>
+            <label class="field"><span>Region</span><select id="f_region"><option value="PK">Pakistan &middot; PKR &middot; FBR</option><option value="UK">United Kingdom &middot; GBP &middot; VAT</option><option value="US">United States &middot; USD &middot; Sales Tax</option></select></label>
             <label class="field"><span>Branch name</span><input id="f_branch_name" placeholder="Main Branch"></label>
             <label class="field"><span>Address</span><input id="f_address"></label>
             <label class="field"><span>Owner name</span><input id="f_owner_name"></label>
@@ -1231,7 +1232,7 @@ $('billBtn') && ($('billBtn').onclick=async function(){
 $('createBtn').onclick=async function(){
   this.disabled=true;this.textContent='Creating…';
   var r=await api('sa-business-create',{
-    business_name:$('f_business_name').value,industry:$('f_industry').value,
+    business_name:$('f_business_name').value,industry:$('f_industry').value,region:$('f_region').value,
     branch_name:$('f_branch_name').value,address:$('f_address').value,
     owner_name:$('f_owner_name').value,owner_email:$('f_owner_email').value,
     owner_phone:$('f_owner_phone').value,plan:$('f_plan').value,

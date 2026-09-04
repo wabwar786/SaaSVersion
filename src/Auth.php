@@ -120,15 +120,15 @@ final class Auth {
 
         if (!empty($u['is_tenant_admin'])) {
             try {
-                $u['modules'] = array_column(
-                    $pdo->query(
-                        "SELECT module_key
-                           FROM platform_modules
-                          WHERE is_active=1
-                          ORDER BY sort_order, name"
-                    )->fetchAll(),
-                    'module_key'
+                $mq = $pdo->prepare(
+                    "SELECT module_key
+                       FROM platform_modules
+                      WHERE is_active=1
+                        AND industry_code IN (?, 'COMMON')
+                      ORDER BY sort_order, name"
                 );
+                $mq->execute([self::tenantIndustry()]);
+                $u['modules'] = array_column($mq->fetchAll(), 'module_key');
             } catch (\Throwable $e) {
                 $u['modules'] = [];
             }
@@ -180,19 +180,65 @@ final class Auth {
         return (bool)(self::user()['is_tenant_admin'] ?? false);
     }
 
+    /**
+     * Tenant ka industry (RESTAURANT / RETAIL / ...).
+     *
+     * MASLA: `platform_modules.industry_code` pehle din se maujood tha
+     * magar kisi query mein use hi nahi hota tha. Nateeja yeh hota ke
+     * supermarket wale tenant ko bhi KDS, Tables aur Recipe mil jate.
+     * Ab har module query is filter se guzarti hai:
+     *     industry_code IN (tenant ka industry, 'COMMON')
+     *
+     * Session mein cache hai — har page par ek query bachti hai.
+     */
+    public static function tenantIndustry(): string
+    {
+        if (!empty($_SESSION['tenant_industry'])) return (string)$_SESSION['tenant_industry'];
+        $tid = self::user()['tenant_id'] ?? ($_SESSION['login_tenant_id'] ?? null);
+        if (!$tid) { try { $tid = tenant_id(); } catch (\Throwable $e) { $tid = null; } }
+        $ind = 'RESTAURANT';
+        if ($tid) {
+            try {
+                $q = DB::pdo()->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");
+                $q->execute([$tid]);
+                $ind = \strtoupper((string)($q->fetchColumn() ?: 'RESTAURANT'));
+            } catch (\Throwable $e) {}
+        }
+        $_SESSION['tenant_industry'] = $ind;
+        return $ind;
+    }
+
+    /** Tenant ka region profile (PK / UK / US) — currency aur tax isi se. */
+    public static function tenantRegion(): string
+    {
+        if (!empty($_SESSION['region_profile'])) return (string)$_SESSION['region_profile'];
+        $tid = self::user()['tenant_id'] ?? ($_SESSION['login_tenant_id'] ?? null);
+        if (!$tid) { try { $tid = tenant_id(); } catch (\Throwable $e) { $tid = null; } }
+        $reg = 'PK';
+        if ($tid) {
+            try {
+                $q = DB::pdo()->prepare("SELECT region_profile FROM tenants WHERE id=? LIMIT 1");
+                $q->execute([$tid]);
+                $reg = \strtoupper((string)($q->fetchColumn() ?: 'PK'));
+            } catch (\Throwable $e) {}
+        }
+        $_SESSION['region_profile'] = $reg;
+        return $reg;
+    }
+
     public static function moduleKeys(string $userId): array {
         $current = self::user();
 
         if ($current && !empty($current['is_tenant_admin']) && ($current['id'] ?? '') === $userId) {
-            return array_column(
-                DB::pdo()->query(
-                    "SELECT module_key
-                       FROM platform_modules
-                      WHERE is_active=1
-                      ORDER BY sort_order, name"
-                )->fetchAll(),
-                'module_key'
+            $aq = DB::pdo()->prepare(
+                "SELECT module_key
+                   FROM platform_modules
+                  WHERE is_active=1
+                    AND industry_code IN (?, 'COMMON')
+                  ORDER BY sort_order, name"
             );
+            $aq->execute([self::tenantIndustry()]);
+            return array_column($aq->fetchAll(), 'module_key');
         }
 
         $pdo = DB::pdo();
@@ -211,13 +257,14 @@ final class Auth {
                AND rm.module_id=pm.id
                AND rm.is_allowed=1
              WHERE pm.is_active=1
+               AND pm.industry_code IN (?, 'COMMON')
                AND (uma.access_mode='ALLOW' OR rm.id IS NOT NULL)
                AND COALESCE(uma.access_mode,'ALLOW')<>'DENY'
              ORDER BY pm.sort_order, pm.name
         ";
 
         $q = $pdo->prepare($sql);
-        $q->execute([$userId, site_id(), $userId, site_id()]);
+        $q->execute([$userId, site_id(), $userId, site_id(), self::tenantIndustry()]);
         return array_column($q->fetchAll(), 'module_key');
     }
 
@@ -235,8 +282,31 @@ final class Auth {
         return $cache;
     }
 
+    /** module_key -> industry_code (ek dafa load, phir cache). */
+    private static function moduleIndustry(string $key): ?string
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            try {
+                foreach (DB::pdo()->query("SELECT module_key, industry_code FROM platform_modules")->fetchAll() as $r) {
+                    $map[(string)$r['module_key']] = \strtoupper((string)$r['industry_code']);
+                }
+            } catch (\Throwable $e) { $map = []; }
+        }
+        return $map[$key] ?? null;
+    }
+
     public static function canModule(string $key): bool {
         if (!self::user()) return false;
+
+        /* 0) INDUSTRY GATE — sab se pehle.
+           Yeh admin par bhi lagta hai. Warna supermarket ka owner URL
+           mein /kds.html likh kar restaurant ki screen khol leta, kyunke
+           neeche `isAdmin()` har cheez ko haan keh deta hai. */
+        $mi = self::moduleIndustry($key);
+        if ($mi !== null && $mi !== 'COMMON' && $mi !== self::tenantIndustry()) return false;
+
         // 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai
         $feat = self::tenantFeatures();
         if ($feat !== null && !in_array($key, $feat, true)) return false;

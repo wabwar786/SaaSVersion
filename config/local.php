@@ -50,6 +50,12 @@ return [
             // cloud par nazar nahi aate the.
             'users', 'user_roles', 'roles', 'role_modules',
             'user_module_access', 'user_form_permissions',
+            // RETAIL vertical — supermarket ki tables. Sync watermark-based
+            // hai (updated_at), is liye sirf yahan register karna kaafi hai.
+            'rtl_departments', 'rtl_categories', 'rtl_brands', 'rtl_products',
+            'rtl_product_barcodes', 'rtl_product_uom', 'rtl_batches', 'rtl_counters',
+            'rtl_sales', 'rtl_sale_items', 'rtl_bill_reprints', 'rtl_customer_ledger',
+            'units',
             'sync_tombstones',
         ],
         // Cloud -> Local PULL: sirf master/reference data neeche aati hai
@@ -61,6 +67,11 @@ return [
             // branch par bhi aani chahiyen.
             'users', 'user_roles', 'roles', 'role_modules',
             'user_module_access', 'user_form_permissions',
+            // Retail master data head-office se neeche. Bills (rtl_sales)
+            // yahan JAAN-BOOJH KAR nahi hain — woh branch par bante hain
+            // aur sirf upar jate hain.
+            'rtl_departments', 'rtl_categories', 'rtl_brands', 'rtl_products',
+            'rtl_product_barcodes', 'rtl_product_uom', 'units',
             'sync_tombstones',
         ],
     ],

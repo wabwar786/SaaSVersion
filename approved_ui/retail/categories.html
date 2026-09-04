@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Categories · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Categories</h1><p>Department ke andar dusra level</p></div>
+      <div class="header-spacer"></div>
+    </header>
+    <div class="content"></div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="departments"></script>
+<script src="module.js"></script>
+<script src="module_config.js"></script>
+<script>RetailModule.render(MODULE_CONFIGS['categories']);</script>
+</body>
+</html>

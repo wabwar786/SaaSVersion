@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POS Counter · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* ============================================================
+   POS = full screen. Koi sidebar nahi — counter par har pixel
+   bill ke liye hai. Sab kuch keyboard se chalta hai.
+   ============================================================ */
+html,body{height:100%;overflow:hidden}
+.pos-app{height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+
+/* ---------- top bar ---------- */
+.topbar{height:54px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;padding:0 14px;box-shadow:var(--sh-sm);z-index:30}
+.tb-brand{display:flex;align-items:center;gap:9px;padding-right:12px;border-right:1px solid var(--line)}
+.tb-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(150deg,var(--brand),var(--brand-ink));
+  color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:900;font-size:15px}
+.tb-brand b{font-family:var(--display);font-size:13px;line-height:1.1;display:block}
+.tb-brand span{display:block;color:var(--faint);font-size:10px}
+.tb-chip{display:flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--line);
+  border-radius:8px;background:var(--surface-2);font-size:12px;white-space:nowrap}
+.tb-chip b{font-weight:600}
+.tb-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.tb-spacer{flex:1}
+.tb-clock{font-family:var(--display);font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+.tb-exit{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);color:var(--muted);display:grid;place-items:center;font-size:16px}
+.tb-exit:hover{border-color:var(--danger-line);color:var(--danger);background:var(--danger-soft)}
+.perf{font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;min-width:96px;text-align:right}
+
+/* ---------- held bills — right column card (LIVE) ---------- */
+.heldbar{flex-shrink:0;background:var(--surface);border:1px solid var(--warn-line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-sm);padding:9px 11px}
+.heldbar.empty{border-color:var(--line)}
+.heldbar .hb-lab{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--warn);margin-bottom:7px}
+.heldbar.empty .hb-lab{color:var(--faint);margin-bottom:0}
+#heldChips{display:flex;flex-direction:column;gap:6px;max-height:132px;overflow-y:auto}
+.hb-chip{display:flex;align-items:center;gap:8px;height:32px;padding:0 9px;background:var(--warn-soft);
+  border:1px solid var(--warn-line);border-radius:8px;font-size:11.5px;white-space:nowrap;
+  width:100%;text-align:left;transition:.12s}
+.hb-chip:hover{background:var(--surface);border-color:var(--warn);box-shadow:var(--sh-sm)}
+.hb-chip b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.hb-chip .amt{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--warn);font-weight:700}
+.hb-chip .k{background:var(--warn);color:#fff;border-radius:5px;padding:0 5px;font-size:10px;font-weight:800;flex-shrink:0}
+
+/* ---------- body ---------- */
+.pos-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:10px;padding:10px 12px;min-height:0}
+.col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+
+/* scan */
+.scanbox{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-sm);padding:8px 10px;position:relative;flex-shrink:0}
+.scan-row{display:flex;gap:9px;align-items:center}
+.scan-in{position:relative;flex:1}
+.scan-in input{height:48px;font-size:18px;font-weight:700;padding-left:44px;letter-spacing:.01em}
+.scan-in:before{content:"\2337";position:absolute;left:15px;top:50%;transform:translateY(-50%);font-size:24px;color:var(--brand)}
+.lvl{display:flex;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:9px;padding:3px;flex-shrink:0}
+.lvl button{height:40px;padding:0 14px;border-radius:6px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.lvl button.active{background:var(--brand);color:#fff}
+.sugg{position:absolute;left:10px;right:10px;top:62px;z-index:40;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:var(--r);box-shadow:var(--sh-lg);max-height:300px;overflow:auto;display:none}
+.sugg.show{display:block}
+.sg{display:flex;align-items:center;gap:11px;padding:9px 13px;border-bottom:1px solid var(--line);cursor:pointer}
+.sg:last-child{border-bottom:0}
+.sg.on{background:var(--brand-soft)}
+.sg b{font-size:13px}
+.sg small{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+.sg .pr{margin-left:auto;font-family:var(--display);font-weight:800;font-size:14px}
+
+/* cart */
+.cart{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-sm);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.cart-top{display:flex;align-items:center;gap:9px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);flex-shrink:0}
+.cart-top h2{font-size:13.5px}
+.cart-top .sp{flex:1}
+.cart-scroll{flex:1;overflow-y:auto;min-height:0}
+.ct{width:100%;border-collapse:collapse}
+.ct th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:6px 12px;font-size:9.5px;
+  font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);z-index:2}
+.ct td{padding:2px 12px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.3;vertical-align:middle;height:30px}
+.ct tbody tr{cursor:pointer}
+.ct tbody tr.on{background:var(--brand-soft);box-shadow:inset 3px 0 0 var(--brand)}
+.ct tbody tr.flash{animation:flashIn .32s ease}
+@keyframes flashIn{0%{background:var(--ok-soft)}100%{background:transparent}}
+/* naam aur unit ek hi line par — is se har row ~13px chhoti hoti hai
+   aur ek screen par 15-16 items aa jate hain. */
+.nm{font-weight:600}
+.sb{color:var(--faint);font-size:10.5px;margin-left:7px;font-weight:500}
+.qb{display:inline-flex;align-items:center;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;background:var(--surface)}
+.qb button{width:22px;height:22px;color:var(--muted);font-size:14px;font-weight:700;line-height:1}
+.qb button:hover{background:var(--surface-2);color:var(--brand)}
+.qb input{width:50px;height:22px;border:0;border-left:1px solid var(--line);border-right:1px solid var(--line);
+  border-radius:0;text-align:center;font-weight:700;font-size:12px;padding:0}
+.qb input:focus{box-shadow:none;border-color:var(--line)}
+.xd{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1}
+.xd:hover{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)}
+
+/* right column */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-sm)}
+.cust{padding:10px 12px;flex-shrink:0}
+.cust-top{display:flex;align-items:center;gap:8px}
+.cust-top .who{min-width:0;flex:1}
+.cust-top .who b{display:block;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cust-top .who span{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+.cust-top .kbd-btn{height:34px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;
+  font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface-2)}
+.cust-top .kbd-btn:hover{border-color:var(--brand-line);color:var(--brand-ink);background:var(--brand-soft)}
+
+.tot{flex:1;display:flex;flex-direction:column;min-height:0}
+.tot-in{padding:11px 14px;flex:1}
+.tl{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px}
+.tl span{color:var(--muted)}
+.tl b{font-variant-numeric:tabular-nums;font-weight:600}
+.tl.d b{color:var(--warn)}
+.hr{height:1px;background:var(--line);margin:7px 0}
+.gr{background:linear-gradient(135deg,var(--brand-ink),var(--brand));color:#fff;border-radius:var(--r);padding:14px 16px;margin-top:5px}
+.gr span{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:#c5e8da;font-weight:600}
+.gr b{display:block;font-family:var(--display);font-weight:900;font-size:36px;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums}
+.pg{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:0 12px 12px}
+.pg .btn{height:40px;font-size:12px}
+.pg .w{grid-column:1/-1;height:54px;font-size:16px;font-weight:800}
+
+/* shortcut bar */
+.keybar{flex-shrink:0;height:38px;background:var(--ink);display:flex;align-items:center;gap:0;padding:0 12px;overflow-x:auto}
+.kb{display:flex;align-items:center;gap:6px;padding:0 12px;height:100%;color:#c8cfcc;font-size:11px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.09)}
+.kb:hover{background:rgba(255,255,255,.07);color:#fff}
+.kb i{font-style:normal;background:rgba(255,255,255,.15);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;color:#fff}
+.kb.hot i{background:var(--brand)}
+
+/* modals */
+.pay-split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.pd{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:center}
+.pd span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.pd b{display:block;font-family:var(--display);font-weight:900;font-size:30px;margin-top:3px;font-variant-numeric:tabular-nums}
+.pd.ch b{color:var(--ok)}.pd.sh b{color:var(--danger)}
+.tender{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}
+.tender button{height:40px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface-2);font-size:12.5px;font-weight:700}
+.tender button:hover{border-color:var(--brand-line);background:var(--brand-soft);color:var(--brand-ink)}
+.pm{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+.pm button{flex:1;min-width:86px;height:40px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font-size:12.5px;font-weight:700;color:var(--muted)}
+.pm button.active{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.receipt{font-family:"Courier New",monospace;font-size:11.5px;line-height:1.5;background:#fff;border:1px solid var(--line);border-radius:8px;padding:15px;max-height:400px;overflow:auto;color:#111}
+.receipt hr{border:0;border-top:1px dashed #999;margin:6px 0}
+.receipt .ctr{text-align:center}.receipt .rw{display:flex;justify-content:space-between;gap:8px}
+.receipt .big{font-size:14px;font-weight:700}
+.clist{max-height:330px;overflow:auto;margin-top:10px}
+.dupstamp{text-align:center;border:2px dashed var(--danger);color:var(--danger);
+  font-weight:800;letter-spacing:.12em;padding:5px;margin:6px 0;font-size:12px}
+.dl{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);
+  border-radius:var(--r);margin-bottom:6px;cursor:pointer}
+.dl:hover,.dl.on{border-color:var(--brand);background:var(--brand-soft)}
+.dl b{font-size:13px}.dl small{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+.dl .rt{margin-left:auto;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.ci{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:7px;cursor:pointer}
+.ci:hover,.ci.on{border-color:var(--brand);background:var(--brand-soft)}
+.ci b{font-size:13px}.ci small{display:block;color:var(--faint);font-size:11px;margin-top:1px}
+.ci .bal{margin-left:auto;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+
+@media(max-width:1150px){.pos-body{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="pos-app">
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <div class="tb-brand"><div class="tb-mark">R</div><div><b>Retail OS</b><span>POS Counter</span></div></div>
+    <div class="tb-chip"><span class="dot"></span><div>Counter 1 &middot; <b>Ali Raza</b></div></div>
+    <div class="tb-chip">Bill <b id="billNo">INV-20905</b></div>
+    <div class="tb-chip" id="regionChip">PKR</div>
+    <span class="tb-spacer"></span>
+    <span class="perf" id="perf">&mdash;</span>
+    <div class="tb-clock" id="clock">&mdash;</div>
+    <button class="btn sm" id="btnDup" title="Duplicate bill (Ctrl+D)">&#9113; Duplicate bill</button>
+    <button class="tb-exit" id="btnExit" title="Back to dashboard">&#9096;</button>
+  </div>
+
+  <!-- ============ BODY ============ -->
+  <div class="pos-body">
+    <div class="col">
+      <div class="scanbox">
+        <div class="scan-row">
+          <div class="scan-in">
+            <input id="scan" autocomplete="off" spellcheck="false" placeholder="Scan barcode &middot; type name &middot; PLU">
+            <div class="sugg" id="sugg"></div>
+          </div>
+          <div class="lvl" id="lvl">
+            <button data-level="Retail" class="active">Retail</button>
+            <button data-level="Wholesale">Wholesale</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cart">
+        <div class="cart-top">
+          <h2>Current bill</h2>
+          <span class="tag neutral plain" id="lineCount">0 lines</span>
+          <span class="sp"></span>
+          <span style="color:var(--faint);font-size:11px" id="lastAdd"></span>
+        </div>
+        <div class="cart-scroll">
+          <table class="ct">
+            <thead><tr>
+              <th style="width:44%">Item</th><th style="width:120px">Qty</th>
+              <th class="num">Price</th><th class="num">Disc</th><th class="num">Amount</th><th></th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div class="empty" id="cartEmpty">
+            <div class="ico">&#9015;</div><h3>Scan the first item</h3>
+            <p>Scanner ready. Naam type karein to search khud khul jayegi.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card cust">
+        <div class="cust-top">
+          <div class="who"><b id="custName">Walk-in Customer</b><span id="custMeta">Cash sale</span></div>
+          <button class="kbd-btn" id="btnCust">F6 Customer</button>
+        </div>
+      </div>
+
+      <!-- ============ HELD BILLS — LIVE ============ -->
+      <div class="heldbar empty" id="heldbar">
+        <span class="hb-lab" id="heldLab">Held bills &middot; none</span>
+        <div id="heldChips"></div>
+      </div>
+
+      <div class="card tot">
+        <div class="tot-in">
+          <div class="tl"><span>Subtotal</span><b id="tSub">&mdash;</b></div>
+          <div class="tl d"><span>Discount</span><b id="tDisc">&mdash;</b></div>
+          <div class="tl"><span id="taxLab">Sales Tax</span><b id="tTax">&mdash;</b></div>
+          <div class="hr"></div>
+          <div class="tl"><span>Items / Units</span><b id="tItems">0 / 0</b></div>
+          <div class="gr"><span>Amount payable</span><b id="tGrand">&mdash;</b></div>
+        </div>
+        <div class="pg">
+          <button class="btn" id="btnHold">F4 Hold</button>
+          <button class="btn" id="btnRecall">F5 Recall</button>
+          <button class="btn primary w" id="btnPay">F8 &middot; Take payment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SHORTCUT BAR ============ -->
+  <div class="keybar" id="keybar">
+    <button class="kb" data-key="F1"><i>F1</i> New bill</button>
+    <button class="kb" data-key="F2"><i>F2</i> Bill discount</button>
+    <button class="kb" data-key="F3"><i>F3</i> Change qty</button>
+    <button class="kb" data-key="F4"><i>F4</i> Hold</button>
+    <button class="kb" data-key="F5"><i>F5</i> Recall</button>
+    <button class="kb" data-key="F6"><i>F6</i> Customer</button>
+    <button class="kb" data-key="F7"><i>F7</i> Line discount</button>
+    <button class="kb hot" data-key="F8"><i>F8</i> Pay &amp; close</button>
+    <button class="kb" data-key="F9"><i>F9</i> Price check</button>
+    <button class="kb" data-key="F10"><i>F10</i> Retail/Wholesale</button>
+    <button class="kb" data-key="CtrlD"><i>Ctrl+D</i> Duplicate bill</button>
+    <span class="kb"><i>Ctrl+&crarr;</i> Instant cash close</span>
+    <span class="kb"><i>Del</i> Remove line</span>
+    <span class="kb"><i>&uarr;&darr;</i> Select line</span>
+    <span class="kb"><i>Alt+1..9</i> Recall held</span>
+  </div>
+</div>
+
+<!-- ============ PAYMENT ============ -->
+<div class="modal" id="payModal"><div class="dialog" style="width:min(740px,100%)">
+  <div class="dialog-head"><div><h3>Take payment</h3><p id="payLine">&mdash;</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-body">
+    <div class="pm" id="payMethods">
+      <button data-m="CASH" class="active">Cash</button><button data-m="CARD">Card</button>
+      <button data-m="MIXED">Cash + Card</button><button data-m="CREDIT" id="mCredit">Khata</button>
+    </div>
+    <div class="pay-split">
+      <div>
+        <label class="field" id="cashWrap"><span>Cash received</span><input id="payCash" type="number" min="0" step="any" placeholder="0"></label>
+        <label class="field" id="cardWrap" style="display:none"><span>Card amount</span><input id="payCard" type="number" min="0" step="any" placeholder="0"></label>
+        <div class="tender" id="tenderBtns"></div>
+      </div>
+      <div>
+        <div class="pd"><span>Payable</span><b id="payDue">&mdash;</b></div>
+        <div class="pd ch" id="chBox" style="margin-top:10px"><span id="chLab">Change</span><b id="payChange">&mdash;</b></div>
+        <div class="note" id="creditNote" style="margin-top:10px;display:none"></div>
+      </div>
+    </div>
+  </div>
+  <div class="dialog-foot"><button class="btn" data-close>Cancel</button>
+    <button class="btn primary" id="btnPayOk">&crarr; Confirm &amp; print</button></div>
+</div></div>
+
+<!-- ============ CUSTOMER PICKER ============ -->
+<div class="modal" id="custModal"><div class="dialog" style="width:min(560px,100%)">
+  <div class="dialog-head"><div><h3>Select customer</h3><p>Type kar ke filter &middot; &uarr;&darr; select &middot; &crarr; apply</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-body">
+    <div class="search"><input id="custSearch" placeholder="Name ya phone&hellip;"></div>
+    <div class="clist" id="custList"></div>
+  </div>
+  <div class="dialog-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="btnCustOk">Apply</button></div>
+</div></div>
+
+<!-- ============ NUMBER INPUT (qty / discount) ============ -->
+<div class="modal" id="numModal"><div class="dialog" style="width:min(420px,100%)">
+  <div class="dialog-head"><div><h3 id="numTitle">&mdash;</h3><p id="numSub">&mdash;</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-body">
+    <label class="field"><span id="numLab">Value</span><input id="numInput" type="number" min="0" step="any"></label>
+    <div class="note" id="numNote"></div>
+  </div>
+  <div class="dialog-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="numOk">&crarr; Apply</button></div>
+</div></div>
+
+<!-- ============ RECEIPT ============ -->
+<div class="modal" id="rcptModal"><div class="dialog" style="width:min(420px,100%)">
+  <div class="dialog-head"><div><h3>Receipt</h3><p>80 mm thermal</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-body"><div class="receipt" id="rcpt"></div></div>
+  <div class="dialog-foot"><button class="btn" data-close>Close (&crarr;)</button><button class="btn" id="btnDrawer">Open drawer</button>
+    <button class="btn primary" id="btnPrint">Print</button></div>
+</div></div>
+
+<!-- ============ DUPLICATE BILL ============ -->
+<div class="modal" id="dupModal"><div class="dialog" style="width:min(600px,100%)">
+  <div class="dialog-head"><div><h3>Duplicate bill</h3>
+    <p>Purana bill dobara print karein &middot; har copy count hoti hai</p></div>
+    <button class="close" data-close>&times;</button></div>
+  <div class="dialog-body">
+    <div class="search"><input id="dupSearch" placeholder="Bill number, customer ya cashier&hellip;"></div>
+    <div class="clist" id="dupList"></div>
+  </div>
+  <div class="dialog-foot"><button class="btn" data-close>Cancel</button>
+    <button class="btn primary" id="btnDupOk">&crarr; Print duplicate</button></div>
+</div></div>
+
+<!-- ============ PRICE CHECK ============ -->
+<div class="modal" id="pcModal"><div class="dialog" style="width:min(520px,100%)">
+  <div class="dialog-head"><div><h3>Price check</h3><p>Bill par kuch nahi lagega</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-body"><label class="field"><span>Barcode / name / PLU</span><input id="pcIn" placeholder="Scan&hellip;"></label><div id="pcOut"></div></div>
+  <div class="dialog-foot"><button class="btn primary" data-close>Done</button></div>
+</div></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.getElementById(s)};
+var R=window.Region,S=window.RetailStore,money=R.money,qtyf=R.qty;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+/* ============ STATE ============ */
+var cart=[], level='Retail', custId='cu1', billDisc=0, sel=-1, billNo=20905, payMethod='CASH';
+var rowsEl=$('rows'), emptyEl=$('cartEmpty'), scan=$('scan');
+
+function priceOf(p){return level==='Wholesale'?Number(p.wholesale_price||p.retail_price||0):Number(p.retail_price||0)}
+function amt(l){return Math.max(0,l.qty*l.price-(l.disc||0))}
+
+/* ============ CART — incremental DOM ============
+   Poora table dobara render karna 30+ lines par mehsoos hota hai.
+   Har line ka <tr> ek dafa banta hai; badalne par sirf uske
+   cells ka textContent update hota hai. */
+function makeRow(l){
+  var tr=document.createElement('tr');
+  tr.className='flash';
+  tr.innerHTML='<td><span class="nm"></span><span class="sb"></span></td>'+
+    '<td><div class="qb"><button data-a="dec">&minus;</button><input type="number" step="any" min="0"><button data-a="inc">+</button></div></td>'+
+    '<td class="num"></td><td class="num"></td><td class="num"><b></b></td>'+
+    '<td><button class="xd" data-a="del">&times;</button></td>';
+  var td=tr.children;
+  l.tr=tr;
+  l.cName=td[0].firstChild; l.cSub=td[0].lastChild;
+  l.cQty=td[1].querySelector('input');
+  l.cPrice=td[2]; l.cDisc=td[3]; l.cAmt=td[4].firstChild;
+  tr.__line=l;
+  paintRow(l);
+  return tr;
+}
+function paintRow(l){
+  l.cName.textContent=l.name;
+  l.cSub.textContent=l.unit+(l.is_scale?' \u00b7 weighed':'')+(l.stock<=0?' \u00b7 NO STOCK':'');
+  l.cQty.value=l.qty;
+  l.cPrice.textContent=money(l.price);
+  l.cDisc.textContent=l.disc>0?money(l.disc):'\u2014';
+  l.cAmt.textContent=money(amt(l));
+}
+function selectLine(i){
+  if(sel>-1&&cart[sel]&&cart[sel].tr) cart[sel].tr.classList.remove('on');
+  sel=i;
+  if(sel>-1&&cart[sel]){cart[sel].tr.classList.add('on');cart[sel].tr.scrollIntoView({block:'nearest'})}
+}
+
+function addProduct(p,q,uom){
+  var t0=performance.now();
+  var key=p.id+'|'+(uom?uom.id:'b'), ex=null;
+  for(var i=0;i<cart.length;i++) if(cart[i].key===key&&!cart[i].is_scale){ex=cart[i];break}
+  if(ex){
+    ex.qty+=q; paintRow(ex);
+    ex.tr.classList.remove('flash'); void ex.tr.offsetWidth; ex.tr.classList.add('flash');
+    selectLine(cart.indexOf(ex));
+  } else {
+    var l={key:key,product_id:p.id,name:p.name,
+      unit:uom?S.unitCode(uom.unit_id):S.unitCode(p.base_unit_id),
+      qty:q,price:uom?Number(uom.retail_price||0):priceOf(p),
+      tax:Number(p.tax_rate||0),disc:0,is_scale:!!p.is_scale_item,stock:Number(p.stock_qty||0)};
+    cart.unshift(l);
+    rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
+    selectLine(0);
+  }
+  emptyEl.style.display='none';
+  totals();
+  $('lastAdd').textContent=p.name;
+  $('perf').textContent=(performance.now()-t0).toFixed(2)+' ms / item';
+}
+function removeLine(i){
+  if(i<0||!cart[i])return;
+  cart[i].tr.remove(); cart.splice(i,1);
+  if(sel>=cart.length) sel=cart.length-1;
+  if(sel>-1&&cart[sel]) cart[sel].tr.classList.add('on');
+  if(!cart.length) emptyEl.style.display='block';
+  totals();
+}
+function clearCart(){ rowsEl.textContent=''; cart=[]; sel=-1; billDisc=0; emptyEl.style.display='block'; totals(); }
+
+/* ============ TOTALS ============ */
+function totals(){
+  var sub=0,tax=0,units=0,ex=R.isExclusive();
+  for(var i=0;i<cart.length;i++){
+    var l=cart[i],lt=amt(l),r=l.tax/100;
+    if(ex){ sub+=lt; tax+=lt*r; }
+    else{ sub+=lt; tax+=lt-lt/(1+r); }
+    units+=l.qty;
+  }
+  var after=Math.max(0,sub-billDisc);
+  if(billDisc>0&&sub>0) tax=tax*(after/sub);
+  var grand=ex?after+tax:after;
+  $('tSub').textContent=money(sub);
+  $('tDisc').textContent=billDisc>0?'\u2212 '+money(billDisc):'\u2014';
+  $('tTax').textContent=money(tax);
+  $('tItems').textContent=cart.length+' / '+qtyf(units);
+  $('tGrand').textContent=money(grand);
+  $('lineCount').textContent=cart.length+(cart.length===1?' line':' lines');
+  return {sub:sub,tax:tax,disc:billDisc,grand:grand,units:units};
+}
+
+/* ============ SCAN ============ */
+var sRows=[],sIdx=-1;
+function onScan(code){
+  var hit=S.findByCode(code);
+  if(!hit) return false;
+  addProduct(hit.product,hit.qty,hit.uom);
+  if(hit.source==='scale') flash('Scale \u00b7 '+qtyf(hit.qty)+' '+R.weightUnit());
+  else if(hit.source==='pack') flash('Pack \u00b7 '+hit.qty+' units');
+  return true;
+}
+function suggest(q){
+  var box=$('sugg');
+  if(!q||q.length<2){box.classList.remove('show');sRows=[];sIdx=-1;return}
+  sRows=S.searchProducts(q); sIdx=sRows.length?0:-1;
+  if(!sRows.length){box.classList.remove('show');return}
+  var h='';
+  for(var i=0;i<sRows.length;i++){
+    var p=sRows[i];
+    h+='<div class="sg'+(i===0?' on':'')+'" data-s="'+i+'"><div><b>'+esc(p.name)+'</b>'+
+       '<small>'+esc(p.sku)+' \u00b7 stock '+qtyf(p.stock_qty)+'</small></div>'+
+       '<div class="pr">'+money(priceOf(p))+'</div></div>';
+  }
+  box.innerHTML=h; box.classList.add('show');
+}
+function closeSugg(){$('sugg').classList.remove('show');sRows=[];sIdx=-1}
+function markSugg(){var n=$('sugg').children;for(var i=0;i<n.length;i++)n[i].className='sg'+(i===sIdx?' on':'')}
+
+scan.addEventListener('keydown',function(e){
+  if(e.key==='ArrowDown'&&sRows.length){e.preventDefault();sIdx=Math.min(sIdx+1,sRows.length-1);markSugg();return}
+  if(e.key==='ArrowUp'&&sRows.length){e.preventDefault();sIdx=Math.max(sIdx-1,0);markSugg();return}
+  if(e.key!=='Enter')return;
+  e.preventDefault();
+  var v=scan.value.trim(); if(!v)return;
+  if(sIdx>-1&&sRows[sIdx]) addProduct(sRows[sIdx],1);
+  else if(!onScan(v)){ flash('Not found: '+v,true); scan.select(); return; }
+  scan.value=''; closeSugg();
+});
+scan.addEventListener('input',function(){
+  var v=scan.value.trim();
+  if(v.length>5&&/^\d+$/.test(v)){closeSugg();return}   /* barcode: search mat chalao */
+  suggest(v);
+});
+$('sugg').addEventListener('click',function(e){
+  var d=e.target.closest('[data-s]'); if(!d)return;
+  addProduct(sRows[+d.getAttribute('data-s')],1);
+  scan.value=''; closeSugg(); scan.focus();
+});
+
+/* ============ CART EVENTS (delegated — ek listener) ============ */
+rowsEl.addEventListener('click',function(e){
+  var tr=e.target.closest('tr'); if(!tr||!tr.__line)return;
+  var l=tr.__line,i=cart.indexOf(l),b=e.target.closest('button');
+  if(b){
+    var a=b.getAttribute('data-a');
+    if(a==='inc'){l.qty++;paintRow(l);totals()}
+    else if(a==='dec'){l.qty--;if(l.qty<=0)removeLine(i);else{paintRow(l);totals()}}
+    else if(a==='del') removeLine(i);
+    return;
+  }
+  selectLine(i);
+});
+rowsEl.addEventListener('input',function(e){
+  if(e.target.tagName!=='INPUT')return;
+  var l=e.target.closest('tr').__line;
+  l.qty=Number(e.target.value||0);
+  l.cAmt.textContent=money(amt(l)); totals();
+});
+
+/* ============ HELD BILLS — live strip ============ */
+function paintHeld(){
+  var h=S.get('held_bills'),bar=$('heldbar');
+  bar.className='heldbar'+(h.length?'':' empty');
+  $('heldLab').textContent=h.length?('Held bills \u00b7 '+h.length):'Held bills \u00b7 none';
+  var out='';
+  for(var i=0;i<h.length;i++){
+    var b=h[i];
+    out+='<button class="hb-chip" data-recall="'+b.id+'">'+(i<9?'<span class="k">'+(i+1)+'</span>':'')+
+      '<b>'+esc(String(b.customer).split(' ')[0])+'</b>'+
+      '<span style="color:var(--faint)">'+b.lines+' items</span>'+
+      '<span class="amt">'+money(b.total)+'</span></button>';
+  }
+  $('heldChips').innerHTML=out;
+}
+function hold(){
+  if(!cart.length){flash('Bill is empty',true);return}
+  var t=totals(),c=S.byId('customers',custId);
+  if(S.online){
+    try{
+      S.holdBill({bill_no:'INV-'+billNo,counter_name:'Counter 1',
+        customer_id:(custId&&custId!=='cu1')?custId:null,
+        customer_name:c?c.name:'Walk-in',price_level:level,
+        line_count:cart.length,total:t.grand,
+        cart:cart.map(function(l){return {key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,
+          qty:l.qty,price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
+    }catch(err){ flash(err.message||'Hold nahi hui',true); return; }
+    clearCart(); paintHeld(); flash('Bill held');
+    return;
+  }
+  var h=S.get('held_bills');
+  h.unshift({id:'H'+Date.now(),bill_no:'INV-'+billNo,customer:c?c.name:'Walk-in',price_level:level,
+    lines:cart.length,total:t.grand,held_at:new Date().toTimeString().slice(0,5),
+    cart:cart.map(function(l){return{key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,qty:l.qty,
+      price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
+  S.set('held_bills',h);
+  clearCart(); billNo++; $('billNo').textContent='INV-'+billNo;
+  paintHeld(); flash('Bill held');
+}
+function recall(id){
+  if(cart.length){flash('Pehle current bill khatam karein',true);return}
+  var h=S.get('held_bills'),b=null;
+  for(var i=0;i<h.length;i++) if(h[i].id===id){b=h[i];break}
+  if(!b)return;
+  clearCart();
+  for(var j=b.cart.length-1;j>=0;j--){
+    var l=b.cart[j]; cart.unshift(l); rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
+  }
+  level=b.price_level; paintLevel();
+  emptyEl.style.display=cart.length?'none':'block';
+  if(S.online){ try{ S.releaseHold(id); }catch(e){} }
+  else S.set('held_bills',h.filter(function(x){return x.id!==id}));
+  selectLine(0); totals(); paintHeld(); flash('Bill recalled');
+}
+$('heldChips').addEventListener('click',function(e){
+  var c=e.target.closest('[data-recall]'); if(c) recall(c.getAttribute('data-recall'));
+});
+
+/* ============ CUSTOMER ============ */
+var custRows=[],cIdx=0;
+function paintCust(){
+  var c=S.byId('customers',custId);
+  $('custName').textContent=c?c.name:'Walk-in Customer';
+  var bits=[];
+  if(c&&c.customer_type)bits.push(c.customer_type);
+  if(c&&Number(c.balance)>0)bits.push('Due '+money(c.balance));
+  if(c&&Number(c.loyalty_points)>0)bits.push(c.loyalty_points+' pts');
+  $('custMeta').textContent=bits.join(' \u00b7 ')||'Cash sale';
+}
+function openCust(){ $('custSearch').value=''; fillCust(''); openM('custModal'); setTimeout(function(){$('custSearch').focus()},50); }
+function fillCust(q){
+  q=String(q).toLowerCase();
+  custRows=S.get('customers').filter(function(c){
+    return !q||c.name.toLowerCase().indexOf(q)>-1||String(c.phone||'').indexOf(q)>-1;
+  });
+  cIdx=0;
+  $('custList').innerHTML=custRows.map(function(c,i){
+    return '<div class="ci'+(i===0?' on':'')+'" data-c="'+c.id+'"><div><b>'+esc(c.name)+'</b>'+
+      '<small>'+esc(c.phone||'no phone')+' \u00b7 '+esc(c.customer_type)+'</small></div>'+
+      '<div class="bal">'+(Number(c.balance)>0?'<b style="color:var(--warn)">'+money(c.balance)+'</b>':'<span style="color:var(--ok)">Clear</span>')+
+      '<br><span style="color:var(--faint);font-size:10.5px">limit '+money(c.credit_limit)+'</span></div></div>';
+  }).join('');
+}
+function markCust(){var n=$('custList').children;for(var i=0;i<n.length;i++)n[i].className='ci'+(i===cIdx?' on':'')}
+function applyCust(){
+  if(custRows[cIdx]) custId=custRows[cIdx].id;
+  var c=S.byId('customers',custId);
+  if(c&&c.customer_type==='Wholesale'&&level!=='Wholesale'){level='Wholesale';paintLevel();repriceAll();flash('Wholesale price applied')}
+  paintCust(); closeM();
+}
+$('custSearch').addEventListener('input',function(){fillCust(this.value)});
+$('custSearch').addEventListener('keydown',function(e){
+  if(e.key==='ArrowDown'){e.preventDefault();cIdx=Math.min(cIdx+1,custRows.length-1);markCust()}
+  else if(e.key==='ArrowUp'){e.preventDefault();cIdx=Math.max(cIdx-1,0);markCust()}
+  else if(e.key==='Enter'){e.preventDefault();applyCust()}
+});
+$('custList').addEventListener('click',function(e){
+  var d=e.target.closest('[data-c]'); if(!d)return;
+  for(var i=0;i<custRows.length;i++) if(custRows[i].id===d.getAttribute('data-c')) cIdx=i;
+  applyCust();
+});
+$('btnCustOk').onclick=applyCust;
+$('btnCust').onclick=openCust;
+
+/* ============ PRICE LEVEL ============ */
+function paintLevel(){
+  var b=$('lvl').children;
+  for(var i=0;i<b.length;i++) b[i].classList.toggle('active',b[i].getAttribute('data-level')===level);
+}
+function repriceAll(){
+  for(var i=0;i<cart.length;i++){
+    var p=S.byId('products',cart[i].product_id);
+    if(p){cart[i].price=priceOf(p);paintRow(cart[i])}
+  }
+  totals();
+}
+$('lvl').addEventListener('click',function(e){
+  var b=e.target.closest('[data-level]'); if(!b)return;
+  level=b.getAttribute('data-level'); paintLevel(); repriceAll();
+});
+
+/* ============ NUMBER MODAL ============ */
+var numMode='qty';
+function openNum(mode){
+  if((mode==='qty'||mode==='disc')&&(sel<0||!cart[sel])){flash('Pehle line select karein (\u2191\u2193)',true);return}
+  numMode=mode;
+  var l=cart[sel];
+  if(mode==='qty'){
+    $('numTitle').textContent='Change quantity'; $('numSub').textContent=l.name;
+    $('numLab').textContent='Quantity ('+l.unit+')'; $('numInput').value=l.qty;
+    $('numNote').innerHTML='Stock on hand: <b>'+qtyf(l.stock)+'</b> '+l.unit;
+  } else if(mode==='disc'){
+    $('numTitle').textContent='Line discount'; $('numSub').textContent=l.name+' \u00b7 '+money(l.qty*l.price);
+    $('numLab').textContent='Discount amount'; $('numInput').value=l.disc||0;
+    $('numNote').textContent='Manager approval rules Batch 5 mein.';
+  } else {
+    $('numTitle').textContent='Bill discount'; $('numSub').textContent='Subtotal '+$('tSub').textContent;
+    $('numLab').textContent='Discount amount'; $('numInput').value=billDisc;
+    $('numNote').textContent='Tax proportionally adjust hogi.';
+  }
+  openM('numModal'); setTimeout(function(){$('numInput').select()},50);
+}
+function applyNum(){
+  var v=Number($('numInput').value||0);
+  if(numMode==='qty'){ if(v<=0)removeLine(sel); else{cart[sel].qty=v;paintRow(cart[sel]);totals()} }
+  else if(numMode==='disc'){ cart[sel].disc=Math.min(v,cart[sel].qty*cart[sel].price);paintRow(cart[sel]);totals() }
+  else { billDisc=v; totals() }
+  closeM();
+}
+$('numOk').onclick=applyNum;
+$('numInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyNum()}});
+
+/* ============ PAYMENT ============ */
+function openPay(){
+  if(!cart.length){flash('Bill is empty',true);return}
+  var t=totals();
+  $('payLine').textContent='INV-'+billNo+' \u00b7 '+cart.length+' items \u00b7 '+qtyf(t.units)+' units';
+  $('payDue').textContent=money(t.grand);
+  $('payCash').value=''; $('payCard').value='';
+  setMethod('CASH'); openM('payModal');
+  setTimeout(function(){$('payCash').focus()},50);
+}
+function setMethod(m){
+  payMethod=m;
+  var b=$('payMethods').children;
+  for(var i=0;i<b.length;i++) b[i].classList.toggle('active',b[i].getAttribute('data-m')===m);
+  $('cardWrap').style.display=(m==='CARD'||m==='MIXED')?'block':'none';
+  $('cashWrap').style.display=(m==='CARD'||m==='CREDIT')?'none':'block';
+  var n=$('creditNote');
+  if(m==='CREDIT'){
+    var c=S.byId('customers',custId),due=totals().grand;
+    n.style.display='block';
+    if(!c||c.id==='cu1'){
+      n.style.cssText='margin-top:10px;background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)';
+      n.innerHTML='Walk-in par credit nahi \u2014 F6 se customer chunein.';
+    } else if(Number(c.balance)+due>Number(c.credit_limit)){
+      n.style.cssText='margin-top:10px;background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)';
+      n.innerHTML='<b>Credit limit exceeded.</b> Limit '+money(c.credit_limit)+' \u00b7 due '+money(c.balance);
+    } else {
+      n.style.cssText='margin-top:10px;background:var(--info-soft);border-color:var(--info-line);color:#2b5a80';
+      n.innerHTML='Khate mein jayega. Remaining limit: '+money(Number(c.credit_limit)-Number(c.balance)-due);
+    }
+  } else n.style.display='none';
+  calcChange();
+}
+function calcChange(){
+  var due=totals().grand,cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
+  var paid=payMethod==='CREDIT'?due:(payMethod==='CARD'?card:(payMethod==='MIXED'?cash+card:cash));
+  var d=paid-due,box=$('chBox');
+  if(payMethod==='CREDIT'){$('chLab').textContent='To khata';$('payChange').textContent=money(due);box.className='pd';return}
+  if(d>=0){$('chLab').textContent='Change';$('payChange').textContent=money(d);box.className='pd ch'}
+  else{$('chLab').textContent='Short by';$('payChange').textContent=money(-d);box.className='pd sh'}
+}
+$('payCash').addEventListener('input',calcChange);
+$('payCard').addEventListener('input',calcChange);
+$('payCash').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.ctrlKey){e.preventDefault();confirmPay()}});
+$('payMethods').addEventListener('click',function(e){var b=e.target.closest('[data-m]');if(b)setMethod(b.getAttribute('data-m'))});
+$('tenderBtns').addEventListener('click',function(e){
+  var b=e.target.closest('[data-t]'); if(!b)return;
+  var v=b.getAttribute('data-t');
+  $('payCash').value=(v==='X')?totals().grand:(Number($('payCash').value||0)+Number(v));
+  calcChange();
+});
+
+function confirmPay(quickCash){
+  if(!cart.length){flash('Bill is empty',true);return}
+  var t=totals();
+
+  /* SERVER PAR: paise ka hisaab wahin dobara hota hai. Client sirf
+     product_id + qty bhejta hai — rate DB se aata hai, warna browser
+     console se koi bhi total badal sakta tha. */
+  if(S.online){
+    var payload={
+      lines:cart.map(function(l){return {product_id:l.product_id,qty:l.qty,
+        unit_code:l.unit,discount:l.disc||0}}),
+      price_level:level, bill_discount:billDisc,
+      customer_id:(custId&&custId!=='cu1')?custId:null,
+      payment_method:payMethod,
+      paid_cash:quickCash?t.grand:Number($('payCash').value||0),
+      paid_card:Number($('payCard').value||0),
+      counter_name:'Counter 1'
+    };
+    var saved;
+    try{ saved=S.saveSale(payload); }
+    catch(err){ flash(err.message||'Bill save nahi hui',true); return; }
+    saved.bill_no=saved.bill_no||('INV-'+billNo);
+    saved.sold_at=new Date().toISOString().slice(0,16).replace('T',' ');
+    saved.customer=saved.customer_name; saved.counter=saved.counter_name;
+    saved.cashier=saved.cashier_name; saved.change=saved.change||0;
+    saved.items=(saved.items||[]).map(function(l){return {name:l.name,unit:l.unit_code,
+      qty:l.qty,price:l.unit_price,disc:l.discount}});
+    buildReceipt(saved,false);
+    closeM(); openM('rcptModal');
+    flash(saved.bill_no+' saved \u00b7 '+money(saved.total));
+    $('billNo').textContent=saved.bill_no;
+    clearCart(); custId='cu1'; paintCust(); S.invalidate('products');
+    return;
+  }
+
+  var cash=quickCash?t.grand:Number($('payCash').value||0),card=Number($('payCard').value||0);
+  var paid=payMethod==='CREDIT'?t.grand:(payMethod==='CARD'?card:(payMethod==='MIXED'?cash+card:cash));
+  if(!quickCash&&payMethod!=='CREDIT'&&paid+0.001<t.grand){flash('Short by '+money(t.grand-paid),true);return}
+  if(payMethod==='CREDIT'&&custId==='cu1'){flash('Credit ke liye customer chunein (F6)',true);return}
+
+  var c=S.byId('customers',custId);
+  var sale={id:'INV-'+billNo,bill_no:'INV-'+billNo,counter:'Counter 1',cashier:'Ali Raza',
+    customer:c?c.name:'Walk-in Customer',price_level:level,lines:cart.length,
+    subtotal:Math.round(t.sub),discount:Math.round(t.disc),tax:Math.round(t.tax),total:Math.round(t.grand),
+    paid_cash:payMethod==='CREDIT'?0:(payMethod==='CARD'?0:cash),
+    paid_card:(payMethod==='CARD'||payMethod==='MIXED')?card:0,
+    change:payMethod==='CREDIT'?0:Math.max(0,paid-t.grand),
+    status:payMethod==='CREDIT'?'Credit':'Completed',
+    sold_at:new Date().toISOString().slice(0,16).replace('T',' '),
+    reprint_count:0, last_reprint_at:'',
+    /* receipt lines sale ke sath mehfooz — duplicate isi se banti hai */
+    items:cart.map(function(l){return {name:l.name,unit:l.unit,qty:l.qty,price:l.price,disc:l.disc||0}})};
+
+  var sales=S.get('sales'); sales.unshift(sale); S.set('sales',sales);
+  var prods=S.get('products'),map={};
+  for(var i=0;i<cart.length;i++) map[cart[i].product_id]=(map[cart[i].product_id]||0)+cart[i].qty;
+  for(var j=0;j<prods.length;j++) if(map[prods[j].id]) prods[j].stock_qty=Number((prods[j].stock_qty-map[prods[j].id]).toFixed(3));
+  S.set('products',prods);
+  if(payMethod==='CREDIT'){
+    var cs=S.get('customers');
+    for(var k=0;k<cs.length;k++) if(cs[k].id===custId) cs[k].balance=Number(cs[k].balance||0)+Math.round(t.grand);
+    S.set('customers',cs);
+  }
+  S.commit();
+  buildReceipt(sale,false);
+  closeM(); openM('rcptModal');
+  flash('INV-'+billNo+' saved \u00b7 '+money(t.grand));
+  billNo++; $('billNo').textContent='INV-'+billNo;
+  clearCart(); custId='cu1'; paintCust();
+}
+/* Receipt hamesha SALE RECORD se banti hai (cart se nahi) — isi liye
+   purana bill bhi hu-ba-hu dobara chhap sakta hai. */
+function buildReceipt(sale,dup){
+  var p=R.current(),rows='';
+  var items=sale.items||[];
+  for(var i=0;i<items.length;i++){
+    var l=items[i],lt=Math.max(0,l.qty*l.price-(l.disc||0));
+    rows+='<div class="rw"><span>'+esc(String(l.name).slice(0,20))+'</span><span>'+qtyf(l.qty)+'\u00d7'+R.moneyPlain(l.price)+'</span></div>'+
+          '<div class="rw"><span></span><span><b>'+R.moneyPlain(lt)+'</b></span></div>';
+  }
+  var stamp = dup ? '<div class="dupstamp">DUPLICATE &middot; COPY '+sale.reprint_count+'</div>' : '';
+  $('rcpt').innerHTML='<div class="ctr big">METRO SUPERSTORE</div><div class="ctr">Islamabad \u2014 F10</div>'+
+    '<div class="ctr">'+(p.code==='PK'?'NTN 1234567-8':'VAT GB123456789')+'</div>'+stamp+'<hr>'+
+    '<div class="rw"><span>'+esc(sale.bill_no)+'</span><span>'+esc(sale.sold_at)+'</span></div>'+
+    '<div class="rw"><span>'+esc(sale.cashier)+'</span><span>'+esc(sale.counter)+'</span></div>'+
+    '<div class="rw"><span>'+esc(sale.customer)+'</span><span>'+esc(sale.price_level)+'</span></div><hr>'+rows+'<hr>'+
+    '<div class="rw"><span>Subtotal</span><span>'+R.moneyPlain(sale.subtotal)+'</span></div>'+
+    (sale.discount>0?'<div class="rw"><span>Discount</span><span>-'+R.moneyPlain(sale.discount)+'</span></div>':'')+
+    '<div class="rw"><span>'+p.tax_label+'</span><span>'+R.moneyPlain(sale.tax)+'</span></div>'+
+    '<div class="rw big"><span>TOTAL</span><span>'+R.moneyPlain(sale.total)+'</span></div><hr>'+
+    (sale.paid_cash?'<div class="rw"><span>Cash</span><span>'+R.moneyPlain(sale.paid_cash)+'</span></div>':'')+
+    (sale.paid_card?'<div class="rw"><span>Card</span><span>'+R.moneyPlain(sale.paid_card)+'</span></div>':'')+
+    (sale.status==='Credit'?'<div class="rw"><span>On khata</span><span>'+R.moneyPlain(sale.total)+'</span></div>':'')+
+    (sale.change?'<div class="rw"><span>Change</span><span>'+R.moneyPlain(sale.change)+'</span></div>':'')+
+    '<hr>'+
+    (dup?'<div class="ctr">Reprinted '+esc(sale.last_reprint_at)+' by Ali Raza</div>'+
+         '<div class="ctr">NOT A FRESH SALE \u2014 payment already taken</div>':
+         '<div class="ctr">'+(p.code==='PK'?'FBR: PENDING (queued)':'Thank you')+'</div>');
+}
+
+/* ---------- duplicate bill ---------- */
+var dupRows=[],dIdx=0;
+function openDup(){
+  $('dupSearch').value=''; fillDup(''); openM('dupModal');
+  setTimeout(function(){$('dupSearch').focus()},50);
+}
+function fillDup(q){
+  q=String(q).toLowerCase();
+  dupRows=S.get('sales').filter(function(x){
+    return !q||String(x.bill_no).toLowerCase().indexOf(q)>-1||
+           String(x.customer).toLowerCase().indexOf(q)>-1||
+           String(x.cashier).toLowerCase().indexOf(q)>-1;
+  }).slice(0,40);
+  dIdx=0;
+  $('dupList').innerHTML=dupRows.length? dupRows.map(function(x,i){
+    var rp=Number(x.reprint_count||0);
+    return '<div class="dl'+(i===0?' on':'')+'" data-d="'+esc(x.bill_no)+'" data-id="'+esc(x.id||'')+'"><div><b>'+esc(x.bill_no)+'</b>'+
+      '<small>'+esc(x.customer)+' \u00b7 '+esc(x.counter)+' \u00b7 '+esc(x.sold_at)+'</small></div>'+
+      '<div class="rt"><b>'+money(x.total)+'</b><br>'+
+      (rp? '<span class="tag warn plain" style="height:18px;font-size:10px">'+rp+' reprint'+(rp>1?'s':'')+'</span>'
+         : '<span style="color:var(--faint);font-size:10.5px">original only</span>')+
+      '</div></div>';
+  }).join('') : '<div class="empty" style="padding:26px"><h3>No bill found</h3><p>Bill number ya customer se dhoondein.</p></div>';
+}
+function markDup(){var n=$('dupList').children;for(var i=0;i<n.length;i++)n[i].className='dl'+(i===dIdx?' on':'')}
+function printDup(){
+  var pick=dupRows[dIdx]; if(!pick){flash('Koi bill select nahi',true);return}
+  if(S.online){
+    var srv;
+    try{ srv=S.reprint(pick.id||pick.bill_no,''); }
+    catch(err){ flash(err.message||'Reprint fail',true); return; }
+    srv=S.normalizeSale(srv);
+    srv.items=(srv.items||[]).map(function(l){return {name:l.product_name,unit:l.unit_code,
+      qty:Number(l.qty),price:Number(l.unit_price),disc:Number(l.discount)}});
+    buildReceipt(srv,true);
+    closeM(); openM('rcptModal');
+    flash('Duplicate of '+srv.bill_no+' \u00b7 copy '+srv.reprint_count);
+    return;
+  }
+  var sales=S.get('sales'),sale=null;
+  for(var i=0;i<sales.length;i++) if(sales[i].bill_no===pick.bill_no){sale=sales[i];break}
+  if(!sale)return;
+  sale.reprint_count=Number(sale.reprint_count||0)+1;
+  sale.last_reprint_at=new Date().toISOString().slice(0,16).replace('T',' ');
+  S.set('sales',sales); S.commit();
+  buildReceipt(sale,true);
+  closeM(); openM('rcptModal');
+  flash('Duplicate of '+sale.bill_no+' \u00b7 copy '+sale.reprint_count);
+}
+$('dupSearch').addEventListener('input',function(){fillDup(this.value)});
+$('dupSearch').addEventListener('keydown',function(e){
+  if(e.key==='ArrowDown'){e.preventDefault();dIdx=Math.min(dIdx+1,dupRows.length-1);markDup()}
+  else if(e.key==='ArrowUp'){e.preventDefault();dIdx=Math.max(dIdx-1,0);markDup()}
+  else if(e.key==='Enter'){e.preventDefault();printDup()}
+});
+$('dupList').addEventListener('click',function(e){
+  var d=e.target.closest('[data-d]'); if(!d)return;
+  for(var i=0;i<dupRows.length;i++) if(dupRows[i].bill_no===d.getAttribute('data-d')) dIdx=i;
+  printDup();
+});
+$('btnDupOk').onclick=printDup;
+$('btnDup').onclick=openDup;
+
+$('btnPayOk').onclick=function(){confirmPay()};
+$('btnPrint').onclick=function(){flash('Sent to Epson TM-T88')};
+$('btnDrawer').onclick=function(){flash('Drawer kick sent')};
+
+/* ============ PRICE CHECK ============ */
+$('pcIn').addEventListener('input',function(){
+  var v=this.value.trim(); if(!v){$('pcOut').innerHTML='';return}
+  var hit=S.findByCode(v),p=hit?hit.product:S.searchProducts(v)[0];
+  if(!p){$('pcOut').innerHTML='<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)">Not found</div>';return}
+  function cell(lab,val){return '<div style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">'+
+    '<span style="color:var(--muted);font-size:11px">'+lab+'</span>'+
+    '<b style="display:block;font-family:var(--display);font-size:16px;margin-top:3px">'+val+'</b></div>'}
+  $('pcOut').innerHTML='<div class="panel"><div class="panel-body"><h3 style="font-size:16px">'+esc(p.name)+'</h3>'+
+    '<p style="color:var(--muted);font-size:12px;margin:4px 0 12px">'+esc(p.sku)+'</p>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    cell('Retail',money(p.retail_price))+cell('Wholesale',money(p.wholesale_price))+
+    cell('Stock',qtyf(p.stock_qty))+cell(R.current().tax_label,p.tax_rate+'%')+'</div></div></div>';
+});
+
+/* ============ MODAL / TOAST ============ */
+function openM(id){$(id).classList.add('show')}
+function closeM(){
+  var m=document.querySelectorAll('.modal.show');
+  for(var i=0;i<m.length;i++) m[i].classList.remove('show');
+  scan.focus();
+}
+document.addEventListener('click',function(e){if(e.target.closest('[data-close]'))closeM()});
+var toastEl=null,toastT=null;
+function flash(m,err){
+  if(!toastEl){toastEl=document.createElement('div');toastEl.className='toast';document.body.appendChild(toastEl)}
+  toastEl.textContent=m; toastEl.className='toast show'+(err?' err':'');
+  clearTimeout(toastT); toastT=setTimeout(function(){toastEl.className='toast'},1600);
+}
+
+/* ============ KEYBOARD — poora counter yahin se chalta hai ============ */
+var KEYS={
+  F1:function(){ if(cart.length&&!confirm('Current bill discard karein?'))return;
+                 clearCart(); custId='cu1'; paintCust(); billNo++; $('billNo').textContent='INV-'+billNo; flash('New bill'); },
+  F2:function(){ openNum('bill') },
+  F3:function(){ openNum('qty') },
+  F4:hold,
+  F5:function(){ var h=S.get('held_bills'); if(!h.length){flash('No held bills',true);return} recall(h[0].id); },
+  F6:openCust,
+  F7:function(){ openNum('disc') },
+  F8:openPay,
+  F9:function(){ $('pcIn').value='';$('pcOut').innerHTML='';openM('pcModal');setTimeout(function(){$('pcIn').focus()},50) },
+  F10:function(){ level=(level==='Retail')?'Wholesale':'Retail'; paintLevel(); repriceAll(); flash(level+' prices'); },
+  CtrlD:function(){ openDup() }
+};
+document.addEventListener('keydown',function(e){
+  var open=document.querySelector('.modal.show');
+
+  if(e.key==='Escape'){ if(open)closeM(); else closeSugg(); return; }
+
+  /* Ctrl+D = duplicate bill */
+  if((e.key==='d'||e.key==='D')&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); openDup(); return; }
+
+  /* Ctrl+Enter = fauran cash close. Rush ka sab se tez raasta. */
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){
+    e.preventDefault();
+    if(open&&open.id==='rcptModal'){closeM();return}
+    if(!cart.length){flash('Bill is empty',true);return}
+    payMethod='CASH'; confirmPay(true); return;
+  }
+  if(open&&open.id==='rcptModal'&&e.key==='Enter'){e.preventDefault();closeM();return}
+
+  /* held bills: Alt+1..9 */
+  if(e.altKey&&/^[1-9]$/.test(e.key)){
+    var h=S.get('held_bills'),ix=+e.key-1;
+    if(h[ix]){e.preventDefault();recall(h[ix].id)}
+    return;
+  }
+
+  if(KEYS[e.key]){ e.preventDefault(); KEYS[e.key](); return; }
+  if(open) return;
+
+  if(e.key==='Delete'&&sel>-1){ e.preventDefault(); removeLine(sel); return; }
+  if(e.key==='ArrowDown'&&!sRows.length&&cart.length){ e.preventDefault(); selectLine(Math.min(sel+1,cart.length-1)); return; }
+  if(e.key==='ArrowUp'&&!sRows.length&&cart.length){ e.preventDefault(); selectLine(Math.max(sel<0?0:sel-1,0)); return; }
+
+  /* koi bhi character type ho -> scan box par focus (cashier kabhi click na kare) */
+  if(document.activeElement!==scan&&e.key.length===1&&!e.ctrlKey&&!e.altKey) scan.focus();
+});
+
+$('btnHold').onclick=hold;
+$('btnRecall').onclick=KEYS.F5;
+$('btnPay').onclick=openPay;
+$('btnExit').onclick=function(){location.href='index.html'};
+$('keybar').addEventListener('click',function(e){
+  var b=e.target.closest('[data-key]');
+  if(b&&KEYS[b.getAttribute('data-key')]) KEYS[b.getAttribute('data-key')]();
+});
+
+/* ============ BOOT ============ */
+(function boot(){
+  var p=R.current();
+  if(S.online&&S.boot){
+    document.querySelector('.tb-brand b').textContent=S.boot.business.name;
+    document.querySelector('.tb-brand span').textContent=S.boot.branch;
+  }
+  $('taxLab').textContent=p.tax_label;
+  $('regionChip').innerHTML=p.flag+' <b>'+p.currency+'</b>';
+  $('mCredit').textContent=String(p.credit_label).split(' ')[0];
+  var t=(p.code==='PK')?[500,1000,5000,'X']:[5,10,20,'X'];
+  $('tenderBtns').innerHTML=t.map(function(v){
+    return '<button data-t="'+v+'">'+(v==='X'?'Exact':p.symbol+v)+'</button>';
+  }).join('');
+  S.rebuildIndex();
+  paintCust(); paintHeld(); paintLevel(); totals();
+  scan.focus();
+  function tick(){ $('clock').textContent=new Date().toTimeString().slice(0,5) }
+  tick(); setInterval(tick,10000);
+})();
+})();
+</script>
+</body>
+</html>

@@ -74,23 +74,34 @@ final class Platform
         $ownerEmail = \trim($d['owner_email'] ?? '');
         if ($ownerEmail === '') throw new \RuntimeException('Owner email required');
 
-        $industry = \strtoupper(\trim($d['industry_code'] ?? 'RESTAURANT'));
+        /* Super Admin ka form `industry` bhejta hai, API `industry_code`
+           parhti thi — is liye dropdown ka chunav khamoshi se zaya ho
+           jata tha aur har business RESTAURANT ban jata tha. Ab dono
+           naam chalte hain. */
+        $industry = \strtoupper(\trim($d['industry_code'] ?? ($d['industry'] ?? 'RESTAURANT')));
+        if (!\in_array($industry, ['RESTAURANT','RETAIL'], true)) $industry = 'RESTAURANT';
+        /* Region tay karta hai: currency, tax inclusive/exclusive, barcode
+           standard (EAN-13 vs UPC-A), weight unit aur credit ka naam. */
+        $region   = \strtoupper(\trim($d['region_profile'] ?? ($d['region'] ?? 'PK')));
+        if (!\in_array($region, ['PK','UK','US'], true)) $region = 'PK';
+        $regionCur = ['PK'=>'PKR','UK'=>'GBP','US'=>'USD'][$region];
+        $regionTz  = ['PK'=>'Asia/Karachi','UK'=>'Europe/London','US'=>'America/New_York'][$region];
         $slug     = self::uniqueSlug(self::slugify($name));
-        $tz       = $d['timezone'] ?? 'Asia/Karachi';
-        $currency = $d['currency'] ?? 'PKR';
+        $tz       = $d['timezone'] ?? $regionTz;
+        $currency = $d['currency'] ?? $regionCur;
         $branch   = \trim($d['branch_name'] ?? 'Main Branch');
         $adminName= \trim($d['owner_name'] ?? $name.' Owner');
         $password = \trim($d['admin_password'] ?? '') ?: self::genPassword();
         $syncToken= \bin2hex(\random_bytes(20));
         $baseUrl  = \rtrim((string)($GLOBALS['config']['app']['base_url'] ?? ''), '/');
 
-        $ids = DB::tx(function (PDO $pdo) use ($d,$name,$slug,$industry,$tz,$currency,$branch,$adminName,$ownerEmail,$password,$syncToken) {
+        $ids = DB::tx(function (PDO $pdo) use ($d,$name,$slug,$industry,$region,$tz,$currency,$branch,$adminName,$ownerEmail,$password,$syncToken) {
             $tenantId = \uuid(); $orgId = \uuid(); $siteId = \uuid(); $userId = \uuid();
             $code = \strtoupper(\preg_replace('/[^A-Z0-9]+/','-', \strtoupper($slug)));
 
-            $pdo->prepare("INSERT INTO tenants(id,code,name,slug,industry_code,sync_token,owner_email,status,timezone,default_currency)
-                           VALUES(?,?,?,?,?,?,?, 'ACTIVE',?,?)")
-                ->execute([$tenantId,$code,$name,$slug,$industry,$syncToken,$ownerEmail,$tz,$currency]);
+            $pdo->prepare("INSERT INTO tenants(id,code,name,slug,industry_code,region_profile,sync_token,owner_email,status,timezone,default_currency)
+                           VALUES(?,?,?,?,?,?,?,?, 'ACTIVE',?,?)")
+                ->execute([$tenantId,$code,$name,$slug,$industry,$region,$syncToken,$ownerEmail,$tz,$currency]);
 
             $pdo->prepare("INSERT INTO organizations(id,tenant_id,organization_type,industry_code,name,email,phone,address_text,status)
                            VALUES(?,?,?,?,?,?,?,?, 'ACTIVE')")
@@ -123,6 +134,10 @@ final class Platform
                                ($_SESSION['platform_user']['id']??null)]);
             }
             self::seedSiteDefaults($pdo, $tenantId, $siteId);
+            self::ensureRoles($pdo, $tenantId, $industry);
+            if ($industry === 'RETAIL') {
+                \Aio\Services\RetailCatalog::seedDefaults($pdo, $tenantId, $siteId);
+            }
             return ['tenant'=>$tenantId,'org'=>$orgId,'site'=>$siteId,'user'=>$userId,'sub'=>$subId];
         });
 
@@ -132,6 +147,8 @@ final class Platform
             'tenant_id' => $ids['tenant'],
             'site_id' => $ids['site'],
             'business_name' => $name,
+            'industry_code' => $industry,
+            'region_profile' => $region,
             'client_link' => $link,
             'admin_email' => $ownerEmail,
             'admin_password' => $password,   // shown once to hand to the client
@@ -169,8 +186,34 @@ final class Platform
      * Yeh sirf DB par asal mein chala kar pakra gaya; lint aur schema
      * check dono is se guzar gaye the.
      */
-    public static function ensureRoles(PDO $pdo, string $tenantId): int
+    public static function ensureRoles(PDO $pdo, string $tenantId, string $industry = ''): int
     {
+        /* Industry ka pata na ho to tenant se poochho. Restaurant ke
+           Waiter/Chef roles supermarket mein bemani hain, aur supermarket
+           ka Storekeeper GRN/batches ke baghair adhoora hai. */
+        if ($industry === '') {
+            try {
+                $iq = $pdo->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");
+                $iq->execute([$tenantId]);
+                $industry = \strtoupper((string)($iq->fetchColumn() ?: 'RESTAURANT'));
+            } catch (\Throwable $e) { $industry = 'RESTAURANT'; }
+        }
+
+        if ($industry === 'RETAIL') {
+            $roles = [
+                'Owner / Admin'     => null,   // null = sab kuch
+                'Store Manager'     => ['dashboard','shift','rpos','counters','sales','khata','products',
+                                        'departments','brands','uom','pricing','scale','labels','batches',
+                                        'inventory','purchasing','po','grn','preturn','suppliers','transfer',
+                                        'count','wastage','customers','loyalty','promotions','expenses',
+                                        'accounting','whatsapp','printers','reports','closing','void',
+                                        'staff','settings','offline','branches'],
+                'Cashier'           => ['shift','rpos','closing','khata','sales'],
+                'Floor Staff'       => ['products','pricing','labels','count','scale'],
+                'Storekeeper'       => ['inventory','grn','batches','transfer','count','wastage','products'],
+                'Purchase Officer'  => ['purchasing','po','preturn','suppliers','grn','products'],
+            ];
+        } else {
         $roles = [
             'Owner / Admin'  => null,   // null = sab kuch
             'Branch Manager' => ['dashboard','shift','pos','tablet','kds','tables','orders','online',
@@ -183,6 +226,7 @@ final class Platform
             'Chef / Kitchen' => ['kds'],
             'Storekeeper'    => ['inventory','purchasing','recipe','wastage','transfer','count','suppliers'],
         ];
+        }
 
         $mods = [];
         try {

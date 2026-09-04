@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.dash-hero{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:16px}
+.hero{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:22px;color:#fff;
+  background:linear-gradient(135deg,#07533f,#0d7a5f 55%,#1aa87c);box-shadow:var(--sh)}
+.hero:after{content:"";position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.09)}
+.hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bfe8d8;font-weight:600}
+.hero h2{font-size:30px;margin:8px 0 0;letter-spacing:-.02em}
+.hero p{margin:8px 0 0;max-width:560px;font-size:12.5px;color:#d8f0e6;line-height:1.55}
+.hero-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.hero-actions a{height:38px;padding:0 14px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.32);color:#fff}
+.hero-actions a:hover{background:rgba(255,255,255,.14)}
+.hero-actions a.solid{background:#fff;color:var(--brand-ink);border-color:#fff}
+.hero-side{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.htile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm)}
+.htile span{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.htile b{display:block;margin-top:5px;font-family:var(--display);font-weight:800;font-size:17px}
+.htile small{display:block;margin-top:3px;color:var(--faint);font-size:10.5px}
+.chart{height:220px;display:flex;align-items:flex-end;gap:7px;padding:8px 4px 0}
+.bar-col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+.bar{width:100%;max-width:30px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#1aa87c,#0d7a5f);min-height:5px;position:relative}
+.bar:hover{background:linear-gradient(180deg,#0d7a5f,#07533f)}
+.bar:hover:after{content:attr(data-v);position:absolute;left:50%;bottom:100%;transform:translate(-50%,-6px);background:var(--ink);color:#fff;font-size:10px;padding:3px 6px;border-radius:5px;white-space:nowrap;font-weight:600}
+.bar-col span{font-size:9.5px;color:var(--faint)}
+.quick{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm);transition:.14s;display:block}
+.qcard:hover{border-color:var(--brand-line);box-shadow:var(--sh);transform:translateY(-2px)}
+.qcard .qi{width:34px;height:34px;border-radius:9px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:16px;margin-bottom:9px}
+.qcard b{display:block;font-family:var(--display);font-weight:700;font-size:13px;color:var(--ink)}
+.qcard span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.alert{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:9px}
+.alert:last-child{margin-bottom:0}
+.alert .ai{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:14px;flex-shrink:0}
+.alert b{font-size:12.5px}
+.alert small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.alert .btn{margin-left:auto}
+.mix{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mix .cell{padding:11px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.mix .cell span{color:var(--muted);font-size:11px}
+.mix .cell b{display:block;margin-top:3px;font-family:var(--display);font-weight:800;font-size:16px}
+@media(max-width:1100px){.quick{grid-template-columns:repeat(3,1fr)}.dash-hero{grid-template-columns:1fr}}
+@media(max-width:560px){.quick{grid-template-columns:1fr 1fr}.hero h2{font-size:23px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Dashboard</h1><p>Sales, stock, expiry and counter health — live</p></div>
+      <div class="header-spacer"></div>
+      <select id="regionSel" style="width:180px;height:36px"></select>
+      <span class="live-pill">Synced 2 min ago</span>
+    </header>
+
+    <div class="content">
+      <div class="dash-hero">
+        <div class="hero">
+          <div class="eyebrow">Today · <span id="todayDate"></span></div>
+          <h2 id="heroSale">—</h2>
+          <p>Aaj ki sale 3 counters se. Stock, khata aur expiry alerts neeche — jo cheez aaj action maangti hai wahi upar hai.</p>
+          <div class="hero-actions">
+            <a href="pos.html" class="solid">▤ Open POS counter</a>
+            <a href="grn.html">⊕ Receive goods</a>
+            <a href="reports.html">▨ Day report</a>
+          </div>
+        </div>
+        <div class="hero-side">
+          <div class="htile"><span>Bills today</span><b id="hBills">—</b><small>avg basket <span id="hBasket">—</span></small></div>
+          <div class="htile"><span>Cash in drawer</span><b id="hCash">—</b><small>3 counters</small></div>
+          <div class="htile"><span>Khata outstanding</span><b id="hKhata">—</b><small id="hKhataSub">—</small></div>
+          <div class="htile"><span>Stock value</span><b id="hStock">—</b><small id="hSku">—</small></div>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="lab">Gross sale</div><div class="val" id="kSale">—</div><div class="sub">vs yesterday +8.4%</div></div>
+        <div class="kpi ok"><div class="lab">Gross margin</div><div class="val" id="kMargin">—</div><div class="sub" id="kMarginPct">—</div></div>
+        <div class="kpi warn"><div class="lab">Low stock items</div><div class="val" id="kLow">—</div><div class="sub">below reorder level</div></div>
+        <div class="kpi info"><div class="lab">Expiring in 7 days</div><div class="val" id="kExp">—</div><div class="sub">batch-tracked items</div></div>
+        <div class="kpi violet"><div class="lab">Out of stock</div><div class="val" id="kOos">—</div><div class="sub">needs purchase order</div></div>
+      </div>
+
+      <div class="split">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Hourly sale</h2><p>Counter-wise footfall pattern — staffing planning ke liye</p></div>
+            <span class="spacer"></span><span class="tag ok plain">Peak 6–8 PM</span></div>
+          <div class="panel-body"><div class="chart" id="chart"></div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Needs attention</h2><p>Aaj action chahiye</p></div></div>
+          <div class="panel-body" id="alerts"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2>Quick actions</h2><p>Rozana ke sab se zyada chalne wale kaam</p></div></div>
+        <div class="panel-body">
+          <div class="quick">
+            <a class="qcard" href="pos.html"><div class="qi">▤</div><b>New sale</b><span>Open counter</span></a>
+            <a class="qcard" href="products.html"><div class="qi">▣</div><b>Add product</b><span>Catalog</span></a>
+            <a class="qcard" href="grn.html"><div class="qi">⊕</div><b>Receive stock</b><span>GRN</span></a>
+            <a class="qcard" href="labels.html"><div class="qi">⌗</div><b>Print labels</b><span>Shelf tags</span></a>
+            <a class="qcard" href="khata.html"><div class="qi">₨</div><b>Khata recovery</b><span>Credit ledger</span></a>
+            <a class="qcard" href="stock_count.html"><div class="qi">☑</div><b>Stock count</b><span>Scanner</span></a>
+          </div>
+        </div>
+      </section>
+
+      <div class="split" style="margin-top:14px">
+        <section class="panel">
+          <div class="panel-head"><div><h2>Recent bills</h2><p>Aakhri sales sab counters se</p></div>
+            <span class="spacer"></span><a href="sales.html" class="btn sm">View all</a></div>
+          <div class="panel-body flush"><div class="table-wrap"><table class="table">
+            <thead><tr><th>Bill</th><th>Customer</th><th>Counter</th><th class="num">Total</th><th>Status</th></tr></thead>
+            <tbody id="recentRows"></tbody></table></div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Top sellers today</h2><p>Quantity ke hisaab se</p></div></div>
+          <div class="panel-body">
+            <div class="mix" style="margin-bottom:12px">
+              <div class="cell"><span>Units sold</span><b id="mUnits">—</b></div>
+              <div class="cell"><span>Departments active</span><b id="mDept">—</b></div>
+            </div>
+            <div id="topList"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="dashboard"></script>
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  var R=window.Region, S=window.RetailStore, money=R.money, qtyf=R.qty;
+
+  /* region switcher — demo ke liye, asal mein tenant.region_profile se aayega */
+  var sel=$('#regionSel');
+  sel.innerHTML=Object.keys(R.PROFILES).map(function(k){
+    var p=R.PROFILES[k];
+    return '<option value="'+k+'"'+(R.current().code===k?' selected':'')+'>'+p.flag+'  '+p.label+' · '+p.currency+'</option>';
+  }).join('');
+  sel.onchange=function(){ R.set(this.value); location.reload(); };
+
+  $('#todayDate').textContent=new Date().toLocaleDateString(R.current().locale,{day:'numeric',month:'short',year:'numeric'});
+
+  var products=S.get('products'), sales=S.get('sales'), batches=S.get('batches'), customers=S.get('customers');
+
+  /* KPIs */
+  var todaySale=sales.reduce(function(a,s){return a+Number(s.total||0)},0);
+  var margin=products.reduce(function(a,p){return a+(p.retail_price-p.cost_price)*2},0)*0.11;
+  var low=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock}).length;
+  var oos=products.filter(function(p){return Number(p.stock_qty)<=0}).length;
+  var exp=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7}).length;
+  var stockVal=products.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0);
+  var khata=customers.reduce(function(a,c){return a+Number(c.balance||0)},0);
+  var khataCount=customers.filter(function(c){return Number(c.balance)>0}).length;
+
+  $('#heroSale').textContent=money(todaySale);
+  $('#kSale').textContent=money(todaySale);
+  $('#kMargin').textContent=money(margin);
+  $('#kMarginPct').textContent=(todaySale? (margin/todaySale*100).toFixed(1):'0')+'% of sale';
+  $('#kLow').textContent=low;
+  $('#kExp').textContent=exp;
+  $('#kOos').textContent=oos;
+  $('#hBills').textContent=sales.length;
+  $('#hBasket').textContent=money(sales.length? todaySale/sales.length : 0);
+  $('#hCash').textContent=money(sales.reduce(function(a,s){return a+Number(s.paid_cash||0)},0)+30000);
+  $('#hKhata').textContent=money(khata);
+  $('#hKhataSub').textContent=khataCount+' customers';
+  $('#hStock').textContent=money(stockVal);
+  $('#hSku').textContent=products.length+' SKUs';
+  $('#mUnits').textContent=qtyf(sales.reduce(function(a,s){return a+Number(s.lines||0)*3},0));
+  $('#mDept').textContent=S.get('departments').length;
+
+  /* hourly chart */
+  var hours=['9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p'];
+  var vals=[8,14,19,26,22,17,15,21,29,44,52,48,33,18];
+  var max=Math.max.apply(null,vals);
+  $('#chart').innerHTML=hours.map(function(h,i){
+    return '<div class="bar-col"><div class="bar" style="height:'+(vals[i]/max*100)+'%" data-v="'+vals[i]+' bills"></div><span>'+h+'</span></div>';
+  }).join('');
+
+  /* alerts */
+  var a=[];
+  var lowItems=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock});
+  var oosItems=products.filter(function(p){return Number(p.stock_qty)<=0});
+  var expItems=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7});
+
+  if(oosItems.length) a.push(['danger','⊘','<b>'+oosItems.length+' items out of stock</b><small>'+
+    oosItems.slice(0,2).map(function(p){return p.name}).join(', ')+(oosItems.length>2?' +'+(oosItems.length-2)+' more':'')+'</small>','purchase_orders.html','Create PO']);
+  if(expItems.length) a.push(['warn','◷','<b>'+expItems.length+' batches expiring within 7 days</b><small>'+
+    expItems.slice(0,2).map(function(b){var p=S.byId('products',b.product_id);return (p?p.name:'')+' · '+b.expiry_date}).join(' · ')+'</small>','batches.html','Review']);
+  if(lowItems.length) a.push(['info','▽','<b>'+lowItems.length+' items below reorder level</b><small>Auto-PO suggestion ready</small>','purchase_orders.html','Suggest PO']);
+  var over=customers.filter(function(c){return Number(c.balance)>0 && Number(c.balance)>=Number(c.credit_limit)*0.9 && Number(c.credit_limit)>0});
+  if(over.length) a.push(['warn','₨','<b>'+over.length+' customers near credit limit</b><small>'+over.map(function(c){return c.name}).join(', ')+'</small>','khata.html','Open khata']);
+  a.push(['ok','✓','<b>Counter 3 is closed</b><small>Sirf 2 counters chal rahe hain</small>','counters.html','Open counter']);
+
+  $('#alerts').innerHTML=a.map(function(x){
+    return '<div class="alert"><div class="ai" style="background:var(--'+x[0]+'-soft);color:var(--'+x[0]+')">'+x[1]+'</div>'+
+      '<div>'+x[2]+'</div><a class="btn sm" href="'+x[3]+'">'+x[4]+'</a></div>';
+  }).join('');
+
+  /* recent bills */
+  $('#recentRows').innerHTML=sales.slice(0,6).map(function(s){
+    var tone=s.status==='Credit'?'warn':'ok';
+    return '<tr><td><span class="t-main">'+s.bill_no+'</span><span class="t-sub">'+s.sold_at+'</span></td>'+
+      '<td><span class="t-main">'+s.customer+'</span><span class="t-sub">'+s.price_level+'</span></td>'+
+      '<td>'+s.counter+'</td><td class="num"><b>'+money(s.total)+'</b></td>'+
+      '<td><span class="tag '+tone+'">'+s.status+'</span></td></tr>';
+  }).join('');
+
+  /* top sellers */
+  var top=products.slice().sort(function(a,b){return (b.retail_price-b.cost_price)-(a.retail_price-a.cost_price)}).slice(0,5);
+  $('#topList').innerHTML=top.map(function(p,i){
+    var pct=100-i*16;
+    return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">'+
+      '<b style="font-weight:600">'+p.name+'</b><span style="color:var(--muted)">'+money((p.retail_price-p.cost_price)*(6-i)*3)+'</span></div>'+
+      '<div style="height:6px;background:var(--surface-2);border-radius:20px;overflow:hidden">'+
+      '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#0d7a5f,#1aa87c);border-radius:20px"></div></div></div>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

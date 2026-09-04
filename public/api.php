@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;use Aio\Services\RetailCatalog;use Aio\Services\RetailPos;use Aio\Services\RegionProfile;
 header('Content-Type: application/json; charset=utf-8');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
@@ -52,6 +52,9 @@ function pos_bill_guard(array $d):string{
   return pos_bill_no((int)\Aio\Services\PageData::nextBill());
 }
 function needLogin(){if(!Auth::user())fail('Login required',401);}function needSuper(){if(!Platform::superUser())fail('Super admin login required',401);}
+/* Retail endpoints sirf RETAIL business ke liye. Restaurant tenant se
+   aane wali request yahin ruk jati hai, chahe URL haath se likha ho. */
+function needRetail(){if(Auth::tenantIndustry()!=='RETAIL')fail('This business is not a retail store',403);}
 /* ============================================================
    SYNC AUTH — ab PER-TENANT.
    Pehle sirf ek GLOBAL token check hota tha: leaked token se koi bhi
@@ -1714,8 +1717,8 @@ case 'sync-status':needLogin();
     nahi. */
  $st['cloud_configured']=(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''))!=='';
  ok(['status'=>$st]);
-case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
-case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
+case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){ok(['rows'=>RetailCatalog::listOf($mod),'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
+case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){try{$id=RetailCatalog::saveList($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
 case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));
  /* V62 — YAHAN KHAMOSH FAILURE THI.
     Pehle yeh endpoint ok() kar deta tha chahe ek bhi row na badli ho,
@@ -2008,6 +2011,88 @@ case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??''
 case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
 case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);
 case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations','sites','users','platform_users','platform_modules','subscription_plans','tenant_subscriptions','subscription_payments','orders','order_items','payments','payment_methods','customers','suppliers','menu_items','menu_categories','inventory_items','stock_balances','kitchen_tickets','cashier_shifts','expenses','ui_records','sync_state'];$missing=[];foreach($need as $t){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$t]);if(!(int)$q->fetchColumn())$missing[]=$t;}$cols=[];foreach([['tenants','slug'],['tenants','industry_code'],['tenants','sync_token'],['tenants','owner_email'],['suppliers','city'],['suppliers','category']] as $c){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");$q->execute($c);if(!(int)$q->fetchColumn())$cols[]=implode('.',$c);}ok(['db'=>cfg('db.database'),'php'=>PHP_VERSION,'role'=>cfg('app.role'),'missing_tables'=>$missing,'missing_columns'=>$cols,'healthy'=>!$missing&&!$cols]);
+
+/* ============================================================
+   RETAIL (supermarket) vertical ke endpoints.
+   Sab par industry gate hai — restaurant tenant yahan tak
+   pohanch hi nahi sakta, chahe URL haath se likhe.
+   ============================================================ */
+case 'retail-boot':
+  needLogin(); needRetail();
+  $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,region_profile,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");
+  $tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
+  $sq=$p->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);
+  ok([
+    'business'=>['id'=>$t['id'],'name'=>$t['dn'],'slug'=>$t['slug'],
+                 'industry'=>$t['industry_code'],'region'=>$t['region_profile']],
+    'branch'=>(string)($sq->fetchColumn()?:'Main Branch'),
+    'region'=>RegionProfile::forClient((string)$t['region_profile']),
+    'user'=>['id'=>Auth::user()['id']??'','name'=>Auth::user()['full_name']??'',
+             'is_admin'=>(bool)(Auth::user()['is_tenant_admin']??false),
+             'modules'=>Auth::user()['modules']??[]],
+    'counters'=>RetailCatalog::listOf('counters'),
+  ]);
+
+case 'retail-lookup':
+  needLogin(); needRetail();
+  $code=(string)($_GET['code']??'');if($code==='')fail('code required');
+  $hit=RetailCatalog::findByCode($code);
+  if(!$hit)fail('Not found: '.$code,404);
+  ok(['hit'=>$hit]);
+
+case 'retail-search':
+  needLogin(); needRetail();
+  ok(['rows'=>RetailCatalog::search((string)($_GET['q']??''),(int)($_GET['limit']??12))]);
+
+case 'retail-customers':
+  needLogin(); needRetail();
+  $q=DB::pdo()->prepare("SELECT id,full_name name,phone,area,customer_type,credit_limit,balance,loyalty_points
+                           FROM customers WHERE tenant_id=? AND deleted_at IS NULL ORDER BY full_name");
+  $q->execute([tenant_id()]);ok(['rows'=>$q->fetchAll()]);
+
+case 'rpos-sale':
+  needLogin(); needRetail(); csrf_json();
+  try{ ok(['sale'=>RetailPos::saveSale(body())]); }catch(Throwable $e){ fail($e->getMessage()); }
+
+case 'rpos-sales':
+  needLogin(); needRetail();
+  ok(['rows'=>RetailPos::sales((int)($_GET['limit']??100))]);
+
+case 'rpos-sale-get':
+  needLogin(); needRetail();
+  $s=RetailPos::sale((string)($_GET['id']??''));if(!$s)fail('Bill not found',404);ok(['sale'=>$s]);
+
+/* Duplicate bill. Har copy ginti mein aati hai — reprint_count receipt
+   par chhapta hai aur audit_log mein bhi jata hai. */
+case 'rpos-reprint':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(['sale'=>RetailPos::reprint((string)($d['id']??''),(string)($d['reason']??''))]); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
+case 'rpos-held':
+  needLogin(); needRetail();
+  ok(['rows'=>RetailPos::heldBills()]);
+
+case 'rpos-hold':
+  needLogin(); needRetail(); csrf_json();
+  ok(['id'=>RetailPos::hold(body())]);
+
+case 'rpos-hold-release':
+  needLogin(); needRetail(); csrf_json();
+  RetailPos::releaseHold((string)(body()['id']??''));ok();
+
+case 'rpos-ledger':
+  needLogin(); needRetail();
+  ok(['rows'=>RetailPos::ledger((string)($_GET['customer_id']??''))]);
+
+case 'rpos-receive':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(RetailPos::receivePayment((string)($d['customer_id']??''),(float)($d['amount']??0),
+                                    (string)($d['method']??'CASH'),(string)($d['note']??''))); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
 default:fail('Unknown API action',404);}
 }catch(Throwable $e){
   try{@file_put_contents(dirname(__DIR__).'/storage/logs/api-error.log','['.date('c').'] action='.($_GET['action']??'').' :: '.$e->getMessage().PHP_EOL,FILE_APPEND);}catch(Throwable $x){}
