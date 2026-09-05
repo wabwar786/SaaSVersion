@@ -102,20 +102,36 @@
     }).join('');
     var colHead = (cfg.columns || []).map(function (c) { return '<th' + (c.align === 'num' ? ' class="num"' : '') + '>' + esc(c.label) + '</th>'; }).join('');
 
+    /* Filters — har list screen apne filters config kar sakti hai.
+       Bare catalog par sirf search kaafi nahi hoti: "Bakery ka low stock"
+       dhoondna search se mumkin hi nahi tha. */
+    var filterHtml = (cfg.filters || []).map(function (f) {
+      return '<select data-flt="' + f.key + '" style="width:auto;min-width:150px">' +
+        '<option value="">' + esc(f.label) + ': sab</option></select>';
+    }).join('');
+
     $('.content').innerHTML =
       (kpiHtml ? '<div class="kpis">' + kpiHtml + '</div>' : '') +
       (cfg.note ? '<div class="note" style="margin-bottom:14px">' + cfg.note + '</div>' : '') +
-      '<section class="panel"><div class="panel-head">' +
+      '<section class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:8px">' +
       '<div><h2>' + esc(cfg.listTitle || cfg.title) + '</h2>' + (cfg.listSub ? '<p>' + esc(cfg.listSub) + '</p>' : '') + '</div>' +
       '<span class="spacer"></span>' +
-      '<div class="search" style="width:280px"><input id="mSearch" placeholder="' + esc(cfg.searchPlaceholder || 'Search…') + '"></div>' +
+      filterHtml +
+      '<div class="search" style="width:250px"><input id="mSearch" placeholder="' + esc(cfg.searchPlaceholder || 'Search…') + '"></div>' +
       '</div><div class="panel-body flush">' +
       '<div class="table-wrap"><table class="table"><thead><tr>' + colHead +
       (canAdd ? '<th style="text-align:right">Actions</th>' : '') + '</tr></thead><tbody id="mRows"></tbody></table></div>' +
       '<div id="mEmpty" class="empty" style="display:none"><div class="ico">' + (cfg.emptyIcon || '▦') + '</div>' +
-      '<h3>Nothing here yet</h3><p>' + esc(cfg.emptyText || 'No records match. Add a new one to get started.') + '</p>' +
+      '<h3>Kuch nahi mila</h3><p>' + esc(cfg.emptyText || 'Filter badal kar dekhein ya naya record add karein.') + '</p>' +
       (canAdd ? '<button class="btn primary" id="mEmptyAdd">' + esc(cfg.addLabel || '+ New') + '</button>' : '') + '</div>' +
-      '</div></section>';
+      '<div id="mPager" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)">' +
+      '<span id="mCount" style="color:var(--muted);font-size:12px"></span>' +
+      '<span style="flex:1"></span>' +
+      '<button class="btn sm" id="mPrev">← Pichla</button>' +
+      '<span id="mPageNo" style="font-size:12px;font-weight:600"></span>' +
+      '<button class="btn sm" id="mNext">Agla →</button>' +
+      '<select id="mPageSize" style="width:auto"><option>50</option><option>100</option><option>200</option></select>' +
+      '</div></div></section>';
 
     var head = $('.header');
     if (canAdd && head && !$('#mNewBtn')) {
@@ -145,6 +161,7 @@
         else {
           var t = (f.type === 'number' || f.type === 'money') ? 'number' : (f.type || 'text');
           inp = '<input data-f="' + f.key + '" type="' + t + '"' +
+            (f.autoFrom ? ' data-auto="' + f.autoFrom + '"' : '') +
             (f.type === 'money' || f.type === 'number' ? ' step="' + (f.step || 'any') + '" min="0"' : '') +
             ' placeholder="' + esc(f.placeholder || '') + '">';
         }
@@ -157,7 +174,8 @@
         '<div><h3 id="mFormTitle">' + esc(cfg.addLabel || 'New') + '</h3><p>' + esc(cfg.formSub || 'Fill in the details below') + '</p></div>' +
         '<button class="close" data-close>×</button></div>' +
         '<div class="dialog-body"><div class="form-grid">' + fieldsHtml + '</div></div>' +
-        '<div class="dialog-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mSave">Save</button></div></div></div>' +
+        '<div class="dialog-foot"><button class="btn" data-close>Cancel</button>' +
+        '<button class="btn primary" id="mSave">Save</button></div></div></div>' +
         '<div class="modal" id="mDel"><div class="dialog" style="width:min(420px,100%)"><div class="dialog-head">' +
         '<div><h3>Remove record?</h3><p id="mDelName"></p></div><button class="close" data-close>×</button></div>' +
         '<div class="dialog-body"><div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)">' +
@@ -167,19 +185,59 @@
     }
     if (!$('#toast')) { var tt = document.createElement('div'); tt.className = 'toast'; tt.id = 'toast'; document.body.appendChild(tt); }
 
-    function reload() { rows = db.list() || []; paint(); }
+    var page = 1, pageSize = 50;
+
+    function fillFilters() {
+      (cfg.filters || []).forEach(function (f) {
+        var el = document.querySelector('[data-flt="' + f.key + '"]');
+        if (!el) return;
+        var cur = el.value;
+        var opts = typeof f.options === 'function' ? f.options(rows) : (f.options || []);
+        el.innerHTML = '<option value="">' + esc(f.label) + ': sab</option>' +
+          opts.map(function (o) {
+            var v = (typeof o === 'object') ? o.value : o;
+            var l = (typeof o === 'object') ? o.label : o;
+            return '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + esc(l) + '</option>';
+          }).join('');
+      });
+    }
+
+    function reload() { rows = db.list() || []; fillFilters(); paint(); }
+
     function paint() {
       var q = ($('#mSearch').value || '').toLowerCase();
       var f = rows.filter(function (r) {
-        if (!q) return true;
-        return (cfg.searchFields || []).some(function (k) { return String(r[k] || '').toLowerCase().indexOf(q) > -1; });
+        if (q && !(cfg.searchFields || []).some(function (k) { return String(r[k] || '').toLowerCase().indexOf(q) > -1; })) return false;
+        /* har active filter ka apna test */
+        return (cfg.filters || []).every(function (flt) {
+          var el = document.querySelector('[data-flt="' + flt.key + '"]');
+          var v = el ? el.value : '';
+          if (!v) return true;
+          return flt.test ? flt.test(r, v) : String(r[flt.key] || '') === v;
+        });
       });
       (cfg.kpis || []).forEach(function (k) {
         var el = document.querySelector('[data-kpi="' + k.label.replace(/"/g, '') + '"]');
         if (el) el.textContent = k.calc(rows, M);
       });
       $('#mEmpty').style.display = f.length ? 'none' : 'block';
-      $('#mRows').innerHTML = f.map(function (r) {
+
+      /* Pagination — 50 per page default. Pehle poori list ek saath
+         render hoti thi; 50,000 products par browser hi jam jata. */
+      var pages = Math.max(1, Math.ceil(f.length / pageSize));
+      if (page > pages) page = pages;
+      var from = (page - 1) * pageSize;
+      var slice = f.slice(from, from + pageSize);
+      $('#mPager').style.display = f.length ? 'flex' : 'none';
+      $('#mCount').textContent = f.length
+        ? (from + 1) + '–' + (from + slice.length) + ' of ' + f.length +
+          (f.length !== rows.length ? ' (filtered from ' + rows.length + ')' : '')
+        : '';
+      $('#mPageNo').textContent = 'Page ' + page + ' / ' + pages;
+      $('#mPrev').disabled = page <= 1;
+      $('#mNext').disabled = page >= pages;
+
+      $('#mRows').innerHTML = slice.map(function (r) {
         var tds = (cfg.columns || []).map(function (c) { return '<td' + (c.align === 'num' ? ' class="num"' : '') + '>' + fmtCell(r, c) + '</td>'; }).join('');
         var act = canAdd ? '<td><div class="row-actions"><button title="Edit" data-edit="' + r.id + '">✎</button>' +
           '<button title="Remove" data-del="' + r.id + '">🗑</button></div></td>' : '';
@@ -203,9 +261,22 @@
         if (f.type === 'select' && typeof f.options === 'function') el.innerHTML = selectOptions(f, val);
         el.value = val;
       });
+      /* MRP jaise fields: source badle to sath chalein — jab tak user ne
+         khud haath na lagaya ho. Zyadatar dukanon mein MRP aur sale
+         price ek hi hoti hai, is liye dobara likhwana faltu kaam hai. */
+      document.querySelectorAll('[data-auto]').forEach(function (tgt) {
+        var srcKey = tgt.getAttribute('data-auto');
+        var src = document.querySelector('[data-f="' + srcKey + '"]');
+        if (!src) return;
+        tgt.dataset.touched = (r && Number(r[tgt.getAttribute('data-f')]) &&
+                               Number(r[tgt.getAttribute('data-f')]) !== Number(r[srcKey])) ? '1' : '';
+        tgt.oninput = function () { this.dataset.touched = '1'; };
+        src.oninput = function () { if (!tgt.dataset.touched) tgt.value = this.value; };
+      });
+
       openM('mForm');
       var first = document.querySelector('[data-f]');
-      if (first) setTimeout(function () { first.focus(); }, 60);
+      if (first) setTimeout(function () { first.focus(); first.select && first.select(); }, 60);
     }
 
     function save() {
@@ -268,7 +339,13 @@
       }
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeM(); });
-    var s = $('#mSearch'); if (s) s.oninput = paint;
+    var s = $('#mSearch'); if (s) s.oninput = function () { page = 1; paint(); };
+    document.querySelectorAll('[data-flt]').forEach(function (el) {
+      el.onchange = function () { page = 1; paint(); };
+    });
+    if ($('#mPrev')) $('#mPrev').onclick = function () { if (page > 1) { page--; paint(); window.scrollTo(0, 0); } };
+    if ($('#mNext')) $('#mNext').onclick = function () { page++; paint(); window.scrollTo(0, 0); };
+    if ($('#mPageSize')) $('#mPageSize').onchange = function () { pageSize = Number(this.value) || 50; page = 1; paint(); };
     reload();
   }
 

@@ -17,6 +17,24 @@
       recordName: 'Product', addLabel: '+ New product', wideForm: true,
       listTitle: 'All products', listSub: 'Barcode, pricing, tax and stock levels — POS isi list se chalti hai',
       searchPlaceholder: 'Search naam ya barcode', searchFields: ['name', 'sku'], emptyIcon: '▣',
+      /* Bare catalog par sirf search kaafi nahi — "Bakery ka low stock"
+         search se dhoonda hi nahi ja sakta tha. */
+      filters: [
+        { key: 'department_id', label: 'Department',
+          options: function () { return S.get('departments').map(function (d) { return { value: d.id, label: d.name }; }); } },
+        { key: 'category_id', label: 'Category',
+          options: function () { return S.get('categories').map(function (c) { return { value: c.id, label: c.name }; }); } },
+        { key: 'brand_id', label: 'Brand',
+          options: function () { return S.get('brands').map(function (b) { return { value: b.id, label: b.name }; }); } },
+        { key: 'stock_state', label: 'Stock', options: ['Out of stock', 'Low stock', 'In stock'],
+          test: function (r, v) {
+            var q = Number(r.stock_qty || 0), m = Number(r.min_stock || 0);
+            if (v === 'Out of stock') return q <= 0;
+            if (v === 'Low stock') return q > 0 && q <= m;
+            return q > m;
+          } },
+        { key: 'status', label: 'Status', options: ['Active', 'Inactive'] }
+      ],
       kpis: [
         { label: 'Products', calc: function (r) { return r.length; } },
         { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); } },
@@ -55,32 +73,28 @@
         { label: 'Status', field: 'status', format: 'tag', tags: { Active: 'ok', Inactive: 'neutral' } }
       ],
       fields: [
-        /* TARTEEB SOCH KAR: upar wahi 5 cheezein jo har item par lagti
-           hain — naam, barcode, rate, cost, stock. Baaki neeche.
-           SKU form se nikal diya: supermarket mein item BARCODE se
-           pehchana jata hai; SKU sirf andaruni number hai jo system
-           khud bana leta hai (RetailCatalog::nextSku). */
-        { key: 'name', label: 'Product name', type: 'text', required: true, full: true, placeholder: 'Falak Super Basmati Rice 5 KG' },
-        { key: 'barcode', label: 'Barcode', type: 'text', required: true, hint: 'scanner se scan kar dein', placeholder: '8964000112233' },
-        { key: 'retail_price', label: 'Retail price', type: 'money', required: true, default: 0 },
-        { key: 'cost_price', label: 'Cost price', type: 'money', default: 0 },
-        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
+        /* Sirf 12 fields — wahi jo item banate waqt waqai chahiye.
+           Zaroori: barcode, naam, cost, sale price.
+           Wholesale, scale/PLU, batch tracking, shelf life yahan se
+           nikal diye — woh baad mein edit se set hote hain. Counter par
+           ek item banane mein aadha minute nahi lagna chahiye. */
+        { key: 'barcode', label: 'Barcode', type: 'text', required: true,
+          hint: 'scanner se scan kar dein', placeholder: '8964000112233' },
+        { key: 'name', label: 'Item name', type: 'text', required: true, full: true,
+          placeholder: 'Falak Super Basmati Rice 5 KG' },
         { key: 'department_id', label: 'Department', type: 'select', options: opts('departments'), addable: 'departments' },
         { key: 'category_id', label: 'Category', type: 'select', options: opts('categories'), addable: 'categories' },
         { key: 'brand_id', label: 'Brand', type: 'select', options: opts('brands'), addable: 'brands' },
         { key: 'base_unit_id', label: 'Unit', type: 'select', options: opts('units'), addable: 'uom' },
-        { key: 'wholesale_price', label: 'Wholesale price', type: 'money', default: 0 },
-        { key: 'mrp', label: 'MRP / printed price', type: 'money', default: 0 },
-        { key: 'tax_rate', label: 'Tax rate %', type: 'number', default: 0, hint: 'region ke hisaab se' },
-        { key: 'min_stock', label: 'Reorder level', type: 'number', default: 0 },
-        { key: 'max_stock', label: 'Max stock', type: 'number', default: 0 },
-        { key: 'is_scale_item', label: 'Scale item?', type: 'select', options: [{ value: 0, label: 'No — barcode item' }, { value: 1, label: 'Yes — weighed at scale' }] },
-        { key: 'plu_code', label: 'PLU code', type: 'text', hint: 'scale items ke liye', placeholder: '00201' },
-        { key: 'track_batch', label: 'Track batch & expiry?', type: 'select', options: [{ value: 0, label: 'No' }, { value: 1, label: 'Yes' }] },
-        { key: 'shelf_life_days', label: 'Shelf life (days)', type: 'number', default: 0 },
-        { key: 'status', label: 'Status', type: 'select', options: ['Active', 'Inactive'], default: 'Active' }
+        { key: 'cost_price', label: 'Cost price', type: 'money', required: true, default: 0 },
+        { key: 'retail_price', label: 'Sale price', type: 'money', required: true, default: 0 },
+        { key: 'mrp', label: 'MRP / printed price', type: 'money', default: 0,
+          autoFrom: 'retail_price', hint: 'sale price se khud bharta hai' },
+        { key: 'tax_rate', label: 'Tax %', type: 'number', default: 0 },
+        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
+        { key: 'min_stock', label: 'Reorder level', type: 'number', default: 0 }
       ],
-      onCreate: function (d) { d.barcodes = d.barcode ? [d.barcode] : []; delete d.barcode; }
+            onCreate: function (d) { d.barcodes = d.barcode ? [d.barcode] : []; delete d.barcode; }
     },
 
     /* ---------------- Departments ---------------- */
@@ -373,6 +387,17 @@
     stock: {
       key: 'products', title: 'Stock on Hand', storeKey: 'products', canAdd: false,
       listTitle: 'Stock position', listSub: 'Reorder level se neeche wale items sab se upar dekhein',
+      filters: [
+        { key: 'department_id', label: 'Department',
+          options: function () { return S.get('departments').map(function (d) { return { value: d.id, label: d.name }; }); } },
+        { key: 'stock_state', label: 'Stock', options: ['Out of stock', 'Low stock', 'In stock'],
+          test: function (r, v) {
+            var q = Number(r.stock_qty || 0), m = Number(r.min_stock || 0);
+            if (v === 'Out of stock') return q <= 0;
+            if (v === 'Low stock') return q > 0 && q <= m;
+            return q > m;
+          } }
+      ],
       searchPlaceholder: 'Search product or SKU', searchFields: ['name', 'sku'], emptyIcon: '\u25a6',
       kpis: [
         { label: 'SKUs', calc: function (r) { return r.length; } },
@@ -405,6 +430,18 @@
       note: 'Yahan rate badalne se POS par foran lagta hai. Shelf tag dobara chhapna na bhoolein \u2014 <b>Barcode & Shelf Labels</b>.',
       listTitle: 'Prices & margins', listSub: 'Cost, retail, wholesale aur margin ek jagah',
       searchPlaceholder: 'Search product', searchFields: ['name', 'sku'], emptyIcon: '%',
+      filters: [
+        { key: 'department_id', label: 'Department',
+          options: function () { return S.get('departments').map(function (d) { return { value: d.id, label: d.name }; }); } },
+        { key: 'margin_state', label: 'Margin', options: ['Below cost', 'Under 8%', 'Healthy'],
+          test: function (r, v) {
+            if (!r.retail_price) return false;
+            var m = (r.retail_price - r.cost_price) / r.retail_price * 100;
+            if (v === 'Below cost') return m < 0;
+            if (v === 'Under 8%') return m >= 0 && m < 8;
+            return m >= 8;
+          } }
+      ],
       kpis: [
         { label: 'Products', calc: function (r) { return r.length; } },
         { label: 'Avg margin', tone: 'ok', calc: function (r) {
