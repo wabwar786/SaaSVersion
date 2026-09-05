@@ -16,7 +16,7 @@
       key: 'products', title: 'Product Catalog', storeKey: 'products',
       recordName: 'Product', addLabel: '+ New product', wideForm: true,
       listTitle: 'All products', listSub: 'Barcode, pricing, tax and stock levels — POS isi list se chalti hai',
-      searchPlaceholder: 'Search name, SKU or barcode', searchFields: ['name', 'sku'], emptyIcon: '▣',
+      searchPlaceholder: 'Search naam ya barcode', searchFields: ['name', 'sku'], emptyIcon: '▣',
       kpis: [
         { label: 'Products', calc: function (r) { return r.length; } },
         { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); } },
@@ -27,8 +27,9 @@
       columns: [
         {
           label: 'Product', field: 'name', render: function (r, M) {
-            var b = (r.barcodes || [])[0] || (r.is_scale_item ? 'PLU ' + r.plu_code : 'no barcode');
-            return '<span class="t-main">' + M.esc(r.name) + '</span><span class="t-sub">' + M.esc(r.sku) + ' · ' + M.esc(b) + '</span>';
+            var b = (r.barcodes || [])[0] || (r.is_scale_item ? 'PLU ' + r.plu_code : '');
+            return '<span class="t-main">' + M.esc(r.name) + '</span><span class="t-sub">' +
+              (b ? M.esc(b) : '<span style="color:var(--warn)">barcode nahi</span>') + '</span>';
           }
         },
         { label: 'Department', render: function (r, M) { return M.esc(S.name('departments', r.department_id)); } },
@@ -54,19 +55,23 @@
         { label: 'Status', field: 'status', format: 'tag', tags: { Active: 'ok', Inactive: 'neutral' } }
       ],
       fields: [
+        /* TARTEEB SOCH KAR: upar wahi 5 cheezein jo har item par lagti
+           hain — naam, barcode, rate, cost, stock. Baaki neeche.
+           SKU form se nikal diya: supermarket mein item BARCODE se
+           pehchana jata hai; SKU sirf andaruni number hai jo system
+           khud bana leta hai (RetailCatalog::nextSku). */
         { key: 'name', label: 'Product name', type: 'text', required: true, full: true, placeholder: 'Falak Super Basmati Rice 5 KG' },
-        { key: 'sku', label: 'SKU', type: 'text', required: true, placeholder: 'GRO-0001' },
-        { key: 'barcode', label: 'Barcode', type: 'text', hint: 'EAN-13 / UPC-A', placeholder: '8964000112233' },
-        { key: 'department_id', label: 'Department', type: 'select', options: opts('departments') },
-        { key: 'category_id', label: 'Category', type: 'select', options: opts('categories') },
-        { key: 'brand_id', label: 'Brand', type: 'select', options: opts('brands') },
-        { key: 'base_unit_id', label: 'Base unit', type: 'select', options: opts('units') },
-        { key: 'cost_price', label: 'Cost price', type: 'money', required: true, default: 0 },
+        { key: 'barcode', label: 'Barcode', type: 'text', required: true, hint: 'scanner se scan kar dein', placeholder: '8964000112233' },
         { key: 'retail_price', label: 'Retail price', type: 'money', required: true, default: 0 },
+        { key: 'cost_price', label: 'Cost price', type: 'money', default: 0 },
+        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
+        { key: 'department_id', label: 'Department', type: 'select', options: opts('departments'), addable: 'departments' },
+        { key: 'category_id', label: 'Category', type: 'select', options: opts('categories'), addable: 'categories' },
+        { key: 'brand_id', label: 'Brand', type: 'select', options: opts('brands'), addable: 'brands' },
+        { key: 'base_unit_id', label: 'Unit', type: 'select', options: opts('units'), addable: 'uom' },
         { key: 'wholesale_price', label: 'Wholesale price', type: 'money', default: 0 },
         { key: 'mrp', label: 'MRP / printed price', type: 'money', default: 0 },
         { key: 'tax_rate', label: 'Tax rate %', type: 'number', default: 0, hint: 'region ke hisaab se' },
-        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
         { key: 'min_stock', label: 'Reorder level', type: 'number', default: 0 },
         { key: 'max_stock', label: 'Max stock', type: 'number', default: 0 },
         { key: 'is_scale_item', label: 'Scale item?', type: 'select', options: [{ value: 0, label: 'No — barcode item' }, { value: 1, label: 'Yes — weighed at scale' }] },
@@ -125,7 +130,7 @@
       ],
       fields: [
         { key: 'name', label: 'Category name', type: 'text', required: true, full: true },
-        { key: 'department_id', label: 'Department', type: 'select', options: opts('departments'), full: true }
+        { key: 'department_id', label: 'Department', type: 'select', options: opts('departments'), addable: 'departments', full: true }
       ]
     },
 
@@ -425,7 +430,7 @@
       ],
       fields: [
         { key: 'name', label: 'Product name', type: 'text', required: true, full: true },
-        { key: 'sku', label: 'SKU', type: 'text', required: true },
+        { key: 'barcode', label: 'Barcode', type: 'text', hint: 'scan kar dein' },
         { key: 'cost_price', label: 'Cost price', type: 'money', default: 0 },
         { key: 'retail_price', label: 'Retail price', type: 'money', required: true, default: 0 },
         { key: 'wholesale_price', label: 'Wholesale price', type: 'money', default: 0 },
@@ -457,9 +462,8 @@
       ],
       fields: [
         { key: 'name', label: 'Item name', type: 'text', required: true, full: true, placeholder: 'Tomato (loose)' },
-        { key: 'sku', label: 'SKU', type: 'text', required: true },
         { key: 'plu_code', label: 'PLU code', type: 'text', required: true, hint: 'taraazu wala', placeholder: '00201' },
-        { key: 'base_unit_id', label: 'Unit', type: 'select', options: opts('units') },
+        { key: 'base_unit_id', label: 'Unit', type: 'select', options: opts('units'), addable: 'uom' },
         { key: 'retail_price', label: 'Rate per unit', type: 'money', required: true, default: 0 },
         { key: 'cost_price', label: 'Cost per unit', type: 'money', default: 0 },
         { key: 'wholesale_price', label: 'Wholesale rate', type: 'money', default: 0 },

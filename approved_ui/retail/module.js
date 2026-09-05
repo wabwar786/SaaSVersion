@@ -59,6 +59,16 @@
     };
   }
 
+  /* select ke options banao (function ya array dono chalte hain) */
+  function selectOptions(f, selected) {
+    var opts = typeof f.options === 'function' ? f.options() : (f.options || []);
+    return opts.map(function (o) {
+      var v = (typeof o === 'object') ? o.value : o;
+      var l = (typeof o === 'object') ? o.label : o;
+      return '<option value="' + esc(v) + '"' + (String(v) === String(selected) ? ' selected' : '') + '>' + esc(l) + '</option>';
+    }).join('');
+  }
+
   function toast(m, err) {
     var t = $('#toast');
     if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
@@ -120,11 +130,16 @@
           (f.hint ? ' <span class="hint">· ' + esc(f.hint) + '</span>' : '') + '</span>';
         var inp;
         if (f.type === 'select') {
-          var opts = typeof f.options === 'function' ? f.options() : (f.options || []);
-          inp = '<select data-f="' + f.key + '">' + opts.map(function (o) {
-            return typeof o === 'object' ? '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>'
-              : '<option>' + esc(o) + '</option>';
-          }).join('') + '</select>';
+          inp = '<select data-f="' + f.key + '">' + selectOptions(f) + '</select>';
+          /* addable = is dropdown ke saath "+" aata hai. Naya department
+             ya brand banane ke liye product form chhorna na pare —
+             counter par item banate waqt yehi sab se zyada rukawat thi. */
+          if (f.addable) {
+            inp = '<div style="display:flex;gap:6px">' + inp +
+              '<button type="button" class="btn icon" data-addopt="' + f.key + '" ' +
+              'data-mod="' + f.addable + '" title="Naya add karein" ' +
+              'style="flex-shrink:0;width:38px">+</button></div>';
+          }
         }
         else if (f.type === 'textarea') { inp = '<textarea data-f="' + f.key + '" placeholder="' + esc(f.placeholder || '') + '"></textarea>'; }
         else {
@@ -179,7 +194,14 @@
       (cfg.fields || []).forEach(function (f) {
         var el = document.querySelector('[data-f="' + f.key + '"]');
         if (!el) return;
-        el.value = r ? (r[f.key] != null ? r[f.key] : '') : (f.default != null ? f.default : '');
+        var val = r ? (r[f.key] != null ? r[f.key] : '') : (f.default != null ? f.default : '');
+        /* Product ke barcodes alag table mein hain (ek product ke kai ho
+           sakte hain). Edit form ek hi dikhata hai — pehla. Warna edit
+           par barcode khali aata aur save karne par gum ho jata. */
+        if (f.key === 'barcode' && r && Array.isArray(r.barcodes)) val = r.barcodes[0] || '';
+        /* Dropdowns har dafa taza — "+" se jo abhi add hua wo bhi dikhe */
+        if (f.type === 'select' && typeof f.options === 'function') el.innerHTML = selectOptions(f, val);
+        el.value = val;
       });
       openM('mForm');
       var first = document.querySelector('[data-f]');
@@ -204,6 +226,31 @@
     }
 
     document.addEventListener('click', function (e) {
+      /* dropdown ke saath wala "+" */
+      var ao = e.target.closest('[data-addopt]');
+      if (ao) {
+        var fkey = ao.getAttribute('data-addopt'), mod = ao.getAttribute('data-mod');
+        var name = prompt('Naya ' + mod.replace(/s$/, '') + ' ka naam:');
+        if (!name || !name.trim()) return;
+        var newId;
+        try {
+          if (window.RetailStore && RetailStore.online) {
+            newId = RetailStore.api('records-save', { module: mod, data: { name: name.trim() } }).id;
+            RetailStore.invalidate(mod === 'uom' ? 'units' : mod);
+          } else {
+            var coll = (mod === 'uom') ? 'units' : mod;
+            var rows = RetailStore.get(coll);
+            newId = 'r-' + Date.now();
+            rows.unshift({ id: newId, name: name.trim() });
+            RetailStore.set(coll, rows);
+          }
+        } catch (er) { toast(er.message || 'Add nahi hua', true); return; }
+        var fld = (cfg.fields || []).filter(function (x) { return x.key === fkey; })[0];
+        var sel = document.querySelector('[data-f="' + fkey + '"]');
+        if (fld && sel) sel.innerHTML = selectOptions(fld, newId);
+        toast(name.trim() + ' add ho gaya');
+        return;
+      }
       if (e.target.closest('#mNewBtn') || e.target.closest('#mEmptyAdd')) { openForm(); return; }
       if (e.target.closest('#mSave')) { save(); return; }
       if (e.target.closest('[data-close]')) { closeM(); return; }

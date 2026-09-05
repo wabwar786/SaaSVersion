@@ -118,7 +118,7 @@ $html=file_get_contents($file);
 if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
-  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|module\.js|module_config\.js|shell\.js)"/',
+  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
                      '$1="/retail/$2?b=r1"', $html);
 }else{
 $html=str_replace(

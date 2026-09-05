@@ -331,10 +331,21 @@ final class RetailCatalog
             'counters'    => ['name','device_name','printer','drawer','cashier','opening_cash','status'],
         ][$module];
 
+        /* Dropdown ka "+" sirf {name} bhejta hai. Pehle ghair-maujood
+           field null ban jati thi aur `sort_order` (NOT NULL) par poora
+           insert gir jata tha — yani naya department form ke andar se
+           add ho hi nahi sakta tha. Ab har numeric field ki apni default
+           value hai, aur null bhi khali ki tarah bharta hai. */
+        $numDefaults = ['sort_order' => 99, 'qty' => 0, 'cost_price' => 0, 'opening_cash' => 0];
+        $textDefaults = ['drawer' => 'Attached', 'status' => 'Closed'];
         $vals = [];
         foreach ($fields as $f) {
             $v = $d[$f] ?? null;
-            if ($v === '') $v = \in_array($f, ['sort_order','qty','cost_price','opening_cash'], true) ? 0 : null;
+            if ($v === null || $v === '') {
+                if (\array_key_exists($f, $numDefaults))  $v = $numDefaults[$f];
+                elseif (\array_key_exists($f, $textDefaults) && $module === 'counters') $v = $textDefaults[$f];
+                else $v = null;
+            }
             $vals[$f] = $v;
         }
         $p = DB::pdo(); $tid = tenant_id();
