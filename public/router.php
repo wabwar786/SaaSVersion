@@ -98,7 +98,16 @@ if(!in_array($name,$publicPages,true)){
 
 $uiDir = 'approved_ui';
 try{ if(Auth::user() && Auth::tenantIndustry()==='RETAIL') $uiDir='approved_ui/retail'; }catch(\Throwable $e){}
-$file=dirname(__DIR__).'/'.$uiDir.'/'.$name;
+/* AHEM: yahan path ko variable se mat joro.
+   Offline package `build_offline_bundle.php` se banta hai jo LITERAL
+   string `dirname(__DIR__).'/approved_ui/` ko `'sealed://approved_ui/`
+   se badalta hai. Variable concat us pattern se match nahi karta, is
+   liye offline node par har page "Page not found" ho jata tha —
+   login.html samet. Dono raaste alag alag literal likhe hain taake
+   rewrite dono par lage. */
+$file = ($uiDir === 'approved_ui/retail')
+      ? dirname(__DIR__).'/approved_ui/retail/'.$name
+      : dirname(__DIR__).'/approved_ui/'.$name;
 /* Retail mein woh page na ho to restaurant wali common screen par mat
    giro — 404 behtar hai. Warna supermarket ka user achanak KDS dekh leta. */
 if(!is_file($file)){http_response_code(404);exit('Page not found');}

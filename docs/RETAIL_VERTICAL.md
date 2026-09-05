@@ -392,3 +392,64 @@ dene ke bajaye wajah batata hai):
 | Weighing scale (live read) | Sirf offline | Serial/USB. **Scale ka chhapa hua label** cloud par bhi scan ho jata hai |
 | POS, stock, khata, GRN, reports | Dono | Sync hoti rehti hai |
 | Offline download | Sirf online | Package cloud par banta hai, sync token us mein seal hota hai |
+
+---
+
+## 15. Offline node par "Page not found" — kya hua tha
+
+Offline package mein **har** page not-found de raha tha, `login.html`
+samet.
+
+**Wajah (meri hi ghalti):** offline package `build_offline_bundle.php`
+banata hai, jo code mein **literal string** dhoondh kar badalta hai:
+
+```
+dirname(__DIR__).'/approved_ui/     ->     'sealed://approved_ui/
+```
+
+Maine router mein retail ke liye path ko variable bana diya tha:
+
+```php
+$file = dirname(__DIR__).'/'.$uiDir.'/'.$name;   // ← rewrite match nahi karta
+```
+
+Cloud par yeh bilkul theek chalta hai (files disk par hain), magar
+sealed package mein files **disk par hoti hi nahi** — seal ke andar
+hoti hain. Rewrite na lagne se router asli filesystem par file dhoondta
+raha aur har page 404 ho gaya.
+
+**Fix:** dono raaste alag alag **literal** likhe gaye taake rewrite dono
+par lage:
+
+```php
+$file = ($uiDir === 'approved_ui/retail')
+      ? dirname(__DIR__).'/approved_ui/retail/'.$name
+      : dirname(__DIR__).'/approved_ui/'.$name;
+```
+
+**Sabaq:** cloud par test kar lena kaafi nahi tha. Sealed package ka
+apna path model hai, aur wahi customer ko milta hai.
+
+**Test:** asli offline package bana kar, alag DB (port 3307) par chala
+kar — 41 ki 41 pages **200**. `kds.html` 404 (retail tenant), download
+button khud disabled ("Aap pehle se offline version par hain"), aur
+`APP_ROLE=local` hone ki wajah se FBR ka gate hat gaya yani tax module
+node par chalta hai.
+
+---
+
+## 16. Auto-sync start nahi hoti thi (purana bug)
+
+```
+This command cannot be run because "RedirectStandardOutput" and
+"RedirectStandardError" are same.
+```
+
+`tools/start_offline.ps1` do jagah stdout aur stderr **ek hi file**
+(`sync.log`) par bhej raha tha. PowerShell yeh qubool nahi karta, is
+liye auto-sync **kabhi start hi nahi hoti thi** — har offline node par,
+restaurant walon par bhi. User ko har baar "Sync now" haath se dabana
+parta tha.
+
+Fix: `sync.log` (stdout) aur `sync.err.log` (stderr) alag. Dono jagah
+theek kiya — pehla start aur watchdog ka restart bhi.

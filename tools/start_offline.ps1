@@ -144,12 +144,17 @@ if (-not $up) {
 
 # ---------- background auto-sync (cloud <-> local) ----------
 $syncArgs = '-c "{0}" "scripts/sync_loop.php"' -f $phpIni
+# PowerShell stdout aur stderr ke liye EK hi file qubool nahi karta:
+# "RedirectStandardOutput and RedirectStandardError are same". Isi wajah
+# se auto-sync offline node par kabhi start hi nahi hoti thi aur user ko
+# har baar 'Sync now' haath se dabana parta tha. Do alag files.
 $syncLog  = Join-Path $logDir 'sync.log'
+$syncErr  = Join-Path $logDir 'sync.err.log'
 $sync = $null
 try {
   $sync = Start-Process -FilePath $phpExe -ArgumentList $syncArgs `
           -WorkingDirectory $root -NoNewWindow -PassThru `
-          -RedirectStandardOutput $syncLog -RedirectStandardError $syncLog
+          -RedirectStandardOutput $syncLog -RedirectStandardError $syncErr
   Say 'Auto-sync started (runs in the background).' 'DarkGray'
 } catch {
   # Pehle yahan sirf "data will sync when it does" likha aata tha - be-maani.
@@ -271,9 +276,10 @@ $watch = Start-Job -ScriptBlock {
     if (-not $alive) {
       $a = '-c "{0}" "scripts/sync_loop.php"' -f $phpIni
       $lg = Join-Path $logDir 'sync.log'
+      $le = Join-Path $logDir 'sync.err.log'   # stdout/stderr ek hi file nahi ho sakti
       try {
         Start-Process -FilePath $phpExe -ArgumentList $a -WorkingDirectory $root -NoNewWindow `
-          -RedirectStandardOutput $lg -RedirectStandardError $lg | Out-Null
+          -RedirectStandardOutput $lg -RedirectStandardError $le | Out-Null
       } catch { }
     }
   }
