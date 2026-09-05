@@ -64,6 +64,9 @@ $retailModule=[
 $publicPages=['login.html','signup.html','signup_pending.html','setup.html','super_admin.html','qr.html','pair.html',
   /* V86 — customer khud yahan se register karta hai; login ka sawaal hi nahi. */
   'register.html'];
+/* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
+   `approved_ui/` se aate hain, chahe tenant retail ho. */
+$sharedPages=['activate.html','backup_restore.html'];
 $fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'settings','backup_restore.html'=>'settings','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){
@@ -73,7 +76,12 @@ if(!in_array($name,$publicPages,true)){
      check khamoshi se skip ho jata. */
   $isRetail=false;
   try{ $isRetail=(Auth::tenantIndustry()==='RETAIL'); }catch(\Throwable $e){}
-  $key=$isRetail ? ($retailModule[$name]??null) : ($fileModule[$name]??null);
+  /* Shared pages ka module key restaurant wale map mein hai — retail map
+     mein dhoondne se null milta aur permission check chup-chaap skip ho
+     jata. */
+  $key=($isRetail && !in_array($name,$sharedPages,true))
+       ? ($retailModule[$name]??null)
+       : ($fileModule[$name]??null);
   /* V78 — DASHBOARD par bhi ijazat check hoti hai.
      Pehle yahan `$key!=='dashboard'` tha, yani dashboard HAMESHA khula
      rehta tha. Cashier wahan se poore branch ki sale dekh sakta tha —
@@ -96,8 +104,28 @@ if(!in_array($name,$publicPages,true)){
   }
 }
 
+/* ============================================================
+   Kaunsi directory se page uthega.
+
+   BUG JO PRODUCTION PAR AAYA:
+   pehle sirf itna dekha jata tha ke tenant RETAIL hai ya nahi. Nateeja:
+   jis browser mein ek dafa supermarket ka user login kar leta, us mein
+   `super_admin.html`, `login.html`, `setup.html`, `qr.html`, `pair.html`
+   — SAB 404 ho jate the, kyunke woh `approved_ui/retail/` mein maujood
+   hi nahi. Super Admin console bhi isi wajah se "Page not found" de raha
+   tha, halanke woh kisi vertical ka page hai hi nahi.
+
+   Ab teen darje hain:
+     1. PUBLIC pages (login/signup/setup/super admin/qr/pair) — hamesha
+        `approved_ui/` se. Yeh kisi business ke nahi, platform ke hain.
+     2. SHARED utility pages (activate, backup) — inka bhi koi vertical
+        nahi; hamesha `approved_ui/` se.
+     3. Baaki sab — tenant ke industry ke hisaab se.
+   ============================================================ */
 $uiDir = 'approved_ui';
-try{ if(Auth::user() && Auth::tenantIndustry()==='RETAIL') $uiDir='approved_ui/retail'; }catch(\Throwable $e){}
+if(!in_array($name,$publicPages,true) && !in_array($name,$sharedPages,true)){
+  try{ if(Auth::user() && Auth::tenantIndustry()==='RETAIL') $uiDir='approved_ui/retail'; }catch(\Throwable $e){}
+}
 /* AHEM: yahan path ko variable se mat joro.
    Offline package `build_offline_bundle.php` se banta hai jo LITERAL
    string `dirname(__DIR__).'/approved_ui/` ko `'sealed://approved_ui/`

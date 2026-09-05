@@ -526,3 +526,53 @@ ke liye nahi.
 Ek chhoti madad: `retail_api.js` har code ka natija cache karta hai, is
 liye ek hi barcode dobara scan ho (jo counter par aam hai) to doosri
 dafa 0 ms lagta hai — online par bhi.
+
+---
+
+## 18. Super Admin par "Page not found" — asli wajah
+
+Production par `super_admin.html` 404 de raha tha.
+
+**Wajah:** router sirf itna dekhta tha ke tenant RETAIL hai ya nahi, aur
+phir **har** page `approved_ui/retail/` se uthata tha. Jis browser mein
+ek dafa supermarket ka user login kar leta, us mein yeh sab 404 ho jate:
+
+```
+super_admin.html   login.html    setup.html
+signup.html        qr.html       pair.html      register.html
+activate.html      backup_restore.html
+```
+
+Yeh pages kisi vertical ke hain hi nahi — platform ke hain — magar
+router unhein bhi retail folder mein dhoondta tha, jahan woh maujood
+nahi.
+
+**"Baar baar" isi liye:** ek dafa retail demo mein login karne ke baad,
+usi browser mein Super Admin console kholna nakaam ho jata tha. Naya
+browser ya incognito mein khul jata — isi liye masla kabhi aata kabhi
+nahi.
+
+**Fix — ab teen darje:**
+
+1. **Public pages** (login, signup, setup, super admin, qr, pair,
+   register) — hamesha `approved_ui/` se
+2. **Shared utility pages** (activate, backup_restore) — inka bhi koi
+   vertical nahi; hamesha `approved_ui/` se
+3. **Baaki sab** — tenant ke industry ke hisaab se
+
+Permission check bhi theek kiya: shared pages ka module key restaurant
+wale map mein hai, retail map mein dhoondne par null milta aur check
+khamoshi se skip ho jata.
+
+**Test (teeno halaton mein):**
+
+| Halat | Nateeja |
+|---|---|
+| Logged out — 8 public pages | 8/8 · 200 |
+| RETAIL logged in — 8 public + 2 shared | 10/10 · 200 |
+| RETAIL logged in — 12 retail pages | 12/12 · 200 |
+| RETAIL logged in — `kds.html` | 404 (durust) |
+
+**Sabaq:** pehle maine sirf "logged out" aur "retail pages" test kiye
+the. Jo halat tooti thi — *retail user logged in, phir platform ka page
+kholna* — wo test hi nahi hui thi.
