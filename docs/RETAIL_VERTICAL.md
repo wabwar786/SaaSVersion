@@ -453,3 +453,76 @@ parta tha.
 
 Fix: `sync.log` (stdout) aur `sync.err.log` (stderr) alag. Dono jagah
 theek kiya — pehla start aur watchdog ka restart bhi.
+
+---
+
+## 17. Storage aur speed — asli aankray
+
+Sab kuch **50,000 products + 20,000 bills (160,000 lines)** ke asli load
+test se, sealed offline package par chala kar.
+
+### Storage
+
+Maapi hui row size: `rtl_sales` 390 B, `rtl_sale_items` 278 B.
+Ek 8-item bill ≈ **2.6 KB**.
+
+| Bills / din | Roz | Mahina | Saal | 5 saal |
+|---|---|---|---|---|
+| 500 | 1.2 MB | 37 MB | 0.45 GB | 2.2 GB |
+| 1,500 | 3.7 MB | 112 MB | 1.3 GB | 6.7 GB |
+| 3,000 | 7.5 MB | 225 MB | 2.7 GB | 13.4 GB |
+| 5,000 | 12.5 MB | 375 MB | 4.5 GB | 22.3 GB |
+
+Catalog alag se: 50,000 products ≈ 43 MB + barcodes ≈ 20 MB = **63 MB**.
+
+**Maximum:** InnoDB ki apni had 64 TB per table hai — amli tor par
+**jitni disk hai utni**. 500 GB ke aam counter PC par 3,000 bills rozana
+wala store **100 saal** se zyada chala sakta hai. Storage is software
+ki hadd nahi hai.
+
+### Rush-hour speed — do bug jo load test ne pakre
+
+Chhote data par sab theek lagta tha. 50,000 products par:
+
+| Kaam | Pehle | Ab | Farq |
+|---|---|---|---|
+| Naam se search | **906 ms** | 3.2 ms | 280× |
+| Bill save (8 items) | **131 ms** | 4.4 ms | 30× |
+| Barcode scan | 0.36 ms | 0.30 ms | — |
+
+**Search 906 ms kyun thi:** `LIKE '%q%'` + barcodes ka LEFT JOIN — 24,524
+rows ka scan aur temporary table, har harf par. Cashier naam type karta
+to POS har keystroke par ek second ruk jata.
+→ Ab teen qadam: barcode/SKU ka theek match (index hit), phir naam ka
+**prefix** (index range), aur tab hi FULLTEXT. Zyadatar scans pehle qadam
+par khatam.
+
+**Bill save 131 ms kyun tha:** "agla bill number" nikalne wali query
+`ORDER BY created_at` par **filesort** kar rahi thi — 9,955 rows har
+bill par. Sath hi har line ke liye barcodes ki faltu query.
+→ Index `ix_rs_seq (tenant_id, site_id, created_at)` aur POS ke liye
+`productLite()` (barcodes fetch nahi karta).
+
+### Offline vs online
+
+HTTP round-trip, sealed package, 50k catalog:
+
+| | Offline node | Online (cloud) |
+|---|---|---|
+| Barcode scan | **~19 ms** | 19 ms + internet ka round trip |
+| Naam search | **~21 ms** | 21 ms + internet ka round trip |
+| Bill save | ~20 ms | 20 ms + internet ka round trip |
+
+Server ka kaam dono jagah barabar hai — farq **sirf internet** ka hai.
+Pakistan se Railway (US/EU) tak har request ka round trip aam tor par
+**200–400 ms** hota hai. Har scan par yeh lagega.
+
+**Nateeja:** counter ke liye **offline version** hi sahi hai. 1,000
+items ka bill offline mein ~19 ms per scan hai; online mein wahi scan
+250 ms+ ho jata hai aur rush mein line lag jati hai. Cloud head office,
+reports, multi-branch aur catalog push ke liye behtareen hai — counter
+ke liye nahi.
+
+Ek chhoti madad: `retail_api.js` har code ka natija cache karta hai, is
+liye ek hi barcode dobara scan ho (jo counter par aam hai) to doosri
+dafa 0 ms lagta hai — online par bhi.

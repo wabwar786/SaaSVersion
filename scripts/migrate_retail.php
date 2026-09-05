@@ -332,5 +332,38 @@ if ((int)$ix->fetchColumn() === 0) {
     $added[] = 'units: unique (code, tenant_id)';
 }
 
+/* ============================================================
+   6. RUSH-HOUR INDEXES.
+
+   Yeh 50,000 products + 20,000 bills par asli load test se nikle:
+
+   a) Har bill save par "agla bill number" nikalne wali query
+      `ORDER BY created_at` par FILESORT kar rahi thi — 9,955 rows har
+      dafa. Bill save 131 ms le raha tha. Counter par rush mein yeh
+      seedha cashier ke haath rok deta hai.
+
+   b) Naam se search 906 ms le rahi thi (24,524 rows ka scan +
+      temporary table). Cashier har harf par 1 second ruk jata.
+   ============================================================ */
+$hasIx = function (string $t, string $ix) use ($pdo): bool {
+    $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.statistics
+                         WHERE table_schema=DATABASE() AND table_name=? AND index_name=?");
+    $q->execute([$t, $ix]);
+    return (bool)$q->fetchColumn();
+};
+
+if (rtab($pdo, 'rtl_sales') && !$hasIx('rtl_sales', 'ix_rs_seq')) {
+    $pdo->exec("ALTER TABLE rtl_sales ADD INDEX ix_rs_seq (tenant_id, site_id, created_at)");
+    $added[] = 'rtl_sales: ix_rs_seq (bill number ka filesort khatam)';
+}
+if (rtab($pdo, 'rtl_products') && !$hasIx('rtl_products', 'ft_rp_name')) {
+    /* FULLTEXT beech ke lafz bhi pakarta hai ("basmati" -> "Falak Super
+       Basmati Rice"), jo `LIKE 'q%'` nahi kar sakta. */
+    try {
+        $pdo->exec("ALTER TABLE rtl_products ADD FULLTEXT KEY ft_rp_name (name)");
+        $added[] = 'rtl_products: ft_rp_name (fulltext search)';
+    } catch (\Throwable $e) { /* purana MySQL — prefix search phir bhi chalti hai */ }
+}
+
 echo "RETAIL_MIGRATION_READY added=" . count($added) . "\n";
 foreach ($added as $a) echo "  + $a\n";

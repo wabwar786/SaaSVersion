@@ -69,7 +69,7 @@ final class RetailPos
             $pid = (string)($l['product_id'] ?? '');
             $qty = (float)($l['qty'] ?? 0);
             if ($pid === '' || $qty <= 0) continue;
-            $prod = RetailCatalog::product($pid);
+            $prod = RetailCatalog::productLite($pid);   /* barcodes ki zaroorat nahi */
             if (!$prod) throw new \RuntimeException('Product not found: ' . $pid);
 
             $unitPrice = $priceLevel === 'Wholesale'
