@@ -117,8 +117,93 @@ foreach ($tenants as $t) {
     }
 }
 
+/* ============================================================
+   4. ASAL LOGIN — qadam ba qadam
+   `php scripts/diagnose_login.php <slug> <email> <password>`
+   Yeh wahi qadam chalata hai jo Auth::login chalata hai, aur batata hai
+   ke kaunsa qadam nakaam hua — "Invalid login" jaisa mubham jawab nahi.
+   ============================================================ */
+$pass = $argv[3] ?? '';
+if ($slug !== '' && $mail !== '' && $pass !== '') {
+    line();
+    line('=== 4. LOGIN SIMULATION ===');
+    $tq = $pdo->prepare("SELECT * FROM tenants WHERE slug=? LIMIT 1");
+    $tq->execute([$slug]);
+    $t = $tq->fetch(PDO::FETCH_ASSOC);
+    if (!$t) { bad("Slug '$slug' ka koi business nahi. `list` se sahi slug dekh lein."); exit(1); }
+    ok('business mila: ' . $t['name'] . ' [' . $t['industry_code'] . ']');
+
+    if (($t['status'] ?? '') !== 'ACTIVE') {
+        bad('Business status ' . $t['status'] . ' hai — login yahin ruk jata hai.');
+        inf("      UPDATE tenants SET status='ACTIVE' WHERE id='" . $t['id'] . "';");
+    }
+
+    /* Auth::login ki asal query — hu-ba-hu */
+    $uq = $pdo->prepare(
+        "SELECT * FROM users
+          WHERE tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL
+            AND (LOWER(email)=LOWER(?) OR LOWER(username)=LOWER(?)) LIMIT 1");
+    $uq->execute([$t['id'], $mail, $mail]);
+    $u = $uq->fetch(PDO::FETCH_ASSOC);
+
+    if (!$u) {
+        bad("Is business mein '$mail' naam ka koi ACTIVE user nahi.");
+        $any = $pdo->prepare("SELECT email,username,status,deleted_at FROM users
+                               WHERE LOWER(email)=LOWER(?) OR LOWER(username)=LOWER(?)");
+        $any->execute([$mail, $mail]);
+        foreach ($any->fetchAll(PDO::FETCH_ASSOC) as $o) {
+            $ot = $pdo->prepare("SELECT name,slug FROM tenants WHERE id=?");
+            $ot->execute([$o['tenant_id'] ?? '']);
+            inf('      yeh email kahin aur milti hai: status=' . $o['status'] .
+                ($o['deleted_at'] ? ' (deleted)' : ''));
+        }
+        inf('      Is business ke users:');
+        $lu = $pdo->prepare("SELECT email,username,status FROM users WHERE tenant_id=? LIMIT 10");
+        $lu->execute([$t['id']]);
+        foreach ($lu->fetchAll(PDO::FETCH_ASSOC) as $o) inf('        ' . ($o['email'] ?: $o['username']) . '  ' . $o['status']);
+        exit(1);
+    }
+    ok('user mila: ' . ($u['email'] ?: $u['username']));
+
+    if (empty($u['password_hash'])) {
+        bad('Password hash khali hai — is user ka password set hi nahi.');
+        exit(1);
+    }
+    if (\password_verify($pass, (string)$u['password_hash'])) {
+        ok('PASSWORD SAHI HAI — login ho jana chahiye.');
+    } else {
+        bad('PASSWORD GHALAT HAI (hash match nahi hua).');
+        inf('      Demo ka password sirf banate waqt EK DAFA dikhta hai; DB mein sirf hash hai.');
+        inf('      Naya set karne ke liye:');
+        inf("        php -r \"require 'src/bootstrap.php'; Aio\\DB::pdo()->prepare('UPDATE users SET password_hash=? WHERE id=?')");
+        inf("          ->execute([password_hash('NayaPass@123',PASSWORD_DEFAULT),'" . $u['id'] . "']);\"");
+        exit(1);
+    }
+
+    $ind = \strtoupper((string)($t['industry_code'] ?: 'RESTAURANT'));
+    if ((int)$u['is_tenant_admin'] === 1) {
+        $mq = $pdo->prepare("SELECT COUNT(*) FROM platform_modules WHERE is_active=1 AND industry_code IN (?, 'COMMON')");
+        $mq->execute([$ind]);
+    } else {
+        $mq = $pdo->prepare(
+            "SELECT COUNT(DISTINCT pm.module_key) FROM platform_modules pm
+               JOIN role_modules rm ON rm.module_id=pm.id
+               JOIN user_roles ur ON ur.role_id=rm.role_id AND ur.user_id=?
+              WHERE pm.is_active=1 AND pm.industry_code IN (?, 'COMMON')");
+        $mq->execute([$u['id'], $ind]);
+    }
+    $n = (int)$mq->fetchColumn();
+    $n > 0 ? ok("login ke baad $n modules milenge")
+           : bad('ZERO modules — login to hoga magar har page 403 dega');
+
+    line();
+    line('  Nateeja: server ki taraf se is user ka login THEEK hai.');
+    line('  Agar browser mein phir bhi nahi ho raha to wajah client side hai —');
+    line('  purani session cookie ya purana build. Incognito window mein try karein.');
+}
+
 line();
-line('=== 4. AAM WAJUHAT ===');
+line('=== 5. AAM WAJUHAT ===');
 inf('a) Browser mein pehle kisi DOOSRE business se login tha?');
 inf('   Purane build mein retail session ke baad login.html khud 404 deta tha.');
 inf('   Test: incognito window mein kholein. Chal jaye to yehi wajah hai — naya build deploy karein.');
