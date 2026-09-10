@@ -3,8 +3,22 @@ FROM php:8.2-apache
 # Extensions the app needs
 # zip = "Download Offline Version" ke liye lazmi (ZipArchive)
 RUN apt-get update && apt-get install -y --no-install-recommends libzip-dev zip \
- && docker-php-ext-install pdo_mysql mysqli zip \
+ && docker-php-ext-install pdo_mysql mysqli zip opcache \
  && rm -rf /var/lib/apt/lists/*
+
+# OPcache — iske baghair har request par saara PHP dobara compile hota
+# hai (is app par ~15 ms, kuch bhi karne se pehle).
+RUN { \
+      echo 'opcache.enable=1'; \
+      echo 'opcache.memory_consumption=192'; \
+      echo 'opcache.interned_strings_buffer=16'; \
+      echo 'opcache.max_accelerated_files=20000'; \
+      echo 'opcache.validate_timestamps=1'; \
+      echo 'opcache.revalidate_freq=60'; \
+      echo 'opcache.save_comments=0'; \
+      echo 'realpath_cache_size=4M'; \
+      echo 'realpath_cache_ttl=600'; \
+    } > /usr/local/etc/php/conf.d/zz-opcache.ini
 
 # Force exactly ONE MPM (mod_php requires prefork). Bulletproof: drop every MPM
 # symlink, then enable only prefork. Fixes "More than one MPM loaded".

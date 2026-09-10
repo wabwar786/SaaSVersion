@@ -40,6 +40,9 @@ desktop.ini
 node_modules/
 vendor/composer/
 
+# Sealed app ka warm cache — install ke waqt khud banta hai
+runtime/.cache/
+
 # Offline runtime jo Windows par khud banta hai
 runtime/php/
 runtime/mariadb/

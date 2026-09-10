@@ -90,6 +90,8 @@ declare(strict_types=1);
 
 final class SealedApp
 {
+    private static string $cache = '';
+
     private static array $files = [];
     private static bool $ready = false;
 
@@ -108,6 +110,37 @@ final class SealedApp
             exit("PHP 'openssl' extension is required but not enabled.\n"
                . "Delete the runtime\\php folder and run INSTALL_OFFLINE.bat again.");
         }
+        /* ============================================================
+           WARM CACHE — offline POS ki sab se bari sust raftaari.
+
+           Pehle HAR request par yeh sab hota tha:
+             blob parhna (705 KB) -> HMAC -> AES-256-GCM decrypt ->
+             gzinflate -> unserialize (224 files)
+           Ek fast Linux machine par bhi 15.5 ms; counter ke aam Windows
+           PC par kahin zyada. Aur yeh har request par lagta tha — har
+           CSS, JS aur image par bhi, kyunke sab router se guzarti hain.
+
+           Uske upar: `require 'sealed://...'` ko OPcache cache NAHI kar
+           sakta, is liye har request par saara PHP dobara compile hota
+           tha (~30 ms).
+
+           Ab: pehli dafa decrypt kar ke files runtime/.cache mein
+           nikal di jati hain. Us ke baad har request seedha asli file
+           require karti hai — OPcache lag jata hai aur decrypt ka
+           kharcha SIFAR ho jata hai.
+
+           Package badalte hi stamp badal jata hai aur cache khud
+           dobara banti hai.
+           ============================================================ */
+        $stamp = SEALED_INTEGRITY . '|' . (int)@filesize($blobPath);
+        $dir   = self::cacheDir($root);
+        if (@file_get_contents($dir.'/.stamp') === $stamp) {
+            self::$cache = $dir;
+            self::$ready = true;
+            stream_wrapper_register('sealed', SealedStream::class);
+            return;                      // <- decrypt bilkul nahi hua
+        }
+
         $blob = file_get_contents($blobPath);
         $k1   = file_get_contents($keyPath);
         $key  = $k1 . hex2bin(SEALED_K2);
@@ -126,18 +159,76 @@ final class SealedApp
         self::$files = unserialize(gzinflate($plain)) ?: [];
         self::$ready = true;
 
+        /* Warm cache likh do — agli request ko yeh sab dobara nahi karna
+           parega. Files asli disk par aati hain, is liye OPcache unhein
+           cache kar leta hai (sealed:// stream ko OPcache cache NAHI kar
+           sakta — wahi sab se bara kharcha tha). */
+        self::warm($root, $stamp);
+
         stream_wrapper_register('sealed', SealedStream::class);
         $GLOBALS['__sealed_files'] = self::$files;
     }
 
-    public static function has(string $rel): bool { return isset(self::$files[$rel]); }
+    private static function rmrf(string $d): void
+    {
+        if (!is_dir($d)) return;
+        foreach (scandir($d) ?: [] as $f) {
+            if ($f === '.' || $f === '..') continue;
+            $p = $d.'/'.$f;
+            is_dir($p) ? self::rmrf($p) : @unlink($p);
+        }
+        @rmdir($d);
+    }
+
+    /** Cache folder — package ke andar, install ke waqt banta hai. */
+    private static function cacheDir(string $root): string { return $root.'/runtime/.cache'; }
+
+    /** Sealed files ko ek dafa asli disk par nikal do. */
+    private static function warm(string $root, string $stamp): void
+    {
+        $dir = self::cacheDir($root);
+        /* Naya build -> purani cache poori tarah saaf. Warna hataayi hui
+           file cache mein reh jati hai aur update ke baad purana code
+           chalta rehta hai. */
+        if (is_dir($dir) && @file_get_contents($dir.'/.stamp') !== $stamp) self::rmrf($dir);
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        foreach (self::$files as $rel => $code) {
+            $t = $dir.'/'.$rel;
+            $d = dirname($t);
+            if (!is_dir($d)) @mkdir($d, 0775, true);
+            if (!is_file($t) || filesize($t) !== strlen($code)) @file_put_contents($t, $code);
+        }
+        @file_put_contents($dir.'/.stamp', $stamp);
+        self::$cache = $dir;
+    }
+
+    public static function has(string $rel): bool { return self::exists($rel); }
 
     /** return value propagate hoti hai — PHP dev server ka router `false`
      *  return karke static files khud serve karta hai. */
     public static function run(string $rel)
     {
+        /* Asli file se require -> OPcache kaam karta hai. */
+        if (self::$cache !== '' && is_file(self::$cache.'/'.$rel)) {
+            return require self::$cache.'/'.$rel;
+        }
         if (!isset(self::$files[$rel])) { http_response_code(404); exit('Not found.'); }
         return require 'sealed://'.$rel;
+    }
+
+    /** Stream wrapper ke liye — cache se ya memory se. */
+    public static function read(string $rel): ?string
+    {
+        if (self::$cache !== '') {
+            $f = self::$cache.'/'.$rel;
+            if (is_file($f)) return (string)file_get_contents($f);
+        }
+        return self::$files[$rel] ?? null;
+    }
+    public static function exists(string $rel): bool
+    {
+        if (self::$cache !== '' && is_file(self::$cache.'/'.$rel)) return true;
+        return isset(self::$files[$rel]);
     }
 }
 
@@ -150,9 +241,11 @@ final class SealedStream
     public function stream_open($path, $mode, $options, &$opened): bool
     {
         $rel = substr($path, strlen('sealed://'));
-        $f = $GLOBALS['__sealed_files'] ?? [];
-        if (!isset($f[$rel])) return false;
-        $this->data = $f[$rel];
+        /* Warm-cache mode mein memory wali list khali hoti hai — content
+           SealedApp::read() se aata hai (cache folder se). */
+        $d = SealedApp::read($rel);
+        if ($d === null) return false;
+        $this->data = $d;
         $this->pos = 0;
         $opened = $path;
         return true;
@@ -169,11 +262,13 @@ final class SealedStream
     }
     public function stream_stat(): array { return ['size' => strlen($this->data), 'mode' => 0100444]; }
     public function stream_set_option($o, $a1, $a2): bool { return false; }
-    public function url_stat($p, $f)
+    public function url_stat($path, $flags)
     {
-        $rel = substr($p, strlen('sealed://'));
-        if (!isset($GLOBALS['__sealed_files'][$rel])) return false;
-        return ['size' => strlen($GLOBALS['__sealed_files'][$rel]), 'mode' => 0100444];
+        $rel = substr($path, strlen('sealed://'));
+        $d = SealedApp::read($rel);
+        if ($d === null) return false;
+        return ['dev'=>0,'ino'=>0,'mode'=>0100444,'nlink'=>1,'uid'=>0,'gid'=>0,'rdev'=>0,
+                'size'=>strlen($d),'atime'=>0,'mtime'=>0,'ctime'=>0,'blksize'=>-1,'blocks'=>-1];
     }
 }
 PHPCODE
@@ -218,7 +313,7 @@ PHPCODE
         // autoloader: sealed:// se classes load karo
         $code = str_replace(
             "\$file = __DIR__ . '/' . str_replace('\\\\', '/', \$relative) . '.php';\n    if (is_file(\$file)) require \$file;",
-            "\$file = 'sealed://src/' . str_replace('\\\\', '/', \$relative) . '.php';\n    if (isset(\$GLOBALS['__sealed_files'][substr(\$file,9)])) require \$file;",
+            "\$file = 'sealed://src/' . str_replace('\\\\', '/', \$relative) . '.php';\n    if (SealedApp::has(substr(\$file,9))) require \$file;",
             $code
         );
         // router.php: static files disk se (js/css/img aur php stubs)

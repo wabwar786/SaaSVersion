@@ -645,3 +645,80 @@ kar bekaar ho jati thi.
 → Ab char darje: 1150 / 1000 / **820 (ek column — upar items, neeche
 sticky cart)** / 560 (mobile). Sath hi touch screens ke liye bare tap
 targets (`pointer:coarse`).
+
+---
+
+## 20. Offline POS ki raftaari — asal sabab (maapa hua)
+
+Print aur FBR theek karne ke baad bhi offline susth tha. Profiling se
+do aur cheezein nikleen — dono har request par lagti thin, har CSS aur
+image par bhi, kyunke sab router se guzarti hain.
+
+### a) Sealed package har request par decrypt hota tha
+
+`runtime/boot.php` har request par yeh sab karta tha:
+
+| Qadam | Waqt |
+|---|---|
+| blob parhna (705 KB) + HMAC | 3.2 ms |
+| AES-256-GCM decrypt | 0.5 ms |
+| gzinflate | **11.5 ms** |
+| unserialize (224 files) | 0.3 ms |
+| **kul** | **15.5 ms** |
+
+Aur yeh ek tez Linux machine par. Counter ke aam Windows PC par kahin
+zyada.
+
+→ Ab pehli dafa decrypt kar ke files `runtime/.cache` mein nikal di
+jati hain. Uske baad har request seedha wahi files parhti hai.
+
+**Maapa hua:** boot **15.5 ms → 0.32 ms**.
+
+Package badalte hi stamp badal jata hai, purani cache poori tarah saaf
+hoti hai aur nayi ban jati hai — yani update ke baad purana code kabhi
+nahi chalta.
+
+### b) OPcache tha hi nahi
+
+`sealed://` stream se `require` kiye gaye code ko OPcache **cache kar
+hi nahi sakta**. Yani har request par saara PHP dobara compile hota
+tha.
+
+→ Ab files asli disk par hain, aur `php.ini` mein OPcache on hai
+(`opcache.enable_cli=1` lazmi hai — built-in server CLI SAPI par
+chalta hai).
+
+**Maapa hua:** app ka PHP load **15.3 ms → 2.1 ms**.
+
+### Kul nateeja
+
+| | Pehle | Ab |
+|---|---|---|
+| Har request ka boot | 15.5 ms | 0.32 ms |
+| PHP compile | 15.3 ms | 2.1 ms |
+| Login page (asli request) | ~16–19 ms | **~2 ms** |
+| FBR band ho to har bill | **8 s** | 3 s ek dafa, phir 0 |
+
+Cloud par bhi OPcache Dockerfile mein add kar diya gaya — wahan bhi
+har request par compile ho raha tha.
+
+---
+
+## 21. Receipt ke fonts
+
+Thermal printer par chhota font kagaz par aur bhi chhota lagta hai.
+Sab barha diya:
+
+| Cheez | Pehle | Ab |
+|---|---|---|
+| Business name | 19px | **24px** |
+| Item / description | 11px | **13px** |
+| Totals (subtotal waghera) | 11px | **14px, bold** |
+| GRAND TOTAL | 11px bold | **17px, extra bold, upar line** |
+| QR ke neeche invoice number | 9px | **14px bold** (alag line par) |
+| QR image | 96px | **118px** |
+| Thank you | 10px | **14px bold** |
+| KOT item / qty | 14/16px | **16/18px** |
+
+Sath hi text ka rang `#333` se `#000` — thermal printer par halka
+grey aur bhi feeka chhapta hai.

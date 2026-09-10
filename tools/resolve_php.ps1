@@ -110,6 +110,31 @@ max_execution_time=0
 date.timezone=Asia/Karachi
 display_errors=Off
 log_errors=On
+
+; ---------------------------------------------------------------
+; OPCACHE — counter ki raftaari ka sab se bara faida.
+; `php -S` har request par saara PHP dobara COMPILE karta tha
+; (api.php + services = ~30 ms har request par, kuch bhi karne se
+; pehle). OPcache compiled code memory mein rakh leta hai.
+; enable_cli LAZMI hai — built-in server CLI SAPI par chalta hai.
+; ---------------------------------------------------------------
+zend_extension=opcache
+opcache.enable=1
+opcache.enable_cli=1
+opcache.memory_consumption=192
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=20000
+opcache.validate_timestamps=1
+opcache.revalidate_freq=60
+opcache.save_comments=0
+opcache.jit=disable
+
+; File path resolve karna Windows par mehnga hai — cache barha do
+realpath_cache_size=4M
+realpath_cache_ttl=600
+
+; Har request par output buffer/compression ka faltu kaam na ho
+zlib.output_compression=Off
 "@ | Set-Content -Path $IniPath -Encoding ASCII
 # also drop a copy next to php.exe so any invocation picks it up
 if ($IniPath -ne (Join-Path $phpDir 'php.ini')) {
