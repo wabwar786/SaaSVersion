@@ -177,6 +177,23 @@ function syncTableAllowed(string $table): bool {
    cheez try/catch mein hai aur time-box ke saath. */
 function sync_nudge():void{
   if((string)cfg('app.role')==='cloud')return;
+  /* ============================================================
+     THROTTLE — offline POS ki doosri sust raftaari.
+
+     Offline node `php -S` par chalta hai jo EK WAQT MEIN EK request
+     leta hai. Yeh shutdown function jawab bhejne ke BAAD chalta hai,
+     magar server tab tak agli request nahi uthata. Yani har bill ke
+     baad cashier ki agli click cloud sync ke khatam hone ka intezar
+     karti thi — aur net kharab ho to yeh kai second ka hota tha.
+
+     Ab: 20 second mein ek dafa se zyada nahi. Bill phir bhi foran
+     upar jata hai; sirf har bill par dobara koshish nahi hoti, aur
+     background loop 60 second wala apna kaam karta rehta hai.
+     ============================================================ */
+  $stamp=dirname(__DIR__).'/storage/tmp/last_nudge.txt';
+  if(!is_dir(dirname($stamp)))@mkdir(dirname($stamp),0775,true);
+  if(is_file($stamp) && (time()-(int)@filemtime($stamp))<20) return;
+  @file_put_contents($stamp,(string)time());
   try{
     if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
     @ignore_user_abort(true);
@@ -721,6 +738,9 @@ case 'about':
 case 'bill-templates':needLogin();ok(['templates'=>BillTemplate::options()]);
 
 case 'fiscal-test':needLogin();
+ /* User khud test kar raha hai — breaker khol do taake agla bill
+    foran asli koshish kare, 60 second ka intezar na ho. */
+ FiscalService::breakerReset();
  if(!Auth::isManager())fail('Admins and Managers only',403);
  $r=FiscalService::test();ok(['result'=>$r]);
 

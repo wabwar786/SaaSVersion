@@ -125,6 +125,48 @@ final class FiscalService
      * bill ka rasta rokna is ka kaam nahi.
      * @return array{status:string,invoice_no:string,message:string}
      */
+    /* ============================================================
+       CIRCUIT BREAKER — offline POS ki sust raftaari ka asli sabab.
+
+       Bill band karte waqt yeh fiscal service ko call karta hai. Agar
+       woh service us PC par chal hi nahi rahi (jo aam baat hai), to
+       `file_get_contents` POORE 8 SECOND intezar karta tha — HAR BILL
+       PAR. Aur `php -S` ek waqt mein ek hi request leta hai, is liye
+       un 8 second mein cashier ki screen bhi jami rehti thi.
+
+       Online par yeh masla nazar hi nahi aata: cloud par provider
+       'NONE' hota hai (FBR sirf offline chalta hai), is liye wahan koi
+       intezar hai hi nahi. Isi liye "offline slow, online theek" lagta
+       tha.
+
+       Ab: ek dafa nakami par 60 second tak dobara koshish nahi hoti —
+       bill foran PENDING mark ho kar chhap jata hai, aur queue baad
+       mein retry karti hai. Service wapas aate hi (ya `fiscal-test`
+       se) breaker khud khul jata hai.
+       ============================================================ */
+    private const BREAK_SECONDS = 60;
+
+    private static function breakerFile(): string
+    {
+        return \dirname(__DIR__, 2) . '/storage/tmp/fiscal_down.txt';
+    }
+
+    /** Kya service abhi "down" mark hai? */
+    public static function breakerOpen(): bool
+    {
+        $f = self::breakerFile();
+        if (!\is_file($f)) return false;
+        if (\time() - (int)@\filemtime($f) > self::BREAK_SECONDS) { @\unlink($f); return false; }
+        return true;
+    }
+    private static function breakerTrip(): void
+    {
+        $f = self::breakerFile();
+        if (!\is_dir(\dirname($f))) @\mkdir(\dirname($f), 0775, true);
+        @\file_put_contents($f, (string)\time());
+    }
+    public static function breakerReset(): void { @\unlink(self::breakerFile()); }
+
     public static function submit(string $orderId): array
     {
         $none = ['status' => 'NONE', 'invoice_no' => '', 'message' => ''];
@@ -132,6 +174,13 @@ final class FiscalService
 
         $cfg = self::settings();
         if (($cfg['provider'] ?? 'NONE') === 'NONE') return $none;
+
+        /* Pichhle 60 second mein service nakaam thi -> intezar mat karo.
+           Bill abhi chhapega, entry queue mein jayegi. */
+        if (self::breakerOpen()) {
+            return ['status' => 'PENDING', 'invoice_no' => '',
+                    'message' => 'Fiscal service is not responding — bill queued, it will retry automatically.'];
+        }
 
         try {
             $p = DB::pdo();
@@ -287,7 +336,9 @@ final class FiscalService
 
     /* ---------------- HTTP ---------------- */
 
-    public static function post(string $url, array $payload, int $timeout = 8): array
+    /* Counter par 8 second bahut lambe hain. Fiscal service isi PC par
+       hoti hai — theek chal rahi ho to milli-second mein jawab deti hai. */
+    public static function post(string $url, array $payload, int $timeout = 3): array
     {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         $ctx = stream_context_create(['http' => [
@@ -299,9 +350,13 @@ final class FiscalService
         ]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
+            /* Nakami darj karo taake agle bill par cashier dobara intezar
+               na kare. */
+            self::breakerTrip();
             return ['ok' => false, 'body' => '',
                     'error' => 'Could not reach the fiscal service ('.$url.'). Is it running on this computer?'];
         }
+        self::breakerReset();   /* jawab aa gaya — breaker khol do */
         $code = 0;
         foreach (($http_response_header ?? []) as $h) {
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) $code = (int)$m[1];
@@ -312,7 +367,7 @@ final class FiscalService
         return ['ok' => true, 'body' => (string)$raw, 'error' => ''];
     }
 
-    public static function get(string $url, int $timeout = 8): array
+    public static function get(string $url, int $timeout = 3): array
     {
         $ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => $timeout, 'ignore_errors' => true]]);
         $raw = @file_get_contents($url, false, $ctx);

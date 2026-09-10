@@ -576,3 +576,72 @@ khamoshi se skip ho jata.
 **Sabaq:** pehle maine sirf "logged out" aur "retail pages" test kiye
 the. Jo halat tooti thi — *retail user logged in, phir platform ka page
 kholna* — wo test hi nahi hui thi.
+
+---
+
+## 19. Restaurant POS — chaar masle, chaaron ki asli wajah
+
+### a) "Complete Payment" par bill chhapta hi nahi tha
+
+`printNode()` `window.open()` istemal karti thi. Browser popup sirf tab
+kholne deta hai jab woh **user ke click se seedha** nikle. Yahan print
+`pos-finalize` ka jawab aane ke baad, do `requestAnimationFrame` ke
+andar se chalti thi — browser ke liye "user ne nahi khola", is liye
+popup blocker chup-chaap rok deta tha. Cashier ko sirf toast dikhta
+tha, kagaz kuch nahi.
+
+→ Ab popup ke bajaye **chhupa hua iframe**. Blocker ka sawal hi nahi.
+
+### b) QR chhapta nahi tha
+
+`w.print()` image load hone se **pehle** chal jati thi. Kagaz par QR ki
+jagah khali reh jati thi.
+
+→ Ab print se pehle saari images ka intezar, **2 second ki hadd** ke
+sath — koi image printer ko rok nahi sakti.
+
+### c) Offline version bahut susth (online theek)
+
+Do wajuhat, dono maapi gayin:
+
+**1. FBR ka intezar — har bill par.** `pos-finalize` bill band karne ke
+baad `FiscalService::submit()` ko *inline* bulata hai. Agar fiscal
+service us PC par chal na rahi ho (aam baat), to `file_get_contents`
+poore **8 second** rukta tha — har bill par. Aur `php -S` ek waqt mein
+ek hi request leta hai, is liye un 8 second mein poori screen jami
+rehti thi.
+
+Online par yeh nazar hi nahi aata: cloud par provider `NONE` hota hai
+(FBR sirf offline chalta hai), to wahan koi intezar hai hi nahi. Isi
+liye "offline slow, online theek" lagta tha.
+
+Maapa hua (atki hui service ke sath):
+
+| | Waqt |
+|---|---|
+| Purana (timeout 8s) | **8.0 s** per bill |
+| Naya timeout (3s) | 3.0 s |
+| Agle 5 bill (circuit breaker) | **0.000 s** |
+
+Rush mein 6 bill: pehle **48 second** ka intezar, ab 3 second ek dafa.
+Breaker 60 second ka hai; service wapas aate hi (ya Settings ke "Test
+connection" se) khud khul jata hai. Bill kabhi rukta nahi — PENDING
+mark ho kar chhapta hai aur queue retry karti hai.
+
+**2. Har bill ke baad cloud sync.** `register_shutdown_function('sync_nudge')`
+jawab bhejne ke baad chalta hai, magar single-threaded server tab tak
+**agli request nahi uthata**. Yani har bill ke baad cashier ki agli
+click sync ke khatam hone ka intezar karti thi.
+
+→ Ab 20 second mein ek dafa se zyada nahi. Bill phir bhi foran upar
+jata hai; background loop apna kaam karta rehta hai.
+
+### d) POS responsive nahi tha
+
+Sirf ek breakpoint tha (1150px). Us se neeche layout wahi do-column
+rehta tha — chhote counter monitor aur tablet par cart ki column dab
+kar bekaar ho jati thi.
+
+→ Ab char darje: 1150 / 1000 / **820 (ek column — upar items, neeche
+sticky cart)** / 560 (mobile). Sath hi touch screens ke liye bare tap
+targets (`pointer:coarse`).
