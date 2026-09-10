@@ -2059,6 +2059,44 @@ case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations',
    Sab par industry gate hai — restaurant tenant yahan tak
    pohanch hi nahi sakta, chahe URL haath se likhe.
    ============================================================ */
+/* ============================================================
+   BUILD INFO — bina login ke.
+
+   Jab koi kahe "login nahi ho raha", to pehla sawal yeh hota hai ke
+   naya code waqai live hua bhi ya nahi. Browser mein
+   /api.php?action=build-info kholein — jawab foran mil jata hai.
+
+   Yahan koi email, password ya business ka naam nahi jata — sirf
+   ginti aur haan/na, taake locked-out halat mein bhi mehfooz rahe.
+   ============================================================ */
+case 'build-info':
+  $ver = @file_get_contents(dirname(__DIR__).'/VERSION');
+  $p=DB::pdo();
+  $has=function(string $t) use($p):bool{
+    $q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");
+    $q->execute([$t]); return (bool)$q->fetchColumn(); };
+  $col=function(string $t,string $c) use($p):bool{
+    $q=$p->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");
+    $q->execute([$t,$c]); return (bool)$q->fetchColumn(); };
+  $mod=function(string $ind) use($p):int{
+    $q=$p->prepare("SELECT COUNT(*) FROM platform_modules WHERE is_active=1 AND industry_code IN (?, 'COMMON')");
+    $q->execute([$ind]); return (int)$q->fetchColumn(); };
+  $retailUi = is_dir(dirname(__DIR__).'/approved_ui/retail')
+            ? count(glob(dirname(__DIR__).'/approved_ui/retail/*.html')) : 0;
+  ok([
+    'version'          => trim((string)$ver),
+    'php'              => PHP_VERSION,
+    'role'             => (string)cfg('app.role'),
+    'retail_code'      => $retailUi > 0,          // naya code deploy hua?
+    'retail_screens'   => $retailUi,
+    'retail_tables'    => $has('rtl_products'),   // migration chali?
+    'region_column'    => $col('tenants','region_profile'),
+    'router_fix'       => str_contains((string)@file_get_contents(__DIR__.'/router.php'), 'sharedPages'),
+    'modules'          => ['restaurant'=>$mod('RESTAURANT'), 'retail'=>$mod('RETAIL')],
+    'super_accounts'   => (int)$p->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn(),
+    'businesses'       => (int)$p->query("SELECT COUNT(*) FROM tenants WHERE status<>'DELETED'")->fetchColumn(),
+  ]);
+
 case 'retail-boot':
   needLogin(); needRetail();
   $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,region_profile,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");

@@ -1,0 +1,46 @@
+# ============================================================
+# Yeh cheezein GitHub par NAHI jani chahiye.
+# Session files har login par bharti hain aur logs bharte rehte hain —
+# inhein commit karne se har deploy par faltu diff aata hai aur
+# kabhi kabhi kisi doosre user ka live session bhi chala jata hai.
+# ============================================================
+
+# Sessions aur logs — server par khud bante hain
+storage/sessions/*
+!storage/sessions/.gitkeep
+storage/logs/*
+!storage/logs/.gitkeep
+storage/tmp/*
+storage/cache/*
+
+# Backups aur offline packages
+storage/backups/*
+updates/*.zip
+*.sql.gz
+
+# Local config — is mein DB password hota hai, yeh kabhi push na ho
+config/local.php
+config/*.local.php
+/tmp/*
+
+# Purani copies
+*.bak
+*.orig
+*.rej
+*~
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies (agar kabhi add hon)
+node_modules/
+vendor/composer/
+
+# Offline runtime jo Windows par khud banta hai
+runtime/php/
+runtime/mariadb/
+runtime/data/
