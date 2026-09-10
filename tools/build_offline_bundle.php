@@ -99,6 +99,7 @@ final class SealedApp
     {
         if (self::$ready) return;
         if (!defined('APP_ROOT')) define('APP_ROOT', $root);
+        if (!defined('APP_ROOT')) define('APP_ROOT', $root);
         $blobPath = $root.'/runtime/app.sealed';
         $keyPath  = $root.'/runtime/app.key';
         if (!is_file($blobPath) || !is_file($keyPath)) {
@@ -294,9 +295,41 @@ PHPCODE
      */
     private static function rewritePaths(string $code): string
     {
+        /* ============================================================
+           dirname(__DIR__) -> APP_ROOT
+
+           Sealed code ka __DIR__ package root nahi hota (pehle
+           'sealed:/...' tha, ab warm-cache folder). Is liye scripts
+           jo `dirname(__DIR__).'/updates'` par likhti thin, wo file
+           ghalat jagah bana deti thin — aur GET_UPDATE.bat ko
+           `updates/available.txt` milti hi nahi thi. Nateeja: naya
+           build maujood hone ke bawajood launcher kehta tha "aap ke
+           paas pehle se latest build hai".
+
+           APP_ROOT boot.php mein define hota hai aur hamesha asal
+           package root hota hai.
+           ============================================================ */
+        $code = str_replace("dirname(__DIR__, 2)", "APP_ROOT", $code);
+        $code = str_replace("dirname(__DIR__)", "APP_ROOT", $code);
+
+        /* ...magar jo cheezein SEAL ke andar hain (src, config, docs,
+           approved_ui) unhein asli disk par mat dhoondo — wo wahan
+           hain hi nahi. Sirf likhne wali jagahein (storage, updates,
+           data) asli root par rehti hain. */
+        /* `config` yahan JAAN-BOOJH KAR nahi: seal mein us ka naam
+           `offline.php` hai, `local.php` nahi — usay neeche wali
+           targeted rule handle karti hai. */
+        foreach (['src', 'docs', 'approved_ui'] as $sealedDir) {
+            $code = str_replace(
+                ["APP_ROOT . '/{$sealedDir}/", "APP_ROOT.'/{$sealedDir}/"],
+                "'sealed://{$sealedDir}/",
+                $code
+            );
+        }
+
         // bootstrap.php: sealed package mein config aur autoload dono seal ke andar
         $code = str_replace(
-            "\$configFile = (\$envConfig && is_file(\$envConfig)) ? \$envConfig : (dirname(__DIR__) . '/config/local.php');",
+            "\$configFile = (\$envConfig && is_file(\$envConfig)) ? \$envConfig : (APP_ROOT . '/config/local.php');",
             "\$configFile = 'sealed://config/offline.php';",
             $code
         );
@@ -305,11 +338,7 @@ PHPCODE
             "if (false) {",
             $code
         );
-        $code = str_replace(
-            "\$sessionDir = dirname(__DIR__) . '/storage/sessions';",
-            "\$sessionDir = APP_ROOT . '/storage/sessions';",
-            $code
-        );
+
         // autoloader: sealed:// se classes load karo
         $code = str_replace(
             "\$file = __DIR__ . '/' . str_replace('\\\\', '/', \$relative) . '.php';\n    if (is_file(\$file)) require \$file;",

@@ -970,6 +970,26 @@ $stub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';
 foreach(['api.php','router.php','index.php','login-submit.php','logout.php'] as $e){
   if(is_file($root.'/public/'.$e))$zip->addFromString('public/'.$e,$stub('public/'.$e));
 }
+/* ============================================================
+   SCRIPT STUBS — yeh bug asal customer par pakra gaya.
+
+   Launcher .bat files seedha `php scripts\self_update.php` chalati
+   hain, magar sealed package mein `scripts/` folder DISK PAR HOTA HI
+   NAHI (sab kuch seal ke andar hai). Nateeja:
+
+       Could not open input file: scripts\self_update.php
+
+   ...aur GET_UPDATE.bat us ke baad ghalti se keh deta tha "aap ke paas
+   pehle se latest build hai". Yani offline node kabhi update le hi
+   nahi sakta tha.
+
+   Ab har script ka ek chhota stub disk par jata hai jo asal code seal
+   ke andar se chalata hai — bilkul waise jaise public/api.php.
+   `..` wala rasta yahan ek darja ooper hai (scripts/ -> root). */
+$sstub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';\nSealedApp::boot(dirname(__DIR__));\nreturn SealedApp::run('".$rel."');\n";};
+foreach(glob($root.'/scripts/*.php') as $sp){
+  $zip->addFromString('scripts/'.basename($sp),$sstub('scripts/'.basename($sp)));
+}
 /* --- sirf browser-facing static assets disk par (UI HTML ab seal mein hai) --- */
 foreach([['public/assets','public/assets']] as $pair){
   $srcDir=$root.'/'.$pair[0]; if(!is_dir($srcDir))continue;
@@ -979,6 +999,10 @@ foreach([['public/assets','public/assets']] as $pair){
 foreach(glob($root.'/public/*.js') as $j)$zip->addFile($j,'public/'.basename($j));
 foreach(glob($root.'/public/*.css') as $c)$zip->addFile($c,'public/'.basename($c));
 if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/app.ico','public/assets/app.ico');
+/* VERSION disk par bhi — node ka apna build. self_update.php isay parh
+   kar cloud ke build se compare karta hai; seal ke andar hone ki wajah
+   se yeh khali aata tha aur launcher "installed:" khali dikhata tha. */
+if(is_file($root.'/VERSION'))$zip->addFile($root.'/VERSION','VERSION');
 $zip->addEmptyDir('updates');
 /* --- launchers --- */
 foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){

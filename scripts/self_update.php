@@ -37,8 +37,18 @@ if ($base === '' && !empty($GLOBALS['config']['app']['cloud_url'])) {
 if ($base === '') { echo "UPDATE_SKIPPED no cloud url configured\n"; return; }
 
 $ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
+$dirU = dirname(__DIR__).'/updates';
+@mkdir($dirU, 0775, true);
+@unlink($dirU.'/available.txt');
+@unlink($dirU.'/offline.txt');
+
 $raw = @file_get_contents($base.'?action=update-check', false, $ctx);
-if ($raw === false) { echo "UPDATE_OFFLINE could not reach the portal\n"; return; }
+if ($raw === false) {
+    /* Launcher ko batao ke masla "koi update nahi" nahi, balki portal
+       tak pohanch hi nahi hui — warna user ko ghalat tasalli milti hai. */
+    @file_put_contents($dirU.'/offline.txt', $base);
+    echo "UPDATE_OFFLINE could not reach the portal\n"; return;
+}
 
 $j = json_decode((string)$raw, true);
 $there = trim((string)($j['build'] ?? ''));
@@ -50,8 +60,7 @@ echo "available: $there\n";
 if ($here === $there) { echo "UPDATE_NONE already up to date\n"; return; }
 echo "UPDATE_AVAILABLE $there\n";
 
-$dir = dirname(__DIR__).'/updates';
-@mkdir($dir, 0775, true);
+$dir = $dirU;
 @file_put_contents($dir.'/available.txt', $there);
 
 if (!$doDownload) { echo "Run with --download to fetch it.\n"; return; }

@@ -28,6 +28,13 @@ echo   Checking...
 "%PHPEXE%" -c "%PHPINI%" scripts\self_update.php
 
 echo.
+if exist "updates\offline.txt" (
+  echo   Portal tak pohanch nahi hui - internet check karein.
+  echo   Yeh ka matlab yeh NAHI ke aap ke paas latest build hai.
+  echo.
+  pause
+  exit /b 1
+)
 if not exist "updates\available.txt" (
   echo   Aap ke paas pehle se latest build hai. Kuch karna nahi.
   echo.

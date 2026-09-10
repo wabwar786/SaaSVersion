@@ -722,3 +722,48 @@ Sab barha diya:
 
 Sath hi text ka rang `#333` se `#000` — thermal printer par halka
 grey aur bhi feeka chhapta hai.
+
+---
+
+## 22. Offline node kabhi update le hi nahi sakta tha
+
+`GET_UPDATE.bat` yeh dikha raha tha:
+
+```
+Could not open input file: scripts\self_update.php
+Aap ke paas pehle se latest build hai. Kuch karna nahi.
+```
+
+Teen alag bug ek sath:
+
+**1. `scripts/` folder disk par hai hi nahi.** Sealed package sirf
+`public/*.php` ke stubs banata tha. Magar chaar launcher files seedha
+`php scripts\...` chalati hain: GET_UPDATE, INSTALL_UPDATE, RESET_NODE,
+RESET_PASSWORD. Yani auto-update **kabhi chala hi nahi**.
+→ Ab har script ka stub disk par jata hai (50 stubs), bilkul waise
+jaise `public/api.php`.
+
+**2. `dirname(__DIR__)` ghalat jagah point karta tha.** Sealed code ka
+`__DIR__` package root nahi hota. `updates/available.txt` ek aisi jagah
+bana raha tha jo launcher dekhta hi nahi.
+→ Ab build ke waqt `dirname(__DIR__)` → `APP_ROOT` (asal package root).
+Jo cheezein seal ke andar hain (`src`, `docs`, `approved_ui`) unke
+raaste `sealed://` par jate hain; `config` ka apna qaida hai kyunke
+seal mein us ka naam `offline.php` hai.
+
+**3. `VERSION` sirf seal ke andar thi.** Node apna build parh hi nahi
+pata tha — `installed:` khali aata tha, aur khali kabhi cloud ke build
+ke barabar nahi hota.
+→ Ab VERSION disk par bhi jati hai.
+
+Sath hi `GET_UPDATE.bat` ka jhoota message theek kiya: portal tak
+pohanch na ho to ab "latest build hai" **nahi** kehta, balki saaf
+batata hai ke internet check karein.
+
+**Test (dono raaste):**
+
+| Halat | Nateeja |
+|---|---|
+| Cloud V98, node V97 | `installed: V97` / `available: V98` / `UPDATE_AVAILABLE` + `available.txt` |
+| Portal band | `UPDATE_OFFLINE` + `offline.txt` (ghalat tasalli nahi) |
+| Dono barabar | `UPDATE_NONE` |
