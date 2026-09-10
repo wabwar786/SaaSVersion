@@ -36,6 +36,60 @@ $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_s
 $q->execute();
 (int)$q->fetchColumn() ? ok('rtl_* tables maujood') : bad('rtl_* tables GHAIB — `php scripts/migrate_retail.php`');
 
+/* ============================================================
+   1b. SUPER ADMIN (platform console)
+   `php scripts/diagnose_login.php super <password>` se password bhi
+   check hota hai.
+   ============================================================ */
+line();
+line('=== 1b. SUPER ADMIN ===');
+try {
+    $pu = $pdo->query("SELECT id,email,role,status,LENGTH(password_hash) len,created_at
+                         FROM platform_users ORDER BY created_at")->fetchAll(PDO::FETCH_ASSOC);
+    if (!$pu) {
+        bad('platform_users KHALI hai — koi super admin account hai hi nahi.');
+        inf('      Banane ke liye: php scripts/reset_super_admin.php --email=you@x.com --password=\'Pass@123\' --create');
+    } else {
+        foreach ($pu as $x) {
+            $f = [];
+            if ($x['status'] !== 'ACTIVE') $f[] = 'status=' . $x['status'];
+            if ((int)$x['len'] !== 60)     $f[] = 'hash length=' . $x['len'] . ' (bcrypt 60 hona chahiye)';
+            $msg = sprintf('%-30s %-6s %s', $x['email'], $x['role'], $f ? '<< ' . implode(', ', $f) : '');
+            $f ? bad($msg) : ok($msg);
+        }
+        $nSuper = 0;
+        foreach ($pu as $x) if ($x['role'] === 'SUPER' && $x['status'] === 'ACTIVE') $nSuper++;
+        if (!$nSuper) bad("Koi ACTIVE role='SUPER' account nahi — console mein login mumkin nahi.");
+    }
+
+    /* password check: diagnose_login.php super <password> */
+    if (($argv[1] ?? '') === 'super' && ($argv[2] ?? '') !== '') {
+        $try = $argv[2];
+        line();
+        $hit = false;
+        $vq = $pdo->query("SELECT email,password_hash,status FROM platform_users");
+        foreach ($vq->fetchAll(PDO::FETCH_ASSOC) as $x) {
+            if (\password_verify($try, (string)$x['password_hash'])) {
+                ok('Password IS account se match karta hai: ' . $x['email'] .
+                   ($x['status'] === 'ACTIVE' ? '' : '  (magar status ' . $x['status'] . ')'));
+                $hit = true;
+            }
+        }
+        if (!$hit) {
+            bad('Yeh password kisi bhi platform account se match nahi karta.');
+            inf('      php scripts/reset_super_admin.php --email=<email> --password=\'NayaPass@123\'');
+        }
+        line();
+        line('  NOTE: agar Railway Variables mein SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD');
+        line('  set hain to har deploy par password DOBARA set ho jata hai — SQL se kiya');
+        line('  hua change agle deploy par khatam ho jayega.');
+        exit(0);
+    }
+} catch (\Throwable $e) {
+    bad('platform_users parhi nahi ja saki: ' . $e->getMessage());
+    inf('      `php scripts/migrate_platform.php` chalayein.');
+}
+
 line();
 line('=== 2. MODULE CATALOG ===');
 $rows = $pdo->query("SELECT COALESCE(NULLIF(industry_code,''),'(khali)') ic, COUNT(*) c
