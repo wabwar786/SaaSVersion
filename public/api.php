@@ -955,15 +955,29 @@ $zip->addFromString('runtime/boot.php',$loader);
 foreach(['/etc/ssl/certs/ca-certificates.crt','/etc/pki/tls/certs/ca-bundle.crt'] as $caf){
   if(is_file($caf)){$zip->addFile($caf,'runtime/cacert.pem');break;}
 }
+/* Licence ki expiry — is business ki sab se nayi subscription se.
+   Counter par yeh nazar aani chahiye, warna expiry ka pata usi din
+   chalta hai jis din software band ho jata hai. */
+$expiry='';
+try{
+  $eq=$p->prepare("SELECT expiry_date FROM tenant_subscriptions
+                    WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+  $eq->execute([tenant_id()]);
+  $expiry=(string)($eq->fetchColumn()?:'');
+}catch(Throwable $e){}
+
 $zip->addFromString('runtime/app.info',json_encode([
   'name'=>(string)$t['dn'],'branch'=>$siteName,
   'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
   'product'=>getenv('APP_PRODUCT')?:'SmartPOS',
   'company'=>getenv('APP_COMPANY')?:'Wabwar Software House',
-  'version'=>getenv('APP_VERSION')?:'1.0.0',
-  'phone'=>getenv('APP_PHONE')?:'+92 300 0000000',
-  'website'=>getenv('APP_WEBSITE')?:'https://wabwar.com',
-  'email'=>getenv('APP_EMAIL')?:'support@wabwar.com',
+  /* Pehle yahan hard-coded '1.0.0' likha tha — launcher hamesha wahi
+     dikhata tha, chahe koi bhi build laga ho. Ab asli VERSION file. */
+  'version'=>getenv('APP_VERSION')?:(trim((string)@file_get_contents($root.'/VERSION'))?:'1.0.0'),
+  'phone'=>getenv('APP_PHONE')?:'+92 342 5095104',
+  'website'=>getenv('APP_WEBSITE')?:'www.wabwar.pk',
+  'email'=>getenv('APP_EMAIL')?:'info@wabwar.pk',
+  'expiry'=>$expiry,
 ]));
 /* --- entry stubs (sirf yeh readable hain) --- */
 $stub=function($rel){return "<?php\nrequire_once __DIR__.'/../runtime/boot.php';\nSealedApp::boot(dirname(__DIR__));\nreturn SealedApp::run('".$rel."');\n";};

@@ -50,6 +50,19 @@ final class ReportService
             ['id' => 'refunds',         'group' => 'Money',     'name' => 'Returns and refunds',      'desc' => 'Money paid back to customers'],
             ['id' => 'supplier_buys',   'group' => 'Inventory', 'name' => 'Supplier purchases',       'desc' => 'How much you buy from each supplier'],
             ['id' => 'purchases',       'group' => 'Inventory', 'name' => 'Purchases',                'desc' => 'Goods received by supplier'],
+
+            /* ---- V98: jo reports customer maang raha tha aur maujood nahi thin ---- */
+            ['id' => 'invoice_detail',  'group' => 'Sales',     'name' => 'Order / invoice detail',   'desc' => 'Har bill ka poora record — item, tax, discount, payment'],
+            ['id' => 'waiter_sales',    'group' => 'Operations','name' => 'Sales by waiter',          'desc' => 'Waiter-wise sale, covers aur average bill'],
+            ['id' => 'discounts',       'group' => 'Operations','name' => 'Discounts',                'desc' => 'Kis ne kitni chhoot di — user-wise'],
+            ['id' => 'voids',           'group' => 'Operations','name' => 'Void / cancelled bills',   'desc' => 'Har void bill wajah aur user ke sath'],
+            ['id' => 'shift_closing',   'group' => 'Operations','name' => 'Shift / day closing',      'desc' => 'Opening, sale, payments, expenses, variance'],
+            ['id' => 'wastage',         'group' => 'Inventory', 'name' => 'Wastage / write-off',      'desc' => 'Kharab aur zaya hua maal, qeemat ke sath'],
+            ['id' => 'purchase_items',  'group' => 'Inventory', 'name' => 'Purchases by item',        'desc' => 'Item-wise kharidari — qty, rate aur qeemat'],
+            ['id' => 'customers',       'group' => 'Money',     'name' => 'Customers',                'desc' => 'Customer-wise bills, visits aur baqaya'],
+            ['id' => 'fbr_reconcile',   'group' => 'Tax',       'name' => 'FBR reconciliation',       'desc' => 'POS ke bills vs FBR ko bheje gaye — farq kahan hai'],
+            ['id' => 'fbr_summary',     'group' => 'Tax',       'name' => 'FBR daily / monthly summary','desc' => 'Invoices, taxable amount aur sales tax ka khulasa'],
+            ['id' => 'audit_activity',  'group' => 'Operations','name' => 'Audit / activity log',     'desc' => 'Login, bill edit, void, discount, refund — kis ne kya kiya'],
         ];
     }
 
@@ -487,6 +500,304 @@ final class ReportService
        chune hue fields. Har cheez server par ginti jati hai. */
 
     /** Kaunse data sources par report ban sakti hai. */
+    /* ==================== V98 — NAYI REPORTS ====================
+       Yeh wo reports hain jo restaurant version mein maujood nahi thin.
+       Sab wahi `billWhere()` istemal karti hain, is liye cashier
+       isolation aur date/branch filter khud-ba-khud lagte hain. */
+
+    /** Har bill ka poora record — invoice-wise detail. */
+    private static function r_invoice_detail(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    COALESCE(o.service_mode,'-') mode,
+                    COALESCE(c.full_name,'Walk-in') customer,
+                    COALESCE(u.full_name,'-') cashier,
+                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) items,
+                    o.subtotal, o.discount_amount discount, o.tax_amount tax, o.grand_total total,
+                    COALESCE(o.fiscal_invoice_no,'-') fbr_no,
+                    COALESCE(o.order_status,'-') status
+               FROM orders o
+               LEFT JOIN users u ON u.id = o.created_by_user_id
+               LEFT JOIN customers c ON c.id = o.customer_id
+              WHERE " . self::billWhere() . "
+              ORDER BY d DESC, o.bill_no DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Order / invoice detail',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'mode','l'=>'Mode'],
+             ['k'=>'customer','l'=>'Customer'],['k'=>'cashier','l'=>'Cashier'],
+             ['k'=>'items','l'=>'Items','n'=>1],['k'=>'subtotal','l'=>'Subtotal','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'tax','l'=>'Tax','n'=>1],
+             ['k'=>'total','l'=>'Total','n'=>1],['k'=>'fbr_no','l'=>'FBR no.']],
+            $rows, self::sum($rows, ['items','subtotal','discount','tax','total']),
+            'Ek hi jagah par har bill ka poora record.');
+    }
+
+    /** Waiter-wise sale. */
+    private static function r_waiter_sales(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT COALESCE(u.full_name,'(assign nahi)') waiter,
+                    COUNT(*) bills, SUM(o.grand_total) total,
+                    ROUND(AVG(o.grand_total),2) avg_bill,
+                    SUM(o.discount_amount) discount
+               FROM orders o
+               LEFT JOIN users u ON u.id = o.waiter_user_id
+              WHERE " . self::billWhere() . "
+              GROUP BY waiter ORDER BY total DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Sales by waiter',
+            [['k'=>'waiter','l'=>'Waiter'],['k'=>'bills','l'=>'Bills','n'=>1],
+             ['k'=>'total','l'=>'Sale','n'=>1],['k'=>'avg_bill','l'=>'Avg bill','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1]],
+            $rows, self::sum($rows, ['bills','total','discount']),
+            'Avg bill upselling ka sab se seedha paimana hai.');
+    }
+
+    /** Sirf discounts — user-wise. */
+    private static function r_discounts(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    COALESCE(u.full_name,'-') given_by,
+                    o.subtotal, o.discount_amount discount,
+                    ROUND(CASE WHEN o.subtotal>0 THEN o.discount_amount/o.subtotal*100 ELSE 0 END,1) pct,
+                    o.grand_total total
+               FROM orders o
+               LEFT JOIN users u ON u.id = o.created_by_user_id
+              WHERE " . self::billWhere() . " AND o.discount_amount > 0
+              ORDER BY o.discount_amount DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Discounts',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'given_by','l'=>'Di kis ne'],
+             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
+             ['k'=>'pct','l'=>'%','n'=>1],['k'=>'total','l'=>'Bill total','n'=>1]],
+            $rows, self::sum($rows, ['subtotal','discount','total']),
+            'Bara discount % baar baar ek hi user ke naam ho to dekhna banta hai.');
+    }
+
+    /** Sirf void / cancelled bills — wajah aur user ke sath. */
+    private static function r_voids(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    COALESCE(u.full_name,'-') by_user,
+                    COALESCE(NULLIF(o.notes,''),
+                             (SELECT a.description FROM audit_log a
+                               WHERE a.record_id = o.id AND a.action LIKE '%VOID%'
+                               ORDER BY a.created_at DESC LIMIT 1),
+                             '-') reason,
+                    o.grand_total total,
+                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) items
+               FROM orders o
+               LEFT JOIN users u ON u.id = o.created_by_user_id
+              WHERE o.site_id = ?
+                AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                AND o.order_status = 'VOID'
+              ORDER BY d DESC, o.bill_no DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Void / cancelled bills',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'by_user','l'=>'Kis ne'],
+             ['k'=>'reason','l'=>'Wajah'],['k'=>'items','l'=>'Items','n'=>1],
+             ['k'=>'total','l'=>'Amount','n'=>1]],
+            $rows, self::sum($rows, ['items','total']),
+            'Bina wajah ke void, ya ek hi user ke bohat se void — dono check karne layak hain.');
+    }
+
+    /** Shift / day closing — opening se variance tak. */
+    private static function r_shift_closing(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT s.business_date d, s.shift_no, COALESCE(s.counter_name,'-') counter,
+                    COALESCE(u.full_name,'-') cashier,
+                    s.opening_cash, s.gross_sales, s.discount_total discount,
+                    s.cash_sales, s.card_sales, s.credit_sales,
+                    s.refund_total refunds, s.expense_total expenses,
+                    s.expected_cash, s.actual_cash, s.variance_amount variance,
+                    s.invoice_count bills, COALESCE(s.status,'-') status
+               FROM cashier_shifts s
+               LEFT JOIN users u ON u.id = s.cashier_user_id
+              WHERE s.site_id = ? AND s.business_date BETWEEN ? AND ?
+                AND s.deleted_at IS NULL
+              ORDER BY s.business_date DESC, s.shift_no DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Shift / day closing',
+            [['k'=>'d','l'=>'Date'],['k'=>'shift_no','l'=>'Shift'],['k'=>'counter','l'=>'Counter'],
+             ['k'=>'cashier','l'=>'Cashier'],['k'=>'bills','l'=>'Bills','n'=>1],
+             ['k'=>'opening_cash','l'=>'Opening','n'=>1],['k'=>'gross_sales','l'=>'Sale','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'cash_sales','l'=>'Cash','n'=>1],
+             ['k'=>'card_sales','l'=>'Card','n'=>1],['k'=>'credit_sales','l'=>'Credit','n'=>1],
+             ['k'=>'expenses','l'=>'Expenses','n'=>1],['k'=>'expected_cash','l'=>'Expected','n'=>1],
+             ['k'=>'actual_cash','l'=>'Counted','n'=>1],['k'=>'variance','l'=>'Variance','n'=>1]],
+            $rows, self::sum($rows, ['bills','opening_cash','gross_sales','discount','cash_sales',
+                                     'card_sales','credit_sales','expenses','expected_cash',
+                                     'actual_cash','variance']),
+            'Variance hamesha sifar hona chahiye. Baar baar minus aana ek alamat hai.');
+    }
+
+    /** Wastage / write-off. */
+    private static function r_wastage(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(a.requested_at) d, a.adjustment_no ref,
+                    COALESCE(a.reason_code,'-') reason,
+                    COALESCE(ii.name,'-') item,
+                    ABS(ai.qty_change) qty,
+                    ROUND(ABS(ai.qty_change) * COALESCE(ii.avg_cost_per_stock_unit,0),2) value,
+                    COALESCE(u.full_name,'-') by_user,
+                    COALESCE(a.status,'-') status
+               FROM stock_adjustments a
+               JOIN stock_adjustment_items ai ON ai.adjustment_id = a.id
+               LEFT JOIN inventory_items ii ON ii.id = ai.inventory_item_id
+               LEFT JOIN users u ON u.id = a.requested_by_user_id
+              WHERE a.site_id = ? AND DATE(a.requested_at) BETWEEN ? AND ?
+                AND ai.qty_change < 0
+              ORDER BY d DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Wastage / write-off',
+            [['k'=>'d','l'=>'Date'],['k'=>'ref','l'=>'Reference'],['k'=>'item','l'=>'Item'],
+             ['k'=>'reason','l'=>'Wajah'],['k'=>'qty','l'=>'Qty','n'=>1],
+             ['k'=>'value','l'=>'Value','n'=>1],['k'=>'by_user','l'=>'Kis ne'],
+             ['k'=>'status','l'=>'Status']],
+            $rows, self::sum($rows, ['qty','value']),
+            'Yeh seedha munafe se katta hai — har mahine ka rujhan dekhein.');
+    }
+
+    /** Item-wise kharidari. */
+    private static function r_purchase_items(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT COALESCE(ii.name,'-') item,
+                    SUM(gi.stock_qty_received) qty,
+                    ROUND(AVG(gi.unit_cost),2) avg_rate,
+                    SUM(gi.line_total) total,
+                    COUNT(DISTINCT g.id) receipts
+               FROM goods_receipts g
+               JOIN goods_receipt_items gi ON gi.goods_receipt_id = g.id
+               LEFT JOIN inventory_items ii ON ii.id = gi.inventory_item_id
+              WHERE g.site_id = ? AND DATE(g.received_at) BETWEEN ? AND ?
+                AND gi.deleted_at IS NULL
+              GROUP BY item ORDER BY total DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Purchases by item',
+            [['k'=>'item','l'=>'Item'],['k'=>'receipts','l'=>'Receipts','n'=>1],
+             ['k'=>'qty','l'=>'Qty','n'=>1],['k'=>'avg_rate','l'=>'Avg rate','n'=>1],
+             ['k'=>'total','l'=>'Amount','n'=>1]],
+            $rows, self::sum($rows, ['receipts','qty','total']),
+            'Avg rate barhta hua nazar aaye to supplier se baat karne ka waqt hai.');
+    }
+
+    /** Customer-wise bills, visits aur baqaya. */
+    private static function r_customers(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT c.full_name customer, COALESCE(c.phone,'-') phone,
+                    COUNT(o.id) visits, SUM(o.grand_total) total,
+                    ROUND(AVG(o.grand_total),2) avg_bill,
+                    MAX(DATE(COALESCE(o.closed_at,o.created_at))) last_visit,
+                    COALESCE(c.balance,0) outstanding
+               FROM orders o
+               JOIN customers c ON c.id = o.customer_id
+              WHERE " . self::billWhere() . "
+              GROUP BY c.id ORDER BY total DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('Customers',
+            [['k'=>'customer','l'=>'Customer'],['k'=>'phone','l'=>'Phone'],
+             ['k'=>'visits','l'=>'Visits','n'=>1],['k'=>'total','l'=>'Sale','n'=>1],
+             ['k'=>'avg_bill','l'=>'Avg bill','n'=>1],['k'=>'last_visit','l'=>'Last visit'],
+             ['k'=>'outstanding','l'=>'Baqaya','n'=>1]],
+            $rows, self::sum($rows, ['visits','total','outstanding']),
+            'Sirf wo bills jin par customer laga hua hai — walk-in yahan nahi aate.');
+    }
+
+    /** POS ke bills vs FBR ko bheje gaye — farq kahan hai. */
+    private static function r_fbr_reconcile(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
+                    o.grand_total total, o.tax_amount tax,
+                    COALESCE(o.fiscal_status,'NONE') fbr_status,
+                    COALESCE(o.fiscal_invoice_no,'-') fbr_no,
+                    CASE
+                      WHEN o.fiscal_status='SENT' AND (o.fiscal_invoice_no IS NULL OR o.fiscal_invoice_no='')
+                        THEN 'SENT magar number nahi'
+                      WHEN o.fiscal_status IN ('PENDING','FAILED') THEN 'FBR tak nahi pohancha'
+                      WHEN o.fiscal_status='SENT' THEN 'Match'
+                      ELSE 'FBR se bahar'
+                    END verdict
+               FROM orders o
+              WHERE " . self::billWhere() . "
+              ORDER BY (o.fiscal_status='SENT'), d DESC, o.bill_no DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('FBR reconciliation',
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'POS bill'],
+             ['k'=>'fbr_no','l'=>'FBR invoice'],['k'=>'fbr_status','l'=>'Status'],
+             ['k'=>'verdict','l'=>'Nateeja'],['k'=>'tax','l'=>'Tax','n'=>1],
+             ['k'=>'total','l'=>'Total','n'=>1]],
+            $rows, self::sum($rows, ['tax','total']),
+            'Jo bills "FBR tak nahi pohancha" dikhayen, unhein Tax screen se retry karein.');
+    }
+
+    /** FBR ka rozana / mahana khulasa. */
+    private static function r_fbr_summary(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d,
+                    COUNT(*) bills,
+                    SUM(CASE WHEN o.fiscal_status='SENT' THEN 1 ELSE 0 END) sent,
+                    SUM(CASE WHEN o.fiscal_status IN ('PENDING','FAILED') THEN 1 ELSE 0 END) not_sent,
+                    SUM(o.subtotal - o.discount_amount) taxable,
+                    SUM(o.tax_amount) sales_tax,
+                    SUM(CASE WHEN o.tax_amount = 0 THEN o.grand_total ELSE 0 END) zero_rated,
+                    SUM(o.grand_total) total
+               FROM orders o
+              WHERE " . self::billWhere() . "
+              GROUP BY d ORDER BY d DESC",
+            [site_id(), $f, $t]);
+
+        return self::shape('FBR daily / monthly summary',
+            [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
+             ['k'=>'sent','l'=>'FBR bheje','n'=>1],['k'=>'not_sent','l'=>'Reh gaye','n'=>1],
+             ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'sales_tax','l'=>'Sales tax','n'=>1],
+             ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1]],
+            $rows, self::sum($rows, ['bills','sent','not_sent','taxable','sales_tax','zero_rated','total']),
+            'Mahane ke aakhir mein yehi aankray FBR return ke kaam aate hain.');
+    }
+
+    /** Audit / activity — kis ne kya kiya. */
+    private static function r_audit_activity(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i') at,
+                    COALESCE(a.username,'-') user,
+                    COALESCE(a.role_name,'-') role,
+                    COALESCE(a.action,'-') action,
+                    COALESCE(a.module,'-') module,
+                    COALESCE(a.record_label, a.description, '-') detail,
+                    COALESCE(a.ip_address,'-') ip
+               FROM audit_log a
+              WHERE a.site_id = ? AND DATE(a.created_at) BETWEEN ? AND ?
+              ORDER BY a.created_at DESC
+              LIMIT 2000",
+            [site_id(), $f, $t]);
+
+        return self::shape('Audit / activity log',
+            [['k'=>'at','l'=>'Kab'],['k'=>'user','l'=>'User'],['k'=>'role','l'=>'Role'],
+             ['k'=>'action','l'=>'Action'],['k'=>'module','l'=>'Module'],
+             ['k'=>'detail','l'=>'Detail'],['k'=>'ip','l'=>'IP']],
+            $rows, [],
+            'Void, discount, refund aur bill edit — sab yahan darj hote hain. 2000 se zyada nahi dikhaya jata.');
+    }
+
     public static function sources(): array
     {
         return [

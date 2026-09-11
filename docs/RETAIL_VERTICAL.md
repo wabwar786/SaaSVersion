@@ -767,3 +767,109 @@ batata hai ke internet check karein.
 | Cloud V98, node V97 | `installed: V97` / `available: V98` / `UPDATE_AVAILABLE` + `available.txt` |
 | Portal band | `UPDATE_OFFLINE` + `offline.txt` (ghalat tasalli nahi) |
 | Dono barabar | `UPDATE_NONE` |
+
+---
+
+## 23. Launcher ka info block
+
+Pehle yeh dikhta tha:
+
+```
+Version        : 1.0.0
+Contact number : +92 300 0000000
+Website        : https://wabwar.com
+Email          : support@wabwar.com
+```
+
+`1.0.0` **hard-coded** tha — chahe koi bhi build laga ho, launcher yehi
+dikhata tha. Yani customer ya support kabhi nahi jaan sakta tha ke node
+par asal mein kaunsa version chal raha hai.
+
+Ab:
+
+```
+Product        : SmartPOS
+Branch         : AKORWAL FISH POINT
+Company        : Wabwar Software House
+Version        : V98 build 2026-09-10      <- asli installed build
+Contact number : +92 342 5095104
+Website        : www.wabwar.pk
+Email          : info@wabwar.pk
+Licence expiry : 2026-10-05
+```
+
+**Version** ab package ki `VERSION` file se aata hai (`app.info` mein
+bhi, aur launcher disk par maujood `VERSION` ko tarjeeh deta hai — is
+tarah `INSTALL_UPDATE` ke baad foran naya number dikhta hai).
+
+**Licence expiry** us business ki sab se nayi subscription se aati hai
+(`tenant_subscriptions.expiry_date`) aur package banate waqt seal hoti
+hai. Launcher rang bhi badalta hai:
+
+| Halat | Rang |
+|---|---|
+| 15 din se zyada baqi | safed |
+| 15 din ya kam | peela — `(12 din baqi)` |
+| Guzar chuki | laal — `(KHATAM HO CHUKI)` |
+
+Expiry counter par nazar aani chahiye, warna pata usi din chalta hai
+jis din software band ho jata hai.
+
+Yeh sab `APP_PHONE`, `APP_WEBSITE`, `APP_EMAIL`, `APP_VERSION` env
+variables se badla bhi ja sakta hai.
+
+---
+
+## 24. Reports — audit aur 11 nayi reports
+
+Maujooda 20 reports ko aapki list se milaya. Neeche audit ka nateeja:
+
+### Pehle se maujood thin (9)
+
+| Maanga gaya | Maujooda report |
+|---|---|
+| Daily Sales | `sales_summary` |
+| Item/Product Sales | `sales_by_item` |
+| Category Sales | `sales_by_category` |
+| Payment/Collection | `payment_mix` |
+| Expense | `expenses` |
+| Stock/Inventory | `stock_movement`, `tracked_inventory`, `low_stock` |
+| Profit/Margin | `profit_loss` |
+| Tax Summary | `tax_summary` |
+| FBR Tax | `fbr_sales` |
+| Purchase (supplier-wise) | `supplier_buys`, `purchases` |
+
+### Maujood NAHI thin — ab add ki gayi (11)
+
+| Report | Kya deti hai |
+|---|---|
+| `invoice_detail` | Har bill ka poora record — mode, customer, cashier, items, subtotal, discount, tax, FBR no. |
+| `waiter_sales` | Waiter-wise sale, bills aur **average bill** |
+| `discounts` | Sirf discounts, **kis ne di** aur kitne % |
+| `voids` | Sirf void bills, **wajah aur user** ke sath |
+| `shift_closing` | Opening, sale, cash/card/credit, expenses, expected vs counted, **variance** |
+| `wastage` | Item-wise zaya hua maal aur uski **qeemat** |
+| `purchase_items` | Item-wise kharidari — qty, **avg rate**, amount |
+| `customers` | Customer-wise bills, visits, last visit, **baqaya** |
+| `fbr_reconcile` | POS bill vs FBR invoice — har bill par nateeja ("Match", "FBR tak nahi pohancha") |
+| `fbr_summary` | Rozana/mahana: bills, bheje gaye, reh gaye, taxable, sales tax, zero-rated |
+| `audit_activity` | Login, void, discount, refund, bill edit — kis ne kya kiya, kab, kis IP se |
+
+**Kul ab 31 reports.**
+
+### Do cheezein jo test ne pakrin
+
+1. **`voids` mein `void_reason` column hai hi nahi.** Ab wajah `orders.notes`
+   se aati hai, aur na ho to `audit_log` ki VOID entry se — yani jo wajah
+   cashier ne likhi wo report mein aati hai.
+2. **`inventory_items.last_cost` maujood nahi.** Wastage ki qeemat ab
+   `avg_cost_per_stock_unit` se banti hai.
+
+Dono asli data par chala kar tasdeeq ki: 31 ki 31 reports chalti hain,
+aur nataij durust hain (discount `R-102` par, void `R-103` par wajah ke
+sath, FBR reconciliation ne PENDING bill ko "FBR tak nahi pohancha"
+mark kiya).
+
+Har report pehle se maujooda `billWhere()` istemal karti hai — is liye
+**cashier isolation** aur branch/date filter khud-ba-khud lagte hain,
+aur CSV export bhi bina kisi extra kaam ke chalta hai.

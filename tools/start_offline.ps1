@@ -18,7 +18,7 @@ function Bad($m){ Write-Host $m -ForegroundColor Red }
 
 # ---------- product / company info ----------
 $product='SmartPOS'; $company='Wabwar Software House'; $version='1.0.0'
-$phone='+92 300 0000000'; $website='https://wabwar.com'; $email='support@wabwar.com'
+$phone='+92 342 5095104'; $website='www.wabwar.pk'; $email='info@wabwar.pk'; $expiry=''
 $bizName='SmartPOS'; $branch=''
 if (Test-Path "$root\runtime\app.info") {
   try {
@@ -27,6 +27,7 @@ if (Test-Path "$root\runtime\app.info") {
     if ($i.product){$product=$i.product}; if ($i.company){$company=$i.company}
     if ($i.version){$version=$i.version}; if ($i.phone){$phone=$i.phone}
     if ($i.website){$website=$i.website}; if ($i.email){$email=$i.email}
+    if ($i.expiry){$expiry=$i.expiry}
   } catch {}
 }
 
@@ -37,10 +38,23 @@ Line
 Write-Host "  Product        : $product" -ForegroundColor White
 if ($branch) { Write-Host "  Branch         : $branch" -ForegroundColor White }
 Write-Host "  Company        : $company" -ForegroundColor White
+if (Test-Path "$root\VERSION") {
+  try { $v = (Get-Content "$root\VERSION" -Raw).Trim(); if ($v) { $version = $v } } catch {}
+}
 Write-Host "  Version        : $version" -ForegroundColor White
 Write-Host "  Contact number : $phone"   -ForegroundColor White
 Write-Host "  Website        : $website" -ForegroundColor White
 Write-Host "  Email          : $email"   -ForegroundColor White
+if ($expiry) {
+  $expClr = 'White'
+  try {
+    $d = [datetime]::Parse($expiry)
+    $daysLeft = [int]([datetime]$d - (Get-Date)).TotalDays
+    if     ($daysLeft -lt 0)  { $expClr = 'Red';        $expiry = "$expiry  (KHATAM HO CHUKI)" }
+    elseif ($daysLeft -le 15) { $expClr = 'DarkYellow'; $expiry = "$expiry  ($daysLeft din baqi)" }
+  } catch {}
+  Write-Host "  Licence expiry : $expiry" -ForegroundColor $expClr
+}
 Line
 Write-Host ''
 

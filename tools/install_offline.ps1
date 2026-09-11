@@ -21,9 +21,9 @@ function Bad($m)  { Write-Host "      $m" -ForegroundColor Red }
 $product = 'SmartPOS'
 $company = 'Wabwar Software House'
 $version = '1.0.0'
-$phone   = '+92 300 0000000'
-$website = 'https://wabwar.com'
-$email   = 'support@wabwar.com'
+$phone='+92 342 5095104'
+$website='www.wabwar.pk'
+$email='info@wabwar.pk'
 $bizName = 'SmartPOS'
 $branch  = ''
 
@@ -201,10 +201,23 @@ Write-Host "  Business       : $bizName" -ForegroundColor White
 if ($branch) { Write-Host "  Branch         : $branch" -ForegroundColor White }
 Write-Host "  Product        : $product" -ForegroundColor White
 Write-Host "  Company        : $company" -ForegroundColor White
+if (Test-Path "$root\VERSION") {
+  try { $v = (Get-Content "$root\VERSION" -Raw).Trim(); if ($v) { $version = $v } } catch {}
+}
 Write-Host "  Version        : $version" -ForegroundColor White
 Write-Host "  Contact number : $phone"   -ForegroundColor White
 Write-Host "  Website        : $website" -ForegroundColor White
 Write-Host "  Email          : $email"   -ForegroundColor White
+if ($expiry) {
+  $expClr = 'White'
+  try {
+    $d = [datetime]::Parse($expiry)
+    $daysLeft = [int]([datetime]$d - (Get-Date)).TotalDays
+    if     ($daysLeft -lt 0)  { $expClr = 'Red';        $expiry = "$expiry  (KHATAM HO CHUKI)" }
+    elseif ($daysLeft -le 15) { $expClr = 'DarkYellow'; $expiry = "$expiry  ($daysLeft din baqi)" }
+  } catch {}
+  Write-Host "  Licence expiry : $expiry" -ForegroundColor $expClr
+}
 Write-Host ''
 Write-Host '  Start the software from the Desktop shortcut.' -ForegroundColor Cyan
 Write-Host ''
