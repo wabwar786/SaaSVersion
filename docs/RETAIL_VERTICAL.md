@@ -930,3 +930,52 @@ jaisa hi.
 
 File:// par kholein (bina login) to saaf kehti hai ke asli data ke liye
 login chahiye — jhooti report nahi dikhati.
+
+---
+
+## 26. Auto-update ka download kabhi chala hi nahi tha
+
+```
+UPDATE_FAILED the portal did not return a package
+              (check that this node is still linked)
+```
+
+**Wajah:** `self_update.php --download` package maangte waqt apna
+`node_token` bhejta hai (wahi sync token jo har roz sync ke liye use
+hota hai). Magar `offline-package` endpoint us token ko pehchanta hi
+nahi tha — woh sirf `needLogin()` maangta tha, aur ek command-line
+script ke paas browser session hota hi nahi.
+
+Node ko ZIP ki jagah `{"ok":false,"message":"Login required"}` milta
+tha. Script ne theek pakra ("yeh ZIP nahi hai") magar wajah bata nahi
+sakti thi.
+
+Yani: check kaam karta tha, **download kabhi nahi**.
+
+**Fix:** ab endpoint do raaste qubool karta hai —
+
+| Raasta | Kaun | Shart |
+|---|---|---|
+| Browser | Admin / Manager | login + cloud role |
+| `node_token` | Offline node ka updater | token kisi zinda business se match kare |
+
+Token se aaye to tenant aur site usi record se tay hote hain — session
+ka koi dakhal nahi. Koi naya raaz nahi banaya gaya; wahi token hai jo
+pehle se sync ke liye chal raha hai.
+
+**Test (teeno halat):**
+
+| Halat | Nateeja |
+|---|---|
+| Bina token, bina login | 401 `Login required` |
+| Sahi node token | **200, 1.2 MB ZIP** |
+| Ghalat token | 403 `This node is not linked to any business` |
+
+Aur poora flow asli node se chala kar:
+
+```
+installed: V100 build 2026-09-11
+available: V101 build 2026-09-12
+UPDATE_DOWNLOADED update-V101build2026-09-12.zip (1.2 MB)
+Close the software and run INSTALL_UPDATE.bat to apply it.
+```

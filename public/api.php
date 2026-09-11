@@ -841,8 +841,45 @@ case 'update-check':
  $v=trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'));
  ok(['build'=>$v,'build_id'=>trim((string)@file_get_contents(dirname(__DIR__).'/public/build-id.txt'))]);
 
-case 'offline-package':needLogin();if(cfg('app.role')!=='cloud')fail('The offline version can only be downloaded from the online portal',403);if(!Auth::isManager())fail('Only an Admin or Manager can download the offline version',403);
-$p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");$tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
+case 'offline-package':
+/* ============================================================
+   Do tarah se aaya ja sakta hai:
+
+   1. BROWSER se — Admin/Manager "Download offline version" dabata hai.
+   2. OFFLINE NODE se — `scripts/self_update.php --download` khud
+      package maangta hai aur apna `node_token` (wahi sync token)
+      bhejta hai.
+
+   Doosra raasta pehle kaam hi nahi karta tha: endpoint sirf
+   `needLogin()` maangta tha, aur script ke paas browser session hota
+   hi nahi. Node ko JSON error milta tha, ZIP nahi — aur launcher
+   kehta tha "the portal did not return a package". Yani AUTO-UPDATE
+   ka download kabhi chala hi nahi.
+
+   Token wahi hai jo har roz sync ke liye use hota hai, is liye koi
+   naya raaz nahi banaya ja raha. */
+$nodeTok=trim((string)($_GET['node_token']??''));
+$p=DB::pdo();
+if($nodeTok!==''){
+  if(cfg('app.role')!=='cloud')fail('The offline version can only be downloaded from the online portal',403);
+  $tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn
+                     FROM tenants WHERE sync_token=? AND status<>'DELETED' LIMIT 1");
+  $tq->execute([$nodeTok]);
+  $t=$tq->fetch();
+  if(!$t)fail('This node is not linked to any business (token not recognised)',403);
+  /* Token se aaye to tenant/site isi record se tay hote hain — session ka
+     koi dakhal nahi. */
+  $GLOBALS['config']['app']['tenant_id']=$t['id'];
+  $sSite=$p->prepare("SELECT id FROM sites WHERE tenant_id=? ORDER BY created_at LIMIT 1");
+  $sSite->execute([$t['id']]);
+  $GLOBALS['config']['app']['site_id']=(string)$sSite->fetchColumn();
+}else{
+  needLogin();
+  if(cfg('app.role')!=='cloud')fail('The offline version can only be downloaded from the online portal',403);
+  if(!Auth::isManager())fail('Only an Admin or Manager can download the offline version',403);
+  $tq=$p->prepare("SELECT id,name,slug,industry_code,sync_token,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");
+  $tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
+}
 if(empty($t['sync_token'])){$tok=bin2hex(random_bytes(24));$p->prepare("UPDATE tenants SET sync_token=? WHERE id=?")->execute([$tok,$t['id']]);$t['sync_token']=$tok;}
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$siteName=$sq->fetchColumn()?:'Main Branch';
 $root=dirname(__DIR__);
