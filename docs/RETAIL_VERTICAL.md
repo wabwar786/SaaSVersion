@@ -873,3 +873,60 @@ mark kiya).
 Har report pehle se maujooda `billWhere()` istemal karti hai — is liye
 **cashier isolation** aur branch/date filter khud-ba-khud lagte hain,
 aur CSV export bhi bina kisi extra kaam ke chalta hai.
+
+---
+
+## 25. Reports — dono verticals
+
+### Retail ki reports pehle thin hi nahi
+
+`approved_ui/retail/reports.html` sirf **demo data (localStorage)** par
+6 chhoti tables dikhata tha — server se juda hi nahi tha. Yani
+supermarket ke pass koi asli report thi hi nahi.
+
+Ab `RetailReportService` hai: **30 reports**, sab asli `rtl_` tables
+par, aur wahi shakl jo restaurant ki service ki hai — is liye UI aur
+CSV export dono ke liye ek hi code chalta hai.
+
+| Group | Reports |
+|---|---|
+| Sales (11) | Daily summary, by item, by department, by brand, by hour, payment/collection, **retail vs wholesale**, invoice detail, by cashier, by counter, basket analysis |
+| Operations (3) | **Duplicate bill (reprints)**, audit/activity, held bills |
+| Tax (2) | Tax summary, FBR reconciliation |
+| Inventory (7) | Stock on hand, low stock/reorder, **dead stock**, expiry/near expiry, batch-wise stock, fast/slow movers, margin by item |
+| Money (5) | Profit/margin, expenses, khata/receivable, **khata ledger**, credit sales |
+| Customers (2) | Customer report, loyalty |
+
+Kuch reports supermarket ke liye khaas hain aur restaurant mein maani
+nahi rakhtin: **retail vs wholesale**, **duplicate bill reprints**,
+**dead stock**, **expiry**, **khata ledger**.
+
+### Restaurant
+
+Pichli batch mein 11 add hui thin — ab **31 reports**.
+
+### Dono par chala kar dekha
+
+| | Reports | Chalin | CSV |
+|---|---|---|---|
+| Restaurant | 31 | 31 | ok |
+| Retail | 30 | 30 | ok |
+
+Do bug test se nikle aur theek hue:
+
+1. `expenses` table mein `spent_on`/`category`/`method` columns hain hi
+   nahi — asli naam `expense_date`, `category_id` (alag table),
+   `payment_method`. Query theek ki.
+2. Retail ki `fbr_reconcile` abhi POS ka apna record dikhati hai,
+   kyunke retail bills mein FBR fields (`fiscal_status`,
+   `fiscal_invoice_no`) abhi add nahi hue — yeh report ke note mein
+   saaf likha hai, khamoshi se khali nahi chhoda.
+
+### Retail reports screen
+
+Ab server se chalti hai: date range (aaj / 7 din / yeh mahina / pichla
+mahina), search, totals row, print aur **CSV download** — restaurant
+jaisa hi.
+
+File:// par kholein (bina login) to saaf kehti hai ke asli data ke liye
+login chahiye — jhooti report nahi dikhati.

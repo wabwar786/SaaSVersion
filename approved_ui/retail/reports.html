@@ -5,38 +5,66 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Reports · Retail OS</title>
 <link rel="stylesheet" href="shared.css">
+<style>
+.rep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.rep-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;
+  box-shadow:var(--sh-sm);cursor:pointer;transition:.14s}
+.rep-card:hover{border-color:var(--brand-line);box-shadow:var(--sh);transform:translateY(-2px)}
+.rep-card.on{border-color:var(--brand);background:var(--brand-soft)}
+.rep-card b{display:block;font-family:var(--display);font-size:13px;color:var(--ink)}
+.rep-card span{display:block;margin-top:3px;color:var(--muted);font-size:11px;line-height:1.45}
+.rep-card i{font-style:normal;font-size:10px;color:var(--brand-ink);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.dates{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.dates .field{margin-bottom:0}
+.tot-row td{font-weight:800;background:var(--surface-2);border-top:2px solid var(--line-strong)}
+</style>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar" id="side"></aside>
   <main class="main">
     <header class="header">
-      <button class="menu-btn" id="menuBtn">&#9776;</button>
-      <div class="header-title"><h1>Reports</h1><p>Sale, margin, stock aur khata</p></div>
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Reports</h1><p>Sale, stock, khata, tax aur audit</p></div>
       <div class="header-spacer"></div>
+      <button class="btn" id="btnCsv">⤓ CSV</button>
+      <button class="btn" id="btnPrint">⎙ Print</button>
     </header>
+
     <div class="content">
-      <div class="kpis">
-        <div class="kpi"><div class="lab">Gross sale</div><div class="val" id="rSale">—</div><div class="sub" id="rBills">—</div></div>
-        <div class="kpi ok"><div class="lab">Avg basket</div><div class="val" id="rBasket">—</div><div class="sub">per bill</div></div>
-        <div class="kpi warn"><div class="lab">Khata receivable</div><div class="val" id="rKhata">—</div><div class="sub">outstanding</div></div>
-        <div class="kpi info"><div class="lab">Stock value</div><div class="val" id="rStock">—</div><div class="sub">cost par</div></div>
-      </div>
-
-      <section class="panel">
-        <div class="panel-head"><div><h2>Reports</h2><p>Kisi bhi report par click karein</p></div></div>
-        <div class="panel-body"><div class="module-grid" id="grid"></div></div>
+      <section class="panel no-print">
+        <div class="panel-head"><div><h2>Date range</h2><p>Har report isi arse par chalti hai</p></div></div>
+        <div class="panel-body">
+          <div class="dates">
+            <label class="field" style="width:180px"><span>From</span><input id="from" type="date"></label>
+            <label class="field" style="width:180px"><span>To</span><input id="to" type="date"></label>
+            <button class="btn" data-quick="today">Aaj</button>
+            <button class="btn" data-quick="week">7 din</button>
+            <button class="btn" data-quick="month">Yeh mahina</button>
+            <button class="btn" data-quick="last">Pichla mahina</button>
+          </div>
+        </div>
       </section>
 
-      <section class="panel" style="margin-top:14px">
-        <div class="panel-head"><div><h2 id="repTitle">Fast &amp; slow movers</h2><p id="repSub">Margin ke hisaab se</p></div></div>
+      <section class="panel no-print" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Reports</h2><p id="repCount">—</p></div>
+          <span class="spacer" style="flex:1"></span>
+          <div class="search" style="width:220px"><input id="q" placeholder="Report dhoondein"></div></div>
+        <div class="panel-body"><div class="rep-grid" id="grid"></div></div>
+      </section>
+
+      <section class="panel" style="margin-top:14px" id="outPanel">
+        <div class="panel-head"><div><h2 id="outTitle">Report</h2><p id="outNote">Upar se koi report chunein</p></div>
+          <span class="spacer" style="flex:1"></span>
+          <span class="tag neutral plain" id="outRange"></span></div>
         <div class="panel-body flush"><div class="table-wrap"><table class="table">
-          <thead id="repHead"></thead><tbody id="repRows"></tbody></table></div></div>
+          <thead id="outHead"></thead><tbody id="outRows"></tbody></table></div></div>
       </section>
-</div>
+    </div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
+
 <script src="region.js"></script>
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
@@ -44,63 +72,109 @@
 <script>
 (function(){
   var $=function(i){return document.getElementById(i)};
-  var S=window.RetailStore,R=window.Region,money=R.money,qty=R.qty;
+  var S=window.RetailStore,R=window.Region,money=R.money;
   function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-  var sales=S.get('sales')||[], prods=S.get('products')||[], custs=S.get('customers')||[], batches=S.get('batches')||[];
-  var gross=sales.reduce(function(a,s){return a+Number(s.total||0)},0);
-  $('rSale').textContent=money(gross);
-  $('rBills').textContent=sales.length+' bills';
-  $('rBasket').textContent=money(sales.length?gross/sales.length:0);
-  $('rKhata').textContent=money(custs.reduce(function(a,c){return a+Number(c.balance||0)},0));
-  $('rStock').textContent=money(prods.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0));
+  var catalog=[],current='';
 
-  var REPORTS={
-    movers:{t:'Fast & slow movers',s:'Margin ke hisaab se',
-      head:['Product','Dept','Cost','Retail','Margin %'],
-      rows:function(){ return prods.slice().sort(function(a,b){
-        return ((b.retail_price-b.cost_price)/(b.retail_price||1))-((a.retail_price-a.cost_price)/(a.retail_price||1));
-      }).map(function(p){ var m=p.retail_price?((p.retail_price-p.cost_price)/p.retail_price*100):0;
-        return [esc(p.name),esc(S.name('departments',p.department_id)),money(p.cost_price),money(p.retail_price),m.toFixed(1)+'%'] }) }},
-    dead:{t:'Dead stock',s:'Jo bik nahi raha aur paisa roke hue hai',
-      head:['Product','On hand','Cost value','Reorder at'],
-      rows:function(){ return prods.filter(function(p){return p.stock_qty>p.max_stock*0.8})
-        .map(function(p){return [esc(p.name),qty(p.stock_qty),money(p.stock_qty*p.cost_price),qty(p.min_stock)]}) }},
-    expiry:{t:'Expiry report',s:'Kaunsa batch kab khatam ho raha hai',
-      head:['Product','Batch','Expiry','Days left','Qty'],
-      rows:function(){ return batches.map(function(b){ var d=S.daysTo(b.expiry_date); var p=S.byId('products',b.product_id);
-        return [esc(p?p.name:'—'),esc(b.batch_no),esc(b.expiry_date),(d<0?'expired':d+' days'),qty(b.qty)] }) }},
-    lowstock:{t:'Low stock / reorder',s:'Jo abhi mangwana hai',
-      head:['Product','On hand','Reorder at','To order'],
-      rows:function(){ return prods.filter(function(p){return p.stock_qty<=p.min_stock})
-        .map(function(p){return [esc(p.name),qty(p.stock_qty),qty(p.min_stock),qty(Math.max(0,p.max_stock-p.stock_qty))]}) }},
-    khata:{t:'Khata receivable',s:'Kis par kitna baqaya',
-      head:['Customer','Phone','Limit','Outstanding'],
-      rows:function(){ return custs.filter(function(c){return Number(c.balance)>0})
-        .map(function(c){return [esc(c.name),esc(c.phone||''),money(c.credit_limit),money(c.balance)]}) }},
-    bills:{t:'Bill-wise sale',s:'Har bill ka record',
-      head:['Bill','Customer','Counter','Total','Status'],
-      rows:function(){ return sales.map(function(s){return [esc(s.bill_no),esc(s.customer||''),esc(s.counter||''),money(s.total),esc(s.status||'')]}) }}
+  function iso(d){return d.toISOString().slice(0,10)}
+  function setRange(k){
+    var now=new Date(),f,t=new Date();
+    if(k==='today')f=new Date();
+    else if(k==='week'){f=new Date();f.setDate(f.getDate()-6)}
+    else if(k==='month')f=new Date(now.getFullYear(),now.getMonth(),1);
+    else{f=new Date(now.getFullYear(),now.getMonth()-1,1);t=new Date(now.getFullYear(),now.getMonth(),0)}
+    $('from').value=iso(f); $('to').value=iso(t);
+  }
+  setRange('month');
+
+  /* Server se catalog. File:// par (demo mode) API nahi hoti —
+     us soorat mein saaf bata do, jhooti report mat dikhao. */
+  function load(){
+    if(!S.online){
+      $('grid').innerHTML='<div class="note" style="grid-column:1/-1">Reports asli data par chalti hain — inhein dekhne ke liye software mein login karein.</div>';
+      return;
+    }
+    try{
+      var r=S.api('report-list');
+      catalog=r.reports||[];
+    }catch(e){ $('grid').innerHTML='<div class="note">Reports load nahi hui: '+esc(e.message)+'</div>'; return; }
+    paint();
+  }
+
+  function paint(){
+    var q=($('q').value||'').toLowerCase();
+    var list=catalog.filter(function(c){
+      return !q || c.name.toLowerCase().indexOf(q)>-1 || (c.desc||'').toLowerCase().indexOf(q)>-1
+             || (c.group||'').toLowerCase().indexOf(q)>-1;
+    });
+    $('repCount').textContent=list.length+' reports';
+    $('grid').innerHTML=list.map(function(c){
+      return '<div class="rep-card'+(c.id===current?' on':'')+'" data-r="'+esc(c.id)+'">'+
+        '<i>'+esc(c.group||'')+'</i><b>'+esc(c.name)+'</b><span>'+esc(c.desc||'')+'</span></div>';
+    }).join('')||'<div class="empty" style="grid-column:1/-1;padding:24px"><h3>Koi report nahi mili</h3></div>';
+  }
+
+  function run(id){
+    current=id; paint();
+    var f=$('from').value,t=$('to').value;
+    var rep;
+    try{ rep=S.api('report-run&id='+encodeURIComponent(id)+'&from='+f+'&to='+t).report; }
+    catch(e){ $('outTitle').textContent='Report'; $('outNote').textContent=e.message||'Nahi chali';
+              $('outHead').innerHTML=''; $('outRows').innerHTML=''; return; }
+
+    $('outTitle').textContent=rep.title||'Report';
+    $('outNote').textContent=rep.note||'';
+    $('outRange').textContent=(rep.from||f)+'  →  '+(rep.to||t);
+
+    var cols=rep.columns||[];
+    $('outHead').innerHTML='<tr>'+cols.map(function(c){
+      return '<th'+(c.n?' class="num"':'')+'>'+esc(c.l)+'</th>'}).join('')+'</tr>';
+
+    var rows=rep.rows||[];
+    var body=rows.map(function(r){
+      return '<tr>'+cols.map(function(c){
+        var v=r[c.k];
+        return '<td'+(c.n?' class="num"':'')+'>'+(c.n?fmt(c,v):esc(v==null?'':v))+'</td>';
+      }).join('')+'</tr>';
+    }).join('');
+
+    /* Totals row — jo keys server ne di hain sirf wahi */
+    var tot=rep.totals||{};
+    if(Object.keys(tot).length){
+      body+='<tr class="tot-row">'+cols.map(function(c,i){
+        if(i===0) return '<td>TOTAL</td>';
+        return '<td'+(c.n?' class="num"':'')+'>'+(tot[c.k]!==undefined?fmt(c,tot[c.k]):'')+'</td>';
+      }).join('')+'</tr>';
+    }
+    $('outRows').innerHTML=body||'<tr><td colspan="'+Math.max(cols.length,1)+'"><div class="empty" style="padding:26px"><h3>Is arse mein kuch nahi</h3><p>Date range badal kar dekhein.</p></div></td></tr>';
+    $('outPanel').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  /* Qty aur % ko paison ki tarah format karna ghalat hota hai. */
+  function fmt(c,v){
+    var n=Number(v||0);
+    var l=(c.l||'').toLowerCase();
+    if(l.indexOf('qty')>-1||l.indexOf('bills')>-1||l.indexOf('items')>-1||l.indexOf('visits')>-1||
+       l.indexOf('%')>-1||l.indexOf('points')>-1||l.indexOf('copy')>-1||l.indexOf('copies')>-1||
+       l.indexOf('days')>-1||l.indexOf('reprint')>-1||l.indexOf('receipts')>-1) return R.num(n);
+    return money(n);
+  }
+
+  document.addEventListener('click',function(e){
+    var c=e.target.closest('[data-r]'); if(c){ run(c.getAttribute('data-r')); return; }
+    var q=e.target.closest('[data-quick]'); if(q){ setRange(q.getAttribute('data-quick')); if(current)run(current); }
+  });
+  $('q').oninput=paint;
+  $('from').onchange=function(){if(current)run(current)};
+  $('to').onchange=function(){if(current)run(current)};
+  $('btnPrint').onclick=function(){window.print()};
+  $('btnCsv').onclick=function(){
+    if(!current){alert('Pehle koi report chunein.');return}
+    window.location.href='/api.php?action=report-csv&id='+encodeURIComponent(current)+
+      '&from='+$('from').value+'&to='+$('to').value;
   };
 
-  $('grid').innerHTML=Object.keys(REPORTS).map(function(k){
-    return '<div class="module-card"><h3>'+esc(REPORTS[k].t)+'</h3><p>'+esc(REPORTS[k].s)+'</p>'+
-      '<a href="#" data-rep="'+k+'">Open</a></div>';
-  }).join('');
-
-  function show(k){
-    var r=REPORTS[k]; if(!r)return;
-    $('repTitle').textContent=r.t; $('repSub').textContent=r.s;
-    $('repHead').innerHTML='<tr>'+r.head.map(function(h,i){return '<th'+(i>1?' class="num"':'')+'>'+h+'</th>'}).join('')+'</tr>';
-    var rows=r.rows();
-    $('repRows').innerHTML=rows.length? rows.map(function(row){
-      return '<tr>'+row.map(function(c,i){return '<td'+(i>1?' class="num"':'')+'>'+c+'</td>'}).join('')+'</tr>';
-    }).join('') : '<tr><td colspan="'+r.head.length+'"><div class="empty" style="padding:24px"><h3>Is report mein abhi kuch nahi</h3></div></td></tr>';
-  }
-  document.addEventListener('click',function(e){
-    var a=e.target.closest('[data-rep]'); if(!a)return; e.preventDefault(); show(a.getAttribute('data-rep'));
-    document.getElementById('repTitle').scrollIntoView({behavior:'smooth',block:'nearest'});
-  });
-  show('movers');
+  load();
 })();
 </script>
 </body>
