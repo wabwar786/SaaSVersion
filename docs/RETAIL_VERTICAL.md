@@ -1034,3 +1034,54 @@ dobara chalaya                : NODE_OWNER_ALREADY_PRESENT   (idempotent)
 Script ehtiyat bhi barajti hai: user pehle se ho aur uska local password
 maujood ho to **usay chherti nahi** — warna node par baad mein set kiya
 gaya password mit jata.
+
+---
+
+## 28. INSTALL_UPDATE ne kabhi code badla hi nahi
+
+Yeh sab se bara bug tha, aur sab se achhi tarah chhupa hua.
+
+`INSTALL_UPDATE.bat` extract karte waqt kuch folders chhorta hai taake
+customer ka data mehfooz rahe:
+
+```php
+$keep = ['data/','config/','runtime/','storage/','backup/','updates/'];
+```
+
+Iradah theek tha — `runtime/php/` aur `runtime/mariadb/` ke binaries
+bade hain aur machine-specific. **Magar sealed package mein POORA
+application code `runtime/app.sealed` mein hota hai.** `src/` disk par
+maujood hi nahi.
+
+Nateeja: update sirf stubs, `.bat` files aur **VERSION** replace karta
+tha. Code jahan tha wahin rehta tha.
+
+Yani node **naya version dikhata tha magar purana code chalata tha.**
+Isi liye har fix ke baad "kuch farq nahi para" — aur har dafa poora
+package dobara download karna parta tha.
+
+### Maapa hua farq (asli package par)
+
+| | VERSION badli? | `app.sealed` badla? |
+|---|---|---|
+| **Purana keep-list** | haan (V102) | **NAHI — purana code chalta raha** |
+| **Naya keep-list** | haan (V102) | **haan** |
+
+### Fix
+
+Ab `runtime/` poora nahi chhorta — sirf woh hissa jo waqai machine ka
+hai:
+
+```php
+$keep = ['data/','config/','storage/','backup/','updates/',
+         'runtime/php/','runtime/mariadb/','runtime/data/'];
+```
+
+`runtime/app.sealed`, `app.key`, `boot.php` aur `app.info` ab replace
+hote hain. Sath hi:
+
+- Update ke baad **warm cache saaf** hoti hai, taake naya code foran
+  lagay (purani cache stamp se bhi pakri jati, magar yahan saaf karna
+  zyada seedha hai).
+- Backup mein ab `app.sealed`, `app.key`, `boot.php` aur `VERSION` bhi
+  jate hain — rollback mumkin rahe.

@@ -47,17 +47,20 @@ set PHPEXE=runtime\php\php.exe
 if not exist "%PHPEXE%" set PHPEXE=php
 
 echo.
-echo   [1/3] Purani files ka backup...
+echo   [1/4] Purani files ka backup...
 if not exist "backup" mkdir backup
 set STAMP=%DATE:~-4%%DATE:~4,2%%DATE:~7,2%_%TIME:~0,2%%TIME:~3,2%
 set STAMP=%STAMP: =0%
-"%PHPEXE%" -r "$d='backup/before-%STAMP%';@mkdir($d,0775,true);foreach(['public','src','approved_ui','scripts','tools'] as $f){if(is_dir($f)){$i=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($f,FilesystemIterator::SKIP_DOTS));foreach($i as $x){if(!$x->isFile())continue;$t=$d.'/'.$x->getPathname();@mkdir(dirname($t),0775,true);@copy($x->getPathname(),$t);}}}echo '      backup: '.$d.PHP_EOL;"
+"%PHPEXE%" -r "$d='backup/before-%STAMP%';@mkdir($d,0775,true);foreach(['public','src','approved_ui','scripts','tools'] as $f){if(is_dir($f)){$i=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($f,FilesystemIterator::SKIP_DOTS));foreach($i as $x){if(!$x->isFile())continue;$t=$d.'/'.$x->getPathname();@mkdir(dirname($t),0775,true);@copy($x->getPathname(),$t);}}}foreach(['runtime/app.sealed','runtime/app.key','runtime/boot.php','runtime/app.info','VERSION'] as $x){if(is_file($x)){@mkdir(dirname($d.'/'.$x),0775,true);@copy($x,$d.'/'.$x);}} echo '      backup: '.$d.PHP_EOL;"
 
-echo   [2/3] Nayi files nikal rahe hain...
-"%PHPEXE%" -r "$z=new ZipArchive();if($z->open('updates/%PKG%')!==true){echo '      ERROR: package khul nahi saka'.PHP_EOL;exit(1);} $keep=['data/','config/','runtime/','storage/','backup/','updates/']; $n=0; for($i=0;$i<$z->numFiles;$i++){$e=$z->getNameIndex($i); $skip=false; foreach($keep as $k){if(strpos($e,$k)===0)$skip=true;} if($skip||substr($e,-1)==='/')continue; $z->extractTo('.', $e); $n++;} $z->close(); echo '      '.$n.' files updated'.PHP_EOL;"
+echo   [2/4] Nayi files nikal rahe hain...
+"%PHPEXE%" -r "$z=new ZipArchive();if($z->open('updates/%PKG%')!==true){echo '      ERROR: package khul nahi saka'.PHP_EOL;exit(1);} $keep=['data/','config/','storage/','backup/','updates/','runtime/php/','runtime/mariadb/','runtime/data/']; $n=0; for($i=0;$i<$z->numFiles;$i++){$e=$z->getNameIndex($i); $skip=false; foreach($keep as $k){if(strpos($e,$k)===0)$skip=true;} if($skip||substr($e,-1)==='/')continue; $z->extractTo('.', $e); $n++;} $z->close(); echo '      '.$n.' files updated'.PHP_EOL;"
 if errorlevel 1 goto :fail
 
-echo   [3/3] Database migrations...
+echo   [3/3] Purani cache saaf...
+"%PHPEXE%" -r "$d='runtime/.cache';if(is_dir($d)){$i=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($i as $x){$x->isDir()?@rmdir($x->getPathname()):@unlink($x->getPathname());}@rmdir($d);} echo '      cache cleared'.PHP_EOL;"
+
+echo   [4/4] Database migrations...
 "%PHPEXE%" scripts\install_schema.php >nul 2>&1
 for %%m in (migrate_sync_columns migrate_delete_support migrate_print_rule_default migrate_fiscal migrate_module_ids) do (
   "%PHPEXE%" scripts\%%m.php >nul 2>&1
