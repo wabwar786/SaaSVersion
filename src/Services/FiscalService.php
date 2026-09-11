@@ -44,9 +44,29 @@ final class FiscalService
     }
 
     /** Cloud par fiscal kabhi chalu nahi hota. */
+    /**
+     * Kya is property par FBR ka kaam hona chahiye?
+     *
+     * Do shartein — dono zaroori:
+     *   1. Yeh offline node ho. FBR ka fiscal service usi PC par hota
+     *      hai (localhost), cloud us tak pohanch hi nahi sakta.
+     *   2. Super Admin ne is business ke liye `fbr` feature ON rakha ho.
+     *
+     * Doosri shart pehle nahi thi: Super Admin FBR band kar deta to bhi
+     * node bill par FBR number aur QR chhapta rehta tha. Ab band ka
+     * matlab band hai — na number, na QR, na koi network call.
+     */
+    public static function enabledForTenant(): bool
+    {
+        $feat = \Aio\Auth::tenantFeatures();
+        if ($feat === null) return true;          // koi hadd set nahi = sab allowed
+        return \in_array('fbr', $feat, true);
+    }
+
     public static function availableHere(): bool
     {
-        return (string)cfg('app.role') !== 'cloud';
+        if ((string)cfg('app.role') === 'cloud') return false;
+        return self::enabledForTenant();
     }
 
     public static function settings(): array

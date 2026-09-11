@@ -19,6 +19,11 @@ button{cursor:pointer;border:0;background:none}
 .pos{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto auto 1fr;height:100vh}
 
 /* ---------- top ---------- */
+.qtymode{display:flex;align-items:center;gap:7px;height:36px;padding:0 11px;border:1px solid var(--l);
+  border-radius:9px;background:#fff;cursor:pointer;user-select:none;white-space:nowrap;font-size:12.5px;font-weight:700;color:var(--mut)}
+.qtymode:hover{border-color:var(--green)}
+.qtymode input{width:17px;height:17px;accent-color:var(--green);cursor:pointer;margin:0}
+.qtymode.on{border-color:var(--green);background:var(--soft);color:var(--green2)}
 .top{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:8px 13px;background:var(--panel);border-bottom:1px solid var(--l)}
 .iconb{width:32px;height:32px;border-radius:9px;border:1px solid var(--l);display:grid;place-items:center;font-size:15px;flex:none}
 .iconb:hover{border-color:var(--brand);color:var(--brand)}
@@ -314,6 +319,11 @@ textarea.inp{min-height:62px;resize:vertical}
 <div class="pos">
   <header class="top">
     <button class="mark" id="homeBtn" title="Home">U</button>
+    <!-- Qty mode: tick karein to item par click karte hi calculator khulta
+         hai; qty daal kar Enter dabate hi item cart mein chala jata hai. -->
+    <label class="qtymode" id="qtyModeWrap" title="Item par click karte hi quantity calculator khule">
+      <input type="checkbox" id="qtyMode"><span>Qty first</span>
+    </label>
     <div class="search"><span>&#128269;</span><input id="q" placeholder="Search menu, item code, barcode..."><span class="kbd">Ctrl K</span></div>
     <div class="perio"><span>Best Selling</span><select id="period"><option>Today</option><option>Yesterday</option><option>Last 7 days</option></select></div>
     <div style="flex:1"></div>
@@ -855,8 +865,37 @@ function addItem(id){
   if(!p)return;
   if(p.pizza){optionsModal(p);return}
   if(p.weighted){calculator(p.name+' &mdash; weight in KG',preQty[id]||1,function(v){push(p,v,'')});return}
+
+  /* QTY FIRST — top-left ka checkbox.
+     Kuch counters par har item ki quantity alag hoti hai (fish, mithai,
+     bulk order). Wahan "add karo phir qty badlo" do qadam ka kaam hai.
+     Tick hone par item par click karte hi calculator khulta hai aur
+     qty confirm hote hi item seedha cart mein chala jata hai. */
+  if(qtyFirst()){
+    calculator(p.name+' &mdash; quantity',preQty[id]||1,function(v){
+      if(v>0){ push(p,v,''); toast(p.name+' \u00d7 '+qfmt(v)+' added'); }
+    });
+    return;
+  }
   push(p,preQty[id]||1,'');
 }
+
+/* Checkbox ki halat — browser mein yaad rehti hai, taake har shift par
+   cashier dobara na dabaye. */
+function qtyFirst(){ var el=document.getElementById('qtyMode'); return !!(el&&el.checked); }
+(function initQtyMode(){
+  var el=document.getElementById('qtyMode'), wrap=document.getElementById('qtyModeWrap');
+  if(!el)return;
+  try{ el.checked = localStorage.getItem('pos_qty_first')==='1'; }catch(e){}
+  function paint(){ if(wrap) wrap.classList.toggle('on', el.checked); }
+  paint();
+  el.onchange=function(){
+    try{ localStorage.setItem('pos_qty_first', el.checked?'1':'0'); }catch(e){}
+    paint();
+    toast(el.checked ? 'Qty first: item par click karte hi calculator khulega'
+                     : 'Qty first band — item seedha add hoga');
+  };
+})();
 function push(p,qty,note,label){
   var name=label||p.name;
   var line=cart.find(function(l){return l.id===p.id&&l.name===name&&(l.note||'')===(note||'')});
@@ -1318,7 +1357,12 @@ function slipHtml(kind,lines,info){
       +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
       +'<div class="meta">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
   }
-  var rows=lines.map(function(l){
+  /* Bill par column headers — "Item Description" aur "Total Amount".
+     KOT par inki zaroorat nahi (wahan sirf qty aur item hota hai). */
+  var itemHead = (kind==='KOT') ? ''
+    : '<tr class="ith"><td colspan="2">Item Description</td><td class="r">Total Amount</td></tr>';
+
+  var rows=itemHead+lines.map(function(l){
     return kind==='KOT'
       ? '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)+(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>'
       : '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td><td class="r">'+money(l.qty*l.price)+'</td></tr>';
@@ -1387,17 +1431,24 @@ function slipHtml(kind,lines,info){
     d.style.fontSize='9px'; d.textContent='QR could not be generated';
     if(img.parentNode)img.parentNode.insertBefore(d,img.nextSibling);
   };
+  /* ============================================================
+     FBR PORTION — sirf us property par jahan FBR CHALU hai.
+
+     Pehle QR har bill par chhapta tha: FBR number na ho to POS khud
+     "INV:...|AMT:...|TAX:..." bana kar QR mein daal deta tha. Us QR ka
+     FBR se koi taalluq nahi tha — scanner usay pehchanta hi nahi, aur
+     jis dukan par FBR hai hi nahi, uske bill par bhi "FBR Invoice QR"
+     likha aata tha. Yeh customer ko gumraah karta hai.
+
+     Ab shart ek hi hai: ASLI FBR invoice number maujood ho. Super Admin
+     ne FBR band kiya ho, ya property par FBR hai hi nahi, to number
+     aata hi nahi — is liye QR aur FBR ka koi hissa bill par nahi aata.
+     ============================================================ */
   var fbrQr='';
-  if(kind!=='KOT'&&PRINT.qr){
-    /* Asli FBR invoice number, warna QR mein banaya hua matn jata tha
-       jise FBR ka koi scanner pehchanta hi nahi. */
-    var payload=(info&&info.fbrNo)?info.fbrNo
-              :('INV:'+((info&&info.billNo)||billNo)+'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax));
-    /* QR thoda bara (scale 4) aur uske neeche number bare font mein —
-       pehle 9px tha jo kagaz par parha hi nahi jata tha. */
-    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(payload)
+  var fbrNo=(info&&info.fbrNo)?String(info.fbrNo).trim():'';
+  if(kind!=='KOT' && PRINT.qr && fbrNo){
+    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(fbrNo)
       +'" style="width:118px;height:118px" onerror="qrFail(this)">'
-      +'<div class="qrno">'+esc(payload)+'</div>'
       +'<div class="qrlbl">FBR Invoice QR</div></div>';
   }
   var foot=kind==='KOT'?'<hr>'
@@ -1409,7 +1460,11 @@ function slipHtml(kind,lines,info){
       +'<tr class="gt"><td>GRAND TOTAL</td><td class="r">'+money(t.grand)+'</td></tr>'
       +(info?'<tr><td>Paid ('+esc(info.pay)+')</td><td class="r">'+money(info.rcv)+'</td></tr>'
         +'<tr><td>Change</td><td class="r">'+money(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
-      +'</table>'+fbrQr+'<hr><div class="thanks">'+esc(PRINT.footer||'Thank you! Visit again.')+'</div>';
+      +'</table>'+fbrQr+'<hr>'
+      +(PRINT.footer?'<div class="thanks">'+esc(PRINT.footer)+'</div>':'')
+      /* Software ki pehchan — har bill par, chhote magar saaf font mein. */
+      +'<div class="byline">Software by '+esc(PRINT.vendor||'Wabwar Software House')
+        +' @ '+esc(PRINT.vendorPhone||'0342-5095104')+'</div>';
   return '<div class="slip">'+head+'<table>'+rows+'</table>'+foot+'</div>';
 }
 function slipNode(kind,lines,info){
@@ -1470,6 +1525,9 @@ function printNode(node,wide){
     +'.meta{text-align:center;font-size:12px;line-height:1.5;margin-top:3px}'
     +'.doc{text-align:center;font-size:12.5px;font-weight:800;letter-spacing:1.2px;margin:6px 0 2px}'
     /* totals — 2px bara aur bold */
+    /* Item table ke headers — customer ko foran samajh aaye ke kaunsa
+       column kya hai. */
+    +'.ith td{font-size:11px;font-weight:800;padding:2px 0 4px;border-bottom:1px solid #000}'
     +'.tot td{font-size:14px;font-weight:700;padding:4px 0}'
     +'.tot .gt td{font-size:17px;font-weight:900;border-top:1px solid #000;padding-top:6px}'
     /* QR ke neeche ka invoice number — yahi sab se zyada na-qabil-e-parh tha */
@@ -1477,6 +1535,7 @@ function printNode(node,wide){
     +'.qrlbl{font-size:11px;font-weight:700;margin-top:1px}'
     /* thank you */
     +'.thanks{text-align:center;font-size:14px;font-weight:700;margin-top:4px;line-height:1.4}'
+    +'.byline{text-align:center;font-size:11px;font-weight:700;margin-top:5px;line-height:1.35}'
     +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}'
     +'@page{size:'+(wide?'auto':mm+' auto')+';margin:'+(wide?'8mm':'2mm')+'}'
     +(wide?'':'body{width:'+mm+'}')

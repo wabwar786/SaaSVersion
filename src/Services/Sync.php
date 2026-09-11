@@ -1253,6 +1253,31 @@ final class Sync
     }
 
     /** One full sync run (push then pull). Never throws to the caller. */
+    /**
+     * Cloud se is business ke feature flags le kar local `tenants` row
+     * mein likh do.
+     *
+     * Iske baghair Super Admin ka "FBR band karo" wala faisla offline
+     * node tak pohanchta hi nahi tha — package dobara banwana parta.
+     */
+    public static function pullFeatures(): void
+    {
+        try {
+            $r = self::post('sync-schema', ['tables' => []]);
+            if (!\array_key_exists('features', $r)) return;
+            $feat = $r['features'];
+            $json = \is_array($feat) ? \json_encode(\array_values($feat)) : null;
+            DB::pdo()->prepare("UPDATE tenants SET features_json=? WHERE id=?")
+                     ->execute([$json, tenant_id()]);
+            self::touchState('features', 'OK',
+                $feat === null ? 'Sab modules allowed' : (\count($feat) . ' modules allowed'));
+        } catch (\Throwable $e) {
+            /* Features na aayein to sync rukni nahi chahiye — purani
+               settings par kaam chalta rahe. */
+            self::touchState('features', 'SKIPPED', \substr($e->getMessage(), 0, 90));
+        }
+    }
+
     public static function run(string $triggeredBy = 'auto'): array
     {
         if (!self::enabled()) {
@@ -1269,6 +1294,9 @@ final class Sync
 
         try {
             self::touchState('engine', 'SYNCING');
+            /* Super Admin ke faisle (features) pehle utha lo — push/pull se
+               pehle, taake FBR band/chalu ka asar isi run mein lag jaye. */
+            self::pullFeatures();
             $pushed = self::push();
             $pulled = self::pull();
 

@@ -1670,7 +1670,29 @@ case 'sync-schema':$stid=syncTenant();syncNodeSeen($stid);
     node ki permission rows cloud par kisi module se match hi nahi karti
     thin -> har user "0 Modules", bilkul khamoshi se. Ab handshake mein
     fingerprint bhi jata hai taake mismatch NAZAR AAYE. */
- ok(['schema'=>$out,'module_fingerprint'=>moduleFingerprint()]);
+ /* ============================================================
+    V103 — FEATURES bhi handshake mein.
+
+    Super Admin har business ke liye tay karta hai ke kaunse modules
+    milenge (`tenants.features_json`). Magar `tenants` table sync ki
+    pull list mein nahi hai, is liye offline node ko in faislon ki
+    khabar hi nahi hoti thi — FBR band karne ke bawajood node par chalta
+    rehta.
+
+    Ab handshake ke sath features neeche jate hain aur node unhein apni
+    `tenants` row mein likh leta hai. Agli sync par hi asar ho jata hai
+    — package dobara download karne ki zaroorat nahi.
+    ============================================================ */
+ $feat=null; $fbrOn=false;
+ try{
+   $fq=DB::pdo()->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
+   $fq->execute([$stid]);
+   $fj=$fq->fetchColumn();
+   if($fj){ $a=json_decode((string)$fj,true); if(is_array($a)) $feat=$a; }
+ }catch(Throwable $e){}
+ $fbrOn = ($feat===null) ? true : in_array('fbr',$feat,true);
+ ok(['schema'=>$out,'module_fingerprint'=>moduleFingerprint(),
+     'features'=>$feat,'fbr_enabled'=>$fbrOn]);
 
 case 'sync-pull-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
@@ -1885,6 +1907,49 @@ case 'sa-plans':needSuper();ok(['plans'=>DB::pdo()->query("SELECT id,name,price,
 case 'sa-business-list':needSuper();ok(['businesses'=>Platform::listBusinesses()]);
 case 'sa-business-create':needSuper();$d=body();$r=Platform::provisionBusiness($d);ok(['business'=>$r]);
 case 'sa-branding-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$logo=(string)($d['logo_url']??'');if($logo!==''&&strlen($logo)>1500000)fail('Logo too large (max ~1MB)');DB::pdo()->prepare("UPDATE tenants SET display_name=?,logo_url=?,brand_color=?,brand_accent=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['display_name']??''))?:null,$logo!==''?$logo:null,trim((string)($d['brand_color']??''))?:null,trim((string)($d['brand_accent']??''))?:null,$tid]);ok(['message'=>'Branding saved']);
+case 'sa-fbr-toggle':needSuper();$d=body();
+ /* ============================================================
+    FBR ko ek business ke liye chalu / band karna.
+
+    Yeh `features_json` par hi chalta hai (wahi list jo baaki modules
+    ke liye hai) — alag switch banane se do jagah sach rakhna parta,
+    aur woh hamesha aage peeche ho jata hai.
+
+    Band karte hi us business ke bill par FBR ka kuch nahi aata: na
+    invoice number, na QR — aur offline node bhi koi fiscal call nahi
+    karta. Node ko yeh khabar agli sync par mil jati hai (handshake
+    features neeche le jata hai), package dobara banwane ki zaroorat
+    nahi.
+    ============================================================ */
+ $tid=(string)($d['tenant_id']??''); if($tid==='')fail('tenant_id is required');
+ $on=(bool)($d['enabled']??false);
+ $p=DB::pdo();
+ $q=$p->prepare("SELECT features_json,industry_code FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]); $row=$q->fetch(); if(!$row)fail('Business not found',404);
+ $cur=$row['features_json']?(json_decode((string)$row['features_json'],true)?:null):null;
+ if($cur===null){
+   /* Ab tak koi hadd set nahi thi (= sab allowed). FBR band karna hai to
+      poori list banani paregi, warna baaki modules bhi band ho jayenge. */
+   $mq=$p->prepare("SELECT module_key FROM platform_modules
+                     WHERE is_active=1 AND industry_code IN (?, 'COMMON')");
+   $mq->execute([strtoupper((string)($row['industry_code']?:'RESTAURANT'))]);
+   $cur=array_column($mq->fetchAll(),'module_key');
+ }
+ $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='fbr')));
+ if($on)$cur[]='fbr';
+ $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([json_encode(array_values($cur)),$tid]);
+ \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'chalu':'band').' kiya gaya');
+ ok(['enabled'=>$on,'modules'=>count($cur),
+     'message'=>'FBR '.($on?'chalu':'band').' ho gaya. Offline node par agli sync se asar hoga.']);
+
+case 'sa-fbr-status':needSuper();
+ $tid=(string)($_GET['tenant_id']??''); if($tid==='')fail('tenant_id is required');
+ $q=DB::pdo()->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]); $fj=$q->fetchColumn();
+ $f=$fj?(json_decode((string)$fj,true)?:null):null;
+ ok(['enabled'=>($f===null)?true:in_array('fbr',$f,true),'unrestricted'=>($f===null)]);
+
 case 'sa-features-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT features_json FROM tenants WHERE id=?");$q->execute([$tid]);$j=$q->fetchColumn();$sel=$j?(json_decode((string)$j,true)?:[]):null;$all=$p->query("SELECT module_key,name title FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll();ok(['modules'=>$all,'selected'=>$sel]);
 case 'sa-features-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$f=is_array($d['features']??null)?array_values(array_unique(array_map('strval',$d['features']))):[];DB::pdo()->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")->execute([$f?json_encode($f):null,$tid]);ok(['count'=>count($f)]);
 case 'sa-wa-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$q=DB::pdo()->prepare("SELECT wa_api_url,wa_api_key,wa_events_json FROM tenants WHERE id=?");$q->execute([$tid]);$r=$q->fetch()?:[];ok(['wa'=>['url'=>$r['wa_api_url']??'','key'=>$r['wa_api_key']??'','events'=>$r['wa_events_json']?(json_decode((string)$r['wa_events_json'],true)?:[]):[]]]);

@@ -1085,3 +1085,98 @@ hote hain. Sath hi:
   zyada seedha hai).
 - Backup mein ab `app.sealed`, `app.key`, `boot.php` aur `VERSION` bhi
   jate hain — rollback mumkin rahe.
+
+---
+
+## 29. Naya invoice design + FBR per-property
+
+### Receipt ka naya design
+
+| Cheez | Pehle | Ab |
+|---|---|---|
+| Item table | sirf rows | upar **"Item Description"** aur **"Total Amount"** headers, neeche line |
+| QR ke neeche | `INV:0002|AMT:12412|TAX:1712` (bara, bhara hua) | sirf **"FBR Invoice QR"** |
+| Footer | "Thank you! Visit again." | **"Software by Wabwar Software House @ 0342-5095104"** (aur agar dukan ka apna footer set ho to woh upar) |
+
+### QR ab sirf asli FBR bill par
+
+**Pehle:** QR har bill par chhapta tha. FBR invoice number na ho to POS
+khud `INV:...|AMT:...|TAX:...` bana kar QR mein daal deta tha.
+
+Us QR ka FBR se **koi taalluq nahi tha** — koi sarkari scanner usay
+pehchanta hi nahi. Aur jis dukan par FBR hai hi nahi, uske bill par bhi
+"FBR Invoice QR" likha aata tha. Yeh customer ko gumraah karta hai aur
+dukandar ke liye khatarnak hai.
+
+**Ab shart ek hi hai:** asli FBR invoice number maujood ho. Na ho to
+QR bhi nahi, "FBR Invoice QR" ka lafz bhi nahi.
+
+### FBR chalu / band — Super Admin se
+
+Do naye endpoints:
+
+```
+sa-fbr-status?tenant_id=...      -> is business par FBR chalu hai ya nahi
+sa-fbr-toggle {tenant_id, enabled} -> chalu / band karo
+```
+
+Yeh maujooda `features_json` par hi chalte hain (wahi list jo baaki
+modules ke liye hai). Alag switch banane se sach do jagah rakhna parta,
+aur woh hamesha aage-peeche ho jata hai.
+
+**Band karne par:**
+
+| | Nateeja |
+|---|---|
+| `FiscalService::enabledForTenant()` | false |
+| `availableHere()` | false |
+| Bill par FBR number | nahi |
+| Bill par QR | nahi |
+| Fiscal service ko network call | **koi nahi** |
+
+### Node tak khabar kaise pohanchti hai
+
+`tenants` table sync ki pull list mein nahi hai, is liye Super Admin ka
+faisla offline node tak pohanchta hi nahi tha — FBR band karne ke
+bawajood node par chalta rehta.
+
+Ab **sync handshake** ke sath `features` neeche jate hain aur node
+unhein apni `tenants` row mein likh leta hai (`Sync::pullFeatures()`,
+push/pull se pehle chalti hai). Agli sync par hi asar ho jata hai —
+package dobara download karne ki zaroorat nahi.
+
+**Test:**
+
+```
+A) FBR chalu : enabledForTenant = haan,  availableHere = haan
+B) FBR band  : enabledForTenant = nahi,  availableHere = nahi
+               submit() -> koi network call nahi
+```
+
+---
+
+## 30. Restaurant POS — "Qty first" checkbox
+
+Top-left par, home button ke saath ek checkbox: **Qty first**.
+
+| Halat | Item par click karne se |
+|---|---|
+| Band (default) | Item seedha cart mein — 1 qty (purana tareeqa) |
+| Chalu | **Quantity calculator khulta hai**; qty daal kar Apply dabate hi item cart mein chala jata hai |
+
+Kuch counters par har item ki quantity alag hoti hai (fish, mithai, bulk
+order). Wahan "pehle add karo, phir cart mein qty badlo" do qadam ka kaam
+hai. Yeh checkbox usay ek qadam bana deta hai.
+
+**Tafseelat:**
+
+- Wahi calculator istemal hota hai jo weighted items ke liye pehle se
+  tha — decimal (2.5) bhi chalta hai, aur 0.25 / 0.50 / 1.00 ke quick
+  buttons bhi.
+- Checkbox ki halat **browser mein yaad rehti hai**, taake cashier ko
+  har shift par dobara na dabana pare.
+- Weighted items (KG wale) par koi farq nahi — un par calculator pehle
+  bhi khulta tha aur ab bhi khulta hai.
+- Variant/pizza items par bhi koi farq nahi — un ka apna options modal
+  hai jahan variant chunna zaroori hota hai.
+- Qty 0 daalne par kuch add nahi hota.
