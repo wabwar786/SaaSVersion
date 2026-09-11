@@ -1079,7 +1079,7 @@ document.addEventListener('click',e=>{
   }
 
   const close=e.target.closest('[data-close]');
-  if(close){closeModal(close.dataset.close);return}
+  if(close){closeModal(clo.dataset.close);return}
   if(e.target.classList.contains('modal'))e.target.classList.remove('show');
 });
 

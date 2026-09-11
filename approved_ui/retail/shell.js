@@ -80,7 +80,7 @@
   try { badges = JSON.parse((script && script.getAttribute('data-badges')) || '{}'); } catch (e) { }
 
   var user = { name: 'Ali Raza', role: 'Store Manager', email: 'ali@retailos.local' };
-  var allowed = user.modules || null;   // null = demo mein sab dikhao
+  var allowed = user.modules || null;   // null = demo mein all dikhao
 
   function initials(n) { return (n || 'U').split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase(); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

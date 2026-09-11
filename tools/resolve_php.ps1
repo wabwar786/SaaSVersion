@@ -112,10 +112,10 @@ display_errors=Off
 log_errors=On
 
 ; ---------------------------------------------------------------
-; OPCACHE — counter ki raftaari ka sab se bara faida.
-; `php -S` har request par saara PHP dobara COMPILE karta tha
+; OPCACHE — counter ki raftaari ka all se bara faida.
+; `php -S` har request par saara PHP again COMPILE karta tha
 ; (api.php + services = ~30 ms har request par, kuch bhi karne se
-; pehle). OPcache compiled code memory mein rakh leta hai.
+; first). OPcache compiled code memory mein rakh leta hai.
 ; enable_cli LAZMI hai — built-in server CLI SAPI par chalta hai.
 ; ---------------------------------------------------------------
 zend_extension=opcache

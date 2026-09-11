@@ -114,7 +114,7 @@ final class BillTemplate
             if ($t === '') return;
             /* mbstring har build par does not exist — fallback lazmi. */
             $k = function_exists('mb_strtolower') ? mb_strtolower($t) : strtolower($t);
-            if (isset($seen[$k])) return;          // dobara nahi
+            if (isset($seen[$k])) return;          // again nahi
             $seen[$k] = true;
             /* Choti font par ziada characters aate hain; us hisab se wrap
                taake line kaghaz se bahar na nikle. */

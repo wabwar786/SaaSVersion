@@ -107,7 +107,7 @@
        dhoondna search se mumkin hi nahi tha. */
     var filterHtml = (cfg.filters || []).map(function (f) {
       return '<select data-flt="' + f.key + '" style="width:auto;min-width:150px">' +
-        '<option value="">' + esc(f.label) + ': sab</option></select>';
+        '<option value="">' + esc(f.label) + ': all</option></select>';
     }).join('');
 
     $('.content').innerHTML =
@@ -122,14 +122,14 @@
       '<div class="table-wrap"><table class="table"><thead><tr>' + colHead +
       (canAdd ? '<th style="text-align:right">Actions</th>' : '') + '</tr></thead><tbody id="mRows"></tbody></table></div>' +
       '<div id="mEmpty" class="empty" style="display:none"><div class="ico">' + (cfg.emptyIcon || '▦') + '</div>' +
-      '<h3>Kuch nahi mila</h3><p>' + esc(cfg.emptyText || 'Filter badal kar dekhein ya naya record add karein.') + '</p>' +
+      '<h3>Nothing found</h3><p>' + esc(cfg.emptyText || 'Filter badal kar see ya new record add please.') + '</p>' +
       (canAdd ? '<button class="btn primary" id="mEmptyAdd">' + esc(cfg.addLabel || '+ New') + '</button>' : '') + '</div>' +
       '<div id="mPager" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)">' +
       '<span id="mCount" style="color:var(--muted);font-size:12px"></span>' +
       '<span style="flex:1"></span>' +
-      '<button class="btn sm" id="mPrev">← Pichla</button>' +
+      '<button class="btn sm" id="mPrev">← Previous</button>' +
       '<span id="mPageNo" style="font-size:12px;font-weight:600"></span>' +
-      '<button class="btn sm" id="mNext">Agla →</button>' +
+      '<button class="btn sm" id="mNext">Next →</button>' +
       '<select id="mPageSize" style="width:auto"><option>50</option><option>100</option><option>200</option></select>' +
       '</div></div></section>';
 
@@ -153,7 +153,7 @@
           if (f.addable) {
             inp = '<div style="display:flex;gap:6px">' + inp +
               '<button type="button" class="btn icon" data-addopt="' + f.key + '" ' +
-              'data-mod="' + f.addable + '" title="Naya add karein" ' +
+              'data-mod="' + f.addable + '" title="Add new" ' +
               'style="flex-shrink:0;width:38px">+</button></div>';
           }
         }
@@ -193,7 +193,7 @@
         if (!el) return;
         var cur = el.value;
         var opts = typeof f.options === 'function' ? f.options(rows) : (f.options || []);
-        el.innerHTML = '<option value="">' + esc(f.label) + ': sab</option>' +
+        el.innerHTML = '<option value="">' + esc(f.label) + ': all</option>' +
           opts.map(function (o) {
             var v = (typeof o === 'object') ? o.value : o;
             var l = (typeof o === 'object') ? o.label : o;
@@ -315,7 +315,7 @@
             rows.unshift({ id: newId, name: name.trim() });
             RetailStore.set(coll, rows);
           }
-        } catch (er) { toast(er.message || 'Add nahi hua', true); return; }
+        } catch (er) { toast(er.message || 'Could not add', true); return; }
         var fld = (cfg.fields || []).filter(function (x) { return x.key === fkey; })[0];
         var sel = document.querySelector('[data-f="' + fkey + '"]');
         if (fld && sel) sel.innerHTML = selectOptions(fld, newId);

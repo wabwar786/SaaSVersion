@@ -102,10 +102,10 @@ $phpOut = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools
 # ki koshish + ek dobara koshish.
 $phpText = ($phpOut | Out-String)
 if ($phpText -match 'VCRUNTIME140|not compatible with this PHP build') {
-  Bad 'Is computer par purani Visual C++ runtime hai (PHP ko nayi chahiye).'
+  Bad 'This computer has an old Visual C++ runtime (PHP needs a newer one).'
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\fix_vcruntime.ps1"
   if ($LASTEXITCODE -ne 0) {
-    Bad 'Setup rok diya gaya. Ooper likhi hidayat par amal karein.'
+    Bad 'Setup rok diya gaya. Ooper likhi hidayat par amal please.'
     exit 1
   }
   $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1

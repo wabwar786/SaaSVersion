@@ -307,7 +307,7 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
           </div>
           <!-- V80 — DEMO business ka button.
                Pehle iski class `btn sec` thi, jo shared.css mein hai hi
-               nahi (sirf primary / ghost / danger / sm / icon hain), is
+               nahi (only primary / ghost / danger / sm / icon hain), is
                liye button be-rang aur be-shakl reh jata tha aur nazar
                hi nahi aata tha. -->
           <div class="action-row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
@@ -315,10 +315,10 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
             <button class="btn" id="demoBtn">Demo business</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin:8px 0 0;line-height:1.6">
-            <b>Demo business</b> par click karein to business types ki list khulti hai &mdash;
-            jis type ka demo chahiye wo chunein. Har type ka <b>ek</b> demo ban sakta hai.
-            Har 5 din baad customer ka daala hua data khud saaf ho jata hai aur sample data
-            bacha rehta hai &mdash; demo hamesha dikhane laiq rehta hai.
+            Click <b>Demo business</b> to open the list of business types &mdash;
+            pick the type you want. <b>One</b> demo is allowed per type.
+            Every 5 days the data customers entered is cleared automatically and the sample data
+            stays &mdash; the demo is always presentable.
           </p>
         </div></div>
         <div class="panel hide" id="successCard" style="margin-top:14px">
@@ -721,7 +721,7 @@ async function checkHealth(){
 /* ===================== BUSINESS ACTIONS (existing) ===================== */
 async function bizBrand(id){
   const b=(window.__bizRows||[]).find(function(x){return x.id===id})||{};
-  const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Naam, logo aur colors — login aur poore software par lagenge.</p>'
+  const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Name, logo and colours — applied to the login screen and the whole app.</p>'
     +'<div class="grid" style="margin-top:14px">'
     +'<div><label>Display Name</label><input id="brName" placeholder="'+(b.name||'')+'"></div>'
     +'<div><label>Primary Color</label><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
@@ -761,28 +761,28 @@ async function bizBrand(id){
    ============================================================ */
 async function bizFbr(id){
   const st=await api('sa-fbr-status&tenant_id='+encodeURIComponent(id));
-  if(!st.ok){toast(st.message||'Status nahi mila');return}
+  if(!st.ok){toast(st.message||'Status not found');return}
   const on=!!st.enabled;
-  const pill = on ? '<span class="tag green">Chalu</span>' : '<span class="tag red">Band</span>';
+  const pill = on ? '<span class="tag green">Enabled</span>' : '<span class="tag red">Disabled</span>';
 
   /* Is page ka apna helper `sModal` hai — `modal()` yahan define hi
      nahi. Pehle wahi ghalti ki thi: button dabta tha, JS gir jati thi
      aur kuch nazar hi nahi aata tha. */
   const ov=sModal('<h3 style="margin:0 0 4px">FBR Digital Invoice</h3>'
-    +'<p class="lead" style="margin:0 0 14px">Is business par FBR ki halat</p>'
-    +'<div class="note" style="margin-bottom:12px">Abhi: '+pill
-      +(st.unrestricted?' &nbsp;<span class="muted">(is business par koi module hadd set nahi — sab allowed hai)</span>':'')
+    +'<p class="lead" style="margin:0 0 14px">FBR status for this business</p>'
+    +'<div class="note" style="margin-bottom:12px">Currently: '+pill
+      +(st.unrestricted?' &nbsp;<span class="muted">(no module limit is set for this business — everything is allowed)</span>':'')
       +'</div>'
     +'<div style="font-size:12.5px;line-height:1.75;color:var(--muted)">'
-      +'<b style="color:var(--ink)">Chalu:</b> bill par FBR invoice number aur QR aayega. '
-      +'Fiscal service offline node par chalti hai (localhost) — cloud us tak pohanch nahi sakta.'
-      +'<br><b style="color:var(--ink)">Band:</b> bill par FBR ka kuch bhi nahi — na number, na QR. '
-      +'Offline node koi fiscal call bhi nahi karega.'
-      +'<br><span class="muted">Offline node ko yeh faisla agli sync par mil jata hai.</span>'
+      +'<b style="color:var(--ink)">Enabled:</b> the bill will carry the FBR invoice number and QR. '
+      +'The fiscal service runs on the offline node (localhost) — the cloud cannot reach it.'
+      +'<br><b style="color:var(--ink)">Disabled:</b> nothing FBR-related on the bill — no number, no QR. '
+      +'The offline node will not make any fiscal call either.'
+      +'<br><span class="muted">The offline node picks this up on its next sync.</span>'
     +'</div>'
     +'<div class="row" style="margin-top:16px;gap:8px">'
       +'<button class="btn ghost" data-x>Cancel</button>'
-      +'<button class="btn'+(on?' danger':'')+'" id="fbrGo">'+(on?'FBR band karein':'FBR chalu karein')+'</button>'
+      +'<button class="btn'+(on?' danger':'')+'" id="fbrGo">'+(on?'FBR disable':'FBR enable')+'</button>'
     +'</div>');
 
   ov.querySelector('#fbrGo').onclick=async function(){
@@ -790,7 +790,7 @@ async function bizFbr(id){
     this.disabled=true; this.textContent='Saving…';
     const r=await api('sa-fbr-toggle',{tenant_id:id,enabled:!on});
     this.disabled=false; this.textContent=label;
-    if(!r.ok){toast(r.message||'Nahi hua');return}
+    if(!r.ok){toast(r.message||'Failed');return}
     toast(r.message||'Ho gaya');
     ov.remove(); loadBiz();
   };
@@ -799,7 +799,7 @@ async function bizFbr(id){
 async function bizFeatures(id){
   const r=await api('sa-features-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
-  const sel=r.selected;   // null = sab allowed
+  const sel=r.selected;   // null = all allowed
   /* V69 — har module ke saamne uski ASLI halat.
      Left menu ka audit (docs/MODULE_STATUS.md) batata hai ke kai modules
      abhi sirf khoobsurat screens hain — data `ui_records` mein para
@@ -852,7 +852,7 @@ async function bizWa(id){
   const r=await api('sa-wa-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
   const w=r.wa||{};
-  const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect please aur events select please.</p>'
+  const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">Connect to the WA Engine API and choose the events.</p>'
     +'<div class="grid" style="margin-top:14px">'
     +'<div style="grid-column:1/-1"><label>API Base URL</label><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
     +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</label><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
@@ -979,7 +979,7 @@ async function bizResetAdmin(id){
 }
 
 async function bizToggle(id,reopen){
-  if(!reopen && !confirm('Suspend this business? Client login block ho jayega.'))return;
+  if(!reopen && !confirm('Suspend this business? Client sign-in will be blocked.'))return;
   const r=await api(reopen?'sa-business-activate':'sa-business-suspend',{tenant_id:id});
   toast(r.ok?(r.message||'Done'):(r.message||'Failed'));if(r.ok)loadBiz();
 }
@@ -1033,7 +1033,7 @@ function bizTag(b){
       if(j&&j.ok===false&&j.csrf&&!retried){
         var t=await freshCsrf();
         if(t)return await consoleApi(cmd,true);
-        return {ok:true,lines:[{t:'e',v:'Session expire done hai - dobara login please.'}]};
+        return {ok:true,lines:[{t:'e',v:'Your session has expired — sign in again.'}]};
       }
       return j;
     }
@@ -1222,8 +1222,8 @@ async function demoLoad(){
       + '<div style="color:var(--muted);font-size:12px;margin-top:3px">'+sub+'</div></div>'
       + right + '</div>';
   }).join('')
-  + '<p class="muted" style="font-size:11.5px;margin-top:4px">Har business type ka sirf ek demo ban sakta hai. '
-  + 'Naya banane ke liye purana Businesses list se delete karein.</p>';
+  + '<p class="muted" style="font-size:11.5px;margin-top:4px">Only one demo can exist per business type. '
+  + 'Naya banane ke liye old Businesses list se delete plea.</p>';
 }
 
 $('demoBtn') && ($('demoBtn').onclick=async function(){
@@ -1395,7 +1395,7 @@ function showCreated(b){
 <!-- ============ DEMO BUSINESS PICKER ============ -->
 <div class="modal" id="demoModal"><div class="dialog" style="width:min(620px,100%)">
   <div class="dialog-head">
-    <div><h3>Demo business</h3><p>Kis business ka demo chahiye? Har type ka ek demo.</p></div>
+    <div><h3>Demo business</h3><p>Which business type? One demo per type.</p></div>
     <button class="close" data-dclose>&times;</button>
   </div>
   <div class="dialog-body"><div id="demoTypes">Loading&hellip;</div></div>

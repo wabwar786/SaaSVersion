@@ -144,7 +144,7 @@ final class Sync
             $ip = $host !== '' ? \gethostbyname($host) : '';
             $dnsOk = ($ip !== '' && $ip !== $host);
             $add('DNS lookup', $dnsOk, $dnsOk ? "$host -> $ip"
-                : "Could not resolve $host - internet ya DNS ka masla hai");
+                : "Could not resolve $host - an internet or DNS problem");
         }
 
         $t0 = \microtime(true);
@@ -193,12 +193,12 @@ final class Sync
                     $lf = self::moduleFingerprint();
                     $mok = ($cf !== '' && $lf !== '' && $cf === $lf);
                     $add('Module IDs match', $mok, $mok
-                        ? 'Cloud aur is computer par module ids ek jaisi hain'
-                        : 'MISMATCH - permissions sync NahI hongi (har user online "0 Modules" dikhega). '
+                        ? 'Module IDs match between the cloud and this computer'
+                        : 'MISMATCH — permissions will not sync (every user shows "0 Modules" online). '
                           . 'Dono taraf `php scripts/migrate_module_ids.php` first.  '
                           . 'This: ' . substr($lf, 0, 8) . '  |  Cloud: ' . (($cf !== '') ? substr($cf, 0, 8) : 'unknown'));
                 } catch (\Throwable $e) {
-                    $add('Module IDs match', false, 'Check nahi chal saka: ' . substr($e->getMessage(), 0, 90));
+                    $add('Module IDs match', false, 'The check could not run: ' . substr($e->getMessage(), 0, 90));
                 }
             }
         } catch (\Throwable $e) {
@@ -975,7 +975,7 @@ final class Sync
                 $row = $q->fetch();
                 if (!$row) continue;
                 $bill = (string)$row['bill_no'];
-                if ($bill === '' || \strpos($bill, $pre) === 0) continue;   // pehle se prefixed
+                if ($bill === '' || \strpos($bill, $pre) === 0) continue;   // first se prefixed
 
                 $new = $pre . $bill;
                 // local par bhi takrao na ho

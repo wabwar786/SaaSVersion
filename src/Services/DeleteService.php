@@ -562,7 +562,7 @@ final class DeleteService
         $physical = $soft === 'deleted' ? 'deleted' : $soft;
         if (!self::hasCol($t, $physical)) {
             throw new \RuntimeException(
-                "`$t` is missing the `$physical` column - please run "
+                "`$t` is missing the `$physical` column — please run "
                 . "`php scripts/migrate_delete_support.php` first.");
         }
 

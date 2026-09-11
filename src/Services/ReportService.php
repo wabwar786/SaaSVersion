@@ -53,16 +53,16 @@ final class ReportService
 
             /* ---- V98: jo reports customer maang raha tha aur maujood nahi thin ---- */
             ['id' => 'invoice_detail',  'group' => 'Sales',     'name' => 'Order / invoice detail',   'desc' => 'Har bill ka poora record — item, tax, discount, payment'],
-            ['id' => 'waiter_sales',    'group' => 'Operations','name' => 'Sales by waiter',          'desc' => 'Waiter-wise sale, covers aur average bill'],
+            ['id' => 'waiter_sales',    'group' => 'Operations','name' => 'Sales by waiter',          'desc' => 'Sales, covers and average bill per waiter'],
             ['id' => 'discounts',       'group' => 'Operations','name' => 'Discounts',                'desc' => 'Kis ne kitni chhoot di — user-wise'],
-            ['id' => 'voids',           'group' => 'Operations','name' => 'Void / cancelled bills',   'desc' => 'Har void bill wajah aur user ke sath'],
+            ['id' => 'voids',           'group' => 'Operations','name' => 'Void / cancelled bills',   'desc' => 'Every void bill with its reason and user'],
             ['id' => 'shift_closing',   'group' => 'Operations','name' => 'Shift / day closing',      'desc' => 'Opening, sale, payments, expenses, variance'],
-            ['id' => 'wastage',         'group' => 'Inventory', 'name' => 'Wastage / write-off',      'desc' => 'Kharab aur zaya hua maal, qeemat ke sath'],
-            ['id' => 'purchase_items',  'group' => 'Inventory', 'name' => 'Purchases by item',        'desc' => 'Item-wise kharidari — qty, rate aur qeemat'],
-            ['id' => 'customers',       'group' => 'Money',     'name' => 'Customers',                'desc' => 'Customer-wise bills, visits aur baqaya'],
-            ['id' => 'fbr_reconcile',   'group' => 'Tax',       'name' => 'FBR reconciliation',       'desc' => 'POS ke bills vs FBR ko bheje gaye — farq kahan hai'],
-            ['id' => 'fbr_summary',     'group' => 'Tax',       'name' => 'FBR daily / monthly summary','desc' => 'Invoices, taxable amount aur sales tax ka khulasa'],
-            ['id' => 'audit_activity',  'group' => 'Operations','name' => 'Audit / activity log',     'desc' => 'Login, bill edit, void, discount, refund — kis ne kya kiya'],
+            ['id' => 'wastage',         'group' => 'Inventory', 'name' => 'Wastage / write-off',      'desc' => 'Damaged and wasted stock, with its value'],
+            ['id' => 'purchase_items',  'group' => 'Inventory', 'name' => 'Purchases by item',        'desc' => 'Purchases per item — quantity, rate and value'],
+            ['id' => 'customers',       'group' => 'Money',     'name' => 'Customers',                'desc' => 'Bills, visits and outstanding per customer'],
+            ['id' => 'fbr_reconcile',   'group' => 'Tax',       'name' => 'FBR reconciliation',       'desc' => 'POS bills vs what was sent to FBR — where the gap is'],
+            ['id' => 'fbr_summary',     'group' => 'Tax',       'name' => 'FBR daily / monthly summary','desc' => 'Summary of invoices, taxable amount and sales tax'],
+            ['id' => 'audit_activity',  'group' => 'Operations','name' => 'Audit / activity log',     'desc' => 'Sign-ins, bill edits, voids, discounts, refunds — who did what'],
         ];
     }
 
@@ -538,7 +538,7 @@ final class ReportService
     private static function r_waiter_sales(string $f, string $t): array
     {
         $rows = self::q(
-            "SELECT COALESCE(u.full_name,'(assign nahi)') waiter,
+            "SELECT COALESCE(u.full_name,'(unassigned)') waiter,
                     COUNT(*) bills, SUM(o.grand_total) total,
                     ROUND(AVG(o.grand_total),2) avg_bill,
                     SUM(o.discount_amount) discount
@@ -553,7 +553,7 @@ final class ReportService
              ['k'=>'total','l'=>'Sale','n'=>1],['k'=>'avg_bill','l'=>'Avg bill','n'=>1],
              ['k'=>'discount','l'=>'Discount','n'=>1]],
             $rows, self::sum($rows, ['bills','total','discount']),
-            'Avg bill upselling ka sab se seedha paimana hai.');
+            'The average bill is the most direct measure of.');
     }
 
     /** Sirf discounts — user-wise. */
@@ -576,7 +576,7 @@ final class ReportService
              ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
              ['k'=>'pct','l'=>'%','n'=>1],['k'=>'total','l'=>'Bill total','n'=>1]],
             $rows, self::sum($rows, ['subtotal','discount','total']),
-            'Bara discount % baar baar ek hi user ke naam ho to dekhna banta hai.');
+            'A large discount % repeatedly under one user is worth a look.');
     }
 
     /** Sirf void / cancelled bills — wajah aur user ke sath. */
@@ -605,7 +605,7 @@ final class ReportService
              ['k'=>'reason','l'=>'Wajah'],['k'=>'items','l'=>'Items','n'=>1],
              ['k'=>'total','l'=>'Amount','n'=>1]],
             $rows, self::sum($rows, ['items','total']),
-            'Bina wajah ke void, ya ek hi user ke bohat se void — dono check karne layak hain.');
+            'Voids without a reason, or many voids by one user — both are worth checking.');
     }
 
     /** Shift / day closing — opening se variance tak. */
@@ -637,7 +637,7 @@ final class ReportService
             $rows, self::sum($rows, ['bills','opening_cash','gross_sales','discount','cash_sales',
                                      'card_sales','credit_sales','expenses','expected_cash',
                                      'actual_cash','variance']),
-            'Variance hamesha sifar hona chahiye. Baar baar minus aana ek alamat hai.');
+            'Variance should always be zero. A repeated shortfall is a warning sign.');
     }
 
     /** Wastage / write-off. */
@@ -666,7 +666,7 @@ final class ReportService
              ['k'=>'value','l'=>'Value','n'=>1],['k'=>'by_user','l'=>'Kis ne'],
              ['k'=>'status','l'=>'Status']],
             $rows, self::sum($rows, ['qty','value']),
-            'Yeh seedha munafe se katta hai — har mahine ka rujhan dekhein.');
+            'This comes straight out of profit — watch the monthly trend.');
     }
 
     /** Item-wise kharidari. */
@@ -691,7 +691,7 @@ final class ReportService
              ['k'=>'qty','l'=>'Qty','n'=>1],['k'=>'avg_rate','l'=>'Avg rate','n'=>1],
              ['k'=>'total','l'=>'Amount','n'=>1]],
             $rows, self::sum($rows, ['receipts','qty','total']),
-            'Avg rate barhta hua nazar aaye to supplier se baat karne ka waqt hai.');
+            'If the average rate keeps rising, it is time to talk to the supplier.');
     }
 
     /** Customer-wise bills, visits aur baqaya. */
@@ -715,7 +715,7 @@ final class ReportService
              ['k'=>'avg_bill','l'=>'Avg bill','n'=>1],['k'=>'last_visit','l'=>'Last visit'],
              ['k'=>'outstanding','l'=>'Baqaya','n'=>1]],
             $rows, self::sum($rows, ['visits','total','outstanding']),
-            'Sirf wo bills jin par customer laga hua hai — walk-in yahan nahi aate.');
+            'Only bills with a customer attached — walk-ins are not included.');
     }
 
     /** POS ke bills vs FBR ko bheje gaye — farq kahan hai. */
@@ -728,8 +728,8 @@ final class ReportService
                     COALESCE(o.fiscal_invoice_no,'-') fbr_no,
                     CASE
                       WHEN o.fiscal_status='SENT' AND (o.fiscal_invoice_no IS NULL OR o.fiscal_invoice_no='')
-                        THEN 'SENT magar number nahi'
-                      WHEN o.fiscal_status IN ('PENDING','FAILED') THEN 'FBR tak nahi pohancha'
+                        THEN 'SENT but no number'
+                      WHEN o.fiscal_status IN ('PENDING','FAILED') THEN 'Did not reach FBR'
                       WHEN o.fiscal_status='SENT' THEN 'Match'
                       ELSE 'FBR se bahar'
                     END verdict
@@ -744,7 +744,7 @@ final class ReportService
              ['k'=>'verdict','l'=>'Nateeja'],['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['tax','total']),
-            'Jo bills "FBR tak nahi pohancha" dikhayen, unhein Tax screen se retry karein.');
+            'Retry any bill showing "Did not reach FBR" from the Tax screen.');
     }
 
     /** FBR ka rozana / mahana khulasa. */
@@ -770,7 +770,7 @@ final class ReportService
              ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'sales_tax','l'=>'Sales tax','n'=>1],
              ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['bills','sent','not_sent','taxable','sales_tax','zero_rated','total']),
-            'Mahane ke aakhir mein yehi aankray FBR return ke kaam aate hain.');
+            'These are the figures used for the FBR return at month end.');
     }
 
     /** Audit / activity — kis ne kya kiya. */
@@ -795,7 +795,7 @@ final class ReportService
              ['k'=>'action','l'=>'Action'],['k'=>'module','l'=>'Module'],
              ['k'=>'detail','l'=>'Detail'],['k'=>'ip','l'=>'IP']],
             $rows, [],
-            'Void, discount, refund aur bill edit — sab yahan darj hote hain. 2000 se zyada nahi dikhaya jata.');
+            'Voids, discounts, refunds and bill edits — are all recorded here. no more than 2000 rows are shown.');
     }
 
     public static function sources(): array

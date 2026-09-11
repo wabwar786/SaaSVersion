@@ -12,18 +12,18 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">&#9776;</button>
-      <div class="header-title"><h1>Accounting / Cash</h1><p>Cash in, cash out aur din ka hisaab</p></div>
+      <div class="header-title"><h1>Accounting / Cash</h1><p>Cash in, cash out and the daily balance</p></div>
       <div class="header-spacer"></div>
     </header>
     <div class="content">
       <div class="kpis">
         <div class="kpi ok"><div class="lab">Cash sales</div><div class="val" id="aCash">—</div><div class="sub">aaj</div></div>
         <div class="kpi info"><div class="lab">Card sales</div><div class="val" id="aCard">—</div><div class="sub">aaj</div></div>
-        <div class="kpi warn"><div class="lab">Credit (khata)</div><div class="val" id="aCredit">—</div><div class="sub">aaj bikra, paisa nahi aaya</div></div>
+        <div class="kpi warn"><div class="lab">Credit (khata)</div><div class="val" id="aCredit">—</div><div class="sub">sold today, money not received</div></div>
         <div class="kpi violet"><div class="lab">Expenses</div><div class="val" id="aExp">—</div><div class="sub">cash se</div></div>
       </div>
       <section class="panel">
-        <div class="panel-head"><div><h2>Din ka hisaab</h2><p>Drawer mein kitna hona chahiye</p></div></div>
+        <div class="panel-head"><div><h2>Daily balance</h2><p>What the drawer should hold</p></div></div>
         <div class="panel-body"><div class="table-wrap"><table class="table">
           <tbody id="ledger"></tbody></table></div></div>
       </section>
@@ -67,7 +67,7 @@
 
   $('methods').innerHTML=Object.keys(mc).map(function(k){
     return '<tr><td>'+k+'</td><td class="num">'+mc[k].n+'</td><td class="num"><b>'+money(mc[k].a)+'</b></td></tr>';
-  }).join('')||'<tr><td colspan="3"><div class="empty" style="padding:24px"><h3>Aaj koi bill nahi</h3></div></td></tr>';
+  }).join('')||'<tr><td colspan="3"><div class="empty" style="padding:24px"><h3>No bills today</h3></div></td></tr>';
 })();
 </script>
 </body>

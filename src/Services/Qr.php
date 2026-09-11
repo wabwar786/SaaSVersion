@@ -147,7 +147,7 @@ final class Qr
 
         /* 4) matrix */
         $size = 17 + 4 * $ver;
-        $m = array_fill(0, $size, array_fill(0, $size, -1));   // -1 = khali
+        $m = array_fill(0, $size, array_fill(0, $size, -1));   // -1 = empty
         self::finder($m, 0, 0); self::finder($m, $size - 7, 0); self::finder($m, 0, $size - 7);
         self::reserve($m, $size, $ver);
         self::timing($m, $size);

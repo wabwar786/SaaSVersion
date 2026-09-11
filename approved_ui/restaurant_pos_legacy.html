@@ -3946,7 +3946,7 @@ html,body{background:#f5f7f6!important}.workspace{background:#f7f9f8!important}.
           <label class="full"><span>Description</span><input id="niDesc" placeholder="Short menu description"></label>
 
           <div class="full config-builder" id="configBuilder">
-            <div class="builder-title">Sub Item / Variant Setup</div>
+            <div class="builder-title">Sub Item / Variant Set them up in</div>
             <div class="builder-grid">
               <label><span>Sub Item Group</span><input id="niGroup" value="Size" placeholder="e.g. Size, Portion, Flavor"></label>
               <label><span>Sub Items + Prices</span><input id="niOptions" value="Small=1050, Medium=1550, Large=1890"></label>
@@ -5476,7 +5476,7 @@ document.addEventListener('click',e=>{
 
 
   const close=e.target.closest('[data-close]');
-  if(close){cm(close.dataset.close);return}
+  if(close){cm(clo.dataset.close);return}
   if(e.target.classList.contains('modal'))e.target.classList.remove('show');
 });
 

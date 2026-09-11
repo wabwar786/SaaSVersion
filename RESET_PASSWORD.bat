@@ -19,7 +19,7 @@ set PHPEXE=runtime\php\php.exe
 set PHPINI=runtime\php\php.ini
 if not exist "%PHPEXE%" (
   echo.
-  echo   PHP nahi mila. Pehle INSTALL_OFFLINE.bat chalayein.
+  echo   PHP not found. Pehle INSTALL_OFFLINE.bat run.
   echo.
   pause
   exit /b 1
@@ -36,9 +36,9 @@ echo   Checking the local database...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools\resolve_mariadb.ps1"
 if errorlevel 1 (
   echo.
-  echo   Local database chalu nahi ho saki.
-  echo   START_RESTAURANT.bat chala kar software kholein, phir yeh
-  echo   file dobara chalayein.
+  echo   Local database enabled nahi ho saki.
+  echo   Start the software with START_RESTAURANT.bat, then this
+  echo   file again run.
   echo.
   pause
   exit /b 1
@@ -49,7 +49,7 @@ echo.
 if errorlevel 1 goto :done
 
 echo.
-set /p U=  Sign-in name (khali chhorein to bahar):
+set /p U=  Sign-in name (empty chhorein to bahar):
 if "%U%"=="" goto :done
 set /p P=  New password:
 if "%P%"=="" goto :done

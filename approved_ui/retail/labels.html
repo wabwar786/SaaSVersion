@@ -48,7 +48,7 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Barcode &amp; Shelf Labels</h1><p>Rate badalne ke baad tag dobara chhapna zaroori hai</p></div>
+      <div class="header-title"><h1>Barcode &amp; Shelf Labels</h1><p>Reprint the tag after changing a rate</p></div>
       <div class="header-spacer"></div>
       <span class="live-pill" id="devPill">—</span>
       <button class="btn" id="btnClear">Clear</button>
@@ -60,7 +60,7 @@
 
       <div class="lab-grid no-print">
         <section class="panel">
-          <div class="panel-head"><div><h2>Products chunein</h2><p>Qty = kitne label chahiye</p></div>
+          <div class="panel-head"><div><h2>Products choose</h2><p>Qty = kitne label chahiye</p></div>
             <span class="spacer" style="flex:1"></span>
             <div class="search" style="width:230px"><input id="q" placeholder="Search naam ya barcode"></div></div>
           <div class="panel-body flush"><div class="pick" id="pick"></div></div>
@@ -126,8 +126,8 @@
   var isCloud=(window.APP_ROLE==='cloud');
   $('devPill').textContent=isCloud?'Browser print':'Label printer';
   $('devNote').innerHTML = isCloud
-    ? '<b>Online portal.</b> Label printer (TSC/Zebra) counter PC se juda hota hai — yahan se browser ka print/PDF milta hai. Seedha label printer par bhejne ke liye <b>offline version</b>.'
-    : 'Label printer <b>Printers &amp; Devices</b> se set karein.';
+    ? '<b>Online portal.</b> The label printer (TSC/Zebra) is attached to the counter PC, so here you get print/PDF from the browser. To send straight to the label printer use the <b>offline version</b>.'
+    : 'Label printer <b>Printers &amp; Devices</b> se set plea.';
 
   /* ---------- size ---------- */
   var PRESETS={'1.2x1':[1.2,1,'in',42],'2x1':[2,1,'in',46],'1.5x1':[1.5,1,'in',44],
@@ -166,10 +166,10 @@
     $('pick').innerHTML=rows.length? rows.map(function(p){
       var bc=(p.barcodes&&p.barcodes[0])||(p.is_scale_item?('PLU '+p.plu_code):'');
       return '<div class="pi"><div style="min-width:0;flex:1"><b>'+esc(p.name)+'</b>'+
-        '<small>'+(bc?esc(bc):'<span style="color:var(--warn)">barcode nahi</span>')+' · '+money(p.retail_price)+'</small></div>'+
+        '<small>'+(bc?esc(bc):'<span style="color:var(--warn)">no barcode</span>')+' · '+money(p.retail_price)+'</small></div>'+
         '<input class="qn" type="number" min="1" value="1" data-q="'+p.id+'">'+
         '<button class="btn sm" data-add="'+p.id+'">Add</button></div>';
-    }).join('') : '<div class="empty" style="padding:24px"><h3>Koi product nahi mila</h3></div>';
+    }).join('') : '<div class="empty" style="padding:24px"><h3>No products found</h3></div>';
   }
 
   function paintQueue(){
@@ -179,7 +179,7 @@
       return '<div class="qitem"><b style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
         esc(x.p.name)+'</b><span style="color:var(--faint)">×'+x.qty+'</span>'+
         '<button class="x" data-del="'+i+'">×</button></div>';
-    }).join('') : '<div class="empty" style="padding:20px"><div class="ico">⌗</div><h3>Queue khali</h3><p>Left se product add karein.</p></div>';
+    }).join('') : '<div class="empty" style="padding:20px"><div class="ico">⌗</div><h3>Queue is empty</h3><p>Add a product from the left.</p></div>';
     paintSheet();
   }
 
@@ -207,7 +207,7 @@
 
       for(var i=0;i<x.qty;i++) out+='<div class="lbl" style="width:'+W+';height:'+H+'">'+body+'</div>';
     });
-    $('sheet').innerHTML=out||'<div class="empty" style="width:100%;padding:26px"><h3>Preview yahan aayega</h3><p>Product add karein.</p></div>';
+    $('sheet').innerHTML=out||'<div class="empty" style="width:100%;padding:26px"><h3>Preview yahan aayega</h3><p>Product add plea.</p></div>';
   }
 
   document.addEventListener('click',function(e){
@@ -227,7 +227,7 @@
   $('q').oninput=paintPick;
   $('btnClear').onclick=function(){queue=[];paintQueue()};
   $('btnPrint').onclick=function(){
-    if(!queue.length){alert('Queue khali hai — pehle product add karein.');return}
+    if(!queue.length){alert('The queue is empty — add a product first.');return}
     window.print();
   };
 

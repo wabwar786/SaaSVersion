@@ -47,28 +47,28 @@ try { $su = Platform::superUser(); } catch (\Throwable $e) {}
 $sessionLost = ($cookieSent !== null && $cookieSent !== $sid);
 
 $verdict = 'OK';
-$advice  = 'Session theek chal rahi hai.';
+$advice  = 'Sessions are working fine.';
 if (!$writable) {
     $verdict = 'BROKEN';
-    $advice  = 'Session directory likhi nahi ja sakti. Har request par nayi session banti hai, '
-             . 'is liye login kabhi tikta nahi aur har POST par CSRF fail hota hai. '
-             . 'Container mein please run: mkdir -p storage/sessions && chown -R www-data:www-data storage';
+    $advice  = 'The session directory is not writable. A new session is created on every request, '
+             . 'so the sign-in never sticks and CSRF fails on every POST. '
+             . 'Run inside the container: mkdir -p storage/sessions && chown -R www-data:www-data storage';
 } elseif ($sessionLost) {
     $verdict = 'SESSION_RESET';
-    $advice  = 'Browser purani session cookie bhej raha hai magar server par wo session does not exist '
-             . '(aam tor par deploy / container restart ke baad). Ek dafa logout kar ke dobara login please, '
-             . 'ya is site ki cookie clear please. V62 ka client naya CSRF token khud le leta hai, '
-             . 'magar LOGIN ke liye ek taza page is required.';
+    $advice  = 'The browser is sending an old session cookie, but that session no longer exists on the server '
+             . '(aam tor par deploy / container restart ke after). Ek dafa logout kar ke again login please, '
+             . 'or clear cookies for this site. The V62 client fetches a new CSRF token itself, '
+             . 'but signing in needs a fresh page.';
 } elseif (((int)ini_get('session.gc_maxlifetime')) < 3600) {
     $verdict = 'SHORT_LIFETIME';
-    $advice  = 'session.gc_maxlifetime sirf ' . ini_get('session.gc_maxlifetime') . ' second hai. '
-             . 'Itni der khamoshi ke baad user khamoshi se logout ho jata hai aur har POST par '
-             . 'CSRF fail hota hai. V62.1 ka bootstrap.php ise 12 ghante kar deta hai — '
-             . 'shayad purana build chal raha hai.';
+    $advice  = 'session.gc_maxlifetime only ' . ini_get('session.gc_maxlifetime') . ' seconds. '
+             . 'After that much idle time the user is silently signed out and every POST '
+             . 'CSRF fails. the bootstrap.php in V62.1 raises this to 12 hours — '
+             . 'an old build is probably running.';
 } elseif (!Csrf::has()) {
     $verdict = 'NO_TOKEN';
-    $advice  = 'Is session mein abhi CSRF token bana hi nahi. Koi app page (misal /login.html) '
-             . 'kholein — token wahan banta hai.';
+    $advice  = 'No CSRF token has been created in this session yet. Open an app page (e.g. /login.html) '
+             . '— the token is created there.';
 }
 
 echo json_encode([

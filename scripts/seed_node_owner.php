@@ -26,7 +26,7 @@ use Aio\DB;
 
 $owner = $GLOBALS['config']['owner'] ?? null;
 if (!\is_array($owner) || empty($owner['email']) || empty($owner['password_hash'])) {
-    echo "NODE_OWNER_SKIPPED package mein owner login nahi hai\n";
+    echo "NODE_OWNER_SKIPPED the package has no owner login\n";
     return;
 }
 

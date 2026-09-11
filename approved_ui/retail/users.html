@@ -12,18 +12,18 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">&#9776;</button>
-      <div class="header-title"><h1>Users &amp; Access</h1><p>Login aur har role ki ijazat</p></div>
+      <div class="header-title"><h1>Users &amp; Access</h1><p>Sign-in and what each role may do</p></div>
       <div class="header-spacer"></div>
     </header>
     <div class="content">
       <div class="note" style="margin-bottom:14px">
-        Roles business banate waqt khud ban jate hain. Har role ko sirf wahi modules milte hain
-        jo supermarket ke liye hain &mdash; restaurant ke KDS/Tables yahan maujood hi nahi.
+        Roles are created with the business. Each role gets only the modules
+        that apply to a supermarket &mdash; the restaurant's KDS/Tables are not here at all.
       </div>
       <section class="panel">
-        <div class="panel-head"><div><h2>Roles aur unki ijazat</h2><p>Retail vertical ke default roles</p></div></div>
+        <div class="panel-head"><div><h2>Roles and their permissions</h2><p>Default roles for the retail vertical</p></div></div>
         <div class="panel-body flush"><div class="table-wrap"><table class="table">
-          <thead><tr><th>Role</th><th>Kya kar sakta hai</th></tr></thead>
+          <thead><tr><th>Role</th><th>What they can do</th></tr></thead>
           <tbody id="roles"></tbody></table></div></div>
       </section>
       <section class="panel" style="margin-top:14px">
@@ -47,7 +47,7 @@
     ['Owner / Admin','Sab kuch'],
     ['Store Manager','POS, catalog, pricing, stock, purchasing, khata, reports, staff, settings'],
     ['Cashier','Shift, POS counter, khata sale, sales list, closing'],
-    ['Floor Staff','Products dekhein, price, labels, stock count, scale items'],
+    ['Floor Staff','Products see, price, labels, stock count, scale items'],
     ['Storekeeper','Stock, GRN, batches, transfer, count, write-off'],
     ['Purchase Officer','Purchasing, POs, purchase return, suppliers, GRN']
   ];
@@ -60,7 +60,7 @@
     '<span style="color:var(--muted);font-size:11px">Name</span><b style="display:block;margin-top:3px;font-family:var(--display);font-size:15px">'+esc(u.name||'')+'</b></div>'+
     '<div style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">'+
     '<span style="color:var(--muted);font-size:11px">Modules allowed</span><b style="display:block;margin-top:3px;font-family:var(--display);font-size:15px">'+((u.modules||[]).length)+'</b></div></div>'+
-    '<p style="color:var(--muted);font-size:12px;margin-top:10px">Naye user banane aur permissions badalne ka screen agli batch mein &mdash; abhi roles business ke saath khud ban jate hain.</p>';
+    '<p style="color:var(--muted);font-size:12px;margin-top:10px">Naye user banane aur permissions badalne ka screen next batch mein &mdash; currently roles business ke saath khud ban jate hain.</p>';
 })();
 </script>
 </body>

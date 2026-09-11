@@ -37,7 +37,7 @@ $q->execute();
 $col = $q->fetch();
 
 if (!$col) {
-    echo "PRINT_RULE_SKIPPED column/table maujood nahi\n";
+    echo "PRINT_RULE_SKIPPED column/table not present\n";
     return;
 }
 

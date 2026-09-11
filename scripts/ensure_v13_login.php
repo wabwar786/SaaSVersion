@@ -36,7 +36,7 @@ if (!$force && is_file($marker) && $haveUser) {
     exit(0);
 }
 if (!$haveUser && is_file($marker)) {
-    echo "V13_LOGIN_MARKER_STALE database mein koi user nahi tha - dobara bana rahe hain\n";
+    echo "V13_LOGIN_MARKER_STALE the database had no users — creating one again\n";
     @unlink($marker);
 }
 $email = 'admin@urbanspoon.local';

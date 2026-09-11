@@ -59,7 +59,7 @@ final class FiscalService
     public static function enabledForTenant(): bool
     {
         $feat = \Aio\Auth::tenantFeatures();
-        if ($feat === null) return true;          // koi hadd set nahi = sab allowed
+        if ($feat === null) return true;          // no hadd set nahi = all allowed
         return \in_array('fbr', $feat, true);
     }
 
@@ -399,7 +399,7 @@ final class FiscalService
     public static function test(): array
     {
         if (!self::availableHere()) {
-            return ['ok' => false, 'message' => 'FBR works only in the offline version (fiscal service localhost par hota hai).'];
+            return ['ok' => false, 'message' => 'FBR works only in the offline version (the fiscal service runs on localhost).'];
         }
         $cfg = self::settings();
         if ($cfg['provider'] === 'NONE') return ['ok' => false, 'message' => 'Select a provider first.'];

@@ -48,7 +48,7 @@ header small{display:block;font-size:11px;color:var(--ink2);margin-top:2px}
 <body>
 <header id="hd"><div><h1 id="bn">Loading…</h1><small id="tb"></small></div><span class="timer" id="tm"></span></header>
 <div class="cats" id="cats"></div>
-<div class="list" id="list"><div class="msg"><div class="ic">⏳</div><h2>Menu load ho raha hai…</h2></div></div>
+<div class="list" id="list"><div class="msg"><div class="ic">⏳</div><h2>Loading menu…</h2></div></div>
 <div class="bar" id="bar" style="display:none">
   <div class="t"><small id="cn">0 items</small><b id="ct">PKR 0</b></div>
   <button id="send" disabled>Send to Cashier</button>
@@ -90,7 +90,7 @@ function tick(){
   if(!el)return;                /* order bhejne ke baad page badal jata hai */
   var left=Math.max(0,ENDS-Date.now()),m=Math.floor(left/60000),s=Math.floor(left%60000/1000);
   if(left<=0){el.textContent='Session khatam';el.className='timer warn';
-    var l=$('#list'); if(l)l.innerHTML='<div class="msg"><div class="ic">&#8987;</div><h2>Session ka waqt khatam</h2><p>Table par laga QR dobara scan please.</p></div>';
+    var l=$('#list'); if(l)l.innerHTML='<div class="msg"><div class="ic">&#8987;</div><h2>Session ka waqt khatam</h2><p>Table par laga QR again scan plea.</p></div>';
     var bb=$('#bar'); if(bb)bb.style.display='none';return;}
   el.textContent='Session: '+m+':'+(s<10?'0':'')+s;
   el.className='timer'+(m<10?' warn':'');
@@ -102,7 +102,7 @@ function cats(){
 }
 function render(){
   var rows=MENU.filter(function(i){return CAT==='All'||i.cat===CAT});
-  if(!rows.length){$('#list').innerHTML='<div class="msg"><div class="ic">🍽️</div><h2>Is category mein koi item nahi</h2></div>';return}
+  if(!rows.length){$('#list').innerHTML='<div class="msg"><div class="ic">🍽️</div><h2>Is category mein no item nahi</h2></div>';return}
   $('#list').innerHTML=rows.map(function(i){
     var q=cart[i.id]||0;
     return '<div class="item"><div class="ph">'+(i.img?'<img src="'+esc(i.img)+'" onerror="this.remove()">':'🍽')+'</div>'
@@ -125,9 +125,9 @@ $('#send').onclick=function(){
   if(!items.length)return;
   this.disabled=true;this.textContent='Sending…';
   var r=api('qr-order',{token:TOKEN,items:items});
-  if(!r.ok){this.disabled=false;this.textContent='Send to Cashier';toast(r.message||'Order nahi gaya');return}
+  if(!r.ok){this.disabled=false;this.textContent='Send to Cashier';toast(r.message||'Order was not sent');return}
   document.body.innerHTML='<div class="ok"><div class="ic">✅</div><h2>Order cashier ko bhej diya gaya</h2>'
-    +'<p>Total: <b>'+money(r.total)+'</b><br><br>Cashier confirm karega, phir aap ka order kitchen jayega.<br>Shukriya!</p></div>';
+    +'<p>Total: <b>'+money(r.total)+'</b><br><br>The cashier will confirm, then your order goes to the kitchen.<br>Thank you!</p></div>';
 };
 start();
 </script>

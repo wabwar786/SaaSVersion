@@ -72,7 +72,7 @@ function syncTenant(){
     $row=$q->fetch();
   }catch(Throwable $e){ $row=null; }
   if($row){
-    if(($row['status']??'')==='SUSPENDED')fail('Business suspended - sync band hai',403);
+    if(($row['status']??'')==='SUSPENDED')fail('Business suspended — sync is off',403);
     $_SESSION['sync_tenant_id']=$row['id'];
     return $t=$row['id'];
   }
@@ -1010,7 +1010,7 @@ $cfgArr['snapshot']=$snap;
 $built=OfflineBundler::build($root,$cfgArr);
 $tmp=tempnam(sys_get_temp_dir(),'aio');@unlink($tmp);$tmp.='.zip';
 $zip=new ZipArchive();
-if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)fail('ZIP banane mein masla');
+if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::OVERWRITE)!==true)fail('Could not build the ZIP');
 /* --- SEALED core --- */
 $zip->addFromString('runtime/app.sealed',$built['blob']);
 $zip->addFromString('runtime/app.key',$built['k1']);
@@ -1382,8 +1382,8 @@ case 'device-pair-claim':
  $q=$p->prepare("SELECT *, (expires_at > NOW(6)) alive FROM paired_devices WHERE pair_token=? LIMIT 1");
  $q->execute([$tok]);$dev=$q->fetch();
  if(!$dev)fail('Invalid pairing code - generate a new QR from the POS',401);
- if($dev['status']==='REVOKED')fail('Yeh device revoke ho chuka hai',403);
- if($dev['status']==='PENDING'&&!(int)$dev['alive'])fail('Pairing code ka waqt khatam - POS se naya QR banayein',401);
+ if($dev['status']==='REVOKED')fail('This device has been revoked',403);
+ if($dev['status']==='PENDING'&&!(int)$dev['alive'])fail('Pairing code ka waqt khatam - POS se new QR create',401);
  /* device ko us user ki session mil jati hai jisne QR banaya (role-limited) */
  $uq=$p->prepare("SELECT * FROM users WHERE id=? AND status='ACTIVE' AND deleted_at IS NULL");
  $uq->execute([$dev['user_id']]);$u=$uq->fetch();
@@ -1419,16 +1419,16 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
  /* 1) Isi user ki koi shift pehle se open? */
  $q=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
  $q->execute([site_id(),$uid]);
- if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' pehle se open hai. Pehle usay close please.');
+ if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' is already open. Close it first.');
  /* 2) Isi counter par kisi aur ki shift open? (do cashier ek counter par nahi) */
  $counter=trim((string)($d['counter']??''))?:'Counter 1';
  $c=$p->prepare("SELECT cs.shift_no,u.full_name FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN' AND cs.counter_name=? LIMIT 1");
  $c->execute([site_id(),$counter]);
- if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') open hai. Pehle wo close ya transfer ho.');
+ if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') is open. Close or transfer it first.');
  /* 3) Pichli shift ka cash clear hua? */
  $lc=$p->prepare("SELECT shift_no,cash_cleared FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
  $lc->execute([site_id(),$uid]);
- if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear nahi hua. Pehle usay clear please.'); }
+ if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear failed. Pehle usay clear please.'); }
  $sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));
  $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
    VALUES(?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")
@@ -1456,7 +1456,7 @@ case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pd
  $uq->execute([$toUser,tenant_id()]);$nu=$uq->fetch(); if(!$nu)fail('The new cashier is not valid');
  $oc=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
  $oc->execute([site_id(),$toUser]);
- if($x=$oc->fetchColumn())fail($nu['full_name'].' ki shift '.$x.' pehle se open hai.');
+ if($x=$oc->fetchColumn())fail($nu['full_name'].' ki shift '.$x.' is already open.');
  $rep=shift_report($sh,null);
  $counted=(float)($d['counted_cash']??$rep['expected_cash']);
  $handed=(float)($d['handed_cash']??$counted);
@@ -1899,7 +1899,7 @@ case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(st
     ab bhi nahi batate ke email galat thi ya password, magar rasta zaroor
     batate hain. */
  $n=0;try{$n=(int)DB::pdo()->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn();}catch(Throwable $e){}
- fail('Email ya password ghalat hai.'.($n?(' Is server par '.$n.' platform account maujood hai. Password bhool gaye hain to server par please run:  php scripts/reset_super_admin.php'):' Is server par koi active platform account hi nahi - please run:  php scripts/reset_super_admin.php --email="<email>" --password="<pass>" --create'),401);
+ fail('Email or password is incorrect.'.($n?(' Is server par '.$n.' platform account(s) exist. If you forgot the password, run on the server:  php scripts/reset_super_admin.php'):' There is no active platform account on this server — run:  php scripts/reset_super_admin.php --email="<email>" --password="<pass>" --create'),401);
 }$u=Platform::superUser();ok(['user'=>['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]]);
 case 'sa-logout':Platform::superLogout();ok();
 case 'sa-me':$u=Platform::superUser();ok(['user'=>$u?['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'role'=>$u['role']]:null]);
@@ -1939,9 +1939,9 @@ case 'sa-fbr-toggle':needSuper();$d=body();
  if($on)$cur[]='fbr';
  $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
    ->execute([json_encode(array_values($cur)),$tid]);
- \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'chalu':'band').' kiya gaya');
+ \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'enabled':'band').' done');
  ok(['enabled'=>$on,'modules'=>count($cur),
-     'message'=>'FBR '.($on?'chalu':'band').' ho gaya. Offline node par agli sync se asar hoga.']);
+     'message'=>'FBR '.($on?'enabled':'band').' done. It takes effect on the offline node at the next sync.']);
 
 case 'sa-fbr-status':needSuper();
  $tid=(string)($_GET['tenant_id']??''); if($tid==='')fail('tenant_id is required');
@@ -2111,8 +2111,8 @@ case 'sa-demo-list':needSuper();
  /* Kaunse business types ka demo pehle se maujood hai. UI isi se
     batata hai ke kis par "Create" aur kis par "Open" dikhana hai. */
  $types=[
-   ['code'=>'RESTAURANT','name'=>'Restaurant','desc'=>'Menu, tables, KDS, riders aur customers ke saath'],
-   ['code'=>'RETAIL','name'=>'Supermarket / Retail','desc'=>'Barcode products, scale item, batch expiry aur khata ke saath'],
+   ['code'=>'RESTAURANT','name'=>'Restaurant','desc'=>'Menu, tables, KDS, riders and customers'],
+   ['code'=>'RETAIL','name'=>'Supermarket / Retail','desc'=>'Barcode products, scale items, batch expiry and credit accounts'],
  ];
  $p=DB::pdo();
  $base=rtrim((string)cfg('app.base_url'),'/');
@@ -2145,8 +2145,8 @@ case 'sa-demo-create':needSuper();$d=body();
  $ex=$p->prepare("SELECT name,slug FROM tenants WHERE is_demo=1 AND industry_code=? AND status<>'DELETED' LIMIT 1");
  $ex->execute([$industry]);
  if($row=$ex->fetch()){
-   fail('Is business type ka demo pehle se maujood hai: "'.$row['name'].'". '
-       .'Har type ka sirf ek demo ho sakta hai — purana delete karein ya usi ko istemal karein.',409);
+   fail('A demo for this business type already exists: "'.$row['name'].'". '
+       .'Only one demo is allowed per type — delete the old one or reuse it.',409);
  }
 
  $defName=['RESTAURANT'=>'Demo Restaurant','RETAIL'=>'Demo Supermarket'][$industry];
@@ -2166,7 +2166,7 @@ case 'sa-demo-create':needSuper();$d=body();
    \Aio\Services\AdminData::audit('console',$tid2,'DEMO_CREATE',$industry.' demo with sample data');
    ok($r+['demo'=>true,'industry'=>$industry,'seeded'=>$seeded,
      'message'=>$nm.' ('.$industry.') demo ban gaya. Customer ka daala hua data har '
-       .\Aio\Services\DemoBusiness::RESET_DAYS.' din baad saaf hota hai; sample data rehta hai.']);
+       .\Aio\Services\DemoBusiness::RESET_DAYS.' days; sample data is kept.']);
  }catch(Throwable $e){fail($e->getMessage());}
 
 case 'sa-demo-reset':needSuper();$d=body();

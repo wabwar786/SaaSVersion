@@ -30,11 +30,11 @@ foreach ([['tenants','region_profile'], ['platform_modules','industry_code'], ['
     $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.columns
                          WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");
     $q->execute([$t, $c]);
-    (int)$q->fetchColumn() ? ok("$t.$c maujood") : bad("$t.$c GHAIB — `php scripts/migrate_retail.php` chalayein");
+    (int)$q->fetchColumn() ? ok("$t.$c present") : bad("$t.$c GHAIB — `php scripts/migrate_retail.php` run");
 }
 $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='rtl_products'");
 $q->execute();
-(int)$q->fetchColumn() ? ok('rtl_* tables maujood') : bad('rtl_* tables GHAIB — `php scripts/migrate_retail.php`');
+(int)$q->fetchColumn() ? ok('rtl_* tables present') : bad('rtl_* tables GHAIB — `php scripts/migrate_retail.php`');
 
 /* ============================================================
    1b. SUPER ADMIN (platform console)
@@ -47,8 +47,8 @@ try {
     $pu = $pdo->query("SELECT id,email,role,status,LENGTH(password_hash) len,created_at
                          FROM platform_users ORDER BY created_at")->fetchAll(PDO::FETCH_ASSOC);
     if (!$pu) {
-        bad('platform_users KHALI hai — koi super admin account hai hi nahi.');
-        inf('      Banane ke liye: php scripts/reset_super_admin.php --email=you@x.com --password=\'Pass@123\' --create');
+        bad('platform_users is EMPTY — there is no super admin account at all.');
+        inf('      To create one: php scripts/reset_super_admin.php --email=you@x.com --password=\'Pass@123\' --create');
     } else {
         foreach ($pu as $x) {
             $f = [];
@@ -59,7 +59,7 @@ try {
         }
         $nSuper = 0;
         foreach ($pu as $x) if ($x['role'] === 'SUPER' && $x['status'] === 'ACTIVE') $nSuper++;
-        if (!$nSuper) bad("Koi ACTIVE role='SUPER' account nahi — console mein login mumkin nahi.");
+        if (!$nSuper) bad("No ACTIVE role='SUPER' account — signing into the console is impossible.");
     }
 
     /* password check: diagnose_login.php super <password> */
@@ -70,38 +70,38 @@ try {
         $vq = $pdo->query("SELECT email,password_hash,status FROM platform_users");
         foreach ($vq->fetchAll(PDO::FETCH_ASSOC) as $x) {
             if (\password_verify($try, (string)$x['password_hash'])) {
-                ok('Password IS account se match karta hai: ' . $x['email'] .
-                   ($x['status'] === 'ACTIVE' ? '' : '  (magar status ' . $x['status'] . ')'));
+                ok('The password matches this account: ' . $x['email'] .
+                   ($x['status'] === 'ACTIVE' ? '' : '  (but status ' . $x['status'] . ')'));
                 $hit = true;
             }
         }
         if (!$hit) {
-            bad('Yeh password kisi bhi platform account se match nahi karta.');
+            bad('This password does not match any platform account.');
             inf('      php scripts/reset_super_admin.php --email=<email> --password=\'NayaPass@123\'');
         }
         line();
-        line('  NOTE: agar Railway Variables mein SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD');
-        line('  set hain to har deploy par password DOBARA set ho jata hai — SQL se kiya');
-        line('  hua change agle deploy par khatam ho jayega.');
+        line('  NOTE: if SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD are set in Railway Variables');
+        line('  then the password is re-applied on every deploy — anything changed via SQL');
+        line('  is lost at the next deploy.');
         exit(0);
     }
 } catch (\Throwable $e) {
-    bad('platform_users parhi nahi ja saki: ' . $e->getMessage());
-    inf('      `php scripts/migrate_platform.php` chalayein.');
+    bad('Could not read platform_users: ' . $e->getMessage());
+    inf('      `php scripts/migrate_platform.php` run.');
 }
 
 line();
 line('=== 2. MODULE CATALOG ===');
-$rows = $pdo->query("SELECT COALESCE(NULLIF(industry_code,''),'(khali)') ic, COUNT(*) c
+$rows = $pdo->query("SELECT COALESCE(NULLIF(industry_code,''),'(empty)') ic, COUNT(*) c
                        FROM platform_modules WHERE is_active=1 GROUP BY ic ORDER BY ic")->fetchAll();
 $byInd = [];
 foreach ($rows as $r) { $byInd[$r['ic']] = (int)$r['c']; inf(sprintf('%-12s %d modules', $r['ic'], $r['c'])); }
 
 if (!isset($byInd['COMMON'])) {
-    bad('COMMON bucket hai hi nahi — `php scripts/seed_industry_modules.php` chalayein.');
-    bad('Iske baghair har user ko sirf apne vertical ke modules milte hain, settings/reports tak nahi.');
+    bad('There is no COMMON bucket — run `php scripts/seed_industry_modules.php`.');
+    bad('Without it users only get their own vertical modules — not even settings or reports.');
 } else {
-    ok('COMMON bucket theek hai');
+    ok('The COMMON bucket is fine');
 }
 $rest = (int)$pdo->query("SELECT COUNT(*) FROM platform_modules
                            WHERE is_active=1 AND industry_code IN('RESTAURANT','COMMON')")->fetchColumn();
@@ -109,30 +109,30 @@ $ret  = (int)$pdo->query("SELECT COUNT(*) FROM platform_modules
                            WHERE is_active=1 AND industry_code IN('RETAIL','COMMON')")->fetchColumn();
 inf("restaurant tenant ko dikhne chahiye: $rest modules");
 inf("retail tenant ko dikhne chahiye:     $ret modules");
-if ($rest < 30) bad('Restaurant ke modules bahut kam hain — seed dobara chalayein.');
+if ($rest < 30) bad('Far too few restaurant modules — run the seed again.');
 
 line();
 line('=== 3. BUSINESSES ===');
-$sql = "SELECT id,name,slug,COALESCE(NULLIF(industry_code,''),'(khali)') ic,
+$sql = "SELECT id,name,slug,COALESCE(NULLIF(industry_code,''),'(empty)') ic,
                COALESCE(NULLIF(region_profile,''),'-') rp, status
           FROM tenants" . ($slug ? " WHERE slug=?" : "") . " ORDER BY created_at DESC LIMIT 20";
 $q = $pdo->prepare($sql);
 $slug ? $q->execute([$slug]) : $q->execute();
 $tenants = $q->fetchAll();
-if (!$tenants) { bad('Koi business nahi mila' . ($slug ? " (slug: $slug)" : '')); exit(1); }
+if (!$tenants) { bad('No business found' . ($slug ? " (slug: $slug)" : '')); exit(1); }
 
 foreach ($tenants as $t) {
     line();
     line(sprintf('  %s  [%s / %s]  %s', $t['name'], $t['ic'], $t['rp'], $t['status']));
     inf('slug: ' . $t['slug'] . '   login: /login.html?b=' . $t['slug']);
 
-    if ($t['ic'] === '(khali)') {
-        bad('industry_code KHALI hai — system isay RESTAURANT maanega. Theek karne ke liye:');
+    if ($t['ic'] === '(empty)') {
+        bad('industry_code is EMPTY — the system will treat it as RESTAURANT. To fix:');
         inf("      UPDATE tenants SET industry_code='RESTAURANT' WHERE id='" . $t['id'] . "';");
     } elseif (!in_array($t['ic'], ['RESTAURANT','RETAIL'], true)) {
-        bad('industry_code na-maloom: ' . $t['ic'] . ' — is tenant ko sirf COMMON modules milenge.');
+        bad('industry_code na-maloom: ' . $t['ic'] . ' — is tenant ko only COMMON modules milenge.');
     }
-    if ($t['status'] !== 'ACTIVE') bad('Status ACTIVE nahi — login isi wajah se ruk sakta hai.');
+    if ($t['status'] !== 'ACTIVE') bad('Status is not ACTIVE — that alone can block sign-in.');
 
     /* users */
     $uq = $pdo->prepare("SELECT id,email,username,full_name,status,is_tenant_admin,
@@ -140,7 +140,7 @@ foreach ($tenants as $t) {
                            FROM users WHERE tenant_id=?" . ($mail ? " AND (email=? OR username=?)" : "") . " LIMIT 10");
     $mail ? $uq->execute([$t['id'], $mail, $mail]) : $uq->execute([$t['id']]);
     $users = $uq->fetchAll();
-    if (!$users) { bad('Is business ka koi user nahi — login mumkin hi nahi.'); continue; }
+    if (!$users) { bad('This business has no users — sign-in is impossible.'); continue; }
 
     foreach ($users as $u) {
         $flags = [];
@@ -155,7 +155,7 @@ foreach ($tenants as $t) {
         if ($u['is_tenant_admin']) {
             $mq = $pdo->prepare("SELECT COUNT(*) FROM platform_modules
                                   WHERE is_active=1 AND industry_code IN (?, 'COMMON')");
-            $mq->execute([strtoupper($t['ic'] === '(khali)' ? 'RESTAURANT' : $t['ic'])]);
+            $mq->execute([strtoupper($t['ic'] === '(empty)' ? 'RESTAURANT' : $t['ic'])]);
             $n = (int)$mq->fetchColumn();
         } else {
             $mq = $pdo->prepare(
@@ -164,10 +164,10 @@ foreach ($tenants as $t) {
                    JOIN role_modules rm ON rm.module_id=pm.id
                    JOIN user_roles ur ON ur.role_id=rm.role_id AND ur.user_id=?
                   WHERE pm.is_active=1 AND pm.industry_code IN (?, 'COMMON')");
-            $mq->execute([$u['id'], strtoupper($t['ic'] === '(khali)' ? 'RESTAURANT' : $t['ic'])]);
+            $mq->execute([$u['id'], strtoupper($t['ic'] === '(empty)' ? 'RESTAURANT' : $t['ic'])]);
             $n = (int)$mq->fetchColumn();
         }
-        inf('   modules: ' . $n . ($n === 0 ? '  << ZERO — login to hoga magar sidebar khali aur har page 403' : ''));
+        inf('   modules: ' . $n . ($n === 0 ? '  << ZERO — sign-in works but the sidebar is empty and every page returns 403' : ''));
     }
 }
 
@@ -184,11 +184,11 @@ if ($slug !== '' && $mail !== '' && $pass !== '') {
     $tq = $pdo->prepare("SELECT * FROM tenants WHERE slug=? LIMIT 1");
     $tq->execute([$slug]);
     $t = $tq->fetch(PDO::FETCH_ASSOC);
-    if (!$t) { bad("Slug '$slug' ka koi business nahi. `list` se sahi slug dekh lein."); exit(1); }
+    if (!$t) { bad("Slug '$slug' — no such business. Use `list` to find the right slug."); exit(1); }
     ok('business mila: ' . $t['name'] . ' [' . $t['industry_code'] . ']');
 
     if (($t['status'] ?? '') !== 'ACTIVE') {
-        bad('Business status ' . $t['status'] . ' hai — login yahin ruk jata hai.');
+        bad('Business status ' . $t['status'] . ' — sign-in stops right here.');
         inf("      UPDATE tenants SET status='ACTIVE' WHERE id='" . $t['id'] . "';");
     }
 
@@ -201,17 +201,17 @@ if ($slug !== '' && $mail !== '' && $pass !== '') {
     $u = $uq->fetch(PDO::FETCH_ASSOC);
 
     if (!$u) {
-        bad("Is business mein '$mail' naam ka koi ACTIVE user nahi.");
+        bad("This business has no '$mail' — no ACTIVE user with that name.");
         $any = $pdo->prepare("SELECT email,username,status,deleted_at FROM users
                                WHERE LOWER(email)=LOWER(?) OR LOWER(username)=LOWER(?)");
         $any->execute([$mail, $mail]);
         foreach ($any->fetchAll(PDO::FETCH_ASSOC) as $o) {
             $ot = $pdo->prepare("SELECT name,slug FROM tenants WHERE id=?");
             $ot->execute([$o['tenant_id'] ?? '']);
-            inf('      yeh email kahin aur milti hai: status=' . $o['status'] .
+            inf('      this email exists elsewhere: status=' . $o['status'] .
                 ($o['deleted_at'] ? ' (deleted)' : ''));
         }
-        inf('      Is business ke users:');
+        inf('      Users in this business:');
         $lu = $pdo->prepare("SELECT email,username,status FROM users WHERE tenant_id=? LIMIT 10");
         $lu->execute([$t['id']]);
         foreach ($lu->fetchAll(PDO::FETCH_ASSOC) as $o) inf('        ' . ($o['email'] ?: $o['username']) . '  ' . $o['status']);
@@ -220,15 +220,15 @@ if ($slug !== '' && $mail !== '' && $pass !== '') {
     ok('user mila: ' . ($u['email'] ?: $u['username']));
 
     if (empty($u['password_hash'])) {
-        bad('Password hash khali hai — is user ka password set hi nahi.');
+        bad('The password hash is empty — this user has no password set.');
         exit(1);
     }
     if (\password_verify($pass, (string)$u['password_hash'])) {
-        ok('PASSWORD SAHI HAI — login ho jana chahiye.');
+        ok('PASSWORD IS CORRECT — sign-in should work.');
     } else {
-        bad('PASSWORD GHALAT HAI (hash match nahi hua).');
-        inf('      Demo ka password sirf banate waqt EK DAFA dikhta hai; DB mein sirf hash hai.');
-        inf('      Naya set karne ke liye:');
+        bad('PASSWORD IS WRONG (hash did not match).');
+        inf('      The demo password is shown ONCE at creation; only the hash is stored.');
+        inf('      To set a new one:');
         inf("        php -r \"require 'src/bootstrap.php'; Aio\\DB::pdo()->prepare('UPDATE users SET password_hash=? WHERE id=?')");
         inf("          ->execute([password_hash('NayaPass@123',PASSWORD_DEFAULT),'" . $u['id'] . "']);\"");
         exit(1);
@@ -247,20 +247,20 @@ if ($slug !== '' && $mail !== '' && $pass !== '') {
         $mq->execute([$u['id'], $ind]);
     }
     $n = (int)$mq->fetchColumn();
-    $n > 0 ? ok("login ke baad $n modules milenge")
-           : bad('ZERO modules — login to hoga magar har page 403 dega');
+    $n > 0 ? ok("login ke after $n modules milenge")
+           : bad('ZERO modules — sign-in works but every page returns 403');
 
     line();
-    line('  Nateeja: server ki taraf se is user ka login THEEK hai.');
-    line('  Agar browser mein phir bhi nahi ho raha to wajah client side hai —');
-    line('  purani session cookie ya purana build. Incognito window mein try karein.');
+    line('  Result: on the server side sign-in for this user is FINE.');
+    line('  If it still fails in the browser the cause is on the client side —');
+    line('  an old session cookie or an old build. Try an incognito window.');
 }
 
 line();
 line('=== 5. AAM WAJUHAT ===');
-inf('a) Browser mein pehle kisi DOOSRE business se login tha?');
-inf('   Purane build mein retail session ke baad login.html khud 404 deta tha.');
-inf('   Test: incognito window mein kholein. Chal jaye to yehi wajah hai — naya build deploy karein.');
-inf('b) Migration na chali ho -> upar section 1 dekh lein.');
-inf('c) seed_industry_modules.php na chali ho -> section 2 mein COMMON bucket dekh lein.');
+inf('a) Was a DIFFERENT business signed in first in this browser?');
+inf('   In the old build, login.html itself returned 404 after a retail session.');
+inf('   Test: open it in an incognito window. If it works, that is the cause — deploy the new build.');
+inf('b) A migration may not have run -> see section 1 above.');
+inf('c) seed_industry_modules.php may not have run -> check the COMMON bucket in section 2.');
 line();

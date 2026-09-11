@@ -31,11 +31,11 @@ if ($php) {
   if ($ver -match 'VCRUNTIME140|not compatible with this PHP build') {
     Write-Host ''
     Write-Host '  >>> ASLI MASLA MIL GAYA' -ForegroundColor Yellow
-    Write-Host '  Is computer par PURANI Visual C++ runtime hai; PHP ko nayi chahiye.' -ForegroundColor Yellow
-    Write-Host '  Isi liye php.exe chal nahi raha - neeche wali saari "MISSING" lines' -ForegroundColor Gray
-    Write-Host '  isi ka nateeja hain, package bilkul theek hai.' -ForegroundColor Gray
+    Write-Host '  This computer has an OLD Visual C++ runtime; PHP needs a newer one.' -ForegroundColor Yellow
+    Write-Host '  That is why php.exe will not run — every "MISSING" line below' -ForegroundColor Gray
+    Write-Host '  are the result of this; the package itself is fine.' -ForegroundColor Gray
     Write-Host ''
-    Write-Host '  HAL: yeh install karein, phir INSTALL_OFFLINE.bat dobara chalayein:' -ForegroundColor White
+    Write-Host '  FIX: install this, then run INSTALL_OFFLINE.bat again:' -ForegroundColor White
     Write-Host '       https://aka.ms/vs/17/release/vc_redist.x64.exe' -ForegroundColor White
     Write-Host ''
   }

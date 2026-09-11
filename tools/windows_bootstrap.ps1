@@ -74,7 +74,7 @@ try {
     $dbCode=$LASTEXITCODE
     Write-Host (($dbOut | Out-String).Trim())
     if($dbCode -eq 10) {
-        throw "MySQL Server 127.0.0.1:3306 par nahi mila. MySQL Windows service start karein. Aapka aio_local database waise hi rahega."
+        throw "MySQL Server 127.0.0.1:3306 par not found. MySQL Windows service start please. Aapka aio_local database waise hi rahega."
     }
     if($dbCode -eq 20 -or $dbCode -eq 21) {
         Step "aio_local missing/incomplete - creating required schema"
@@ -129,7 +129,7 @@ try {
         if($proc -and $proc.HasExited){
             $e=(Get-Content $ErrLog2 -ErrorAction SilentlyContinue | Out-String)
             $o=(Get-Content $OutLog  -ErrorAction SilentlyContinue | Out-String)
-            throw "Server exited immediately (exit code $($proc.ExitCode)).`r`n`r`n$e`r`n$o`r`nAgar yahan kuch nahi hai to 'RUN_SERVER_DEBUG.bat' chala kar asli error dekhein."
+            throw "Server exited immediately (exit code $($proc.ExitCode)).`r`n`r`n$e`r`n$o`r`nAgar yahan kuch nahi hai to 'RUN_SERVER_DEBUG.bat' chala kar asli error see."
         }
 
         # Readiness: wait up to 30s for the port (proxy-independent).

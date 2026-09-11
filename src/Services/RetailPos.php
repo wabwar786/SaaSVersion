@@ -57,7 +57,7 @@ final class RetailPos
 
         $customerId = ($d['customer_id'] ?? '') ?: null;
         if ($method === 'CREDIT' && !$customerId) {
-            throw new \RuntimeException('Credit sale ke liye customer zaroori hai');
+            throw new \RuntimeException('A customer is required for a credit sale');
         }
 
         /* Har line ki keemat DB se dobara li jati hai — client sirf

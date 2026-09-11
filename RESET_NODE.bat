@@ -26,11 +26,11 @@ echo    BRANCH COMPUTER RESET
 echo   ============================================
 echo.
 echo    1 = Sirf transactions (menu/users/settings mehfooz)
-echo    2 = Sab kuch (sirf admin login bachega)
-echo    3 = Pehle sirf ginti dekhein (kuch delete nahi hoga)
+echo    2 = Sab kuch (only admin login bachega)
+echo    3 = Pehle only ginti see (kuch delete nahi hoga)
 echo    0 = Bahar
 echo.
-set /p CHOICE=   Apna option likhein:
+set /p CHOICE=   Apna option enter:
 
 if "%CHOICE%"=="0" goto :end
 if "%CHOICE%"=="3" (
@@ -42,7 +42,7 @@ set MODE=txn
 if "%CHOICE%"=="2" set MODE=all
 
 echo.
-echo   Business ka POORA naam bilkul waisa hi likhein jaisa portal par hai.
+echo   Business ka POORA naam bilkul waisa hi enter jaisa portal par hai.
 set /p BNAME=   Business name:
 
 echo.
@@ -51,7 +51,7 @@ echo.
 :done
 echo.
 echo   Ab START_RESTAURANT.bat se app kholein aur dashboard par
-echo   "Sync now" dabayein.
+echo   "Sync now" press.
 echo.
 
 :end

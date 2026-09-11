@@ -15,7 +15,7 @@
     products: {
       key: 'products', title: 'Product Catalog', storeKey: 'products',
       recordName: 'Product', addLabel: '+ New product', wideForm: true,
-      listTitle: 'All products', listSub: 'Barcode, pricing, tax and stock levels — POS isi list se chalti hai',
+      listTitle: 'All products', listSub: 'Barcode, pricing, tax and stock levels — the POS runs off this list',
       searchPlaceholder: 'Search naam ya barcode', searchFields: ['name', 'sku'], emptyIcon: '▣',
       /* Bare catalog par sirf search kaafi nahi — "Bakery ka low stock"
          search se dhoonda hi nahi ja sakta tha. */
@@ -47,7 +47,7 @@
           label: 'Product', field: 'name', render: function (r, M) {
             var b = (r.barcodes || [])[0] || (r.is_scale_item ? 'PLU ' + r.plu_code : '');
             return '<span class="t-main">' + M.esc(r.name) + '</span><span class="t-sub">' +
-              (b ? M.esc(b) : '<span style="color:var(--warn)">barcode nahi</span>') + '</span>';
+              (b ? M.esc(b) : '<span style="color:var(--warn)">no barcode</span>') + '</span>';
           }
         },
         { label: 'Department', render: function (r, M) { return M.esc(S.name('departments', r.department_id)); } },
@@ -89,7 +89,7 @@
         { key: 'cost_price', label: 'Cost price', type: 'money', required: true, default: 0 },
         { key: 'retail_price', label: 'Sale price', type: 'money', required: true, default: 0 },
         { key: 'mrp', label: 'MRP / printed price', type: 'money', default: 0,
-          autoFrom: 'retail_price', hint: 'sale price se khud bharta hai' },
+          autoFrom: 'retail_price', hint: 'filled from the sale price automatically' },
         { key: 'tax_rate', label: 'Tax %', type: 'number', default: 0 },
         { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
         { key: 'min_stock', label: 'Reorder level', type: 'number', default: 0 }
@@ -101,7 +101,7 @@
     departments: {
       key: 'departments', title: 'Departments', storeKey: 'departments',
       recordName: 'Department', addLabel: '+ New department',
-      listTitle: 'Store departments', listSub: 'Har product ek department se juda hota hai — reports isi se banti hain',
+      listTitle: 'Store departments', listSub: 'Every product belongs to a department — reports are built on this',
       searchPlaceholder: 'Search department', searchFields: ['name', 'code'], emptyIcon: '☰',
       kpis: [
         { label: 'Departments', calc: function (r) { return r.length; } },
@@ -131,7 +131,7 @@
     categories: {
       key: 'categories', title: 'Categories', storeKey: 'categories',
       recordName: 'Category', addLabel: '+ New category',
-      listTitle: 'Product categories', listSub: 'Department ke andar dusra level',
+      listTitle: 'Product categories', listSub: 'A second level inside a department',
       searchPlaceholder: 'Search category', searchFields: ['name'], emptyIcon: '☰',
       kpis: [
         { label: 'Categories', calc: function (r) { return r.length; } },
@@ -152,7 +152,7 @@
     brands: {
       key: 'brands', title: 'Brands', storeKey: 'brands',
       recordName: 'Brand', addLabel: '+ New brand',
-      listTitle: 'Brand list', listSub: 'Supplier aur reporting dono brand se filter hote hain',
+      listTitle: 'Brand list', listSub: 'Both supplier and reporting can be filtered by brand',
       searchPlaceholder: 'Search brand', searchFields: ['name'], emptyIcon: '◈',
       kpis: [
         { label: 'Brands', calc: function (r) { return r.length; } },
@@ -175,8 +175,8 @@
     uom: {
       key: 'uom', title: 'Units & Pack Sizes', storeKey: 'units',
       recordName: 'Unit', addLabel: '+ New unit',
-      note: '<b>Multi-UOM ka usool:</b> stock hamesha <b>base unit</b> mein girta hai. Carton kharida, piece becha — conversion factor yahin se lagta hai.',
-      listTitle: 'Units of measure', listSub: 'Base units aur pack conversions',
+      note: '<b>Multi-UOM rule:</b> stock always moves in the <b>base unit</b>. Buy by the carton, sell by the piece — the conversion factor is applied here.',
+      listTitle: 'Units of measure', listSub: 'Base units and pack conversions',
       searchPlaceholder: 'Search unit', searchFields: ['name', 'code'], emptyIcon: '⇹',
       kpis: [
         { label: 'Units', calc: function (r) { return r.length; } },
@@ -209,7 +209,7 @@
     batches: {
       key: 'batches', title: 'Batch & Expiry', storeKey: 'batches',
       recordName: 'Batch', addLabel: '+ New batch',
-      note: 'FIFO: sale par sab se pehle <b>expire hone wala batch</b> khatam hota hai. Near-expiry alert dashboard par bhi aata hai.',
+      note: 'FIFO: on a sale the batch that expires soonest is consumed first. A near-expiry alert also appears on the dashboard.',
       listTitle: 'Stock batches', listSub: 'Expiry-tracked items ka batch-wise stock',
       searchPlaceholder: 'Search batch number', searchFields: ['batch_no'], emptyIcon: '◷',
       kpis: [
@@ -250,7 +250,7 @@
     suppliers: {
       key: 'suppliers', title: 'Suppliers', storeKey: 'suppliers',
       recordName: 'Supplier', addLabel: '+ New supplier',
-      listTitle: 'Supplier list', listSub: 'Purchase orders, GRN aur payables sab yahin se jurte hain',
+      listTitle: 'Supplier list', listSub: 'Purchase orders, GRN and payables all connect from here',
       searchPlaceholder: 'Search name, contact or city', searchFields: ['name', 'contact_person', 'phone', 'city'], emptyIcon: '⌂',
       kpis: [
         { label: 'Suppliers', calc: function (r) { return r.length; } },
@@ -282,7 +282,7 @@
     customers: {
       key: 'customers', title: 'Customers', storeKey: 'customers',
       recordName: 'Customer', addLabel: '+ New customer',
-      listTitle: 'Customer directory', listSub: 'Retail, wholesale aur credit customers',
+      listTitle: 'Customer directory', listSub: 'Retail, wholesale and credit customers',
       searchPlaceholder: 'Search name, phone or area', searchFields: ['name', 'phone', 'area'], emptyIcon: '☺',
       kpis: [
         { label: 'Customers', calc: function (r) { return r.length; } },
@@ -323,7 +323,7 @@
     counters: {
       key: 'counters', title: 'Counter Management', storeKey: 'counters',
       recordName: 'Counter', addLabel: '+ New counter',
-      listTitle: 'POS counters', listSub: 'Har counter ka apna cashier, printer aur cash drawer',
+      listTitle: 'POS counters', listSub: 'Each counter has its own cashier, printer and cash drawer',
       searchPlaceholder: 'Search counter or cashier', searchFields: ['name', 'cashier', 'device_name'], emptyIcon: '⊞',
       kpis: [
         { label: 'Counters', calc: function (r) { return r.length; } },
@@ -353,7 +353,7 @@
     promotions: {
       key: 'promotions', title: 'Discounts & Promotions', storeKey: 'promotions',
       recordName: 'Promotion', addLabel: '+ New promotion',
-      listTitle: 'Promotion rules', listSub: 'POS par apne aap lagti hain — cashier ko kuch nahi karna parta',
+      listTitle: 'Promotion rules', listSub: 'Applied automatically at the POS — the cashier does nothing',
       searchPlaceholder: 'Search promotion', searchFields: ['name', 'target'], emptyIcon: '◎',
       kpis: [
         { label: 'Promotions', calc: function (r) { return r.length; } },
@@ -386,7 +386,7 @@
     /* ---------------- Stock on hand ---------------- */
     stock: {
       key: 'products', title: 'Stock on Hand', storeKey: 'products', canAdd: false,
-      listTitle: 'Stock position', listSub: 'Reorder level se neeche wale items sab se upar dekhein',
+      listTitle: 'Stock position', listSub: 'Reorder level se neeche wale items all se upar see',
       filters: [
         { key: 'department_id', label: 'Department',
           options: function () { return S.get('departments').map(function (d) { return { value: d.id, label: d.name }; }); } },
@@ -427,8 +427,8 @@
     pricing: {
       key: 'products', title: 'Price Management', storeKey: 'products',
       recordName: 'Price', addLabel: '+ New product', wideForm: true,
-      note: 'Yahan rate badalne se POS par foran lagta hai. Shelf tag dobara chhapna na bhoolein \u2014 <b>Barcode & Shelf Labels</b>.',
-      listTitle: 'Prices & margins', listSub: 'Cost, retail, wholesale aur margin ek jagah',
+      note: 'Changing a rate here applies at the POS immediately. Do not forget to reprint the shelf tag \u2014 <b>Barcode & Shelf Labels</b>.',
+      listTitle: 'Prices & margins', listSub: 'Cost, retail, wholesale and margin in one place',
       searchPlaceholder: 'Search product', searchFields: ['name', 'sku'], emptyIcon: '%',
       filters: [
         { key: 'department_id', label: 'Department',
@@ -482,7 +482,7 @@
       key: 'products', title: 'Weighing Scale Items', storeKey: 'products',
       recordName: 'Scale item', addLabel: '+ New scale item', wideForm: true,
       note: 'Taraazu khud label chhapti hai jismein barcode ke andar weight chhupa hota hai. POS us barcode ko parh kar weight khud le leta hai \u2014 cashier ko kuch type nahi karna parta.',
-      listTitle: 'Loose / weighed items', listSub: 'PLU code taraazu mein bhi wahi hona chahiye',
+      listTitle: 'Loose / weighed items', listSub: 'The PLU code must match the one set on the scale',
       searchPlaceholder: 'Search item or PLU', searchFields: ['name', 'plu_code'], emptyIcon: '\u2696',
       kpis: [
         { label: 'Scale items', calc: function (r) { return r.filter(function (p) { return p.is_scale_item; }).length; } },
@@ -513,8 +513,8 @@
     /* ---------------- Khata / credit ---------------- */
     khata: {
       key: 'customers', title: 'Customer Credit / Khata', storeKey: 'customers', canAdd: false,
-      note: 'Yeh sirf khaata dikhata hai. Credit sale POS se banti hai aur recovery bhi wahin se \u2014 POS par customer chun kar payment lein.',
-      listTitle: 'Udhaar khaata', listSub: 'Jin par baqaya hai wo sab se upar',
+      note: 'This only shows the account. Credit sales and recoveries both happen at the POS \u2014 choose the customer there and take the payment.',
+      listTitle: 'Udhaar khaata', listSub: 'Those who owe money are listed first',
       searchPlaceholder: 'Search customer or phone', searchFields: ['name', 'phone', 'area'], emptyIcon: '\u20a8',
       kpis: [
         { label: 'Total receivable', tone: 'warn', calc: function (r, M) { return M.money(M.sum(r, 'balance')); } },
@@ -541,7 +541,7 @@
     expenses: {
       key: 'expenses', title: 'Expenses', storeKey: 'expenses',
       recordName: 'Expense', addLabel: '+ New expense',
-      listTitle: 'Store expenses', listSub: 'Cash drawer se nikla hua paisa yahan darj karein',
+      listTitle: 'Store expenses', listSub: 'Cash drawer se nikla hua paisa yahan darj please',
       searchPlaceholder: 'Search expense', searchFields: ['title', 'category', 'paid_to'], emptyIcon: '\u25bc',
       kpis: [
         { label: 'Entries', calc: function (r) { return r.length; } },
@@ -568,7 +568,7 @@
     staff: {
       key: 'staff', title: 'Staff / Roles', storeKey: 'staff',
       recordName: 'Staff member', addLabel: '+ New staff',
-      listTitle: 'Store staff', listSub: 'Login aur permissions <b>Users & Access</b> se milte hain',
+      listTitle: 'Store staff', listSub: 'Sign-in and permissions come from <b>Users & Access</b>',
       searchPlaceholder: 'Search name or role', searchFields: ['name', 'role', 'phone'], emptyIcon: '\u2687',
       kpis: [
         { label: 'Staff', calc: function (r) { return r.length; } },
@@ -596,8 +596,8 @@
     printers: {
       key: 'printers', title: 'Printers & Devices', storeKey: 'printers',
       recordName: 'Printer', addLabel: '+ New printer',
-      note: 'Receipt printer aur cash drawer ek hi cable par hote hain \u2014 drawer printer ke kick command se khulta hai. Label printer alag hota hai (TSPL/ZPL).',
-      listTitle: 'Connected devices', listSub: 'Counter-wise printer aur drawer',
+      note: 'The receipt printer and cash drawer share one cable \u2014 the drawer opens from the printer kick command. The label printer is separate (TSPL/ZPL).',
+      listTitle: 'Connected devices', listSub: 'Printer and drawer per counter',
       searchPlaceholder: 'Search printer', searchFields: ['name', 'model', 'connection'], emptyIcon: '\u2399',
       kpis: [
         { label: 'Devices', calc: function (r) { return r.length; } },
@@ -625,7 +625,7 @@
     branches: {
       key: 'branches', title: 'Multi-Branch', storeKey: 'branches',
       recordName: 'Branch', addLabel: '+ New branch',
-      listTitle: 'Store branches', listSub: 'Har branch ka apna stock aur counters hote hain',
+      listTitle: 'Store branches', listSub: 'Each branch has its own stock and counters',
       searchPlaceholder: 'Search branch', searchFields: ['name', 'city'], emptyIcon: '\u2317',
       kpis: [
         { label: 'Branches', calc: function (r) { return r.length; } },
@@ -649,7 +649,7 @@
     /* ---------------- Loyalty ---------------- */
     loyalty: {
       key: 'loyalty', title: 'Loyalty / Membership', storeKey: 'customers', canAdd: false,
-      listTitle: 'Loyalty members', listSub: 'Points POS par bill ke sath jama hote hain',
+      listTitle: 'Loyalty members', listSub: 'Points accrue with each bill at the POS',
       searchPlaceholder: 'Search member', searchFields: ['name', 'phone'], emptyIcon: '\u2605',
       kpis: [
         { label: 'Members', calc: function (r) { return r.filter(function (c) { return Number(c.loyalty_points) > 0; }).length; } },
@@ -673,7 +673,7 @@
     purchasing: {
       key: 'purchasing', title: 'Purchasing', storeKey: 'rtl_purchasing',
       recordName: 'Purchase', addLabel: '+ New purchase',
-      listTitle: 'Purchase entries', listSub: 'Supplier se aaya hua maal',
+      listTitle: 'Purchase entries', listSub: 'Goods received from suppliers',
       searchPlaceholder: 'Search supplier or ref', searchFields: ['supplier', 'ref_no'], emptyIcon: '\u21e9',
       kpis: [
         { label: 'Entries', calc: function (r) { return r.length; } },
@@ -701,8 +701,8 @@
     po: {
       key: 'po', title: 'Purchase Orders', storeKey: 'rtl_po',
       recordName: 'Purchase order', addLabel: '+ New PO',
-      note: 'Reorder level se neeche wale items <b>Stock on Hand</b> par dikhte hain \u2014 wahan se PO ki list banayein.',
-      listTitle: 'Purchase orders', listSub: 'Supplier ko bheje gaye orders',
+      note: 'Items below their reorder level appear on <b>Stock on Hand</b> \u2014 build the PO list from there.',
+      listTitle: 'Purchase orders', listSub: 'Orders sent to suppliers',
       searchPlaceholder: 'Search PO or supplier', searchFields: ['po_no', 'supplier'], emptyIcon: '\u25a5',
       kpis: [
         { label: 'Orders', calc: function (r) { return r.length; } },
@@ -731,8 +731,8 @@
     grn: {
       key: 'grn', title: 'Goods Receipt (GRN)', storeKey: 'rtl_grn',
       recordName: 'GRN', addLabel: '+ New GRN',
-      note: 'GRN wo lamha hai jab maal <b>waqai</b> store mein aata hai. PO order hai, GRN receiving \u2014 dono ka farq stock ki sachai tay karta hai.',
-      listTitle: 'Goods received', listSub: 'Supplier se receive kiya gaya maal',
+      note: 'A GRN is the moment stock <b>actually</b> arrives. A PO is an order, a GRN is the receipt \u2014 the difference is what keeps stock honest.',
+      listTitle: 'Goods received', listSub: 'Supplier se receive done maal',
       searchPlaceholder: 'Search GRN or supplier', searchFields: ['grn_no', 'supplier', 'po_no'], emptyIcon: '\u2295',
       kpis: [
         { label: 'Receipts', calc: function (r) { return r.length; } },
@@ -762,7 +762,7 @@
     preturn: {
       key: 'preturn', title: 'Purchase Return', storeKey: 'rtl_preturn',
       recordName: 'Return', addLabel: '+ New return',
-      note: 'Kharab ya expired maal supplier ko wapas. Debit note supplier ke khaate se kam hota hai.',
+      note: 'Damaged or expired stock returned to the supplier. The debit note reduces the supplier balance.',
       listTitle: 'Returns to supplier', listSub: 'Debit notes',
       searchPlaceholder: 'Search return or supplier', searchFields: ['ref_no', 'supplier'], emptyIcon: '\u21e7',
       kpis: [
@@ -820,7 +820,7 @@
     count: {
       key: 'count', title: 'Physical Stock Count', storeKey: 'rtl_count',
       recordName: 'Count session', addLabel: '+ New count',
-      note: 'Scanner se ginti karein. System qty aur counted qty ka farq hi <b>shrinkage</b> hai \u2014 supermarket mein yehi sab se bara chhupa hua nuqsan hota hai.',
+      note: 'Scanner se ginti please. System qty aur counted qty ka farq hi <b>shrinkage</b> hai \u2014 supermarket mein yehi all se bara chhupa hua nuqsan hota hai.',
       listTitle: 'Count sessions', listSub: 'Department-wise ginti',
       searchPlaceholder: 'Search session', searchFields: ['ref_no', 'department', 'counted_by'], emptyIcon: '\u2611',
       kpis: [
@@ -852,7 +852,7 @@
     wastage: {
       key: 'wastage', title: 'Damage / Expiry Write-off', storeKey: 'wastage',
       recordName: 'Write-off', addLabel: '+ New write-off',
-      note: 'Expire hone wale batches <b>Batch & Expiry</b> par dikhte hain \u2014 wahan se yahan write-off karein.',
+      note: 'Expiring batches appear on <b>Batch & Expiry</b> \u2014 write them off from there.',
       listTitle: 'Write-offs', listSub: 'Kharab, expired ya toota hua maal',
       searchPlaceholder: 'Search write-off', searchFields: ['item', 'reason'], emptyIcon: '\u2298',
       kpis: [
@@ -879,8 +879,8 @@
     returns: {
       key: 'void', title: 'Return / Refund / Void', storeKey: 'rtl_returns',
       recordName: 'Return', addLabel: '+ New return',
-      note: 'Bill wapas karne se stock <b>wapas</b> aata hai. Har return ka wajah likhna zaroori hai \u2014 yehi cashier ki jawabdehi hai.',
-      listTitle: 'Customer returns', listSub: 'Refund, exchange aur void bills',
+      note: 'Returning a bill puts stock <b>back</b>. A reason is required on every return \u2014 that is what makes cashiers accountable.',
+      listTitle: 'Customer returns', listSub: 'Refunds, exchanges and void bills',
       searchPlaceholder: 'Search bill or customer', searchFields: ['bill_no', 'customer', 'reason'], emptyIcon: '\u2297',
       kpis: [
         { label: 'Returns', calc: function (r) { return r.length; } },
@@ -931,8 +931,8 @@
     whatsapp: {
       key: 'whatsapp', title: 'WhatsApp / Notifications', storeKey: 'rtl_whatsapp',
       recordName: 'Template', addLabel: '+ New template',
-      note: 'Offline node par messages queue mein jate hain aur internet aate hi bhej diye jate hain.',
-      listTitle: 'Message templates', listSub: 'Bill, khata reminder aur promotions',
+      note: 'On an offline node messages are queued and sent as soon as the internet is back.',
+      listTitle: 'Message templates', listSub: 'Bills, credit reminders and promotions',
       searchPlaceholder: 'Search template', searchFields: ['name', 'trigger'], emptyIcon: '\u2706',
       kpis: [
         { label: 'Templates', calc: function (r) { return r.length; } },
@@ -954,7 +954,7 @@
     /* ---------------- Sales / invoices (read-only) ---------------- */
     sales: {
       key: 'sales', title: 'Sales / Invoices', storeKey: 'sales', canAdd: false,
-      listTitle: 'Today\u2019s bills', listSub: 'Sab counters ki sale — click kar ke receipt dobara print ho sakti hai',
+      listTitle: 'Today\u2019s bills', listSub: 'Sales from every counter \u2014 click a row to reprint the receipt',
       searchPlaceholder: 'Search bill, customer or cashier', searchFields: ['bill_no', 'customer', 'cashier', 'counter'], emptyIcon: '≣',
       kpis: [
         { label: 'Bills', calc: function (r) { return r.length; } },

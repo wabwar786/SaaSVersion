@@ -45,8 +45,8 @@ if (!in_array($what, ['txn', 'all'], true)) {
 
 /* ---------------- safety ---------------- */
 if ((string)cfg('app.role') === 'cloud') {
-    exit("ERROR: yeh script sirf branch computer (offline node) par chalti hai.\n"
-       . "Cloud par Platform Console -> Backup & Reset use karein.\n");
+    exit("ERROR: this script only runs on a branch computer (offline node).\n"
+       . "Cloud par Platform Console -> Backup & Reset use please.\n");
 }
 
 $pdo = DB::pdo();
@@ -55,11 +55,11 @@ $tid = tenant_id();
 $q = $pdo->prepare("SELECT name FROM tenants WHERE id=? LIMIT 1");
 $q->execute([$tid]);
 $name = (string)($q->fetchColumn() ?: '');
-if ($name === '') exit("ERROR: is node par koi business configured nahi hai.\n");
+if ($name === '') exit("ERROR: no business is configured on this node.\n");
 
 if (!$dry && $confirm !== $name) {
-    exit("ERROR: confirm match nahi hua.\n"
-       . "Poori command yeh honi chahiye:\n\n"
+    exit("ERROR: confirm match failed.\n"
+       . "The full command should be:\n\n"
        . "  php scripts/node_reset.php --what=$what --confirm=\"$name\"\n\n");
 }
 
@@ -141,10 +141,10 @@ if (!$dry) {
     catch (\Throwable $e) {}
     echo str_repeat('-', 52)."\n";
     echo "NODE_RESET_DONE rows=$total\n";
-    echo "Ab dashboard par 'Sync now' dabayein — cloud se master data wapas aa jayega.\n";
+    echo "Ab dashboard par 'Sync now' press — cloud se master data wapas aa jayega.\n";
 } else {
     echo str_repeat('-', 52)."\n";
-    echo "DRY RUN — kuch delete nahi hua. rows_that_would_go=$total\n";
+    echo "DRY RUN — kuch delete failed. rows_that_would_go=$total\n";
 }
 
 // build: V62 build 2026-08-26

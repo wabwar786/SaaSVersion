@@ -38,7 +38,7 @@ echo str_repeat('-', 62) . "\n";
 
 if ($email === '' || $pass === '') {
     echo "Password reset karne ke liye:\n";
-    echo "  php scripts/reset_super_admin.php --email=\"<email>\" --password=\"<naya password>\"\n";
+    echo "  php scripts/reset_super_admin.php --email=\"<email>\" --password=\"<new password>\"\n";
     echo "Naya account banane ke liye isi command ke saath --create lagayein.\n";
     return;
 }
@@ -71,7 +71,7 @@ if ($once) {
         $seen = (string)($q->fetchColumn() ?: '');
 
         if ($seen === $fp) {
-            echo "SKIPPED: yeh reset pehle hi lag chuka hai - password ko haath nahi lagaya.\n";
+            echo "SKIPPED: this reset was already applied — the password was left alone.\n";
             echo "         (SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD variables ab hata dein.)\n";
             return;
         }
@@ -82,7 +82,7 @@ if ($once) {
     } catch (\Throwable $e) {
         /* Marker na bane to reset bhi na karein - warna wahi purana
            masla ke har deploy par password badalta rahe. */
-        echo "SKIPPED: boot marker nahi likha ja saka (" . substr($e->getMessage(), 0, 90) . ")\n";
+        echo "SKIPPED: could not write the boot marker (" . substr($e->getMessage(), 0, 90) . ")\n";
         return;
     }
 }
@@ -103,12 +103,12 @@ if ($id) {
     $pdo->prepare("INSERT INTO platform_users(id,role,full_name,email,password_hash,status)
                    VALUES(?,'SUPER','Platform Owner',?,?,'ACTIVE')")
         ->execute([uuid(), $email, $hash]);
-    echo "OK: naya SUPER account bana diya gaya: $email\n";
+    echo "OK: new SUPER account bana diya gaya: $email\n";
 } else {
-    echo "ERROR: '$email' ka koi account nahi mila. Banane ke liye --create lagayein.\n";
+    echo "ERROR: '$email' ka no account not found. Banane ke liye --create lagayein.\n";
     return;
 }
 
-echo "Ab Platform Console par isi email/password se login karein.\n";
+echo "Ab Platform Console par isi email/password se login please.\n";
 
 // build: V62.3 build 2026-08-26

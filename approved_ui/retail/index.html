@@ -65,7 +65,7 @@
         <div class="hero">
           <div class="eyebrow">Today · <span id="todayDate"></span></div>
           <h2 id="heroSale">—</h2>
-          <p>Aaj ki sale 3 counters se. Stock, khata aur expiry alerts neeche — jo cheez aaj action maangti hai wahi upar hai.</p>
+          <p>Sales today 3 counters . Stock, credit and expiry alerts below — whatever needs action today is at the top.</p>
           <div class="hero-actions">
             <a href="pos.html" class="solid">▤ Open POS counter</a>
             <a href="grn.html">⊕ Receive goods</a>
@@ -90,7 +90,7 @@
 
       <div class="split">
         <section class="panel">
-          <div class="panel-head"><div><h2>Hourly sale</h2><p>Counter-wise footfall pattern — staffing planning ke liye</p></div>
+          <div class="panel-head"><div><h2>Hourly sale</h2><p>Footfall pattern per counter — for staffing</p></div>
             <span class="spacer"></span><span class="tag ok plain">Peak 6–8 PM</span></div>
           <div class="panel-body"><div class="chart" id="chart"></div></div>
         </section>
@@ -102,7 +102,7 @@
       </div>
 
       <section class="panel">
-        <div class="panel-head"><div><h2>Quick actions</h2><p>Rozana ke sab se zyada chalne wale kaam</p></div></div>
+        <div class="panel-head"><div><h2>Quick actions</h2><p>The jobs you do most often</p></div></div>
         <div class="panel-body">
           <div class="quick">
             <a class="qcard" href="pos.html"><div class="qi">▤</div><b>New sale</b><span>Open counter</span></a>
@@ -117,7 +117,7 @@
 
       <div class="split" style="margin-top:14px">
         <section class="panel">
-          <div class="panel-head"><div><h2>Recent bills</h2><p>Aakhri sales sab counters se</p></div>
+          <div class="panel-head"><div><h2>Recent bills</h2><p>Aakhri sales all counters se</p></div>
             <span class="spacer"></span><a href="sales.html" class="btn sm">View all</a></div>
           <div class="panel-body flush"><div class="table-wrap"><table class="table">
             <thead><tr><th>Bill</th><th>Customer</th><th>Counter</th><th class="num">Total</th><th>Status</th></tr></thead>
@@ -125,7 +125,7 @@
         </section>
 
         <section class="panel">
-          <div class="panel-head"><div><h2>Top sellers today</h2><p>Quantity ke hisaab se</p></div></div>
+          <div class="panel-head"><div><h2>Top sellers today</h2><p>By quantity</p></div></div>
           <div class="panel-body">
             <div class="mix" style="margin-bottom:12px">
               <div class="cell"><span>Units sold</span><b id="mUnits">—</b></div>
@@ -209,7 +209,7 @@
   if(lowItems.length) a.push(['info','▽','<b>'+lowItems.length+' items below reorder level</b><small>Auto-PO suggestion ready</small>','purchase_orders.html','Suggest PO']);
   var over=customers.filter(function(c){return Number(c.balance)>0 && Number(c.balance)>=Number(c.credit_limit)*0.9 && Number(c.credit_limit)>0});
   if(over.length) a.push(['warn','₨','<b>'+over.length+' customers near credit limit</b><small>'+over.map(function(c){return c.name}).join(', ')+'</small>','khata.html','Open khata']);
-  a.push(['ok','✓','<b>Counter 3 is closed</b><small>Sirf 2 counters chal rahe hain</small>','counters.html','Open counter']);
+  a.push(['ok','✓','<b>Counter 3 is closed</b><small>Only 2 counters are running</small>','counters.html','Open counter']);
 
   $('#alerts').innerHTML=a.map(function(x){
     return '<div class="alert"><div class="ai" style="background:var(--'+x[0]+'-soft);color:var(--'+x[0]+')">'+x[1]+'</div>'+

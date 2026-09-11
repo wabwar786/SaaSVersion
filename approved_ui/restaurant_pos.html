@@ -319,7 +319,7 @@ textarea.inp{min-height:62px;resize:vertical}
 <div class="pos">
   <header class="top">
     <button class="mark" id="homeBtn" title="Home">U</button>
-    <!-- Qty mode: tick karein to item par click karte hi calculator khulta
+    <!-- Qty mode: tick please to item par click karte hi calculator khulta
          hai; qty daal kar Enter dabate hi item cart mein chala jata hai. -->
     <label class="qtymode" id="qtyModeWrap" title="Item par click karte hi quantity calculator khule">
       <input type="checkbox" id="qtyMode"><span>Qty first</span>
@@ -336,8 +336,8 @@ textarea.inp{min-height:62px;resize:vertical}
     <button class="tb amber" id="holdsBtn">Hold Bills <b id="holdCount">(0)</b></button>
     <button class="tb" id="sysBtn">System</button>
     <!-- V75 — highlight "+ New Bill" par. Cashier din mein sainkron dafa
-       naya bill kholta hai aur "New Item" kabhi kabhaar. Rang us cheez
-       par hona chahiye jo sab se ziada dabai jati hai. -->
+       new bill kholta hai aur "New Item" kabhi kabhaar. Rang us cheez
+       par hona chahiye jo all se ziada dabai jati hai. -->
     <button class="tb pri" id="newBillTop">+ New Bill <b style="opacity:.75;font-weight:600">F1</b></button>
     <button class="tb" id="newItemBtn">+ New Item</button>
     <div class="who"><div class="av" id="avIni">..</div><div><small id="whoRole">Cashier</small><strong id="whoName">--</strong></div></div>
@@ -384,7 +384,7 @@ function api(action,payload){
     x.send(payload?JSON.stringify(payload):null);
     var txt=x.responseText||'';
     var i=txt.indexOf('{');
-    if(i>0)txt=txt.slice(i);          // PHP warning/notice JSON se pehle
+    if(i>0)txt=txt.slice(i);          // PHP warning/notice JSON se first
     var j=txt.lastIndexOf('}');
     if(j>-1)txt=txt.slice(0,j+1);
     var r;
@@ -450,7 +450,7 @@ function paintSync(){
   if(!s.cloud_online){
     el.innerHTML='&#9888; Offline'+(s.pending?(' &middot; '+s.pending+' pending'):'')+' &mdash; click to check';
     el.style.background='#fdecec';
-    el.title=(s.last_error||'Cloud reachable nahi')+'\nClick please: kya masla hai wo dikhaya jayega';return;
+    el.title=(s.last_error||'Cloud is not reachable')+'\nClick to see what the problem is';return;
   }
   if(s.pending>0){
     el.innerHTML='&#8635; '+s.pending+' to sync';el.style.background='#fdf4e9';
@@ -464,7 +464,7 @@ function paintSync(){
 }
 /* ---- Sync kyun nahi ho rahi: step-by-step check ---- */
 function syncDiagnose(){
-  var ov=modal('<div class="dh"><h3>Cloud Sync Check</h3><p>Har step check ho raha hai...</p></div>'
+  var ov=modal('<div class="dh"><h3>Cloud Sync Check</h3><p>Checking each step...</p></div>'
     +'<div class="db" id="dgBody"><div class="cempty">Checking connection...</div></div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="dgCopy">Copy Report</button>'
     +'<button class="go" id="dgRetry">Retry Sync</button></div>',true);
@@ -477,10 +477,10 @@ function syncDiagnose(){
         +'<div style="font-size:16px;width:24px;flex:none">'+(c.ok?'\u2705':'\u274C')+'</div>'
         +'<div style="flex:1"><b>'+esc(c.step)+'</b><small style="word-break:break-word">'+esc(c.detail)+'</small></div></div>';
     }).join('');
-    if(firstFail)html+='<div class="box" style="border-color:var(--brand)"><b style="font-size:11.5px;color:var(--brand)">Kya karna hai</b>'
+    if(firstFail)html+='<div class="box" style="border-color:var(--brand)"><b style="font-size:11.5px;color:var(--brand)">What to do</b>'
       +'<div style="font-size:11.5px;margin-top:5px;line-height:1.6">'+esc(fixHint(firstFail))+'</div></div>';
-    else html+='<div class="box" style="border-color:var(--ok)"><b style="font-size:11.5px;color:var(--ok)">Sab theek hai</b>'
-      +'<div style="font-size:11.5px;margin-top:5px">Connection kaam kar raha hai. "Retry Sync" dabayein.</div></div>';
+    else html+='<div class="box" style="border-color:var(--ok)"><b style="font-size:11.5px;color:var(--ok)">All good</b>'
+      +'<div style="font-size:11.5px;margin-top:5px">The connection is working. "Retry Sync" press.</div></div>';
     var bd=ov.querySelector('#dgBody'); if(bd)bd.innerHTML=html;
     window.__dgReport=checks.map(function(c){return (c.ok?'OK  ':'FAIL')+'  '+c.step+': '+c.detail}).join('\n');
   });
@@ -492,21 +492,21 @@ function syncDiagnose(){
 }
 function fixHint(f){
   var st=(f.step||'').toLowerCase(), d=(f.detail||'').toLowerCase();
-  if(st.indexOf('configuration')>=0)  return 'Sync configuration mein band hai. Portal se package dobara download please.';
+  if(st.indexOf('configuration')>=0)  return 'Sync is disabled in the configuration. Download the package again from the portal.';
   if(st.indexOf('cloud url')>=0||st.indexOf('token')>=0&&d.indexOf('missing')>=0)
-    return 'Is installation mein cloud ki settings nahi hain. Portal > POS > System > Download Offline Version se naya package le kar dobara install please.';
-  if(st.indexOf('ssl')>=0)            return 'HTTPS certificates nahi mile. Package dobara download please (naye package mein certificates shamil hain), ya INSTALL_OFFLINE.bat dobara please run.';
-  if(st.indexOf('dns')>=0)            return 'Internet chal raha hai magar server ka naam resolve nahi ho raha. WiFi/DNS check please; mobile hotspot se try please.';
-  if(st.indexOf('connection')>=0)     return 'Server tak connection nahi ban raha. Aksar Windows Firewall ya antivirus PHP ko rok deta hai - usme php.exe ko allow please. Office proxy ho to wo bhi rok sakta hai.';
-  if(st.indexOf('curl')>=0)           return 'PHP ka curl extension not found. runtime\\php folder delete kar ke INSTALL_OFFLINE.bat dobara please run.';
+    return 'This installation has no cloud settings. Get a new package from Portal > POS > System > Download Offline Version and install again.';
+  if(st.indexOf('ssl')>=0)            return 'HTTPS certificates nahi mile. Package again download please (naye package mein certificates shamil hain), ya INSTALL_OFFLINE.bat again please run.';
+  if(st.indexOf('dns')>=0)            return 'Internet chal raha hai magar server ka naam resolve nahi ho raha. WiFi/DNS check please; mobile hotspot se try plea.';
+  if(st.indexOf('connection')>=0)     return 'Cannot connect to the server. Windows Firewall or antivirus often blocks PHP — allow php.exe there. An office proxy can block it too.';
+  if(st.indexOf('curl')>=0)           return 'PHP ka curl extension not found. runtime\\php folder delete kar ke INSTALL_OFFLINE.bat again please run.';
   if(st.indexOf('cloud response')>=0){
     if(d.indexOf('certificate')>=0||d.indexOf('ssl')>=0||d.indexOf('60')>=0)
-      return 'SSL certificate verify nahi ho saka. Naya package download please - us mein certificates shamil hain.';
-    if(d.indexOf('403')>=0||d.indexOf('401')>=0) return 'Cloud ne request reject kar di. Business suspend to nahi? Portal par status check please.';
-    return 'Cloud server ne jawab to diya magar galat. Thodi der baad try please; masla rahe to yeh report support ko bhejein.';
+      return 'The SSL certificate could not be verified. Download a new package — it includes the certificates.';
+    if(d.indexOf('403')>=0||d.indexOf('401')>=0) return 'Cloud ne request reject kar di. Business suspend to nahi? Portal par status check plea.';
+    return 'The cloud server replied, but with an error. Try again shortly; if it persists, send this report to support.';
   }
-  if(st.indexOf('token accepted')>=0) return 'Cloud ne is package ka token qubool nahi kiya. Portal se package dobara download please (token nayi ban jayegi).';
-  return 'Yeh report Copy kar ke support ko bhej dein.';
+  if(st.indexOf('token accepted')>=0) return 'The cloud did not accept the token of this package. Download the package again from the portal (a new token is issued).';
+  return 'Copy this report and send it to support.';
 }
 
 function refreshSync(cb){
@@ -549,11 +549,11 @@ function pairDevice(role,label){
       +'<div style="font-size:11px;color:var(--ink2);margin-top:6px;word-break:break-all">'+esc(u)+'</div></div>';
   }).join('')||'<div class="cempty">Network address not found</div>';
   var ov=modal('<div class="dh"><h3>Connect '+esc(label)+'</h3>'
-    +'<p>Device ko isi WiFi se milayein, phir yeh QR scan please. Code '+(r.expires_min||15)+' minute tak valid hai.</p></div>'
+    +'<p>Connect the device to this WiFi, then scan this QR. Code '+(r.expires_min||15)+' minutes.</p></div>'
     +'<div class="db">'+body
     +'<div class="box" style="font-size:11px;color:var(--ink2)">'
     +'<b>Note:</b> Tablet POS computer ke saath usi local network (WiFi/LAN) par hona is required. '
-    +'Internet ki zaroorat nahi - sab kuch is computer se chalta hai.</div></div>'
+    +'No internet needed — everything runs from this computer.</div></div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="pairList">Connected Devices</button>'
     +'<button class="go" id="pairNew">New Code</button></div>',true);
   ov.querySelector('#pairNew').onclick=function(){ov.remove();pairDevice(role,label)};
@@ -566,8 +566,8 @@ function deviceList(){
     return '<div class="lrow"><div><b>'+esc(d.device_name||'Device')+' &middot; '+esc(d.device_role)+'</b>'
       +'<small>'+esc(d.status)+(d.last_seen_at?(' &middot; last seen '+String(d.last_seen_at).slice(0,16).replace('T',' ')):'')+'</small></div>'
       +'<button data-rev="'+esc(d.id)+'" style="background:#fdecec;color:var(--brand)">Revoke</button></div>';
-  }).join(''):'<div class="cempty">Koi device connected nahi</div>';
-  var ov=modal('<div class="dh"><h3>Connected Devices</h3><p>Tablet / mobile jo is POS se linked hain</p></div>'
+  }).join(''):'<div class="cempty">No device connected</div>';
+  var ov=modal('<div class="dh"><h3>Connected Devices</h3><p>Tablets and phones linked to this POS</p></div>'
     +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
   Array.prototype.forEach.call(ov.querySelectorAll('[data-rev]'),function(b){b.onclick=function(){
     api('device-revoke',{id:b.dataset.rev});ov.remove();deviceList();toast('Device revoked');
@@ -584,8 +584,8 @@ function qrCodes(){
       +'<img src="/api.php?action=qr&scale=5&data='+encodeURIComponent(t.url)+'" '
       +'style="width:100%;margin:7px 0;border-radius:8px" alt="" onerror="qrFail(this)">'
       +'<small style="word-break:break-all;font-size:8.5px">'+esc(t.url)+'</small></div>';
-  }).join('')+'</div>':'<div class="cempty">Koi table nahi</div>';
-  var ov=modal('<div class="dh"><h3>Table QR Codes</h3><p>Print karke tables par lagayein. Har scan par nayi time-limited session banti hai.</p></div>'
+  }).join('')+'</div>':'<div class="cempty">No tables</div>';
+  var ov=modal('<div class="dh"><h3>Table QR Codes</h3><p>Print these and place them on the tables. Each scan starts a new time-limited session.</p></div>'
     +'<div class="db" id="qrBody">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="go" id="qrPrint">Print All</button></div>',true);
   ov.querySelector('#qrPrint').onclick=function(){printNode(ov.querySelector('#qrBody'),true)};
@@ -684,7 +684,7 @@ function boot(){
   var r; try{r=api('pos-boot')}catch(e){r={ok:false,message:'JS error: '+(e&&e.message)}}
   if(!r||!r.ok){
     renderAll();
-    banner('<span>&#9888; Menu load nahi hua &mdash; server: <b>'+esc((r&&r.message)||'no response')+'</b></span>'
+    banner('<span>&#9888; Menu did not load &mdash; server: <b>'+esc((r&&r.message)||'no response')+'</b></span>'
       +'<button class="tb" id="diagBtn" style="padding:4px 10px">Run Diagnostics</button>');
     return;
   }
@@ -740,7 +740,7 @@ function renderStrip(){
      Ab sirf header wala. Purana id chhupa hua rakha hai taake F1 aur
      baqi code jo ise click karta hai wo na toote. */
     +'<button class="tb hide" id="newBillBtn" aria-hidden="true"></button>'
-    +(n===0?'<span style="color:var(--warn);font-weight:700">Menu khali &mdash; "+ New Item" se banayein</span>':'')
+    +(n===0?'<span style="color:var(--warn);font-weight:700">Menu is empty &mdash; "+ New Item" to create one</span>':'')
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
@@ -772,15 +772,15 @@ function visible(){
 function renderGrid(){
   var list=visible(), g=$('#grid');
   if(!BOOT.products.length){
-    g.innerHTML='<div class="empty"><div class="ic">&#127869;</div><h3>Menu abhi is empty</h3>'
-      +'<p>Pehla item banayein &mdash; POS, Order Taker aur Menu page teeno par foran aayega.</p>'
+    g.innerHTML='<div class="empty"><div class="ic">&#127869;</div><h3>The menu is empty</h3>'
+      +'<p>Create your first item &mdash; it appears instantly on POS, Order Taker and the Menu page.</p>'
       +'<button class="ab" style="max-width:230px;margin:0 auto;padding:10px" id="firstItem">+ Create First Item</button>'
-      +'<div style="margin-top:12px"><button class="tb" id="diagBtn2">Items banaye hain magar dikh nahi rahe? Diagnostics</button></div></div>';
+      +'<div style="margin-top:12px"><button class="tb" id="diagBtn2">Created items but they are not showing? Diagnostics</button></div></div>';
     $('#firstItem').onclick=function(){openItemModal('item')};
     $('#diagBtn2').onclick=showDiagnostics;
     return;
   }
-  if(!list.length){g.innerHTML='<div class="empty"><div class="ic">&#128269;</div><h3>Koi item not found</h3><p>Doosra naam ya category try please.</p></div>';return}
+  if(!list.length){g.innerHTML='<div class="empty"><div class="ic">&#128269;</div><h3>No item found</h3><p>Try another name or category.</p></div>';return}
   g.innerHTML=list.map(function(p){
     var q=preQty[p.id]||1;
     return '<div class="prod">'
@@ -859,8 +859,8 @@ function calculator(title,cur,cb){
 
 /* ================= ADD ITEM (variants / weight / note) ================= */
 function addItem(id){
-  if(!shift){openGate();toast('Pehle shift/account open please');return}
-  if(!billStarted){newBillFlow();toast('Pehle bill ki type select please');return}
+  if(!shift){openGate();toast('Open a shift first');return}
+  if(!billStarted){newBillFlow();toast('Choose the bill type first');return}
   var p=BOOT.products.find(function(x){return x.id===id});
   if(!p)return;
   if(p.pizza){optionsModal(p);return}
@@ -893,7 +893,7 @@ function qtyFirst(){ var el=document.getElementById('qtyMode'); return !!(el&&el
     try{ localStorage.setItem('pos_qty_first', el.checked?'1':'0'); }catch(e){}
     paint();
     toast(el.checked ? 'Qty first: item par click karte hi calculator khulega'
-                     : 'Qty first band — item seedha add hoga');
+                     : 'Qty first off — items are added directly');
   };
 })();
 function push(p,qty,note,label){
@@ -932,7 +932,7 @@ function changeTable(){
     var n=esc(t.display_name||t.name), busy=t.status==='OCCUPIED', cur=(n===curTable);
     return '<button class="tcard'+(busy&&!cur?' busy':'')+(cur?' cur':'')+'" data-t="'+n+'"><b>'+n+'</b><small>'
       +(cur?'Current':(busy?'Occupied':'Available'))+(t.seats?(' &middot; '+t.seats+' seats'):'')+'</small></button>';
-  }).join('')+'</div>':'<div class="cempty">Koi table nahi</div>';
+  }).join('')+'</div>':'<div class="cempty">No tables</div>';
   var ov=modal('<div class="dh"><h3>Shift / Change Table</h3><p>Mojooda bill'+(curTable?(' ('+esc(curTable)+')'):'')+' doosre table par shift please</p></div>'
     +'<div class="db">'+body+'<div style="margin-top:10px"><button class="tb" id="ctNew">+ New Table</button></div></div>'
     +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button></div>',true);
@@ -1043,14 +1043,14 @@ function newBillFlow(isEdit){
     return list.length?list.map(function(t){
       var n=esc(t.display_name||t.name), busy=t.status==='OCCUPIED';
       return '<button class="tcard'+(busy?' busy':'')+'" data-t="'+n+'"><b>'+n+'</b><small>'+(busy?'Occupied':'Available')+(t.seats?(' &middot; '+t.seats+' seats'):'')+'</small></button>';
-    }).join(''):'<div class="cempty">Koi table nahi &mdash; "+ New Table" se banayein</div>';
+    }).join(''):'<div class="cempty">No tables &mdash; "+ New Table" to create one</div>';
   }
   function custList(q){
     var list=(BOOT.customers||[]).filter(function(c){
       if(!q)return true;return (c.name+' '+(c.phone||'')).toLowerCase().indexOf(q.toLowerCase())>=0});
     return list.length?list.map(function(c){
       return '<div class="lrow"><div><b>'+esc(c.name)+'</b><small>'+esc(c.phone||'No phone')+(c.address?(' &middot; '+esc(c.address)):'')+'</small></div>'
-        +'<button data-c="'+esc(c.id)+'">Select</button></div>'}).join(''):'<div class="cempty">Koi customer not found</div>';
+        +'<button data-c="'+esc(c.id)+'">Select</button></div>'}).join(''):'<div class="cempty">No customer found</div>';
   }
   function done(){
     billStarted=true;
@@ -1105,7 +1105,7 @@ function newBillFlow(isEdit){
 }
 
 function newCustomerModal(cb){
-  var ov=modal('<div class="dh"><h3>New Customer</h3><p>DB mein save hoga.</p></div>'
+  var ov=modal('<div class="dh"><h3>New Customer</h3><p>Saved to the databa.</p></div>'
     +'<div class="db"><div class="fg">'
     +'<div class="full"><label class="f">Name *</label><input class="inp" id="ccName"></div>'
     +'<div><label class="f">Phone</label><input class="inp" id="ccPhone"></div>'
@@ -1174,7 +1174,7 @@ function removeLine(i){
   cart.splice(i,1);renderCart();
 }
 function voidApproval(line,ok){
-  var ov=modal('<div class="dh"><h3>Void Approval Required</h3><p>Yeh item kitchen ja chuka hai &mdash; manager approval is required.</p></div>'
+  var ov=modal('<div class="dh"><h3>Void Approval Required</h3><p>This item has already gone to the kitchen &mdash; manager approval is required.</p></div>'
     +'<div class="db"><div class="kv"><span>Item</span><b>'+esc(line.name)+'</b></div>'
     +'<div class="kv"><span>Kitchen sent</span><b>'+qfmt(line.sentQty)+'</b></div>'
     +'<div class="box"><label class="f">Reason</label>'
@@ -1206,7 +1206,7 @@ function payload(extra){
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
 }
-function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assign kiya')}}
+function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}}
 
 function sendKot(autoPrint){
   if(!shift){openGate();return}
@@ -1217,14 +1217,14 @@ function sendKot(autoPrint){
   /* RUNNING = is bill ka kuch pehle hi kitchen ja chuka hai (mark karne se PEHLE dekho) */
   var wasRunning=cart.some(function(l){return l.sentQty>0});
   var r=api('pos-kot',payload());
-  if(!r.ok){toast(r.message||'KOT save nahi hua - kitchen ko NahI gaya');return}
+  if(!r.ok){toast(r.message||'KOT could not be saved — it did not reach the kitchen');return}
   syncBill(r);
   cart.forEach(function(l){l.sentQty=l.qty});
   renderCart();
   var kinfo={running:wasRunning};
   if(autoPrint)printNode(slipNode('KOT',delta,kinfo));
   else slipPreview('KOT',delta,kinfo);
-  toast('KOT sent - sirf naye '+delta.length+' item(s)');
+  toast('KOT sent - only naye '+delta.length+' item(s)');
 }
 $('#kotBtn').onclick=function(){sendKot(true)};
 
@@ -1270,7 +1270,7 @@ $('#chargeBtn').onclick=function(){
   setTimeout(function(){rcvEl.focus();rcvEl.select()},60);
   function pay_now(btn){
     var rcv=Number(rcvEl.value||0);
-    if(rcv<t.grand-0.5){toast('Received amount kam hai');rcvEl.focus();return}
+    if(rcv<t.grand-0.5){toast('Received amount is too low');rcvEl.focus();return}
     if(paying)return;               /* dobara dabane se do bill ban jate the */
     paying=true;
 
@@ -1297,7 +1297,7 @@ $('#chargeBtn').onclick=function(){
     if(!r.ok){
       if(btn){btn.disabled=false;btn.textContent='Complete Payment';btn.style.opacity=''}
       var ob=ov.querySelector('.db'); if(ob)ob.style.pointerEvents='';
-      toast(r.message||'Bill save nahi hua');return}
+      toast(r.message||'Bill save failed');return}
     ov.remove();
     if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
     /* fbr_no server se aata hai (pos-finalize ka jawab). QR isi ka banta
@@ -1474,7 +1474,7 @@ function slipNode(kind,lines,info){
 }
 function slipPreview(kind,lines,info){
   if(!lines||!lines.length){toast('Nothing to print');return}
-  var ov=modal('<div class="dh"><h3>'+(kind==='KOT'?'Kitchen Ticket':'Bill')+' Preview</h3><p>Print ya WhatsApp par bhejein.</p></div>'
+  var ov=modal('<div class="dh"><h3>'+(kind==='KOT'?'Kitchen Ticket':'Bill')+' Preview</h3><p>Print ya WhatsApp par send.</p></div>'
     +'<div class="db" id="slipBody">'+slipHtml(kind,lines,info)+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button><button class="sec" id="slipWa">WhatsApp</button><button class="go" id="slipPrint">Print</button></div>');
   ov.querySelector('#slipPrint').onclick=function(){printNode(ov.querySelector('#slipBody'))};
@@ -1552,7 +1552,7 @@ function printNode(node,wide){
   var imgs=wrap.querySelectorAll('img'), left=imgs.length, done=false;
   function go(){
     if(done)return; done=true;
-    try{ w.focus(); w.print(); }catch(e){ toast('Print nahi chal saki'); }
+    try{ w.focus(); w.print(); }catch(e){ toast('Printing failed'); }
     /* iframe ko turant na hataayein — kuch browsers print dialog band
        hone tak document zinda maangte hain. */
     setTimeout(function(){ var fr=document.getElementById('__printFrame'); if(fr)fr.remove(); },60000);
@@ -1569,11 +1569,11 @@ function printNode(node,wide){
 function waSend(kind,lines,info){
   var cust={phone:curCustPhone};
   var billForPdf=(info&&info.billNo)||billNo;
-  var ov=modal('<div class="dh"><h3>Send on WhatsApp</h3><p>Bill summary customer ko bhejein.</p></div>'
+  var ov=modal('<div class="dh"><h3>Send on WhatsApp</h3><p>Bill summary customer ko send.</p></div>'
     +'<div class="db"><label class="f">Phone (with country code)</label>'
     +'<input class="inp" id="waNo" value="'+esc((cust.phone||'').replace(/[^0-9]/g,'')||'92')+'">'
     +'<div class="box"><b style="font-size:11.5px">Bill PDF</b>'
-    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Proper PDF invoice server par generate hoti hai. Apni WhatsApp API isi link ko attachment ke tor par bhej sakti hai.</div>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">The PDF invoice is generated on the server. Your WhatsApp API can send this link as an attachment.</div>'
     +'<div class="selrow"><input class="inp" id="waPdf" readonly value="'+esc(location.origin+'/api.php?action=bill-pdf&bill='+billForPdf)+'">'
     +'<button class="tb" id="waCopy" style="flex:none">Copy</button>'
     +'<button class="tb" id="waOpen" style="flex:none">Open PDF</button></div></div></div>'
@@ -1646,7 +1646,7 @@ $('#holdsBtn').onclick=function(){
       +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)
       +(h.by?(' &middot; '+esc(h.by)):'')+' &middot; '+esc(h.at||'')+'</small></div>'
       +'<button data-res="'+i+'">Resume</button></div>';
-  }).join(''):'<div class="cempty">Koi khula bill nahi</div>';
+  }).join(''):'<div class="cempty">No open bills</div>';
   var ov=modal('<div class="dh"><h3>Held Bills</h3><p>Rukay hue orders resume please</p></div><div class="db">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button>'+(cart.length?'<button class="go" id="hNow">Hold Current Bill</button>':'')+'</div>',true);
   var hb=ov.querySelector('#hNow'); if(hb)hb.onclick=function(){if(holdCurrent())ov.remove()};
@@ -1656,7 +1656,7 @@ $('#holdsBtn').onclick=function(){
        cart JSON parha jata tha; asli order mein wo hai hi nahi, is liye
        tablet ka bill kholne par cart khali aata. */
     var r=api('pos-hold-open&id='+encodeURIComponent(h.id));
-    if(!r||!r.ok){toast((r&&r.message)||'Yeh bill khul nahi saka');return}
+    if(!r||!r.ok){toast((r&&r.message)||'This bill could not be opened');return}
     curHoldId=h.id;
     cart=(r.items||[]).map(function(x){
       return {id:x.id,name:x.name,qty:x.qty,price:x.price,
@@ -1676,7 +1676,7 @@ $('#dupBtn').onclick=function(){
     return '<div class="lrow"><div><b>Bill #'+esc(b.billNo)+' &middot; '+esc(b.mode)+'</b>'
       +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)+' &middot; '+esc(b.payment||'')+'</small></div>'
       +'<button data-dup="'+i+'">Reprint</button></div>';
-  }).join(''):'<div class="cempty">Aaj koi closed bill nahi</div>';
+  }).join(''):'<div class="cempty">No closed bills today</div>';
   var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Aaj ke closed bills &mdash; reprint please</p></div>'
     +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer" style="margin-bottom:10px">'
     +'<div id="dupList">'+body+'</div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
@@ -1695,7 +1695,7 @@ $('#dupBtn').onclick=function(){
       return (String(o.b.billNo)+' '+o.b.customer).toLowerCase().indexOf(s)>=0});
     ov.querySelector('#dupList').innerHTML=f.length?f.map(function(o){
       return '<div class="lrow"><div><b>Bill #'+esc(o.b.billNo)+'</b><small>'+esc(o.b.time)+' &middot; '+money(o.b.amount)+'</small></div>'
-        +'<button data-dup="'+o.i+'">Reprint</button></div>'}).join(''):'<div class="cempty">Koi bill not found</div>';
+        +'<button data-dup="'+o.i+'">Reprint</button></div>'}).join(''):'<div class="cempty">No bill found</div>';
     bind();
   };
 };
@@ -1743,12 +1743,12 @@ $('#edSvc').onclick=function(){
   };
 };
 $('#edTax').onclick=function(){
-  var ov=modal('<div class="dh"><h3>Sales Tax</h3><p>Tax rate payment method par depend karta hai (portal settings se)</p></div>'
+  var ov=modal('<div class="dh"><h3>Sales Tax</h3><p>The tax rate depends on the payment method (set in portal settings)</p></div>'
     +'<div class="db"><label class="f">Payment Method</label><div class="pmg" id="txPm">'
     +['Cash','Card','Raast','Easypaisa','JazzCash','Bank'].map(function(m){
       return '<button class="'+(m===payMethod?'on':'')+'" data-tp="'+m+'">'+m+'<br><small>'+(/^(cash)$/i.test(m)?SET.tax_cash:SET.tax_card)+'%</small></button>'}).join('')
     +'</div><div class="box" style="font-size:11.5px;color:var(--ink2)">Cash par <b>'+SET.tax_cash+'%</b>, Card/Online par <b>'+SET.tax_card+'%</b>. '
-    +'Ye rates System &amp; Settings se change hote hain. Charge screen par method badalne se tax khud update ho jata hai.</div></div>'
+    +'These rates are changed in System &amp; Settings. Changing the method on the Charge screen updates the tax automatically.</div></div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button></div>');
   Array.prototype.forEach.call(ov.querySelectorAll('[data-tp]'),function(b){b.onclick=function(){
     payMethod=b.dataset.tp;orderTax=taxPct(payMethod);
@@ -1768,7 +1768,7 @@ function openItemModal(startTab){
   var tab=startTab||'item', inv=[];
   var sr=api('store-state'); if(sr.ok&&sr.state)inv=sr.state.inventoryItems||[];
   var cats=(BOOT.categories||[]).map(function(c){return c.name});
-  var ov=modal('<div class="dh"><h3>Item Management</h3><p>Item banayein, category add please, ya rate change please</p></div>'
+  var ov=modal('<div class="dh"><h3>Item Management</h3><p>Item create, category add please, ya rate change please</p></div>'
     +'<div class="tabs"><button class="tab" data-t="item">Create Item</button><button class="tab" data-t="category">Create Category</button><button class="tab" data-t="rate">Change Rate</button></div>'
     +'<div class="db">'
     +'<div data-p="item"><div class="fg">'
@@ -1781,7 +1781,7 @@ function openItemModal(startTab){
       +'<div class="box"><label class="f" style="margin-bottom:8px">Inventory Link (stock deduction)</label><div class="fg">'
         +'<div><label class="f">Mode</label><select class="inp" id="iMode"><option value="none">No inventory link</option><option value="existing">Deduct existing item</option><option value="new">Create new inventory item</option></select></div>'
         +'<div class="hide" id="iQtyW"><label class="f">Deduct qty / sale</label><input class="inp" id="iQty" type="number" step="0.001" value="1"></div>'
-        +'<div class="full hide" id="iExW"><label class="f">Inventory item</label><select class="inp" id="iEx">'+(inv.length?inv.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' - '+(Math.round((x.stockQty||0)*100)/100)+' '+esc(x.stockUnit||'')+'</option>'}).join(''):'<option value="">(koi inventory item nahi)</option>')+'</select></div>'
+        +'<div class="full hide" id="iExW"><label class="f">Inventory item</label><select class="inp" id="iEx">'+(inv.length?inv.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' - '+(Math.round((x.stockQty||0)*100)/100)+' '+esc(x.stockUnit||'')+'</option>'}).join(''):'<option value="">(no inventory item nahi)</option>')+'</select></div>'
         +'<div class="hide" id="iNnW"><label class="f">New inventory name</label><input class="inp" id="iNn" placeholder="Same as item"></div>'
         +'<div class="hide" id="iNuW"><label class="f">Stock unit</label><select class="inp" id="iNu"><option>PCS</option><option>G</option><option>KG</option><option>ML</option><option>L</option></select></div>'
         +'<div class="hide" id="iNoW"><label class="f">Opening stock</label><input class="inp" id="iNo" type="number" step="0.001" value="0"></div>'
@@ -1792,7 +1792,7 @@ function openItemModal(startTab){
       +'<div><label class="f">Icon</label><input class="inp" id="cIcon" value="*"></div>'
       +'<div class="full"><label class="f">Kitchen Printer Station</label><input class="inp" id="cPrn" value="main"></div></div></div>'
     +'<div data-p="rate" class="hide"><div class="fg">'
-      +'<div class="full"><label class="f">Item</label><select class="inp" id="rSel">'+(BOOT.products.length?BOOT.products.map(function(p){return '<option value="'+esc(p.id)+'" data-pr="'+p.price+'">'+esc(p.name)+' - '+money(p.price)+'</option>'}).join(''):'<option value="">(koi item nahi)</option>')+'</select></div>'
+      +'<div class="full"><label class="f">Item</label><select class="inp" id="rSel">'+(BOOT.products.length?BOOT.products.map(function(p){return '<option value="'+esc(p.id)+'" data-pr="'+p.price+'">'+esc(p.name)+' - '+money(p.price)+'</option>'}).join(''):'<option value="">(no item nahi)</option>')+'</select></div>'
       +'<div><label class="f">Current Rate</label><input class="inp" id="rCur" disabled></div>'
       +'<div><label class="f">New Rate *</label><input class="inp" id="rNew" type="number"></div></div></div>'
     +'</div><div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="saveIt">Save</button></div>',true);
@@ -1820,7 +1820,7 @@ function openItemModal(startTab){
     if(tab==='item'){
       var d={name:(ov.querySelector('#iName').value||'').trim(),price:Number(ov.querySelector('#iPrice').value||0),
         category:ov.querySelector('#iCat').value,type:ov.querySelector('#iType').value,desc:(ov.querySelector('#iDesc').value||'').trim()};
-      if(!d.name||d.price<=0){bad('Item name aur valid price is required');return}
+      if(!d.name||d.price<=0){bad('Item name and a valid price are required');return}
       if(d.type==='configurable'){
         d.variants=(ov.querySelector('#iVars').value||'').split(',').map(function(s){
           var q=s.split(':');return {name:(q[0]||'').trim(),price:Number(q[1]||0)}}).filter(function(v){return v.name&&v.price>0});
@@ -1839,7 +1839,7 @@ function openItemModal(startTab){
       if(r.ok)toast('Category "'+nm+'" saved');
     }else{
       var id=ov.querySelector('#rSel').value,nr=Number(ov.querySelector('#rNew').value||0);
-      if(!id||nr<=0){bad('Item aur valid rate select please');return}
+      if(!id||nr<=0){bad('Select an item and a valid rate');return}
       r=api('menu-item-rate',{menu_item_id:id,price:nr});
       if(r.ok)toast('Rate updated: '+money(nr));
     }
@@ -1865,8 +1865,8 @@ $('#qrBtn').onclick=function(){
       +'<small style="color:var(--ok);font-weight:800">'+money(o.total)+'</small></div>'
       +'<div style="display:flex;gap:6px"><button data-rej="'+i+'" style="background:#fdecec;color:var(--brand)">Reject</button>'
       +'<button data-acc="'+i+'">Accept</button></div></div>';
-  }).join(''):'<div class="cempty">Koi pending QR order nahi</div>';
-  var ov=modal('<div class="dh"><h3>QR / Customer Orders</h3><p>Customer ke bheje hue orders &mdash; Accept karne par hi cart mein aayenge</p></div>'
+  }).join(''):'<div class="cempty">No pending QR orders</div>';
+  var ov=modal('<div class="dh"><h3>QR / Customer Orders</h3><p>Orders sent by customers &mdash; they only enter the cart once accepted</p></div>'
     +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
   Array.prototype.forEach.call(ov.querySelectorAll('[data-acc]'),function(b){b.onclick=function(){
     var o=qrPending[b.dataset.acc];
@@ -1878,7 +1878,7 @@ $('#qrBtn').onclick=function(){
     });
     api('qr-handle',{id:o.id,action:'ACCEPTED'});
     ov.remove();loadQr();renderCtx();renderCart();
-    toast('Order accept done - ab cart mein hai');
+    toast('Order accepted — it is in the cart now');
   }});
   Array.prototype.forEach.call(ov.querySelectorAll('[data-rej]'),function(b){b.onclick=function(){
     api('qr-handle',{id:qrPending[b.dataset.rej].id,action:'REJECTED'});
@@ -1893,12 +1893,12 @@ $('#voidBtn').onclick=function(){
   var body=rows.length?rows.map(function(v){
     return '<div class="lrow"><div><b>'+esc(v.item)+' &middot; Bill #'+esc(v.bill)+'</b>'
       +'<small>Qty '+esc(v.qty)+' &middot; '+esc(v.reason)+(v.note?' &middot; '+esc(v.note):'')+(v.approvedBy?' &middot; by '+esc(v.approvedBy):'')+' &middot; '+esc(v.at)+'</small></div></div>';
-  }).join(''):'<div class="cempty">Koi void record nahi</div>';
+  }).join(''):'<div class="cempty">No void records</div>';
   modal('<div class="dh"><h3>Void Logs</h3><p>Kitchen-sent items jo void hue</p></div><div class="db">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button></div>',true);
 };
 $('#sysBtn').onclick=function(){
-  var ov=modal('<div class="dh"><h3>System &amp; Settings</h3><p>Terminal aur printer status</p></div><div class="db">'
+  var ov=modal('<div class="dh"><h3>System &amp; Settings</h3><p>Terminal and printer status</p></div><div class="db">'
     +'<div class="kv"><span>Branch</span><b>'+esc((BOOT.site&&BOOT.site.name)||'-')+'</b></div>'
     +'<div class="kv"><span>Cashier</span><b>'+esc((BOOT.cashier&&BOOT.cashier.name)||'-')+'</b></div>'
     +'<div class="kv"><span>Shift</span><b>'+(shift?esc(shift.shift_no):'Closed')+'</b></div>'
@@ -1914,10 +1914,10 @@ $('#sysBtn').onclick=function(){
     +'<div class="box"><b style="font-size:11px">Cloud Sync</b><div id="syncBox" style="margin-top:6px"></div>'
     +'<button class="tb" id="sysSync" style="width:100%;margin-top:8px">Sync Now</button></div>'
     +'<div class="box"><b style="font-size:11px">Connect Tablet / Mobile</b>'
-    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Tablet ya mobile ko isi WiFi par POS ke saath connect please - QR scan karte hi device linked ho jata hai.</div>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Connect the tablet or phone to the same WiFi as the POS — scanning the QR links the device.</div>'
     +'<div class="qv" style="grid-template-columns:1fr 1fr"><button id="sysPairW">Waiter Tablet</button><button id="sysPairK">Kitchen Display</button></div></div>'
     +'<div class="box"><b style="font-size:11px">Table QR Codes</b>'
-    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Har table ka apna QR &mdash; customer scan karke khud order kar sakta hai. Session waqt-mehdood hai.</div>'
+    +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Each table has its own QR — customers scan it and order themselves. The session is time-limited.</div>'
     +'<button class="tb" id="sysQr" style="width:100%">Open QR Codes</button></div>'
     +(CAN.offline_download?('<div class="box"><b style="font-size:11px">Offline Version</b>'
       +'<div style="font-size:11px;color:var(--ink2);margin:5px 0 8px">Internet ke baghair chalne wala package &mdash; is business ke credentials already stamped, net aate hi khud sync.</div>'
@@ -1929,11 +1929,11 @@ $('#sysBtn').onclick=function(){
     +'<div class="full"><label class="f">Footer text</label><input class="inp" id="ptFoot" placeholder="Thank you! Visit again."></div>'
     +'</div><button class="tb" id="ptSave" style="width:100%;margin-top:8px">Save Template</button></div>'
     +'<div class="box"><b style="font-size:11px">Printer Stations</b><div style="margin-top:6px">'
-    +(Object.keys(BOOT.printers||{}).map(function(k){return '<div style="font-size:11px;padding:3px 0">'+esc(BOOT.printers[k].name)+' &mdash; '+esc(k)+'</div>'}).join('')||'<span class="cempty">Koi printer nahi</span>')
+    +(Object.keys(BOOT.printers||{}).map(function(k){return '<div style="font-size:11px;padding:3px 0">'+esc(BOOT.printers[k].name)+' &mdash; '+esc(k)+'</div>'}).join('')||'<span class="cempty">No printers</span>')
     +'</div></div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   var offBtn=ov.querySelector('#sysOffline');
   if(offBtn)offBtn.onclick=function(){
-    toast('Offline package ban raha hai - thoda intezar please');
+    toast('Building the offline package — one moment');
     window.location.href='/api.php?action=offline-package';
   };
   function paintSyncBox(){
@@ -2003,7 +2003,7 @@ function showDiagnostics(){
     return '<div style="font-size:11px;padding:5px 0;border-bottom:1px dashed var(--l)"><b>'+esc(x.name)+'</b> &mdash; PKR '+esc(x.base_price)
       +' &middot; '+esc(x.cat)+' &middot; active:'+x.is_active+' pos:'+x.is_pos
       +(x.site_id!==d.site_id?' <span style="color:var(--brand)">(doosri branch!)</span>':'')+'</div>'}).join('')
-    ||'<div class="cempty">Koi menu item nahi</div>';
+    ||'<div class="cempty">No menu items</div>';
   /* RAW sample: agar name khali aaye to yahan foran nazar aa jayega */
   var rb=api('pos-boot'), rawHtml='';
   if(rb.ok&&rb.boot&&rb.boot.products&&rb.boot.products.length){
@@ -2011,14 +2011,14 @@ function showDiagnostics(){
     rawHtml='<div class="box"><b style="font-size:11px">pos-boot ka pehla product (raw)</b>'
       +'<pre style="font-size:10.5px;white-space:pre-wrap;margin-top:6px">'+esc(JSON.stringify({id:sp.id,name:sp.name,cat:sp.cat,price:sp.price,img:String(sp.img).slice(0,60)},null,1))+'</pre>'
       +'<div style="font-size:11px;margin-top:5px">name field: <b style="color:'+(sp.name?'var(--ok)':'var(--brand)')+'">'
-      +(sp.name?('OK - "'+esc(sp.name)+'"'):'KHALI! Menu page se item ka naam dubara save please')+'</b></div></div>';
+      +(sp.name?('OK - "'+esc(sp.name)+'"'):'EMPTY! Re-save the item name from the Menu page')+'</b></div></div>';
   }
   var tip='';
-  if(d.menu_items_pos_visible===0&&d.stranded_ui_records_menu>0)tip='Items purane format (ui_records) mein hain - service redeploy please.';
-  else if(d.menu_items_pos_visible===0&&d.menu_items_other_sites>0)tip='Items doosri branch mein bane hain.';
-  else if(d.menu_items_pos_visible===0)tip='Is branch mein koi POS-visible item nahi - "+ New Item" se banayein.';
+  if(d.menu_items_pos_visible===0&&d.stranded_ui_records_menu>0)tip='Items are in the old format (ui_records) — redeploy the service.';
+  else if(d.menu_items_pos_visible===0&&d.menu_items_other_sites>0)tip='The items were created in another branch.';
+  else if(d.menu_items_pos_visible===0)tip='This branch has no POS-visible items - "+ New Item" to create one.';
   var ov=modal('<div class="dh"><h3>POS Diagnostics</h3><p>Seedhe database se</p></div><div class="db">'+h
-    +(tip?'<div class="box" style="border-color:#f0c98a;background:var(--warnbg)"><b>Kya please:</b> '+esc(tip)+'</div>':'')
+    +(tip?'<div class="box" style="border-color:#f0c98a;background:var(--warnbg)"><b>Please note:</b> '+esc(tip)+'</div>':'')
     +rawHtml
     +'<div class="box"><b style="font-size:11px">Recent menu items</b><div style="margin-top:6px">'+items+'</div></div></div>'
     +'<div class="df"><button class="sec" data-x>Close</button><button class="go" id="cpy">Copy Report</button></div>',true);
@@ -2031,7 +2031,7 @@ function showDiagnostics(){
 /* ================= SHIFT ================= */
 function openGate(){
   if(document.getElementById('gateOv'))return;
-  var ov=modal('<div class="dh"><h3>Shift Opening</h3><p>POS billing shift open hone ke baad hi chalegi. Drawer ka opening cash count karke enter please.</p></div>'
+  var ov=modal('<div class="dh"><h3>Shift Opening</h3><p>POS billing starts only after a shift is open. Count the opening cash in the drawer and enter it.</p></div>'
     +'<div class="db"><div class="fg">'
     +'<div><label class="f">Counter</label><input class="inp" id="ctr" value="Counter 1"></div>'
     +'<div><label class="f">Opening Cash (PKR)</label><input class="inp" id="oc" type="number" value="0" style="font-size:17px;font-weight:800"></div>'
@@ -2055,7 +2055,7 @@ function openGate(){
           ov.querySelector('#clrBtn').onclick=function(){
             var c=api('shift-clear-cash',{shift_id:lr.report.shift_id,amount:lr.report.actual_cash});
             toast(c.ok?('Cash cleared: '+money(c.cleared||0)):(c.message||'Failed'));
-            if(c.ok)el.textContent='Cash cleared. Ab shift open please.';
+            if(c.ok)el.textContent='Cash cleared. Ab shift open plea.';
           };
         }
       }
@@ -2104,8 +2104,8 @@ function closeShift(){
 function transferShift(rep){
   var ul=api('shift-users');
   var users=(ul.ok&&ul.users)?ul.users:[];
-  if(!users.length){toast('Koi doosra user not found');return}
-  var ov=modal('<div class="dh"><h3>Transfer Shift</h3><p>Cash agle cashier ko handover please &mdash; record ban jayega</p></div>'
+  if(!users.length){toast('No other user found');return}
+  var ov=modal('<div class="dh"><h3>Transfer Shift</h3><p>Hand the cash over to the next cashier — a record is created</p></div>'
     +'<div class="db">'+repRows(rep)
     +'<div class="box"><div class="fg">'
     +'<div class="full"><label class="f">Next Cashier</label><select class="inp" id="trUser">'
@@ -2169,17 +2169,17 @@ function showKeys(){
     ['Esc','Close dialog'],
     ['+  /  -','Last item ka qty barhao / ghatao'],
     ['Delete','Last item hatao'],
-    ['A-Z, 0-9','Seedha talash mein likhna shuru'],
+    ['A-Z, 0-9','Just start typing in the search box'],
     ['1 - 6','Payment dialog: payment method'],
   ];
-  modal('<div class="dh"><h3>Keyboard shortcuts</h3><p>Counter par maus uthane ki zaroorat nahi</p></div>'
+  modal('<div class="dh"><h3>Keyboard shortcuts</h3><p>No need to reach for the mouse at the counter</p></div>'
     +'<div class="db"><table style="width:100%;border-collapse:collapse">'
     +rows.map(function(r){
       return '<tr><td style="padding:6px 0;width:130px"><b style="font-family:ui-monospace,monospace;'
         +'background:var(--bg2,#f2f4f3);padding:2px 8px;border-radius:6px;font-size:11.5px">'
         +r[0]+'</b></td><td style="padding:6px 0;font-size:12.5px">'+r[1]+'</td></tr>';
     }).join('')
-    +'</table></div><div class="df"><button class="go" data-x>Theek hai</button></div>',true);
+    +'</table></div><div class="df"><button class="go" data-x>OK</button></div>',true);
 }
 
 function modal(html,wide,noClose){
@@ -2209,7 +2209,7 @@ $('#homeBtn').onclick=function(){
 };
 function myShift(){
   var pr=shift?api('shift-preview'):api('shift-last-report');
-  if(!pr.ok){toast(pr.message||'Koi shift record nahi');return}
+  if(!pr.ok){toast(pr.message||'No shift records');return}
   var ov=modal('<div class="dh"><h3>'+(shift?'Current Shift':'Last Closed Shift')+'</h3><p>Opening / closing reconciliation</p></div>'
     +'<div class="db" id="msBody">'+repRows(pr.report)+'</div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="msPrint">Print</button>'

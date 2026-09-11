@@ -224,7 +224,7 @@ final class Platform
 
         if ($industry === 'RETAIL') {
             $roles = [
-                'Owner / Admin'     => null,   // null = sab kuch
+                'Owner / Admin'     => null,   // null = all kuch
                 'Store Manager'     => ['dashboard','shift','rpos','counters','sales','khata','products',
                                         'departments','brands','uom','pricing','scale','labels','batches',
                                         'inventory','purchasing','po','grn','preturn','suppliers','transfer',
@@ -238,7 +238,7 @@ final class Platform
             ];
         } else {
         $roles = [
-            'Owner / Admin'  => null,   // null = sab kuch
+            'Owner / Admin'  => null,   // null = all kuch
             'Branch Manager' => ['dashboard','shift','pos','tablet','kds','tables','orders','online',
                                  'inventory','purchasing','po','recipe','menu','wastage','transfer','count',
                                  'suppliers','customers','expenses','accounting','promotions','reservations',
@@ -269,7 +269,7 @@ final class Platform
                     ->execute([$rid, $tenantId, $name]);
                 $made++;
             }
-            if ($keys === null) continue;   // Owner ko sab, koi row nahi chahiye
+            if ($keys === null) continue;   // Owner ko all, no row nahi chahiye
             foreach ($keys as $k) {
                 if (!isset($mods[$k])) continue;
                 $c = $pdo->prepare("SELECT COUNT(*) FROM role_modules WHERE role_id=? AND module_id=?");
@@ -367,7 +367,7 @@ final class Platform
     /** Resolve a slug to a tenant id (for client-link login scoping). */
     public static function tenantIdBySlug(string $slug): ?string
     {
-        $q = DB::pdo()->prepare("SELECT id FROM tenants WHERE slug=? LIMIT 1"); // status yahan filter NAHI hota — suspension login ke baad clear message ke saath enforce hoti hai
+        $q = DB::pdo()->prepare("SELECT id FROM tenants WHERE slug=? LIMIT 1"); // status yahan filter NAHI hota — suspension login ke after clear message ke saath enforce hoti hai
         $q->execute([\trim($slug)]);
         return $q->fetchColumn() ?: null;
     }

@@ -551,7 +551,7 @@ final class AdminData
         $ins = 0; $upd = 0; $skip = 0; $perTable = []; $errors = [];
 
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        foreach ($allowed as $t) {                   // tarteeb ahem hai (parents pehle)
+        foreach ($allowed as $t) {                   // tarteeb ahem hai (parents first)
             if (!isset($tables[$t]) || !is_array($tables[$t])) continue;
             if ($only && !in_array($t, $only, true)) continue;
             $cols = self::cols($t);

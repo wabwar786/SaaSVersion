@@ -11,7 +11,7 @@
     PK: {
       code: 'PK', label: 'Pakistan', flag: '🇵🇰',
       currency: 'PKR', symbol: 'Rs', locale: 'en-PK', decimals: 0,
-      price_mode: 'INCLUSIVE',            // shelf price mein tax shamil
+      price_mode: 'INCLUSIVE',            // tax included in the shelf price
       tax_driver: 'PK_FBR',
       tax_label: 'Sales Tax', default_tax: 17,
       tax_rates: [{ name: 'Standard 17%', rate: 17 }, { name: 'Reduced 15%', rate: 15 }, { name: 'Zero rated', rate: 0 }, { name: 'Exempt', rate: 0 }],
@@ -30,12 +30,12 @@
       barcode: 'EAN13', weight_unit: 'kg', scale_prefix: '20',
       credit_label: 'Account Customer',
       date_fmt: 'DD/MM/YYYY',
-      fiscal_note: 'VAT records MTD-ready format mein rakhe jate hain.'
+      fiscal_note: 'VAT records are kept in an MTD-ready format.'
     },
     US: {
       code: 'US', label: 'United States', flag: '🇺🇸',
       currency: 'USD', symbol: '$', locale: 'en-US', decimals: 2,
-      price_mode: 'EXCLUSIVE',            // tax checkout par add hoti hai
+      price_mode: 'EXCLUSIVE',            // tax added at checkout
       tax_driver: 'US_SALESTAX',
       tax_label: 'Sales Tax', default_tax: 8.25,
       tax_rates: [{ name: 'State 6.25%', rate: 6.25 }, { name: 'State + County 8.25%', rate: 8.25 }, { name: 'Food 0%', rate: 0 }, { name: 'Exempt', rate: 0 }],

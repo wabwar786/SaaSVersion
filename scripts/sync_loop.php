@@ -25,7 +25,7 @@ use Aio\Services\Sync;
 
 $cfg  = $GLOBALS['config']['sync'] ?? [];
 $secs = (int)($cfg['interval_seconds'] ?? 0);
-if ($secs <= 0) $secs = ((int)($cfg['interval_minutes'] ?? 1)) * 60;   // purani config
+if ($secs <= 0) $secs = ((int)($cfg['interval_minutes'] ?? 1)) * 60;   // old config
 if ($secs < 10) $secs = 10;                                            // DB par raham
 
 /* Watchdog ke liye nishan */

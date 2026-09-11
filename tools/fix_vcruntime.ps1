@@ -7,22 +7,22 @@
   hai (14.0 = VC++ 2015). Hamari PHP 8.2 build ko 14.29+ chahiye
   (VS2019/2022). Aisi soorat mein php.exe chalta hi nahi — aur phir
   diagnostics mein saari extensions "MISSING" aur "Application boot
-  FAILED" dikhta hai, jo asli wajah chhupa deta hai.
+  FAILED" dikhta hai, jo asli reason chhupa deta hai.
 
   HAL
-  Windows kisi exe ki DLL dependencies pehle USI FOLDER mein dhoondta hai
+  Windows kisi exe ki DLL dependencies first USI FOLDER mein dhoondta hai
   jahan exe hai, phir System32. (vcruntime140.dll "KnownDLL" nahi hai, is
-  liye yeh tarteeb lagu hoti hai.) Chunanche nayi DLL ki copy php.exe ke
-  saath rakh dene se System32 ki purani copy be-asar ho jati hai — aur
+  liye yeh tarteeb lagu hoti hai.) Chunanche new DLL ki copy php.exe ke
+  saath rakh dene se System32 ki old copy be-asar ho jati hai — aur
   Windows par kuch install karne ki zaroorat nahi rehti. Yehi hamare
   product ka waada hai: "Nothing is installed on Windows".
 
   Teen raste, isi tarteeb se:
     1) Package ke apne bundled DLLs  (vendor\vcruntime\)  <- behtareen
-    2) PC par kahin maujood nayi copy dhoond kar
-    3) Warna: saaf hidayat ke vc_redist.x64.exe install karein
+    2) PC par kahin present new copy dhoond kar
+    3) Warna: clear hidayat ke vc_redist.x64.exe install please
 
-  Exit: 0 = theek ho gaya / pehle se theek tha, 1 = user ko kuch karna hai
+  Exit: 0 = fine ho gaya / first se fine tha, 1 = user ko kuch karna hai
 #>
 param([string]$PhpExe = '')
 
@@ -35,7 +35,7 @@ if (-not $PhpExe -or -not (Test-Path $PhpExe)) {
        Select-Object -First 1
   if ($f) { $PhpExe = $f.FullName }
 }
-if (-not $PhpExe -or -not (Test-Path $PhpExe)) { Say 'php.exe nahi mila.' 'Red'; exit 1 }
+if (-not $PhpExe -or -not (Test-Path $PhpExe)) { Say 'php.exe not found.' 'Red'; exit 1 }
 
 $phpDir = Split-Path -Parent $PhpExe
 $needed = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
@@ -43,13 +43,13 @@ $needed = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
 # ---------- 1) kya waqai masla hai? ----------
 $out = & $PhpExe -v 2>&1 | Out-String
 if ($out -notmatch 'VCRUNTIME140|not compatible with this PHP build') {
-  Say 'Visual C++ runtime theek hai.' 'Green'
+  Say 'The Visual C++ runtime is fine.' 'Green'
   exit 0
 }
 
 Say ''
-Say 'Is computer par purani Visual C++ runtime hai.' 'Yellow'
-Say 'PHP ko nayi chahiye. Theek karne ki koshish...' 'Yellow'
+Say 'This computer has an old Visual C++ runtime.' 'Yellow'
+Say 'PHP ko new chahiye. Theek karne ki koshish...' 'Yellow'
 
 function Get-DllVersion($path) {
   try { return [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion } catch { return '' }
@@ -98,25 +98,25 @@ if ($copied -eq 0) {
 if ($copied -gt 0) {
   $out2 = & $PhpExe -v 2>&1 | Out-String
   if ($out2 -notmatch 'VCRUNTIME140|not compatible with this PHP build') {
-    Say 'Theek ho gaya - PHP ab chal raha hai.' 'Green'
+    Say 'Fixed — PHP now runs.' 'Green'
     exit 0
   }
-  Say '  Copy karne ke bawajood masla baqi hai.' 'DarkYellow'
+  Say '  The problem remains even after copying.' 'DarkYellow'
 }
 
 # ---------- 5) user ko saaf hidayat ----------
 Say ''
-Say '  KYA KARNA HAI' 'Yellow'
-Say '  Is computer par yeh ek dafa install karein, phir setup dobara chalayein:' 'Gray'
+Say '  WHAT TO DO' 'Yellow'
+Say '  Install this once on this computer, then run setup again:' 'Gray'
 Say '' 
 Say '     Microsoft Visual C++ 2015-2022 Redistributable (x64)' 'White'
 Say '     https://aka.ms/vs/17/release/vc_redist.x64.exe' 'White'
 Say ''
-Say '  (Chhoti si Microsoft ki file hai, ek minute mein install ho jati hai.)' 'DarkGray'
+Say '  (It is a small Microsoft file and installs in about a minute.)' 'DarkGray'
 Say ''
-Say '  YA - kisi doosre computer se jahan yeh pehle se hai, C:\Windows\System32' 'DarkGray'
-Say '  se yeh teen files copy kar ke is package ke vendor\vcruntime folder' 'DarkGray'
-Say '  mein daal dein, phir setup dobara chalayein:' 'DarkGray'
+Say '  OR — from another computer that already has them, C:\Windows\System32' 'DarkGray'
+Say '  copy these three files into this package vendor\vcruntime folder' 'DarkGray'
+Say '  then run setup again:' 'DarkGray'
 Say '     vcruntime140.dll   vcruntime140_1.dll   msvcp140.dll' 'Gray'
 Say ''
 exit 1

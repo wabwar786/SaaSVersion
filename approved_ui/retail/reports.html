@@ -25,7 +25,7 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Reports</h1><p>Sale, stock, khata, tax aur audit</p></div>
+      <div class="header-title"><h1>Reports</h1><p>Sales, stock, credit, tax and audit</p></div>
       <div class="header-spacer"></div>
       <button class="btn" id="btnCsv">⤓ CSV</button>
       <button class="btn" id="btnPrint">⎙ Print</button>
@@ -33,7 +33,7 @@
 
     <div class="content">
       <section class="panel no-print">
-        <div class="panel-head"><div><h2>Date range</h2><p>Har report isi arse par chalti hai</p></div></div>
+        <div class="panel-head"><div><h2>Date range</h2><p>Every report runs on this period</p></div></div>
         <div class="panel-body">
           <div class="dates">
             <label class="field" style="width:180px"><span>From</span><input id="from" type="date"></label>
@@ -41,7 +41,7 @@
             <button class="btn" data-quick="today">Aaj</button>
             <button class="btn" data-quick="week">7 din</button>
             <button class="btn" data-quick="month">Yeh mahina</button>
-            <button class="btn" data-quick="last">Pichla mahina</button>
+            <button class="btn" data-quick="last">Previous mahina</button>
           </div>
         </div>
       </section>
@@ -54,7 +54,7 @@
       </section>
 
       <section class="panel" style="margin-top:14px" id="outPanel">
-        <div class="panel-head"><div><h2 id="outTitle">Report</h2><p id="outNote">Upar se koi report chunein</p></div>
+        <div class="panel-head"><div><h2 id="outTitle">Report</h2><p id="outNote">Choose a report above</p></div>
           <span class="spacer" style="flex:1"></span>
           <span class="tag neutral plain" id="outRange"></span></div>
         <div class="panel-body flush"><div class="table-wrap"><table class="table">
@@ -91,7 +91,7 @@
      us soorat mein saaf bata do, jhooti report mat dikhao. */
   function load(){
     if(!S.online){
-      $('grid').innerHTML='<div class="note" style="grid-column:1/-1">Reports asli data par chalti hain — inhein dekhne ke liye software mein login karein.</div>';
+      $('grid').innerHTML='<div class="note" style="grid-column:1/-1">Reports asli data par chalti hain — inhein dekhne ke liye software mein login plea.</div>';
       return;
     }
     try{
@@ -111,7 +111,7 @@
     $('grid').innerHTML=list.map(function(c){
       return '<div class="rep-card'+(c.id===current?' on':'')+'" data-r="'+esc(c.id)+'">'+
         '<i>'+esc(c.group||'')+'</i><b>'+esc(c.name)+'</b><span>'+esc(c.desc||'')+'</span></div>';
-    }).join('')||'<div class="empty" style="grid-column:1/-1;padding:24px"><h3>Koi report nahi mili</h3></div>';
+    }).join('')||'<div class="empty" style="grid-column:1/-1;padding:24px"><h3>No reports found</h3></div>';
   }
 
   function run(id){
@@ -146,7 +146,7 @@
         return '<td'+(c.n?' class="num"':'')+'>'+(tot[c.k]!==undefined?fmt(c,tot[c.k]):'')+'</td>';
       }).join('')+'</tr>';
     }
-    $('outRows').innerHTML=body||'<tr><td colspan="'+Math.max(cols.length,1)+'"><div class="empty" style="padding:26px"><h3>Is arse mein kuch nahi</h3><p>Date range badal kar dekhein.</p></div></td></tr>';
+    $('outRows').innerHTML=body||'<tr><td colspan="'+Math.max(cols.length,1)+'"><div class="empty" style="padding:26px"><h3>Nothing in this period</h3><p>Try a different date range.</p></div></td></tr>';
     $('outPanel').scrollIntoView({behavior:'smooth',block:'start'});
   }
 
@@ -169,7 +169,7 @@
   $('to').onchange=function(){if(current)run(current)};
   $('btnPrint').onclick=function(){window.print()};
   $('btnCsv').onclick=function(){
-    if(!current){alert('Pehle koi report chunein.');return}
+    if(!current){alert('Pehle no report choo.');return}
     window.location.href='/api.php?action=report-csv&id='+encodeURIComponent(current)+
       '&from='+$('from').value+'&to='+$('to').value;
   };

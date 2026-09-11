@@ -22,46 +22,46 @@ final class RetailReportService
     {
         return [
             /* ---------------- SALE ---------------- */
-            ['id'=>'sales_summary',   'group'=>'Sales',    'name'=>'Daily sales summary',   'desc'=>'Rozana bills, gross, discount, tax aur net'],
-            ['id'=>'sales_by_item',   'group'=>'Sales',    'name'=>'Sales by item',         'desc'=>'Item-wise qty aur amount'],
+            ['id'=>'sales_summary',   'group'=>'Sales',    'name'=>'Daily sales summary',   'desc'=>'Daily bills, gross, discount, tax and net'],
+            ['id'=>'sales_by_item',   'group'=>'Sales',    'name'=>'Sales by item',         'desc'=>'Quantity and amount per item'],
             ['id'=>'sales_by_dept',   'group'=>'Sales',    'name'=>'Sales by department',   'desc'=>'Grocery, Bakery, Beverages waghera'],
-            ['id'=>'sales_by_brand',  'group'=>'Sales',    'name'=>'Sales by brand',        'desc'=>'Kaunsa brand kitna bik raha hai'],
-            ['id'=>'sales_by_hour',   'group'=>'Sales',    'name'=>'Sales by hour',         'desc'=>'Rush kis waqt hota hai — staffing ke liye'],
-            ['id'=>'payment_mix',     'group'=>'Sales',    'name'=>'Payment / collection',  'desc'=>'Cash, card, mixed aur khata'],
+            ['id'=>'sales_by_brand',  'group'=>'Sales',    'name'=>'Sales by brand',        'desc'=>'How much each brand sells'],
+            ['id'=>'sales_by_hour',   'group'=>'Sales',    'name'=>'Sales by hour',         'desc'=>'When the rush happens — useful for staffing'],
+            ['id'=>'payment_mix',     'group'=>'Sales',    'name'=>'Payment / collection',  'desc'=>'Cash, card, mixed and credit'],
             ['id'=>'price_level',     'group'=>'Sales',    'name'=>'Retail vs wholesale',   'desc'=>'Dono price levels ka muqabla'],
             ['id'=>'invoice_detail',  'group'=>'Sales',    'name'=>'Invoice detail',        'desc'=>'Har bill ka poora record'],
             ['id'=>'cashier_sales',   'group'=>'Sales',    'name'=>'Sales by cashier',      'desc'=>'Kis cashier ne kitna kaata'],
-            ['id'=>'counter_sales',   'group'=>'Sales',    'name'=>'Sales by counter',      'desc'=>'Counter-wise sale aur bills'],
+            ['id'=>'counter_sales',   'group'=>'Sales',    'name'=>'Sales by counter',      'desc'=>'Sales and bills per counter'],
             ['id'=>'basket',          'group'=>'Sales',    'name'=>'Basket analysis',       'desc'=>'Average basket, items per bill'],
 
             /* ---------------- OPERATIONS ---------------- */
             ['id'=>'reprints',        'group'=>'Operations','name'=>'Duplicate bill (reprints)','desc'=>'Kis bill ki kitni copies, kis ne nikalin'],
-            ['id'=>'audit_activity',  'group'=>'Operations','name'=>'Audit / activity log',  'desc'=>'Login, void, discount, reprint — kis ne kya kiya'],
+            ['id'=>'audit_activity',  'group'=>'Operations','name'=>'Audit / activity log',  'desc'=>'Sign-ins, voids, discounts, reprints — who did what'],
             ['id'=>'held_bills',      'group'=>'Operations','name'=>'Held / parked bills',   'desc'=>'Jo bills counter par rakhi reh gayin'],
 
             /* ---------------- TAX ---------------- */
-            ['id'=>'tax_summary',     'group'=>'Tax',      'name'=>'Tax summary',           'desc'=>'Taxable value, tax aur zero-rated sale'],
+            ['id'=>'tax_summary',     'group'=>'Tax',      'name'=>'Tax summary',           'desc'=>'Taxable value, tax and zero-rated sales'],
             ['id'=>'fbr_reconcile',   'group'=>'Tax',      'name'=>'FBR reconciliation',    'desc'=>'POS bills vs FBR ko bheje gaye'],
 
             /* ---------------- INVENTORY ---------------- */
-            ['id'=>'stock_on_hand',   'group'=>'Inventory','name'=>'Stock on hand',         'desc'=>'Maujooda stock aur uski cost value'],
-            ['id'=>'low_stock',       'group'=>'Inventory','name'=>'Low stock / reorder',   'desc'=>'Jo abhi mangwana hai'],
-            ['id'=>'dead_stock',      'group'=>'Inventory','name'=>'Dead stock',            'desc'=>'Jo bika hi nahi — paisa isi mein phansa hai'],
-            ['id'=>'expiry',          'group'=>'Inventory','name'=>'Expiry / near expiry',  'desc'=>'Kaunsa batch kab khatam ho raha hai'],
-            ['id'=>'batch_stock',     'group'=>'Inventory','name'=>'Batch-wise stock',      'desc'=>'Har batch ka baqi maal aur qeemat'],
-            ['id'=>'fast_slow',       'group'=>'Inventory','name'=>'Fast / slow movers',    'desc'=>'Kya tezi se bikta hai, kya nahi'],
-            ['id'=>'margin',          'group'=>'Inventory','name'=>'Margin by item',        'desc'=>'Item-wise munafa aur margin %'],
+            ['id'=>'stock_on_hand',   'group'=>'Inventory','name'=>'Stock on hand',         'desc'=>'Current stock and its cost value'],
+            ['id'=>'low_stock',       'group'=>'Inventory','name'=>'Low stock / reorder',   'desc'=>'What needs to be ordered now'],
+            ['id'=>'dead_stock',      'group'=>'Inventory','name'=>'Dead stock',            'desc'=>'Never sold — this is where cash is stuck'],
+            ['id'=>'expiry',          'group'=>'Inventory','name'=>'Expiry / near expiry',  'desc'=>'Which batch expires when'],
+            ['id'=>'batch_stock',     'group'=>'Inventory','name'=>'Batch-wise stock',      'desc'=>'Remaining stock and value per batch'],
+            ['id'=>'fast_slow',       'group'=>'Inventory','name'=>'Fast / slow movers',    'desc'=>'What sells fast and what does not'],
+            ['id'=>'margin',          'group'=>'Inventory','name'=>'Margin by item',        'desc'=>'Profit and margin % per item'],
 
             /* ---------------- MONEY ---------------- */
             ['id'=>'profit_margin',   'group'=>'Money',    'name'=>'Profit / margin',       'desc'=>'Sale vs cost — rozana munafa'],
             ['id'=>'expenses',        'group'=>'Money',    'name'=>'Expenses',              'desc'=>'Category-wise kharche'],
-            ['id'=>'khata',           'group'=>'Money',    'name'=>'Khata / receivable',    'desc'=>'Kis par kitna baqaya aur limit'],
-            ['id'=>'khata_ledger',    'group'=>'Money',    'name'=>'Khata ledger',          'desc'=>'Har credit bill aur har recovery'],
+            ['id'=>'khata',           'group'=>'Money',    'name'=>'Khata / receivable',    'desc'=>'Who owes how much, and their limit'],
+            ['id'=>'khata_ledger',    'group'=>'Money',    'name'=>'Khata ledger',          'desc'=>'Every credit bill and every recovery'],
             ['id'=>'credit_sales',    'group'=>'Money',    'name'=>'Credit sales',          'desc'=>'Udhaar par bike hue bills'],
 
             /* ---------------- CUSTOMERS ---------------- */
-            ['id'=>'customers',       'group'=>'Customers','name'=>'Customer report',       'desc'=>'Bills, visits, last visit aur baqaya'],
-            ['id'=>'loyalty',         'group'=>'Customers','name'=>'Loyalty',               'desc'=>'Points aur tiers'],
+            ['id'=>'customers',       'group'=>'Customers','name'=>'Customer report',       'desc'=>'Bills, visits, last visit and outstanding'],
+            ['id'=>'loyalty',         'group'=>'Customers','name'=>'Loyalty',               'desc'=>'Points and tiers'],
         ];
     }
 
@@ -154,7 +154,7 @@ final class RetailReportService
              ['k'=>'cash','l'=>'Cash','n'=>1],['k'=>'card','l'=>'Card','n'=>1],
              ['k'=>'credit','l'=>'Khata','n'=>1]],
             $rows, self::sum($rows, ['bills','gross','discount','tax','net','cash','card','credit']),
-            'Net sale wahi hai jo waqai aap ki jaib mein aata hai.');
+            'Net sale is what actually reaches your pocket.');
     }
 
     private static function r_sales_by_item(string $f, string $t): array
@@ -230,7 +230,7 @@ final class RetailReportService
             [['k'=>'hour_of_day','l'=>'Hour'],['k'=>'bills','l'=>'Bills','n'=>1],
              ['k'=>'amount','l'=>'Amount','n'=>1],['k'=>'avg_bill','l'=>'Avg bill','n'=>1]],
             $rows, self::sum($rows, ['bills','amount']),
-            'Jis waqt sab se zyada bills banen, wahan counter barhayein.');
+            'Jis waqt all se zyada bills banen, wahan counter barhayein.');
     }
 
     private static function r_payment_mix(string $f, string $t): array
@@ -308,7 +308,7 @@ final class RetailReportService
              ['k'=>'amount','l'=>'Sale','n'=>1],['k'=>'avg_bill','l'=>'Avg bill','n'=>1],
              ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'reprints','l'=>'Reprints','n'=>1]],
             $rows, self::sum($rows, ['bills','amount','discount','reprints']),
-            'Discount aur reprints ek hi cashier par zyada hon to dekhna banta hai.');
+            'High discounts and reprints on one cashier are worth a look.');
     }
 
     private static function r_counter_sales(string $f, string $t): array
@@ -347,7 +347,7 @@ final class RetailReportService
              ['k'=>'avg_basket','l'=>'Avg basket','n'=>1],['k'=>'avg_items','l'=>'Avg items','n'=>1],
              ['k'=>'biggest_bill','l'=>'Biggest bill','n'=>1],['k'=>'amount','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['bills','amount']),
-            'Avg basket barhana sab se sasta tareeqa hai sale barhane ka.');
+            'Growing the average basket is the cheapest way to grow sales.');
     }
 
     /* ==================== OPERATIONS ==================== */
@@ -372,7 +372,7 @@ final class RetailReportService
              ['k'=>'by_user','l'=>'Kis ne'],['k'=>'counter','l'=>'Counter'],
              ['k'=>'reason','l'=>'Wajah'],['k'=>'total','l'=>'Bill total','n'=>1]],
             $rows, self::sum($rows, ['total']),
-            'Duplicate bill cash chori ka aam raasta hai — ek hi bill ki kai copies dekhne layak hain.');
+            'Duplicate bills are a common route for cash theft — several copies of one bill deserve attention.');
     }
 
     private static function r_audit_activity(string $f, string $t): array
@@ -391,7 +391,7 @@ final class RetailReportService
         return self::shape('Audit / activity log',
             [['k'=>'at','l'=>'Kab'],['k'=>'user','l'=>'User'],['k'=>'role','l'=>'Role'],
              ['k'=>'action','l'=>'Action'],['k'=>'module','l'=>'Module'],['k'=>'detail','l'=>'Detail']],
-            $rows, [], '2000 se zyada entries nahi dikhayi jatin.');
+            $rows, [], 'No more than 2000 entries are shown.');
     }
 
     private static function r_held_bills(string $f, string $t): array
@@ -414,7 +414,7 @@ final class RetailReportService
              ['k'=>'counter','l'=>'Counter'],['k'=>'items','l'=>'Items','n'=>1],
              ['k'=>'total','l'=>'Amount','n'=>1],['k'=>'held_by','l'=>'Kis ne'],['k'=>'state','l'=>'Halat']],
             $rows, self::sum($rows, ['items','total']),
-            'Din ke akhir mein koi bill "rakhi hui" na reh jaye — us ka maal ja chuka hota hai.');
+            'No bill should be left parked at the end of the day — those goods have already left.');
     }
 
     /* ==================== TAX ==================== */
@@ -437,7 +437,7 @@ final class RetailReportService
              ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['bills','taxable','tax','zero_rated','total']),
-            'Mahane ke aakhir mein yehi aankray tax return ke kaam aate hain.');
+            'These are the figures used for the tax return at month end.');
     }
 
     private static function r_fbr_reconcile(string $f, string $t): array
@@ -455,7 +455,7 @@ final class RetailReportService
              ['k'=>'status','l'=>'Status'],['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['tax','total']),
-            'Retail bills ke liye FBR fields abhi POS mein add ho rahe hain — filhaal yeh report POS ka apna record dikhati hai.');
+            'FBR fields for retail bills are still being added to the POS — for now this report shows the POS own record.');
     }
 
     /* ==================== INVENTORY ==================== */
@@ -480,7 +480,7 @@ final class RetailReportService
              ['k'=>'cost_value','l'=>'Cost value','n'=>1],['k'=>'sale_value','l'=>'Sale value','n'=>1],
              ['k'=>'reorder_at','l'=>'Reorder at','n'=>1]],
             $rows, self::sum($rows, ['qty','cost_value','sale_value']),
-            'Yeh report aaj ki halat dikhati hai — date range ka asar nahi parta.');
+            'This report shows the position today — the date range does not affect it.');
     }
 
     private static function r_low_stock(string $f, string $t): array
@@ -502,7 +502,7 @@ final class RetailReportService
              ['k'=>'qty','l'=>'On hand','n'=>1],['k'=>'reorder_at','l'=>'Reorder at','n'=>1],
              ['k'=>'to_order','l'=>'To order','n'=>1],['k'=>'order_value','l'=>'Order value','n'=>1]],
             $rows, self::sum($rows, ['qty','to_order','order_value']),
-            'Isi list se purchase order banayein.');
+            'Isi list se purchase order create.');
     }
 
     private static function r_dead_stock(string $f, string $t): array
@@ -530,7 +530,7 @@ final class RetailReportService
              ['k'=>'qty','l'=>'On hand','n'=>1],['k'=>'sold_in_period','l'=>'Bika','n'=>1],
              ['k'=>'locked_value','l'=>'Phansa paisa','n'=>1]],
             $rows, self::sum($rows, ['qty','locked_value']),
-            'Yeh wo maal hai jo is arse mein ek bhi dafa nahi bika.');
+            'This is stock that did not sell once in the period.');
     }
 
     private static function r_expiry(string $f, string $t): array
@@ -555,7 +555,7 @@ final class RetailReportService
              ['k'=>'qty','l'=>'Qty','n'=>1],['k'=>'value','l'=>'Value','n'=>1],
              ['k'=>'state','l'=>'Halat']],
             $rows, self::sum($rows, ['qty','value']),
-            'Expired maal shelf par reh jana sab se mehnga nuqsan hai.');
+            'Expired stock left on the shelf is the most expensive kind of loss.');
     }
 
     private static function r_batch_stock(string $f, string $t): array
@@ -622,7 +622,7 @@ final class RetailReportService
              ['k'=>'sale','l'=>'Sale','n'=>1],['k'=>'cost','l'=>'Cost','n'=>1],
              ['k'=>'profit','l'=>'Profit','n'=>1],['k'=>'margin_pct','l'=>'Margin %','n'=>1]],
             $rows, self::sum($rows, ['qty','sale','cost','profit']),
-            'Cost woh hai jo aaj product par darj hai — purani kharidari ka rate nahi.');
+            'Cost is what is on the product today — not the rate it was bought at.');
     }
 
     /* ==================== MONEY ==================== */
@@ -649,7 +649,7 @@ final class RetailReportService
              ['k'=>'cost','l'=>'Cost of goods','n'=>1],['k'=>'profit','l'=>'Profit','n'=>1],
              ['k'=>'margin_pct','l'=>'Margin %','n'=>1]],
             $rows, self::sum($rows, ['sale','cost','profit']),
-            'Expenses is mein shamil nahi — woh Expenses report mein alag hain.');
+            'Expenses are not included here — they are in the Expenses report.');
     }
 
     private static function r_expenses(string $f, string $t): array
@@ -692,7 +692,7 @@ final class RetailReportService
              ['k'=>'credit_limit','l'=>'Limit','n'=>1],['k'=>'outstanding','l'=>'Baqaya','n'=>1],
              ['k'=>'available','l'=>'Available','n'=>1]],
             $rows, self::sum($rows, ['credit_limit','outstanding','available']),
-            'Yeh aaj ki halat hai — date range ka asar nahi parta.');
+            'This is the position today — the date range does not affect it.');
     }
 
     private static function r_khata_ledger(string $f, string $t): array
@@ -733,7 +733,7 @@ final class RetailReportService
              ['k'=>'cashier','l'=>'Cashier'],['k'=>'items','l'=>'Items','n'=>1],
              ['k'=>'total','l'=>'Amount','n'=>1]],
             $rows, self::sum($rows, ['items','total']),
-            'Yeh maal ja chuka hai magar paisa nahi aaya.');
+            'The goods have gone but the money has not come in.');
     }
 
     /* ==================== CUSTOMERS ==================== */

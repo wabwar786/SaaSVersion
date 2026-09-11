@@ -15,9 +15,9 @@ cd /d "%~dp0"
 
 if not exist "updates\ready.txt" (
   echo.
-  echo   Koi naya update tayyar nahi hai.
-  echo   Software roz khud check karta hai; agli dafa internet aane par
-  echo   naya build khud aa jayega.
+  echo   Koi new update tayyar nahi hai.
+  echo   Software roz khud check karta hai; next dafa internet aane par
+  echo   new build khud aa jayega.
   echo.
   pause
   exit /b 0
@@ -37,8 +37,8 @@ echo   ============================================
 echo.
 echo    Package : %PKG%
 echo.
-echo    Software band hona chahiye. Agar chal raha hai to pehle
-echo    us ki window band karein.
+echo    Software band hona chahiye. Agar chal raha hai to first
+echo    us ki window disable.
 echo.
 set /p GO=   Update lagayein? (Y/N):
 if /I not "%GO%"=="Y" exit /b 0
@@ -54,10 +54,10 @@ set STAMP=%STAMP: =0%
 "%PHPEXE%" -r "$d='backup/before-%STAMP%';@mkdir($d,0775,true);foreach(['public','src','approved_ui','scripts','tools'] as $f){if(is_dir($f)){$i=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($f,FilesystemIterator::SKIP_DOTS));foreach($i as $x){if(!$x->isFile())continue;$t=$d.'/'.$x->getPathname();@mkdir(dirname($t),0775,true);@copy($x->getPathname(),$t);}}}foreach(['runtime/app.sealed','runtime/app.key','runtime/boot.php','runtime/app.info','VERSION'] as $x){if(is_file($x)){@mkdir(dirname($d.'/'.$x),0775,true);@copy($x,$d.'/'.$x);}} echo '      backup: '.$d.PHP_EOL;"
 
 echo   [2/4] Nayi files nikal rahe hain...
-"%PHPEXE%" -r "$z=new ZipArchive();if($z->open('updates/%PKG%')!==true){echo '      ERROR: package khul nahi saka'.PHP_EOL;exit(1);} $keep=['data/','config/','storage/','backup/','updates/','runtime/php/','runtime/mariadb/','runtime/data/']; $n=0; for($i=0;$i<$z->numFiles;$i++){$e=$z->getNameIndex($i); $skip=false; foreach($keep as $k){if(strpos($e,$k)===0)$skip=true;} if($skip||substr($e,-1)==='/')continue; $z->extractTo('.', $e); $n++;} $z->close(); echo '      '.$n.' files updated'.PHP_EOL;"
+"%PHPEXE%" -r "$z=new ZipArchive();if($z->open('updates/%PKG%')!==true){echo '      ERROR: the package could not be opened'.PHP_EOL;exit(1);} $keep=['data/','config/','storage/','backup/','updates/','runtime/php/','runtime/mariadb/','runtime/data/']; $n=0; for($i=0;$i<$z->numFiles;$i++){$e=$z->getNameIndex($i); $skip=false; foreach($keep as $k){if(strpos($e,$k)===0)$skip=true;} if($skip||substr($e,-1)==='/')continue; $z->extractTo('.', $e); $n++;} $z->close(); echo '      '.$n.' files updated'.PHP_EOL;"
 if errorlevel 1 goto :fail
 
-echo   [3/3] Purani cache saaf...
+echo   [3/3] Purani cache clear...
 "%PHPEXE%" -r "$d='runtime/.cache';if(is_dir($d)){$i=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($i as $x){$x->isDir()?@rmdir($x->getPathname()):@unlink($x->getPathname());}@rmdir($d);} echo '      cache cleared'.PHP_EOL;"
 
 echo   [4/4] Database migrations...
@@ -79,8 +79,8 @@ exit /b 0
 
 :fail
 echo.
-echo   Update mukammal nahi hua. Purani files backup\ mein hain.
-echo   support@wabwar.pk par rabta karein.
+echo   Update mukammal failed. Purani files backup\ mein hain.
+echo   support@wabwar.pk par rabta please.
 echo.
 pause
 exit /b 1

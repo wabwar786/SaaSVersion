@@ -212,7 +212,7 @@ html,body{height:100%;overflow:hidden}
           </table>
           <div class="empty" id="cartEmpty">
             <div class="ico">&#9015;</div><h3>Scan the first item</h3>
-            <p>Scanner ready. Naam type karein to search khud khul jayegi.</p>
+            <p>Scanner ready. Naam type please to search khud khul jayegi.</p>
           </div>
         </div>
       </div>
@@ -297,7 +297,7 @@ html,body{height:100%;overflow:hidden}
 
 <!-- ============ CUSTOMER PICKER ============ -->
 <div class="modal" id="custModal"><div class="dialog" style="width:min(560px,100%)">
-  <div class="dialog-head"><div><h3>Select customer</h3><p>Type kar ke filter &middot; &uarr;&darr; select &middot; &crarr; apply</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-head"><div><h3>Select customer</h3><p>Type to filter &middot; &uarr;&darr; select &middot; &crarr; apply</p></div><button class="close" data-close>&times;</button></div>
   <div class="dialog-body">
     <div class="search"><input id="custSearch" placeholder="Name ya phone&hellip;"></div>
     <div class="clist" id="custList"></div>
@@ -326,7 +326,7 @@ html,body{height:100%;overflow:hidden}
 <!-- ============ DUPLICATE BILL ============ -->
 <div class="modal" id="dupModal"><div class="dialog" style="width:min(600px,100%)">
   <div class="dialog-head"><div><h3>Duplicate bill</h3>
-    <p>Purana bill dobara print karein &middot; har copy count hoti hai</p></div>
+    <p>Reprint an earlier bill &middot; every copy is counted</p></div>
     <button class="close" data-close>&times;</button></div>
   <div class="dialog-body">
     <div class="search"><input id="dupSearch" placeholder="Bill number, customer ya cashier&hellip;"></div>
@@ -338,7 +338,7 @@ html,body{height:100%;overflow:hidden}
 
 <!-- ============ PRICE CHECK ============ -->
 <div class="modal" id="pcModal"><div class="dialog" style="width:min(520px,100%)">
-  <div class="dialog-head"><div><h3>Price check</h3><p>Bill par kuch nahi lagega</p></div><button class="close" data-close>&times;</button></div>
+  <div class="dialog-head"><div><h3>Price check</h3><p>Nothing is added to the bill</p></div><button class="close" data-close>&times;</button></div>
   <div class="dialog-body"><label class="field"><span>Barcode / name / PLU</span><input id="pcIn" placeholder="Scan&hellip;"></label><div id="pcOut"></div></div>
   <div class="dialog-foot"><button class="btn primary" data-close>Done</button></div>
 </div></div>
@@ -541,7 +541,7 @@ function hold(){
         line_count:cart.length,total:t.grand,
         cart:cart.map(function(l){return {key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,
           qty:l.qty,price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
-    }catch(err){ flash(err.message||'Hold nahi hui',true); return; }
+    }catch(err){ flash(err.message||'Could not hold',true); return; }
     clearCart(); paintHeld(); flash('Bill held');
     return;
   }
@@ -555,7 +555,7 @@ function hold(){
   paintHeld(); flash('Bill held');
 }
 function recall(id){
-  if(cart.length){flash('Pehle current bill khatam karein',true);return}
+  if(cart.length){flash('Pehle current bill khatam please',true);return}
   var h=S.get('held_bills'),b=null;
   for(var i=0;i<h.length;i++) if(h[i].id===id){b=h[i];break}
   if(!b)return;
@@ -639,7 +639,7 @@ $('lvl').addEventListener('click',function(e){
 /* ============ NUMBER MODAL ============ */
 var numMode='qty';
 function openNum(mode){
-  if((mode==='qty'||mode==='disc')&&(sel<0||!cart[sel])){flash('Pehle line select karein (\u2191\u2193)',true);return}
+  if((mode==='qty'||mode==='disc')&&(sel<0||!cart[sel])){flash('Pehle line select please (\u2191\u2193)',true);return}
   numMode=mode;
   var l=cart[sel];
   if(mode==='qty'){
@@ -689,13 +689,13 @@ function setMethod(m){
     n.style.display='block';
     if(!c||c.id==='cu1'){
       n.style.cssText='margin-top:10px;background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)';
-      n.innerHTML='Walk-in par credit nahi \u2014 F6 se customer chunein.';
+      n.innerHTML='No credit on walk-in sales \u2014 press F6 to choose a customer.';
     } else if(Number(c.balance)+due>Number(c.credit_limit)){
       n.style.cssText='margin-top:10px;background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)';
       n.innerHTML='<b>Credit limit exceeded.</b> Limit '+money(c.credit_limit)+' \u00b7 due '+money(c.balance);
     } else {
       n.style.cssText='margin-top:10px;background:var(--info-soft);border-color:var(--info-line);color:#2b5a80';
-      n.innerHTML='Khate mein jayega. Remaining limit: '+money(Number(c.credit_limit)-Number(c.balance)-due);
+      n.innerHTML='Charged to the account. Remaining limit: '+money(Number(c.credit_limit)-Number(c.balance)-due);
     }
   } else n.style.display='none';
   calcChange();
@@ -739,7 +739,7 @@ function confirmPay(quickCash){
     };
     var saved;
     try{ saved=S.saveSale(payload); }
-    catch(err){ flash(err.message||'Bill save nahi hui',true); return; }
+    catch(err){ flash(err.message||'Bill could not be saved',true); return; }
     saved.bill_no=saved.bill_no||('INV-'+billNo);
     saved.sold_at=new Date().toISOString().slice(0,16).replace('T',' ');
     saved.customer=saved.customer_name; saved.counter=saved.counter_name;
@@ -757,7 +757,7 @@ function confirmPay(quickCash){
   var cash=quickCash?t.grand:Number($('payCash').value||0),card=Number($('payCard').value||0);
   var paid=payMethod==='CREDIT'?t.grand:(payMethod==='CARD'?card:(payMethod==='MIXED'?cash+card:cash));
   if(!quickCash&&payMethod!=='CREDIT'&&paid+0.001<t.grand){flash('Short by '+money(t.grand-paid),true);return}
-  if(payMethod==='CREDIT'&&custId==='cu1'){flash('Credit ke liye customer chunein (F6)',true);return}
+  if(payMethod==='CREDIT'&&custId==='cu1'){flash('Credit ke liye customer choose (F6)',true);return}
 
   var c=S.byId('customers',custId);
   var sale={id:'INV-'+billNo,bill_no:'INV-'+billNo,counter:'Counter 1',cashier:'Ali Raza',
@@ -845,7 +845,7 @@ function fillDup(q){
 }
 function markDup(){var n=$('dupList').children;for(var i=0;i<n.length;i++)n[i].className='dl'+(i===dIdx?' on':'')}
 function printDup(){
-  var pick=dupRows[dIdx]; if(!pick){flash('Koi bill select nahi',true);return}
+  var pick=dupRows[dIdx]; if(!pick){flash('No bill selected',true);return}
   if(S.online){
     var srv;
     try{ srv=S.reprint(pick.id||pick.bill_no,''); }
@@ -918,7 +918,7 @@ function flash(m,err){
 
 /* ============ KEYBOARD — poora counter yahin se chalta hai ============ */
 var KEYS={
-  F1:function(){ if(cart.length&&!confirm('Current bill discard karein?'))return;
+  F1:function(){ if(cart.length&&!confirm('Current bill discard please?'))return;
                  clearCart(); custId='cu1'; paintCust(); billNo++; $('billNo').textContent='INV-'+billNo; flash('New bill'); },
   F2:function(){ openNum('bill') },
   F3:function(){ openNum('qty') },

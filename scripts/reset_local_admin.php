@@ -32,9 +32,9 @@ try {
     $p->setAttribute(PDO::ATTR_TIMEOUT, 5);
     $p->query('SELECT 1');
 } catch (\Throwable $e) {
-    echo "\n  Local database se rabta nahi ho saka.\n";
-    echo "  START_RESTAURANT.bat chala kar software kholein, phir yeh\n";
-    echo "  file dobara chalayein.\n\n";
+    echo "\n  Could not reach the local database.\n";
+    echo "  Start the software with START_RESTAURANT.bat, then this\n";
+    echo "  file again run.\n\n";
     echo "  (" . substr($e->getMessage(), 0, 120) . ")\n\n";
     exit(1);
 }

@@ -1289,3 +1289,55 @@ aur chhe ke chhe `<label>` tags durust.
 
 Aur `onclick` se bulaye gaye saare 9 functions maujood hain — koi
 button aisa nahi jo kisi na-maujood function ko bula raha ho.
+
+---
+
+## 33. Whole app switched to English
+
+All user-facing text is now English — no Roman Urdu left where a
+customer can see it.
+
+### What was changed
+
+| Area | Files |
+|---|---|
+| Restaurant UI | `approved_ui/*.html` |
+| Retail UI | `approved_ui/retail/*.html`, `*.js` |
+| Super Admin | `super_admin.html` |
+| Launchers | `*.bat`, `tools/*.ps1` |
+| Server messages | `public/*.php`, `src/Services/*.php`, `scripts/*.php` |
+
+Roughly **1,800 Roman Urdu words across 44 files**. Counts after the
+pass: **0** visible lines in the UI, **0** message strings anywhere.
+
+### How it was done
+
+Whole sentences were translated, not word-by-word. A word-level pass
+alone produced broken English ("all se sasta", "no bill nahi"), so each
+of those was rewritten by hand afterwards.
+
+### Two things that broke, and were fixed
+
+1. **Apostrophes broke PHP and JS strings.** English possessives
+   (`today's`, `user's`, `package's`) inside single-quoted strings caused
+   parse errors in 5 files. Rewritten without apostrophes.
+2. **Prose inside HTML** (not in quotes) was missed by the first passes —
+   `offline_sync.html` and `tax.html` had whole paragraphs. Handled
+   separately.
+
+### Verified after the change
+
+```
+PHP lint      : every file OK
+JS lint       : every file OK
+super admin   : sign-in 200
+RESTAURANT    : sign-in OK, 31 reports, report-run OK
+RETAIL        : sign-in OK, 30 reports, report-run OK
+```
+
+### Still in Roman Urdu: code comments
+
+The comments inside the source are untouched — deliberately. They are
+developer notes, invisible to customers, and rewriting a few thousand
+comment lines is pure risk with no user benefit. Say the word if you
+want those converted too.

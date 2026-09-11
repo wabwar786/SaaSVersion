@@ -49,7 +49,7 @@ final class AdminConsole
         }
         if ($hadBrackets) {
             // aage chalne do, magar user ko sahi shakal dikha do
-            $note = 'Note: < > sirf placeholders hain — bina brackets likhein.';
+            $note = 'Note: < > are placeholders only — type the value without the brackets.';
             $r = self::dispatch($cmd, $args, $flags, $actor);
             \array_unshift($r['lines'], ['t' => 'd', 'v' => $note]);
             return $r;
@@ -66,7 +66,7 @@ final class AdminConsole
     {
         $slug = $args[0] ?? '';
         $lines = [];
-        if ($hadBrackets) $lines[] = ['t' => 'd', 'v' => 'Note: < > sirf placeholders hain — bina brackets likhein.'];
+        if ($hadBrackets) $lines[] = ['t' => 'd', 'v' => 'Note: < > are placeholders only — type the value without the brackets.'];
 
         $name = null;
         if ($slug !== '') {
@@ -159,7 +159,7 @@ final class AdminConsole
             ['t' => 'd',  'v' => '  what: transactions | orders | shifts | stock | qr | expenses'],
             ['t' => 'd',  'v' => '        logs | sync | all-logs'],
             ['t' => 'k',  'v' => 'purge <slug> orders --before 2026-01-01 --confirm "<name>"'],
-            ['t' => 'd',  'v' => '  --before rakhne se sirf us tareekh se purana data jata hai'],
+            ['t' => 'd',  'v' => '  --before removes only data older than that date'],
             ['t' => 'h',  'v' => 'MONITORING'],
             ['t' => 'k',  'v' => 'nodes                             branch computers'],
             ['t' => 'k',  'v' => 'sync [slug]                       transfer activity'],
@@ -169,16 +169,16 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'query SELECT ...                  read-only, max 100 rows'],
             ['t' => 'h',  'v' => 'CONSOLE'],
             ['t' => 'k',  'v' => 'resync <slug> [transactions|all] --confirm "<name>"'],
-            ['t' => 'd',  'v' => '   branch computer ko cloud ke barabar laata hai (cloud ka data safe rehta hai)'],
+            ['t' => 'd',  'v' => '   brings the branch computer in line with the cloud (cloud data stays safe)'],
             ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
-            ['t' => 'k',  'v' => 'permissions <slug>  — har user ke modules aur unka zariya'],
+            ['t' => 'k',  'v' => 'permissions <slug>  — modules per user and where they come from'],
             ['t' => 'k',  'v' => 'clear · version · help'],
             ['t' => 'i',  'v' => ''],
             ['t' => 'd',  'v' => 'purge groups: transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs'],
-            ['t' => 'd',  'v' => 'reset/purge se pehle 1 ghante ke andar backup lazmi hai (logs/sync ke ilawa).'],
-            ['t' => 'd',  'v' => '--confirm mein business ka POORA NAAM is required, slug nahi. <slug> ke brackets na likhein.'],
+            ['t' => 'd',  'v' => 'a backup within the last hour is required before reset/purge (except logs/sync).'],
+            ['t' => 'd',  'v' => '--confirm needs the business FULL NAME, not the slug. Do not type the < > brackets.'],
             ['t' => 'd',  'v' => 'Poori tafseel: docs/CONSOLE_COMMANDS.md'],
-            ['t' => 'k',  'v' => 'selftest [slug]                   agar koi command fail ho to yeh please run'],
+            ['t' => 'k',  'v' => 'selftest [slug]                   run this if any command fails'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
         ]);
     }
@@ -240,7 +240,7 @@ final class AdminConsole
                 $add('Data footprint', true, count($fp) . ' tables, ' . \array_sum($fp) . ' rows');
             } catch (\Throwable $e) { $add('Business ' . $slug, false, $e->getMessage()); }
         } else {
-            $out[] = ['t' => 'd', 'v' => 'Tip: selftest <slug> — us business ke liye bhi check karega'];
+            $out[] = ['t' => 'd', 'v' => 'Tip: selftest <slug> — also checks that one business'];
         }
         return self::out($out);
     }
@@ -539,7 +539,7 @@ final class AdminConsole
     {
         $t = self::tenant($slug);
         if ($confirm !== (string)$t['name']) {
-            return self::err('Confirm name match nahi hua. Run:  resync ' . $t['slug']
+            return self::err('Confirm name match failed. Run:  resync ' . $t['slug']
                            . ' ' . $what . ' --confirm "' . $t['name'] . '"');
         }
 
@@ -558,8 +558,8 @@ final class AdminConsole
                 DeleteService::wipeMarker($pdo, $name, 'console resync', $cut, (string)$t['id'], null);
                 $n++; $names[] = $name;
             } catch (\Throwable $e) {
-                return self::err('Tombstone nahi likha ja saka: ' . $e->getMessage()
-                               . '  — pehle `php scripts/migrate_delete_support.php` first.');
+                return self::err('Could not write tombstone: ' . $e->getMessage()
+                               . '  — first `php scripts/migrate_delete_support.php` first.');
             }
         }
 
@@ -567,10 +567,10 @@ final class AdminConsole
 
         $lines = [
             ['t' => 'g', 'v' => 'Resync markers bana diye: ' . $n . ' tables'],
-            ['t' => 'd', 'v' => 'Cloud ka data waisa hi hai — kuch delete NahI hua.'],
-            ['t' => 'd', 'v' => 'Agli sync par branch computer yeh tables khud saaf kar ke'],
-            ['t' => 'd', 'v' => 'cloud se dobara bharega. Node par "Sync now" dabayein.'],
-            ['t' => 'k', 'v' => 'Cut-off: ' . $cut . '  (is ke baad ka naya data mehfooz hai)'],
+            ['t' => 'd', 'v' => 'Cloud data is untouched — nothing was deleted.'],
+            ['t' => 'd', 'v' => 'On the next sync the branch computer clears these tables itself and'],
+            ['t' => 'd', 'v' => 'cloud se again bharega. Node par "Sync now" press.'],
+            ['t' => 'k', 'v' => 'Cut-off: ' . $cut . '  (newer data is preserved)'],
         ];
         if ($names) $lines[] = ['t' => 'd', 'v' => implode(', ', array_slice($names, 0, 18))
                                                 . (count($names) > 18 ? ' …' : '')];
@@ -597,7 +597,7 @@ final class AdminConsole
         } catch (\Throwable $e) {
             return self::err('sync_tombstones table not found — `php scripts/migrate_delete_support.php` first.');
         }
-        if (!$rows) return self::out([['t' => 'd', 'v' => 'Koi delete signal nahi.']]);
+        if (!$rows) return self::out([['t' => 'd', 'v' => 'No delete signal.']]);
 
         $lines = [['t' => 'k', 'v' => sprintf('%-26s %-6s %-19s %s', 'TABLE', 'MODE', 'CREATED', 'APPLIED HERE')]];
         foreach ($rows as $r) {
@@ -628,7 +628,7 @@ final class AdminConsole
         $lines = [];
         $fp = \Aio\Services\Sync::moduleFingerprint();
         $lines[] = ['t' => 'k', 'v' => 'Module fingerprint: ' . ($fp !== '' ? $fp : '(none)')];
-        $lines[] = ['t' => 'd', 'v' => 'Node par bhi yehi hona is required. Alag ho to permissions be-asar rehti hain.'];
+        $lines[] = ['t' => 'd', 'v' => 'The node must match. If it differs, permissions have no effect.'];
         $lines[] = ['t' => 'i', 'v' => ''];
 
         $q = $p->prepare(
@@ -647,7 +647,7 @@ final class AdminConsole
               ORDER BY u.is_tenant_admin DESC, u.full_name");
         $q->execute([$t['id']]);
         $rows = $q->fetchAll(PDO::FETCH_ASSOC);
-        if (!$rows) return self::out([['t' => 'd', 'v' => 'Is business ka koi user nahi.']]);
+        if (!$rows) return self::out([['t' => 'd', 'v' => 'This business has no users.']]);
 
         $lines[] = ['t' => 'k', 'v' => sprintf('%-26s %-16s %7s %7s', 'USER', 'ROLE', 'DIRECT', 'VIA ROLE')];
         $blank = 0;
@@ -666,8 +666,8 @@ final class AdminConsole
         if ($blank > 0) {
             $lines[] = ['t' => 'i', 'v' => ''];
             $lines[] = ['t' => 'e', 'v' => $blank . ' user ke paas ek bhi module nahi hai.'];
-            $lines[] = ['t' => 'd', 'v' => 'Agar node par yeh users modules ke saath dikhte hain to dono taraf'];
-            $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` please run, phir node par Sync now.'];
+            $lines[] = ['t' => 'd', 'v' => 'If these users appear with modules on the node, then both sides'];
+            $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` then run Sync now on the node.'];
         }
         return self::out($lines);
     }

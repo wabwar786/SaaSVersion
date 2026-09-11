@@ -92,7 +92,7 @@
     var digits = /^\d+$/.test(code);
     if (prefer === 'CODE128') return encodeCode128(code);
     if (digits && (code.length === 13 || code.length === 12)) return encodeEAN13(code);
-    if (digits && code.length === 8) return encodeCode128(code);   // EAN-8 abhi nahi
+    if (digits && code.length === 8) return encodeCode128(code);   // EAN-8 currently nahi
     return encodeCode128(code);
   }
 

@@ -173,11 +173,11 @@ try {
 } catch {
   # Pehle yahan sirf "data will sync when it does" likha aata tha - be-maani.
   # User ko pata hi nahi chalta tha ke sync chal hi nahi rahi aur kyun.
-  Say 'Auto-sync START NAHI HUI:' 'Red'
+  Say 'AUTO-SYNC DID NOT START:' 'Red'
   Say ("   " + $_.Exception.Message) 'DarkYellow'
   Say "   Log: $syncLog" 'DarkGray'
-  Say '   Software chalta rahega, magar cloud se data aayega/jayega NAHI.' 'DarkYellow'
-  Say '   Dashboard par "Sync now" se haath se chala sakte hain.' 'DarkGray'
+  Say '   The software keeps running, but data will NOT move to or from the cloud.' 'DarkYellow'
+  Say '   You can run it by hand with "Sync now" on the dashboard.' 'DarkGray'
 }
 
 # ---------- browser ----------
@@ -205,8 +205,8 @@ if (-not $opened) {
 
 if (-not $opened) {
   Write-Host ''
-  Say 'Browser khud nahi khul saka.' 'Yellow'
-  Say "Chrome ya Edge kholein aur yeh address likhein:  $url" 'Yellow'
+  Say 'The browser could not be opened automatically.' 'Yellow'
+  Say "Open Chrome or Edge and go to:  $url" 'Yellow'
 }
 
 Write-Host ''
@@ -271,7 +271,7 @@ if (Test-Path (Join-Path $root 'updates\ready.txt')) {
 }
 
 Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
-Say "Agar browser mein koi error aaye, koi doosra browser khol kar http://localhost:$port likhein." 'DarkGray'
+Say "If the browser shows an error, open a different browser and go to http://localhost:$port" 'DarkGray'
 Write-Host ''
 
 # ---------- sync watchdog ----------

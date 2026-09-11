@@ -110,7 +110,7 @@
   function fields(){return document.querySelectorAll('[data-s]')}
 
   function load(){
-    if(!window.DBApi){toast('Server connection not found. Page refresh please.',true);return}
+    if(!window.DBApi){toast('Server connection not found. Page refresh plea.',true);return}
     var r=DBApi.req('settings-get');
     if(!r.ok){toast(r.message||'Settings could not be loaded',true);return}
     var d=r.settings||{};
@@ -126,8 +126,8 @@
     if(d.fiscal_available_here===false){
       var nt=$('#fiscalNote');
       if(nt){nt.style.display='';nt.innerHTML='<b>FBR works only in the offline version.</b> '+
-        'Fiscal service aur printers on this computer (localhost) hote hain, is liye online portal '+
-        'se un tak pohancha nahi ja sakta. Yeh settings branch computer par kholein.'}
+        'The fiscal service and printers live on this computer (localhost), so the online portal '+
+        'cannot reach them. Open these settings on the branch computer.'}
       Array.prototype.forEach.call(document.querySelectorAll('#fiscalPanel [data-s],#fiscalPanel button'),
         function(el){el.disabled=true});
     }

@@ -297,7 +297,7 @@ final class RetailCatalog
             if ($bc !== '') {
                 $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes WHERE tenant_id=? AND barcode=? AND product_id<>?");
                 $c->execute([$tid, $bc, $id]);
-                if ((int)$c->fetchColumn() > 0) throw new \RuntimeException("Barcode $bc kisi aur product par lagi hai");
+                if ((int)$c->fetchColumn() > 0) throw new \RuntimeException("Barcode $bc is already used by another product");
                 $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes WHERE tenant_id=? AND barcode=? AND product_id=?");
                 $c->execute([$tid, $bc, $id]);
                 if ((int)$c->fetchColumn() === 0) {
@@ -398,8 +398,8 @@ final class RetailCatalog
         if ($id !== '' && $owner !== false) {
             if ($owner === null) {
                 throw new \RuntimeException(
-                    'Yeh ek standard (global) unit hai aur sab businesses istemal karti hain. ' .
-                    'Isay badla nahi ja sakta — apna naya unit banayein.');
+                    'This is a standard (global) unit used by every business. ' .
+                    'This cannot be changed — create your own unit instead.');
             }
             if ((string)$owner !== (string)$tid) {
                 throw new \RuntimeException('Unit not found');
