@@ -6,6 +6,35 @@
 <title>Platform Console — SmartPOS</title>
 <link rel="stylesheet" href="shared.css">
 <style>
+/* ============================================================
+   DIALOG ke buttons ki qatar.
+
+   `.row` kahin define hi nahi thi — na shared.css mein, na yahan.
+   Har dialog ka footer (`<div class="row">`) is liye buttons ko
+   neeche neeche dikhata tha, saath saath nahi. Ab ek jagah set:
+   ============================================================ */
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* Dialog ke andar ka form grid — yeh bhi kahin define nahi tha, is liye
+   Branding aur PMS wale popups ke fields poori chaurai le kar bikhar
+   jate the. */
+.modal-box .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-box .grid > div{min-width:0}
+.modal-box .grid .full,
+.modal-box .grid > div:has(textarea){grid-column:1/-1}
+.modal-box label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);
+  margin:0 0 5px;letter-spacing:.01em}
+.modal-box .grid input,
+.modal-box .grid select,
+.modal-box .grid textarea{width:100%;box-sizing:border-box}
+@media(max-width:620px){.modal-box .grid{grid-template-columns:1fr}}
+.row.end{justify-content:flex-end}
+.modal-box .row{margin-top:14px}
+.modal-box .row .btn{min-height:38px}
+/* footer ka aakhri button (asal amal) hamesha dayen taraf */
+.modal-box .row > .btn:last-child{margin-left:auto}
+.modal-box .row > .btn.ghost:last-child{margin-left:0}
+
 /* ---------- console-only additions on top of shared.css ---------- */
 .login-wrap{min-height:100vh;display:grid;place-items:center;background:var(--bg);padding:24px}
 .login-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -694,11 +723,11 @@ async function bizBrand(id){
   const b=(window.__bizRows||[]).find(function(x){return x.id===id})||{};
   const ov=sModal('<h3>Branding — '+(b.name||'')+'</h3><p class="muted">Naam, logo aur colors — login aur poore software par lagenge.</p>'
     +'<div class="grid" style="margin-top:14px">'
-    +'<div><label>Display Name</span><input id="brName" placeholder="'+(b.name||'')+'"></div>'
-    +'<div><label>Primary Color</span><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
-    +'<div><label>Accent Color</span><input id="brAccent" type="color" value="#ff5864" style="height:42px;padding:4px"></div>'
+    +'<div><label>Display Name</label><input id="brName" placeholder="'+(b.name||'')+'"></div>'
+    +'<div><label>Primary Color</label><input id="brColor" type="color" value="#e23744" style="height:42px;padding:4px"></div>'
+    +'<div><label>Accent Color</label><input id="brAccent" type="color" value="#ff5864" style="height:42px;padding:4px"></div>'
     +'</div>'
-    +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</span><input id="brFile" type="file" accept="image/*"></div>'
+    +'<div style="margin-top:12px"><label>Logo (PNG/JPG, max 1MB)</label><input id="brFile" type="file" accept="image/*"></div>'
     +'<div id="brPrev" style="margin-top:12px;height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;overflow:hidden"><span class="muted">Logo preview</span></div>'
     +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button><button class="btn" id="brSave">Save Branding</button>'
     +'<button class="btn ghost" id="brClear">Remove Logo</button></div>');
@@ -731,33 +760,37 @@ async function bizBrand(id){
    yahan uska apna saaf button rakha gaya hai.
    ============================================================ */
 async function bizFbr(id){
-  const st=await api('sa-fbr-status&tenant_id='+id);
+  const st=await api('sa-fbr-status&tenant_id='+encodeURIComponent(id));
   if(!st.ok){toast(st.message||'Status nahi mila');return}
   const on=!!st.enabled;
+  const pill = on ? '<span class="tag green">Chalu</span>' : '<span class="tag red">Band</span>';
 
-  const ov=modal('<div class="dh"><h3>FBR Digital Invoice</h3>'
-    +'<p>Is business par FBR chalu hai ya nahi</p></div>'
-    +'<div class="db">'
-    +'<div class="note" style="background:'+(on?'#e9f7ef':'#fdecea')+';border-color:'+(on?'#b8e6c8':'#f5c6c0')+'">'
-      +'<b>Abhi: '+(on?'CHALU':'BAND')+'</b>'
-      +(st.unrestricted?'<br><span class="muted">Is business par koi module hadd set nahi — sab kuch allowed hai.</span>':'')
+  /* Is page ka apna helper `sModal` hai — `modal()` yahan define hi
+     nahi. Pehle wahi ghalti ki thi: button dabta tha, JS gir jati thi
+     aur kuch nazar hi nahi aata tha. */
+  const ov=sModal('<h3 style="margin:0 0 4px">FBR Digital Invoice</h3>'
+    +'<p class="lead" style="margin:0 0 14px">Is business par FBR ki halat</p>'
+    +'<div class="note" style="margin-bottom:12px">Abhi: '+pill
+      +(st.unrestricted?' &nbsp;<span class="muted">(is business par koi module hadd set nahi — sab allowed hai)</span>':'')
+      +'</div>'
+    +'<div style="font-size:12.5px;line-height:1.75;color:var(--muted)">'
+      +'<b style="color:var(--ink)">Chalu:</b> bill par FBR invoice number aur QR aayega. '
+      +'Fiscal service offline node par chalti hai (localhost) — cloud us tak pohanch nahi sakta.'
+      +'<br><b style="color:var(--ink)">Band:</b> bill par FBR ka kuch bhi nahi — na number, na QR. '
+      +'Offline node koi fiscal call bhi nahi karega.'
+      +'<br><span class="muted">Offline node ko yeh faisla agli sync par mil jata hai.</span>'
     +'</div>'
-    +'<div style="margin-top:14px;font-size:13px;line-height:1.7">'
-      +'<b>Chalu karne par:</b> bill par FBR invoice number aur QR aayega. '
-      +'Fiscal service <u>offline node</u> par chalti hai (localhost) — cloud us tak pohanch nahi sakta.'
-      +'<br><br><b>Band karne par:</b> us business ke bill par FBR ka <u>kuch bhi nahi</u> aayega — '
-      +'na number, na QR. Offline node koi fiscal call bhi nahi karega.'
-      +'<br><br><span class="muted">Offline node ko yeh faisla agli sync par mil jata hai — '
-      +'package dobara download karne ki zaroorat nahi.</span>'
-    +'</div></div>'
-    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button>'
-    +'<button class="btn" id="fbrGo">'+(on?'FBR band karein':'FBR chalu karein')+'</button></div>');
+    +'<div class="row" style="margin-top:16px;gap:8px">'
+      +'<button class="btn ghost" data-x>Cancel</button>'
+      +'<button class="btn'+(on?' danger':'')+'" id="fbrGo">'+(on?'FBR band karein':'FBR chalu karein')+'</button>'
+    +'</div>');
 
   ov.querySelector('#fbrGo').onclick=async function(){
-    this.disabled=true; this.textContent='Saving...';
+    const label=this.textContent;
+    this.disabled=true; this.textContent='Saving…';
     const r=await api('sa-fbr-toggle',{tenant_id:id,enabled:!on});
-    this.disabled=false;
-    if(!r.ok){toast(r.message||'Nahi hua'); this.textContent=(on?'FBR band karein':'FBR chalu karein'); return}
+    this.disabled=false; this.textContent=label;
+    if(!r.ok){toast(r.message||'Nahi hua');return}
     toast(r.message||'Ho gaya');
     ov.remove(); loadBiz();
   };
@@ -821,8 +854,8 @@ async function bizWa(id){
   const w=r.wa||{};
   const ov=sModal('<h3>WhatsApp Integration</h3><p class="muted">WA Engine API se connect please aur events select please.</p>'
     +'<div class="grid" style="margin-top:14px">'
-    +'<div style="grid-column:1/-1"><label>API Base URL</span><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
-    +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</span><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
+    +'<div style="grid-column:1/-1"><label>API Base URL</label><input id="waU" value="'+(w.url||'https://wa-engine-deploy-production.up.railway.app')+'"></div>'
+    +'<div style="grid-column:1/-1"><label>API Key (x-api-key)</label><input id="waK" value="'+(w.key||'')+'" placeholder="WA-..."></div>'
     +'</div>'
     +'<div class="row" style="margin-top:12px"><button class="btn ghost" id="waT">Test Connection</button><span id="waS" class="muted"></span></div>'
     +'<h3 style="margin-top:18px;font-size:15px">Events</h3>'

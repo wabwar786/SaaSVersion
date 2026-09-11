@@ -1225,3 +1225,67 @@ CHALU  : enabled=true,  modules=39
 Agli sync par. Handshake ke sath features neeche aate hain
 (`Sync::pullFeatures()`), node apni `tenants` row mein likh leta hai.
 Package dobara download karne ki zaroorat nahi.
+
+
+---
+
+## 32. Super Admin ke buttons ka audit
+
+FBR ka button click par kuch nahi karta tha. Uske sath poore page ke
+buttons dekhe — teen masle nikle.
+
+### 1. FBR button chalta hi nahi tha (meri ghalti)
+
+`bizFbr()` `modal()` ko bula raha tha. **Is page par `modal()` define hi
+nahi hai** — yahan helper ka naam `sModal()` hai. Click par JS gir jati
+thi aur kuch nazar hi nahi aata tha (koi error message bhi nahi, kyunke
+exception chup-chaap console mein jata hai).
+
+Mazay ki baat: yeh ghalti pehle bhi ho chuki thi, aur `bizRenew()` ke
+upar uska comment likha hua tha — maine phir bhi dohra di.
+
+→ Ab `sModal()`, aur design baaki dialogs jaisa: `.lead` subtitle,
+`.note` box, `.tag green` / `.tag red` pill, footer mein Cancel + amal
+wala button.
+
+### 2. `.row` kahin define hi nahi thi
+
+Har dialog ka footer `<div class="row">` istemal karta hai — magar yeh
+class na `shared.css` mein thi na page ke apne style mein. Is liye
+**har** dialog ke buttons neeche-neeche aate the, saath-saath nahi.
+
+→ `.row` ab define hai (flex, gap, wrap), aur dialog ke footer mein
+aakhri button khud dayen taraf chala jata hai.
+
+### 3. `.grid` bhi define nahi thi + tooti hui `<label>` tags
+
+Branding aur PMS ke popups `<div class="grid">` istemal karte hain jo
+kahin define nahi thi — fields poori chaurai le kar bikhar jate the.
+
+Sath hi **6 jagah `<label>` ko `</span>` se band kiya gaya tha**:
+
+```html
+<label>Display Name</span>      <!-- ghalat -->
+```
+
+Browser isay sambhal leta hai magar spacing aur click-to-focus dono
+kharab hote hain.
+
+→ `.grid` (do column, mobile par ek), `.modal-box label` ka apna style,
+aur chhe ke chhe `<label>` tags durust.
+
+### Har row-button ka endpoint check
+
+| Button | Endpoint | Halat |
+|---|---|---|
+| Detail | `sa-business-detail` | ok |
+| Renew | `sa-licence-get` | ok |
+| Reset pass | `sa-admin-reset` | ok |
+| Branding | (local data + `sa-branding-save`) | ok — koi GET endpoint hai hi nahi, by design |
+| Features | `sa-features-get` | ok |
+| **FBR** | `sa-fbr-status` / `sa-fbr-toggle` | **ab ok** |
+| WhatsApp | `sa-wa-get` | ok |
+| Suspend / Activate | `sa-business-toggle` | ok |
+
+Aur `onclick` se bulaye gaye saare 9 functions maujood hain — koi
+button aisa nahi jo kisi na-maujood function ko bula raha ho.
