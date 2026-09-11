@@ -1341,3 +1341,82 @@ The comments inside the source are untouched — deliberately. They are
 developer notes, invisible to customers, and rewriting a few thousand
 comment lines is pure risk with no user benefit. Say the word if you
 want those converted too.
+
+---
+
+## 34. Renewal / activation key — four things fixed
+
+### 1. The generated key was invisible
+
+The key was being created correctly — it was rendered at the **bottom of
+the licence form**, inside a modal capped at `max-height:88vh` with
+`overflow:auto`. On most screens it landed below the fold, so it looked
+as if the button had done nothing.
+
+A key you cannot see is a key you cannot give to the customer.
+
+→ The key now opens in **its own dialog**: 24px monospace, dashed
+border, day count, and a Copy button.
+
+### 2. The key could never be entered (the real deadlock)
+
+Two separate gates made renewal impossible in exactly the situation it
+exists for:
+
+- `licence-key-apply` required `needLogin()`
+- `LicenceKey::apply()` called `Scope::requireManagement()`
+
+Once the licence expired, sign-in was blocked — so the customer could
+never reach any screen to type the key into. They were locked out of
+their own software **with the key in their hand**.
+
+→ New `licence-activate` endpoint works **without a sign-in** on offline
+nodes. Safe, because the key itself is the credential: HMAC-signed for
+one business, single-use, self-expiring, and it can only extend a
+licence — it cannot read or change any data. Rate-limited to 5 attempts
+per minute; the cloud is excluded (online renewal goes through Super
+Admin).
+
+### 3. After expiry: activation screen, not the sign-in screen
+
+Previously an expired node just refused the sign-in and left the user
+staring at the login page.
+
+→ Now the router sends **every page** to `activate.html`, and that page
+is freed from the login requirement while the licence is blocked (it was
+redirecting to login too — another dead end). Sign-in itself also blocks
+now on offline nodes; before, `subscriptionBlock()` returned `null`
+whenever the role was not cloud, so an expired node let people in and
+half-worked.
+
+Enter a valid key and work continues from exactly where it stopped.
+
+### 4. Data removal 30 days after expiry
+
+`scripts/licence_enforce.php`, run at every start-up:
+
+| Situation | What happens |
+|---|---|
+| Licence valid | `LICENCE_OK expires … (n days left)` |
+| Expired, within 30 days | Locked, **nothing deleted**, shows days remaining |
+| Expired 30+ days | Business data removed, once, with a marker |
+
+Deliberately **kept**: users, the tenant/site rows and the sync token —
+so a key still reactivates the node instead of forcing a reinstall. The
+**cloud copy is untouched**, so a renewed customer gets their data back
+on the next pull. Applying a valid key clears the purge marker.
+
+### Tested end to end
+
+```
+key generated            : NJ7G-07G0-A3HM-R57G-66X0-ANQ7
+expired node, index.html : 302 -> /activate.html?expired=1
+expired node, POS        : 302 -> /activate.html?expired=1
+activate.html            : 200 (opens without sign-in)
+sign-in while expired    : blocked, "Enter your activation key to continue"
+key applied, no login    : ok, valid to 2026-12-10
+same key reused          : blocked, "already been used"
+grace  5 days past       : locked, 26 days left, nothing deleted
+grace 40 days past       : 27 rows removed; users/tenant/sync token kept
+purge run twice          : second run does nothing
+```

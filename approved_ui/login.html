@@ -70,6 +70,25 @@ $('#loginBtn').onclick=login;
 document.addEventListener('keydown',e=>{if(e.key==='Enter')login()});
 $('#fullscreenBtn').onclick=()=>document.documentElement.requestFullscreen?.();
 </script>
+<script>
+/* If the licence has expired on this offline node, do not leave the
+   customer staring at a sign-in they can never pass — send them to the
+   activation screen where the key goes. */
+(function(){
+  if(window.APP_ROLE==='cloud')return;
+  try{
+    var x=new XMLHttpRequest();
+    x.open('GET','/api.php?action=licence-status',true);
+    x.onload=function(){
+      try{
+        var r=JSON.parse(x.responseText||'{}');
+        if(r.ok && r.licence && r.licence.expired) location.href='/activate.html?expired=1';
+      }catch(e){}
+    };
+    x.send();
+  }catch(e){}
+})();
+</script>
 </body>
 </html>
 

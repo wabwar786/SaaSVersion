@@ -905,6 +905,32 @@ async function bizDetail(id){
    Pehle yeh browser ke prompt() se chalta tha: na validation, na
    suspend/activate, na yeh nazar aata tha ke abhi kitne din bache hain.
    Ab ek proper dialog. */
+/* Activation key in its own window — big, readable, one tap to copy. */
+function showKey(kr, business){
+  var k = kr.key || '';
+  var ov = sModal(
+     '<h3 style="margin:0 0 4px">Activation key</h3>'
+    +'<p class="lead" style="margin:0 0 16px">'+esc(business)+'</p>'
+    +'<div style="border:2px dashed var(--brand);border-radius:12px;padding:18px;text-align:center;'
+      +'background:var(--brand-soft, #f6fbf8)">'
+      +'<div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;font-weight:800;'
+        +'letter-spacing:.10em;line-height:1.5;word-break:break-all;color:var(--ink)">'+esc(k)+'</div>'
+      +'<div class="muted" style="font-size:12px;margin-top:10px">adds <b>'+esc(String(kr.days||''))+' days</b>'
+        +(kr.expires?' &middot; key itself expires '+esc(kr.expires):'')+'</div>'
+    +'</div>'
+    +'<div class="note" style="margin-top:14px;font-size:12.5px">'
+      +'Read this out or send it on WhatsApp. The customer types it into <b>Activate</b> '
+      +'on their software &mdash; no internet needed. It works <b>once</b>, only for this business.'
+    +'</div>'
+    +'<div class="row" style="margin-top:16px">'
+      +'<button class="btn ghost" data-x>Close</button>'
+      +'<button class="btn" id="kCopy">Copy key</button>'
+    +'</div>');
+  var c=ov.querySelector('#kCopy');
+  if(c)c.onclick=function(){ copyText(k); this.textContent='Copied'; var b=this;
+                             setTimeout(function(){b.textContent='Copy key'},1400); };
+}
+
 async function bizRenew(id){
   const cur=await api('sa-licence-get&tenant_id='+encodeURIComponent(id));
   const L=(cur&&cur.licence)||{};
@@ -947,6 +973,13 @@ async function bizRenew(id){
     var kr=await api('sa-licence-key',{tenant_id:id,days:Number(ov.querySelector('#lkDays').value)});
     this.disabled=false;this.textContent='Make activation key';
     if(!kr.ok){toast(kr.message||'Could not make a key');return}
+
+    /* The key used to be appended at the BOTTOM of this long licence
+       form. The modal is scrollable (max-height 88vh), so on most
+       screens the key rendered below the fold and looked as if nothing
+       had happened. A key you cannot see is a key you cannot give to
+       the customer. Now it opens in its own dialog. */
+    showKey(kr, L.business || '');
     ov.querySelector('#lkOut').innerHTML=
        '<div class="note" style="margin:0"><div class="muted" style="font-size:11px">'
       +'Give this to the customer. It works once, only for this business, '

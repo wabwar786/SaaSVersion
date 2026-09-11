@@ -105,9 +105,26 @@ final class LicenceKey
 
     /* ---------------- lagao (branch computer par) ---------------- */
 
-    public static function apply(string $typed): array
+    /**
+     * @param bool $selfService  Activation screen par koi logged-in nahi hota.
+     *
+     * `requireManagement()` yahan ek chhupa hua deadlock tha: licence
+     * expire hone par login band ho jata hai, aur bina login ke yeh check
+     * kabhi pass nahi hota — yani jis key ke liye yeh poora system bana
+     * hai, wo kabhi lagai hi nahi ja sakti thi.
+     *
+     * Self-service raaste par yeh check nahi lagta, kyunke sanad khud key
+     * hai: HMAC se sirf isi business ke liye signed, ek hi dafa chalne
+     * wali, aur khud expire ho jane wali. Yeh licence barhane ke alawa
+     * kuch kar hi nahi sakti.
+     */
+    public static function apply(string $typed, bool $selfService = false): array
     {
-        Scope::requireManagement('activating a licence key');
+        if (!$selfService) Scope::requireManagement('activating a licence key');
+
+        /* Valid key ka matlab customer wapas aa gaya — purge marker hata
+           do taake enforcement nayi expiry se dobara shuru ho. */
+        @\unlink(\dirname(__DIR__, 2) . '/storage/.licence_purged');
 
         $key = strtoupper(preg_replace('/[^0-9A-Z]/i', '', $typed));
         /* Aam ghalatiyan khud sudhaar do — customer phone par sun kar

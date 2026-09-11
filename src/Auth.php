@@ -35,7 +35,28 @@ final class Auth {
      * Return: null = OK, warna block message.
      */
     public static function subscriptionBlock(string $tenantId): ?string {
-        if (cfg('app.role') !== 'cloud') return null;
+        if (cfg('app.role') !== 'cloud') {
+            /* ============================================================
+               Offline node par yeh check pehle chalta hi nahi tha
+               (`return null`). Nateeja: licence expire hone ke bawajood
+               cashier andar aa jata tha aur software aadha kaam karta
+               rehta tha — customer ko pata hi nahi chalta ke renewal due
+               hai, jab tak koi cheez tootne na lage.
+
+               Ab node apne aakhri synced licence par khud faisla karta
+               hai. Block hote hi router usay activation screen par bhej
+               deta hai, jahan key daal kar kaam wahin se chalu ho jata
+               hai.
+               ============================================================ */
+            try {
+                $lic = \Aio\Services\Licence::cached();
+                if (!empty($lic['expired'])) {
+                    return 'Licence expired on ' . ($lic['expiry_date'] ?? '') .
+                           '. Enter your activation key to continue.';
+                }
+            } catch (\Throwable $e) { /* shak ho to login mat roko */ }
+            return null;
+        }
         $pdo = DB::pdo();
         try {
             $t = $pdo->prepare("SELECT status FROM tenants WHERE id=? LIMIT 1");

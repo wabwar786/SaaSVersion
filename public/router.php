@@ -67,6 +67,42 @@ $publicPages=['login.html','signup.html','signup_pending.html','setup.html','sup
 /* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
    `approved_ui/` se aate hain, chahe tenant retail ho. */
 $sharedPages=['activate.html','backup_restore.html'];
+
+/* ============================================================
+   LICENCE GATE — offline node.
+
+   Pehle expiry par sirf login reject hota tha ("Subscription expired…")
+   aur user login page par hi khara rehta tha. Uske paas key bhi ho to
+   usay daalne ki koi jagah nahi thi.
+
+   Ab expiry par har page seedha `activate.html` par le jata hai —
+   wahi screen jahan key daal kar software chalu hota hai. Key lagte hi
+   normal kaam wahin se chalu ho jata hai.
+
+   Cloud par yeh gate nahi lagta: wahan renewal Super Admin se hoti hai.
+   ============================================================ */
+$licenceBlocked=false;
+if((string)cfg('app.role')!=='cloud'){
+  try{
+    $lic=\Aio\Services\Licence::current();
+    $licenceBlocked=!empty($lic['expired']);
+  }catch(\Throwable $e){ $licenceBlocked=false; }   /* shak ho to rasta band mat karo */
+}
+/* activate.html khud, aur uske assets, hamesha khulne chahiye. */
+$licenceAllow=['activate.html','login.html','logout.html'];
+
+/* Aur ahem: licence block ki soorat mein `activate.html` ko LOGIN ki
+   shart se bhi azad karna parta hai. Warna wo bhi login par redirect
+   hoti hai, login expiry ki wajah se mumkin nahi, aur customer key
+   haath mein liye ek band darwaze ke saamne khara reh jata hai. */
+if($licenceBlocked && $name==='activate.html'){
+  $publicPages[]='activate.html';
+}
+if($licenceBlocked && !in_array($name,$licenceAllow,true)
+   && substr($name,-5)==='.html'){
+  header('Location: /activate.html?expired=1');
+  exit;
+}
 $fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'settings','backup_restore.html'=>'settings','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){

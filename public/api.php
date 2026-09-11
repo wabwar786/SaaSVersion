@@ -733,7 +733,9 @@ case 'printer-route-set':needLogin();
  if($cat==='')fail('A category is required');
  ok(PrinterService::setRoute($cat,(string)($d['printer_id']??'')));
 
-case 'licence-status':needLogin();
+case 'licence-status':
+ /* Activate page ko expiry dikhani hoti hai, aur wo page tab khulta hai
+    jab login mumkin hi nahi. Is liye yahan login ki shart nahi. */
  /* V65 — expiry ab software ke andar nazar aati hai. Pehle yeh sirf
     cloud ke super-admin console mein thi; restaurant ka apna software
     (aur khaas kar offline node) ko kuch pata hi nahi hota tha, aur
@@ -2191,9 +2193,35 @@ case 'sa-licence-keys':needSuper();
  $tid2=(string)($_GET['tenant_id']??'');if($tid2==='')fail('tenant_id is required');
  ok(['rows'=>\Aio\Services\LicenceKey::history($tid2)]);
 
-case 'licence-key-apply':needLogin();$d=body();
- /* Customer apni key yahan daalta hai. Internet ki zaroorat nahi. */
- try{ok(\Aio\Services\LicenceKey::apply((string)($d['key']??'')));}
+case 'licence-key-apply':
+case 'licence-activate':$d=body();
+ /* ============================================================
+    ACTIVATION — deliberately works WITHOUT a sign-in.
+
+    This endpoint used to require needLogin(). That made renewal
+    impossible in exactly the situation it exists for: once the licence
+    expires, sign-in is blocked, so the customer could never reach a
+    screen to type the key into. They were locked out of their own
+    software with the key in their hand.
+
+    Safe to leave open because the key itself is the credential: it is
+    HMAC-signed for this one business, single-use, and expires on its
+    own. It only ever extends a licence — it can never read or change
+    business data.
+
+    Cloud is excluded: online renewal goes through Super Admin.
+    ============================================================ */
+ if((string)cfg('app.role')==='cloud')fail('Activation keys are for the offline version',403);
+ $k=strtoupper(preg_replace('/[^A-Z0-9]/i','',(string)($d['key']??'')));
+ if($k==='')fail('Enter the activation key');
+ /* Brute force ke khilaf: ek minute mein 5 koshishen. */
+ $lockFile=dirname(__DIR__).'/storage/tmp/activate_tries.txt';
+ @mkdir(dirname($lockFile),0775,true);
+ $tries=@json_decode((string)@file_get_contents($lockFile),true)?:[];
+ $tries=array_values(array_filter($tries,fn($t)=>$t>time()-60));
+ if(count($tries)>=5)fail('Too many attempts. Wait a minute and try again.',429);
+ $tries[]=time(); @file_put_contents($lockFile,json_encode($tries));
+ try{ $r=\Aio\Services\LicenceKey::apply($k, true); @unlink($lockFile); ok($r); }
  catch(Throwable $e){fail($e->getMessage());}
 
 case 'sa-licence-set':needSuper();$d=body();
