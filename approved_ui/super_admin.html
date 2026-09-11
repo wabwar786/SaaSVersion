@@ -586,6 +586,7 @@ async function loadBiz(){
       +'<button class="btn sm" onclick="bizResetAdmin(\'' + b.id + '\')">Reset pass</button>'
       +'<button class="btn sm" onclick="bizBrand(\'' + b.id + '\')">Branding</button>'
       +'<button class="btn sm" onclick="bizFeatures(\'' + b.id + '\')">Features</button>'
+      +'<button class="btn sm" onclick="bizFbr(\'' + b.id + '\')">FBR</button>'
       +'<button class="btn sm" onclick="bizWa(\'' + b.id + '\')">WhatsApp</button>'
       +'<button class="btn sm" onclick="bizToggle(\'' + b.id + '\',' + (susp?1:0) + ')">'+(susp?'Activate':'Suspend')+'</button>'
       +'</div></td></tr>';
@@ -717,6 +718,48 @@ async function bizBrand(id){
     this.disabled=false;this.textContent='Save Branding';
     toast(r.ok?'Branding saved':(r.message||'Failed'));
     if(r.ok)ov.remove();
+  };
+}
+
+/* ============================================================
+   FBR chalu / band — per business.
+
+   Andar yeh wahi `features_json` par chalta hai jo "Features" screen
+   istemal karti hai (module key: `fbr`). Alag switch banane se sach do
+   jagah rakhna parta aur woh hamesha aage-peeche ho jata. Magar us
+   screen par `fbr` 40 modules ki list mein ek checkbox tha — is liye
+   yahan uska apna saaf button rakha gaya hai.
+   ============================================================ */
+async function bizFbr(id){
+  const st=await api('sa-fbr-status&tenant_id='+id);
+  if(!st.ok){toast(st.message||'Status nahi mila');return}
+  const on=!!st.enabled;
+
+  const ov=modal('<div class="dh"><h3>FBR Digital Invoice</h3>'
+    +'<p>Is business par FBR chalu hai ya nahi</p></div>'
+    +'<div class="db">'
+    +'<div class="note" style="background:'+(on?'#e9f7ef':'#fdecea')+';border-color:'+(on?'#b8e6c8':'#f5c6c0')+'">'
+      +'<b>Abhi: '+(on?'CHALU':'BAND')+'</b>'
+      +(st.unrestricted?'<br><span class="muted">Is business par koi module hadd set nahi — sab kuch allowed hai.</span>':'')
+    +'</div>'
+    +'<div style="margin-top:14px;font-size:13px;line-height:1.7">'
+      +'<b>Chalu karne par:</b> bill par FBR invoice number aur QR aayega. '
+      +'Fiscal service <u>offline node</u> par chalti hai (localhost) — cloud us tak pohanch nahi sakta.'
+      +'<br><br><b>Band karne par:</b> us business ke bill par FBR ka <u>kuch bhi nahi</u> aayega — '
+      +'na number, na QR. Offline node koi fiscal call bhi nahi karega.'
+      +'<br><br><span class="muted">Offline node ko yeh faisla agli sync par mil jata hai — '
+      +'package dobara download karne ki zaroorat nahi.</span>'
+    +'</div></div>'
+    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button>'
+    +'<button class="btn" id="fbrGo">'+(on?'FBR band karein':'FBR chalu karein')+'</button></div>');
+
+  ov.querySelector('#fbrGo').onclick=async function(){
+    this.disabled=true; this.textContent='Saving...';
+    const r=await api('sa-fbr-toggle',{tenant_id:id,enabled:!on});
+    this.disabled=false;
+    if(!r.ok){toast(r.message||'Nahi hua'); this.textContent=(on?'FBR band karein':'FBR chalu karein'); return}
+    toast(r.message||'Ho gaya');
+    ov.remove(); loadBiz();
   };
 }
 

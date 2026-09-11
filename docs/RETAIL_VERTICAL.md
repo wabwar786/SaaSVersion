@@ -1180,3 +1180,48 @@ hai. Yeh checkbox usay ek qadam bana deta hai.
 - Variant/pizza items par bhi koi farq nahi — un ka apna options modal
   hai jahan variant chunna zaroori hota hai.
 - Qty 0 daalne par kuch add nahi hota.
+
+
+---
+
+## 31. FBR activation — button kahan hai
+
+Pichhle round mein maine endpoints bana diye the magar **button nahi
+banaya tha**. Ab bana diya.
+
+**Super Admin → Businesses → us business ki row → `FBR` button.**
+
+Modal dikhata hai:
+
+- Abhi FBR **CHALU** hai ya **BAND** (rang se bhi — hara / laal)
+- Chalu karne par kya hoga, band karne par kya hoga
+- Ek hi button: *FBR chalu karein* / *FBR band karein*
+
+### Andar kya chalta hai
+
+Yeh maujooda `features_json` par hi chalta hai — wahi list jo "Features"
+screen istemal karti hai (module key: `fbr`). Alag switch banane se sach
+do jagah rakhna parta aur woh hamesha aage-peeche ho jata.
+
+Farq sirf itna hai ke "Features" screen par `fbr` chalees modules ki
+list mein ek checkbox tha — dhoondhna parta tha. Ab uska apna button
+hai.
+
+Ek ehtiyat: agar business par pehle koi module-hadd set na ho (matlab
+"sab allowed"), to FBR band karte waqt poori list khud ban jati hai aur
+usme se sirf `fbr` nikala jata hai — warna baaki 38 modules bhi band ho
+jate.
+
+### Test
+
+```
+pehle  : enabled=true,  unrestricted=true    (koi hadd set nahi thi)
+BAND   : enabled=false, modules=38
+CHALU  : enabled=true,  modules=39
+```
+
+### Node tak kaise pohanchta hai
+
+Agli sync par. Handshake ke sath features neeche aate hain
+(`Sync::pullFeatures()`), node apni `tenants` row mein likh leta hai.
+Package dobara download karne ki zaroorat nahi.
