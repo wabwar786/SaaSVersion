@@ -9,12 +9,36 @@ $marker = dirname(__DIR__) . '/storage/.v13_workable_ready';
 /* V84 — sealed build: $argv hai hi nahi. */
 $force = (bool)cli_arg('force');
 
-if (!$force && is_file($marker)) {
+$pdo = DB::pdo();
+
+/* ============================================================
+   Marker par andha bharosa mat karo.
+
+   Pehle: marker file maujood -> "sab theek hai", exit. Magar agar
+   database dobara bana ho (ya kabhi bhara hi na ho) aur marker
+   `storage/` mein bach jaye, to yeh script chup-chaap skip kar jati
+   thi aur node par EK BHI USER NAHI hota tha. Customer ko sirf
+   "Invalid login" nazar aata tha, aur recovery tool kehta tha
+   "No users found in this database".
+
+   Ab marker ke sath yeh bhi dekha jata hai ke waqai koi user maujood
+   hai ya nahi. Database khali ho to marker bekaar hai.
+   ============================================================ */
+$haveUser = false;
+try {
+    $c = $pdo->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");
+    $c->execute([tenant_id()]);
+    $haveUser = (int)$c->fetchColumn() > 0;
+} catch (\Throwable $e) { $haveUser = false; }
+
+if (!$force && is_file($marker) && $haveUser) {
     echo "V13_LOGIN_ACCOUNT_ALREADY_READY\n";
     exit(0);
 }
-
-$pdo = DB::pdo();
+if (!$haveUser && is_file($marker)) {
+    echo "V13_LOGIN_MARKER_STALE database mein koi user nahi tha - dobara bana rahe hain\n";
+    @unlink($marker);
+}
 $email = 'admin@urbanspoon.local';
 $username = 'admin';
 $password = 'Admin@123';

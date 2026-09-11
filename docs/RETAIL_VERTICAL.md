@@ -979,3 +979,58 @@ available: V101 build 2026-09-12
 UPDATE_DOWNLOADED update-V101build2026-09-12.zip (1.2 MB)
 Close the software and run INSTALL_UPDATE.bat to apply it.
 ```
+
+---
+
+## 27. Offline node par "No users found in this database"
+
+Recovery tool ne asal masla saaf kar diya: node ke database mein **ek
+bhi user nahi tha**. Is liye koi bhi password kabhi chal hi nahi sakta
+tha — aur alamat "Invalid login" thi, jo bilkul gumraah karti hai.
+
+### Wajah — do baatein mil kar
+
+**1. Node ke users cloud se SYNC ke zariye aate the.** Package mein koi
+login shamil nahi hota tha. Aur auto-sync us bug ki wajah se kabhi
+start hi nahi hui (`RedirectStandardOutput` wala), is liye users kabhi
+neeche aaye hi nahi.
+
+**2. `ensure_v13_login.php` marker par andha bharosa karti thi.**
+
+```php
+if (!$force && is_file($marker)) { exit(0); }   // "sab theek hai"
+```
+
+Marker `storage/` mein bach jaye (database dobara bane, ya kabhi bhara
+hi na ho) to yeh script chup-chaap skip kar jati thi — database khali
+hone ke bawajood. Yani jo aakhri safety net tha, wo bhi nahi chala.
+
+### Do fix
+
+**a) Marker ab database se verify hota hai.** Agar users table khali ho
+to marker bekaar samjha jata hai aur account dobara ban jata hai.
+
+**b) Package ke andar owner ka login seal hota hai.** Ab `offline-package`
+banate waqt us business ke owner ka record (id, email, naam aur
+**bcrypt hash** — plaintext kabhi nahi) sealed config mein jata hai, aur
+naya script `seed_node_owner.php` pehle boot par usay local database
+mein daal deta hai.
+
+Nateeja: **node pehle din se wahi login qubool karta hai jo portal par
+chalta hai — sync se pehle bhi.**
+
+### Test (khali database par, bilkul customer jaisa)
+
+```
+sealed owner: demo.restaurant@demo.local (hash 60 chars)
+users pehle : 0
+seed        : NODE_OWNER_CREATED demo.restaurant@demo.local
+users ab    : 1
+LOGIN portal wale password se : OK
+ghalat password               : reject
+dobara chalaya                : NODE_OWNER_ALREADY_PRESENT   (idempotent)
+```
+
+Script ehtiyat bhi barajti hai: user pehle se ho aur uska local password
+maujood ho to **usay chherti nahi** — warna node par baad mein set kiya
+gaya password mit jata.

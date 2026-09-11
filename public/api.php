@@ -889,6 +889,18 @@ $nodeSeq=0;
 try{$nq=$p->prepare("SELECT COUNT(DISTINCT node_ip) FROM sync_activity WHERE tenant_id=?");$nq->execute([tenant_id()]);$nodeSeq=(int)$nq->fetchColumn();}catch(Throwable $e){}
 $base=rtrim((string)cfg('app.base_url'),'/');
 /* Config seal ke andar jata hai - sync token plaintext disk par NahI */
+/* Owner ka login package ke andar — taake node PEHLE BOOT se wahi
+   password qubool kare jo portal par chalta hai. Plaintext nahi jata,
+   sirf bcrypt hash — wahi jo DB mein pehle se hai. */
+$ownerRow=null;
+try{
+  $oq=$p->prepare("SELECT id,username,email,full_name,password_hash FROM users
+                     WHERE tenant_id=? AND deleted_at IS NULL AND status='ACTIVE'
+                     ORDER BY is_tenant_admin DESC, created_at ASC LIMIT 1");
+  $oq->execute([tenant_id()]);
+  $ownerRow=$oq->fetch(PDO::FETCH_ASSOC)?:null;
+}catch(Throwable $e){}
+
 $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_url'=>'http://localhost:8080',
                  'industry'=>(string)($t['industry_code']?:'RESTAURANT'),
                  /* helpers.php local mode mein yahi keys parhta hai */
@@ -897,6 +909,14 @@ $cfgArr=['app'=>['role'=>'local','name'=>(string)$t['dn'],'debug'=>false,'base_u
                  'node_code'=>'L'.(string)(1+(int)$nodeSeq)],
  'db'=>['host'=>'127.0.0.1','port'=>3307,'database'=>'aio_local','username'=>'root','password'=>'','charset'=>'utf8mb4'],
  'tenant'=>['id'=>(string)$t['id'],'slug'=>(string)$t['slug'],'site_id'=>site_id(),'site_name'=>(string)$siteName],
+ /* Node ka pehla login — sync se pehle bhi kaam kare. */
+ 'owner'=>$ownerRow?[
+   'id'=>(string)$ownerRow['id'],
+   'username'=>(string)$ownerRow['username'],
+   'email'=>(string)$ownerRow['email'],
+   'full_name'=>(string)$ownerRow['full_name'],
+   'password_hash'=>(string)$ownerRow['password_hash'],
+ ]:null,
  'sync'=>[
    'enabled'=>true,
    'token'=>(string)$t['sync_token'],
