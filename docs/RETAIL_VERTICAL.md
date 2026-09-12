@@ -1697,3 +1697,56 @@ shift-current  : returns the open shift
 shift-preview  : report with expected cash
 shift-close    : ok, report carries shift_id (so auto-print can find it)
 ```
+
+---
+
+## 40. The account button broke the whole screen
+
+Symptoms from the counter: the shift was clearly open (`Shift S-260910-C5EE
+Close` in the strip), but the new button still read **"Open account"** in
+red — and the menu area was completely blank, no items, no categories.
+
+### One cause behind both
+
+`hasMod` is not a global. It is a **local** variable inside the boot
+function:
+
+```js
+var mods = (CAN.modules||[]);
+var hasMod = function(k){ return CAN.manage || mods.indexOf(k)>=0 };
+```
+
+I called it from `paintAcct()`, which runs from `renderStrip()` — a
+different scope. Every render threw a `ReferenceError`.
+
+And because `renderStrip()` is the **first** call inside `renderAll()`:
+
+```js
+function renderAll(){ renderStrip(); renderCats(); renderGrid(); renderCart() }
+```
+
+…the strip was already written to the DOM, then the exception killed the
+rest. So the strip looked fine, the items never drew, and the button
+never got repainted. Two symptoms, one line.
+
+**What I should have done:** the earlier test only checked that the
+markup was present in the page. Markup present is not code running.
+
+### Fixed
+
+- `canMod()` is now a proper global helper next to `CAN`.
+- `paintAcct()` is wrapped in try/catch — one button must never take the
+  screen down with it.
+
+### Verified by running the real functions
+
+```
+cashier [shift,pos]  shift null -> "Open account"  (red)
+                     shift open -> "Close account" (green)
+modules [pos] only   -> button hidden
+manager              -> visible
+keybar missing       -> no exception (render continues)
+CAN undefined        -> no exception
+page                 -> canMod present, old scope bug gone
+pos-boot             -> 13 products, 5 categories
+```

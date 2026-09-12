@@ -444,6 +444,13 @@ var cart=[], cat='All', search='', mode='Dine In', preQty={};
 var billNo='0001', shift=null, orderTax=16, svc={type:'percent',value:0}, disc={type:'flat',value:0}, billStarted=false;
 var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
 var CAN={manage:false};
+/* Module check ka GLOBAL helper.
+   Pehle `hasMod` sirf boot wale function ke ANDAR ek local variable tha.
+   Maine usay bahar se (paintAcct / F11) bula liya -> har renderStrip par
+   ReferenceError -> strip to ban jati thi magar uske BAAD ka kaam (items
+   aur categories ka render) chalta hi nahi tha. Screen khali, aur wajah
+   kahin nazar nahi aati thi. */
+function canMod(k){ return !!(CAN.manage || (CAN.modules||[]).indexOf(k)>=0); }
 
 /* ============ CLOUD SYNC INDICATOR (live) ============
    Strip par chip: kab last sync hua, kitni rows baqi hain, cloud online
@@ -2288,12 +2295,14 @@ function showReport(rep,transferred){
 /* Account button ki halat — har render par taza. Band ho to laal, taake
    cashier ko pehli nazar mein pata chale ke billing shuru nahi ho sakti. */
 function paintAcct(){
+  try{
   var b=document.getElementById('kbAcct'), t=document.getElementById('kbAcctTxt');
   if(!b||!t)return;
-  if(!hasMod('shift')&&!CAN.manage){ b.style.display='none'; return; }
+  if(!canMod('shift')){ b.style.display='none'; return; }
   b.style.display='';
   if(shift){ b.className='kb acct open'; t.textContent='Close account'; b.title='Close the shift and print the report'; }
   else     { b.className='kb acct closed'; t.textContent='Open account'; b.title='No bill can be made until the account is open'; }
+  }catch(e){ /* yeh sirf ek button hai — poori screen isay le kar na doobe */ }
 }
 
 function showKeys(){
@@ -2388,7 +2397,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='F12'||e.key==='?'){e.preventDefault();showKeys();return}
   /* F11 = account kholna / band karna. Yehi pehla aur aakhri kaam hota
      hai har shift ka, is liye iski apni key. */
-  if(e.key==='F11'&&(hasMod('shift')||CAN.manage)){e.preventDefault();shift?closeShift():openGate();return}
+  if(e.key==='F11'&&canMod('shift')){e.preventDefault();shift?closeShift():openGate();return}
 
   if(e.ctrlKey||e.metaKey){
     var k=(e.key||'').toLowerCase();
