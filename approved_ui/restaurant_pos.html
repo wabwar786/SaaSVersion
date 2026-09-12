@@ -16,7 +16,22 @@ body{font-family:-apple-system,"Segoe UI",Roboto,Inter,sans-serif;background:var
 button,input,select,textarea{font-family:inherit;font-size:12.5px;color:inherit}
 button{cursor:pointer;border:0;background:none}
 .hide{display:none!important}
-.pos{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto auto 1fr;height:100vh}
+.pos{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto auto 1fr auto;height:100vh}
+
+/* ---------- shortcut bar (screen ke bilkul neeche) ----------
+   Naya cashier shortcuts dhoondta hai. Yeh F12 wale popup mein to the,
+   magar jo cheez nazar nahi aati wo seekhi bhi nahi jati. Retail POS par
+   yeh strip pehle se thi — Sale Point par nahi. */
+.keybar{grid-column:1/-1;flex-shrink:0;height:34px;background:#14302a;display:flex;
+  align-items:center;padding:0 10px;overflow-x:auto;scrollbar-width:thin}
+.kb{display:flex;align-items:center;gap:6px;padding:0 11px;height:100%;color:#c8d6d1;
+  font-size:11px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.09);
+  background:none;border-top:0;border-bottom:0;border-left:0;cursor:pointer;font-family:inherit}
+.kb:hover{background:rgba(255,255,255,.08);color:#fff}
+.kb i{font-style:normal;background:rgba(255,255,255,.16);border-radius:4px;padding:1px 6px;
+  font-size:10px;font-weight:800;color:#fff}
+.kb.hot i{background:var(--green,#1f8a5f)}
+@media(max-width:820px){.keybar{height:32px}.kb{padding:0 9px;font-size:10.5px}}
 
 /* ---------- top ---------- */
 .qtymode{display:flex;align-items:center;gap:7px;height:36px;padding:0 11px;border:1px solid var(--l);
@@ -365,6 +380,22 @@ textarea.inp{min-height:62px;resize:vertical}
       <button class="chg" id="chargeBtn" disabled>Charge / Actions</button>
     </div>
   </aside>
+
+  <!-- ============ SHORTCUT BAR ============ -->
+  <div class="keybar" id="keybar">
+    <button class="kb" data-key="F1"><i>F1</i> New bill</button>
+    <button class="kb" data-key="F2"><i>F2</i> Send to kitchen</button>
+    <button class="kb hot" data-key="F3"><i>F3</i> Charge / payment</button>
+    <button class="kb" data-key="F4"><i>F4</i> Hold bills</button>
+    <button class="kb" data-key="F6"><i>F6</i> Duplicate bill</button>
+    <button class="kb" data-key="F7"><i>F7</i> Bill type / table</button>
+    <button class="kb" data-key="F9"><i>F9</i> Void / refund</button>
+    <button class="kb" data-key="F10"><i>F10</i> New item</button>
+    <span class="kb"><i>Ctrl+K</i> Search menu</span>
+    <span class="kb"><i>+ / &minus;</i> Qty of last item</span>
+    <span class="kb"><i>Del</i> Remove last item</span>
+    <button class="kb" data-key="F12"><i>F12</i> All shortcuts</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1329,6 +1360,19 @@ $('#chargeBtn').onclick=function(){
        hai; na mile to purana fallback payload chalta hai. */
     var info={billNo:r.bill_no||billNo,mode:mode,table:curTable,t:t,pay:pay,rcv:rcv,
               fbrNo:(r.fbr_no||''),fiscal:(r.fiscal||null),at:new Date().toLocaleString()};
+  /* FBR chalu hai magar number nahi aaya — cashier ko abhi bata do,
+     mahine ke aakhir mein nahi. */
+  if(BOOT.fiscal&&BOOT.fiscal.enabled&&!(r.fbr_no||'')){
+    var prov=String(BOOT.fiscal.provider||'NONE').toUpperCase();
+    if(prov==='NONE'){
+      /* Yeh ek dafa ka setup ka kaam hai, har bill ka shor nahi. */
+      if(!window.__fbrWarned){ window.__fbrWarned=1;
+        toast('FBR is enabled for this business but no provider is set — open Tax / Digital Invoice.',true); }
+    }else{
+      var fm=(r.fiscal&&r.fiscal.message)||'fiscal service did not respond';
+      toast('Bill printed. FBR invoice pending: '+fm,true);
+    }
+  }
     if(r.fiscal&&r.fiscal.status&&r.fiscal.status!=='SENT'&&r.fiscal.status!=='NONE'){
       /* FBR tak nahi pohancha - user ko USI WAQT pata chale, mahine baad nahi. */
       toast('Bill completed, but FBR is pending: '+(r.fiscal.message||r.fiscal.status),true);
@@ -1471,10 +1515,28 @@ function slipHtml(kind,lines,info){
      ============================================================ */
   var fbrQr='';
   var fbrNo=(info&&info.fbrNo)?String(info.fbrNo).trim():'';
-  if(kind!=='KOT' && PRINT.qr && fbrNo){
-    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(fbrNo)
+  /* QR sirf tab jab FBR waqai is counter par chal raha ho: feature ON,
+     offline node, AUR provider chuna hua ho. Sirf feature ON dekhna kaafi
+     nahi — jis dukan ne FBR set hi nahi kiya, uske bill par hamesha
+     "PENDING" QR chhapta rehta, jo jhoot hai. */
+  var fbrOn=!!(BOOT.fiscal&&BOOT.fiscal.enabled
+              &&String(BOOT.fiscal.provider||'NONE').toUpperCase()!=='NONE');
+  if(kind!=='KOT' && PRINT.qr && (fbrNo||fbrOn)){
+    /* Do soortein:
+       - FBR number mil gaya  -> wahi QR mein, yeh asli tasdeeq shuda hai.
+       - FBR chalu magar number abhi nahi aaya (service band, ya retry
+         hona hai) -> QR phir bhi chhapta hai (bill par NTN, raqam aur
+         tax), magar neeche PENDING likha jata hai. Khali jagah chhor
+         dena customer aur auditor dono ko gumraah karta hai. */
+    var payload = fbrNo ? fbrNo
+      : ('INV:'+((info&&info.billNo)||billNo)
+         +'|NTN:'+((SET&&SET.ntn)||'')
+         +'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax));
+    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(payload)
       +'" style="width:118px;height:118px" onerror="qrFail(this)">'
-      +'<div class="qrlbl">FBR Invoice QR</div></div>';
+      +'<div class="qrlbl">FBR Invoice QR'+(fbrNo?'':' &middot; PENDING')+'</div>'
+      +(fbrNo?'':'<div style="font-size:9px">will be filed when the fiscal service responds</div>')
+      +'</div>';
   }
   var foot=kind==='KOT'?'<hr>'
     :'<hr><table class="tot">'
@@ -2192,6 +2254,17 @@ function showReport(rep,transferred){
 /* ================= MODAL / WIRING ================= */
 /* V96 — shortcuts ki fehrist. Naya cashier inhen dhoondta hai; F12 ya
    "?" dabane par saamne aa jati hain. */
+/* Strip ke buttons wahi kaam karte hain jo keyboard karta hai — tablet
+   par ungli se, counter par keyboard se. Ek hi handler, do raaste. */
+(function wireKeybar(){
+  var bar=document.getElementById('keybar'); if(!bar)return;
+  bar.addEventListener('click',function(e){
+    var b=e.target.closest('[data-key]'); if(!b)return;
+    var k=b.getAttribute('data-key');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));
+  });
+})();
+
 function showKeys(){
   var rows=[
     ['F1','New bill'],['F2','Send to kitchen'],['F3','Charge / payment'],

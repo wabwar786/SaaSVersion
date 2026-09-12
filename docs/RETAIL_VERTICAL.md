@@ -1590,3 +1590,55 @@ Bill: 3,900 of goods, cash tax 16%
 INCLUSIVE   Subtotal 3,900   Sales Tax 16%   537.93   GRAND 3,900.00
 EXCLUSIVE   Subtotal 3,900   Sales Tax 16%   624.00   GRAND 4,524.00
 ```
+
+---
+
+## 38. Shortcut bar on Sale Point, and the missing FBR QR
+
+### Shortcut bar
+
+The retail POS had a shortcut strip along the bottom; the restaurant POS
+never did — its shortcuts only existed inside the F12 dialog. A thing
+nobody can see is a thing nobody learns.
+
+Added the same strip to Sale Point: F1 new bill, F2 kitchen, **F3 charge**
+(highlighted), F4 hold, F6 duplicate, F7 bill type, F9 void, F10 new
+item, plus Ctrl+K, +/−, Del, and F12 for the full list.
+
+The buttons are clickable too — they dispatch the same keyboard event, so
+a tablet user taps what a counter user presses. One handler, two routes.
+
+### Why the QR was missing
+
+The plumbing was fine — `pos-finalize` returns `fbr_no` and the receipt
+reads it. The check on the actual node:
+
+```
+fiscal : { enabled: true, tenant_on: true, provider: 'NONE' }
+```
+
+FBR was switched on in Super Admin, but **no fiscal provider was chosen
+on the node**, so nothing was ever submitted and no invoice number came
+back. The receipt correctly printed no QR — silently, which is why it
+looked like a bug.
+
+### What changed
+
+**QR now prints whenever FBR is genuinely running on that counter:**
+feature ON, offline node, **and** a provider chosen.
+
+| Feature | Provider | Number | QR |
+|---|---|---|---|
+| on | FBR | FBR-123 | **yes** — the real number |
+| on | FBR | none yet | **yes** — marked `PENDING` |
+| on | NONE | none | no |
+| off | — | — | no |
+
+Only checking "feature ON" was not enough: a shop that never set FBR up
+would print a `PENDING` QR on every bill forever, which is a lie on
+paper.
+
+**And the cashier is told.** Provider not set → one toast, once per
+session, pointing at Tax / Digital Invoice. Provider set but the service
+did not answer → the bill prints and the message names the reason.
+Nothing fails in silence any more.
