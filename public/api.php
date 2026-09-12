@@ -783,7 +783,11 @@ case 'fiscal-retry':needLogin();
 case 'settings-get':needLogin();
  /* V63 — Settings page ab ASLI data dikhata hai (pehle 100% localStorage
     tha: "Urban Spoon", hardcoded NTN, aur Save par kuch hota hi nahi tha). */
- ok(['settings'=>SettingsService::get()]);
+ /* Tax mode bhi yahin se jata hai — POS isi call se apne rates leta hai,
+    to ek hi jagah se poori tax ki tasveer mil jati hai. */
+ $st=SettingsService::get();
+ $st['tax_mode']=\Aio\Services\TaxMode::current();
+ ok(['settings'=>$st]);
 
 case 'settings-save':needLogin();$d=body();
  Audit::log('SETTINGS_CHANGE','settings');

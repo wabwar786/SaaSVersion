@@ -1476,3 +1476,58 @@ restaurant 1000  INCLUSIVE : tax 145.30  customer pays 1000.00
 save/read (both verticals, over HTTP) : OK
 invalid value                          : rejected
 ```
+
+---
+
+## 36. The tax-mode setting did nothing on the restaurant POS
+
+A customer bill showed it plainly:
+
+```
+Settings : Price mode = "Tax included in the price", cash tax 16%
+Bill     : Subtotal 3,900 · Sales Tax 624 · GRAND TOTAL 4,524
+```
+
+3,900 × 16% = 624 added **on top** — exclusive behaviour, with the
+setting on inclusive.
+
+### Why
+
+The setting was wired into the services and into retail, but the
+**restaurant POS runs its totals in the browser**, and that code was
+never touched:
+
+```js
+var tax = (base+sv) * orderTax/100;
+return { ..., grand: base+sv+tax };     // always exclusive
+```
+
+The POS also never received the mode (`settings-get` did not send it)
+and sent only `tax_amount` on finalize — no rate — so the new
+server-side check fell back to the browser's figure every time.
+
+End to end, the setting changed nothing for a restaurant.
+
+**My mistake:** I tested `TaxMode::split()` and `RegionProfile::billTotals()`
+and called the feature done. Neither of those is on the restaurant POS
+path. A service that computes correctly is not a feature that works.
+
+### Fixed
+
+- `settings-get` now returns `tax_mode` (the POS already calls it for rates).
+- `totals()` respects the mode: inclusive extracts tax and leaves the
+  grand total equal to the menu price.
+- The POS sends `tax_rate` on finalize, so the server recomputes instead
+  of trusting the browser.
+- Receipt wording: inclusive prints **"Sales Tax (incl.)"**, because
+  "Subtotal + Sales Tax = GRAND TOTAL" is untrue when the tax is already
+  inside the subtotal.
+
+### That same bill, after the fix
+
+| | Subtotal | Sales Tax | Grand total |
+|---|---|---|---|
+| Before (exclusive, despite the setting) | 3,900 | 624.00 | **4,524.00** |
+| After (inclusive, as set) | 3,900 | 537.93 | **3,900.00** |
+
+Net value 3,362.07 — that is what goes to FBR as the taxable amount.

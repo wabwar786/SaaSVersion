@@ -1129,13 +1129,37 @@ function newCustomerModal(cb){
 }
 
 /* ================= CART ================= */
+/* ============================================================
+   TOTALS — ab Settings ka "Price mode" maanta hai.
+
+   Yeh function hamesha `tax = base * rate` kar ke `grand = base + tax`
+   deta tha — yani EXCLUSIVE, chahe Settings mein kuch bhi likha ho.
+   Nateeja: menu par 3,900 ka bill 4,524 ban jata tha, jabke setting
+   "Tax included in the price" par thi.
+
+   INCLUSIVE: rate mein tax pehle se shamil hai. Customer utna hi deta
+   hai jitna menu par likha hai; tax usi raqam se nikala jata hai.
+   EXCLUSIVE: tax upar se lagta hai (purana behaviour).
+   ============================================================ */
+function taxInclusive(){ return String(SET.tax_mode||'INCLUSIVE').toUpperCase()==='INCLUSIVE'; }
+
 function totals(){
   var sub=cart.reduce(function(a,l){return a+l.qty*l.price},0);
   var d=Math.min(disc.type==='percent'?sub*disc.value/100:disc.value,sub);
   var base=sub-d;
   var sv=svc.type==='percent'?base*svc.value/100:svc.value;
-  var tax=(base+sv)*orderTax/100;
-  return {sub:sub,disc:d,svc:sv,tax:tax,grand:base+sv+tax};
+  var gross=base+sv, r=orderTax/100, tax, grand, net;
+
+  if(taxInclusive()){
+    net   = r>0 ? gross/(1+r) : gross;
+    tax   = gross-net;
+    grand = gross;                 /* customer utna hi deta hai */
+  }else{
+    net   = gross;
+    tax   = gross*r;
+    grand = gross+tax;
+  }
+  return {sub:sub,disc:d,svc:sv,tax:tax,net:net,grand:grand,inclusive:taxInclusive()};
 }
 function renderCart(){
   var c=$('#cart');
@@ -1159,7 +1183,8 @@ function renderCart(){
   $('#tSub').textContent=money(t.sub);
   $('#tDisc').textContent='- '+money(t.disc);
   $('#tSvc').textContent=money(t.svc)+(svc.value&&svc.type==='percent'?' ('+svc.value+'%)':'');
-  $('#tTax').textContent=money(t.tax)+' ('+orderTax+'% '+esc(payMethod)+')';
+  $('#tTax').textContent=money(t.tax)+' ('+orderTax+'% '+esc(payMethod)
+    +(t.inclusive?', incl.':'')+')';
   $('#tGrand').textContent=money(t.grand);
 
   $('#kotBtn').disabled=!cart.some(function(l){return l.qty-l.sentQty>0});
@@ -1201,7 +1226,7 @@ function payload(extra){
   var t=totals();
   var d={bill_no:billNo,service_mode:mode,table_name:mode==='Dine In'?curTable:'',
     customer_id:curCustId||'walkin',customer_name:curCustName||'Walk-in Customer',customer_phone:curCustPhone||'',
-    shift_id:(shift&&shift.id)||'',discount_amount:t.disc,service_charge:t.svc,tax_amount:t.tax,
+    shift_id:(shift&&shift.id)||'',discount_amount:t.disc,service_charge:t.svc,tax_amount:t.tax,tax_rate:orderTax,tax_mode:(SET.tax_mode||'INCLUSIVE'),
     items:cart.map(function(l){return {menu_item_id:l.id,base_name:l.name,name:l.name,qty:l.qty,unit_price:l.price,sent_qty:l.sentQty,note:l.note||''}})};
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
@@ -1453,10 +1478,15 @@ function slipHtml(kind,lines,info){
   }
   var foot=kind==='KOT'?'<hr>'
     :'<hr><table class="tot">'
+      /* INCLUSIVE mein "Subtotal + Sales Tax = GRAND TOTAL" jhoot hota hai
+         (tax subtotal ke ANDAR hai). Is liye us soorat mein tax ko
+         "included" likh kar dikhaya jata hai, jama nahi kiya jata. */
       +'<tr><td>Subtotal</td><td class="r">'+money(t.sub)+'</td></tr>'
       +(t.disc?'<tr><td>Discount</td><td class="r">-'+money(t.disc)+'</td></tr>':'')
       +(t.svc?'<tr><td>Service Charge</td><td class="r">'+money(t.svc)+'</td></tr>':'')
-      +(t.tax?'<tr><td>Sales Tax</td><td class="r">'+money(t.tax)+'</td></tr>':'')
+      +(t.tax?(t.inclusive
+          ? '<tr><td>Sales Tax (incl.)</td><td class="r">'+money(t.tax)+'</td></tr>'
+          : '<tr><td>Sales Tax</td><td class="r">'+money(t.tax)+'</td></tr>'):'')
       +'<tr class="gt"><td>GRAND TOTAL</td><td class="r">'+money(t.grand)+'</td></tr>'
       +(info?'<tr><td>Paid ('+esc(info.pay)+')</td><td class="r">'+money(info.rcv)+'</td></tr>'
         +'<tr><td>Change</td><td class="r">'+money(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
