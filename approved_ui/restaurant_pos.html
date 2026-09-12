@@ -31,6 +31,11 @@ button{cursor:pointer;border:0;background:none}
 .kb i{font-style:normal;background:rgba(255,255,255,.16);border-radius:4px;padding:1px 6px;
   font-size:10px;font-weight:800;color:#fff}
 .kb.hot i{background:var(--green,#1f8a5f)}
+/* Account band ho to yeh sab se numayan cheez honi chahiye */
+.kb.acct{font-weight:800;color:#fff}
+.kb.acct.closed{background:#8c1d24}
+.kb.acct.closed i{background:rgba(255,255,255,.25)}
+.kb.acct.open i{background:var(--green,#1f8a5f)}
 @media(max-width:820px){.keybar{height:32px}.kb{padding:0 9px;font-size:10.5px}}
 
 /* ---------- top ---------- */
@@ -383,6 +388,10 @@ textarea.inp{min-height:62px;resize:vertical}
 
   <!-- ============ SHORTCUT BAR ============ -->
   <div class="keybar" id="keybar">
+    <!-- Account (shift) sab se pehle: bina iske koi bill ban hi nahi sakta.
+         Pehle yeh sirf status strip ke chhote se "Open" link mein tha,
+         jise cashier dhoondta hi reh jata tha. -->
+    <button class="kb acct" id="kbAcct"><i>F11</i> <span id="kbAcctTxt">Open account</span></button>
     <button class="kb" data-key="F1"><i>F1</i> New bill</button>
     <button class="kb" data-key="F2"><i>F2</i> Send to kitchen</button>
     <button class="kb hot" data-key="F3"><i>F3</i> Charge / payment</button>
@@ -774,6 +783,7 @@ function renderStrip(){
     +(n===0?'<span style="color:var(--warn);font-weight:700">Menu is empty &mdash; "+ New Item" to create one</span>':'')
     +'<a href="#" id="sDiag" style="color:var(--ink3)">Diagnostics</a>'
     +'<span class="ver">'+VERSION+'</span>';
+  paintAcct();
   var a=$('#sOpen'); if(a)a.onclick=function(e){e.preventDefault();openGate()};
   var b=$('#sClose'); if(b)b.onclick=function(e){e.preventDefault();closeShift()};
   var d=$('#sDiag'); if(d)d.onclick=function(e){e.preventDefault();showDiagnostics()};
@@ -2191,7 +2201,15 @@ function closeShift(){
       note:ov.querySelector('#cn').value||'',
       clear_cash:(ov.querySelector('#clrChk')&&ov.querySelector('#clrChk').checked)?1:0});
     if(!r.ok){this.disabled=false;this.textContent='Close Shift and Report';toast(r.message||'Failed');return}
-    ov.remove();shift=null;renderStrip();showReport(r.report);
+    ov.remove();shift=null;renderStrip();
+    /* Account band hote hi us shift ki poori report khud chhap jati hai —
+       cashier ko Print dhoondna na pare, aur malik ko har shift ka kagaz
+       mile. Dialog phir bhi khulta hai (dobara print ya transfer ke liye). */
+    showReport(r.report);
+    try{
+      var sid=r.report&&(r.report.shift_id||r.report.id);
+      if(sid) window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid),'_blank');
+    }catch(e){}
   };
 }
 /* ---- Shift transfer: cash handover with record ---- */
@@ -2259,17 +2277,31 @@ function showReport(rep,transferred){
 (function wireKeybar(){
   var bar=document.getElementById('keybar'); if(!bar)return;
   bar.addEventListener('click',function(e){
+    var a=e.target.closest('#kbAcct');
+    if(a){ shift?closeShift():openGate(); return; }
     var b=e.target.closest('[data-key]'); if(!b)return;
     var k=b.getAttribute('data-key');
     document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));
   });
 })();
 
+/* Account button ki halat — har render par taza. Band ho to laal, taake
+   cashier ko pehli nazar mein pata chale ke billing shuru nahi ho sakti. */
+function paintAcct(){
+  var b=document.getElementById('kbAcct'), t=document.getElementById('kbAcctTxt');
+  if(!b||!t)return;
+  if(!hasMod('shift')&&!CAN.manage){ b.style.display='none'; return; }
+  b.style.display='';
+  if(shift){ b.className='kb acct open'; t.textContent='Close account'; b.title='Close the shift and print the report'; }
+  else     { b.className='kb acct closed'; t.textContent='Open account'; b.title='No bill can be made until the account is open'; }
+}
+
 function showKeys(){
   var rows=[
     ['F1','New bill'],['F2','Send to kitchen'],['F3','Charge / payment'],
     ['F4','Hold bills'],['F6','Duplicate bill'],['F7','Change bill type / table'],
     ['F9','Void / refund'],['F10','New item'],
+    ['F11','Open / close account (shift)'],
     ['Ctrl + K','Search menu'],['Ctrl + P','Charge'],['Ctrl + H','Hold bills'],
     ['Esc','Close dialog'],
     ['+  /  -','Last item ka qty barhao / ghatao'],
@@ -2354,6 +2386,9 @@ document.addEventListener('keydown',function(e){
   if(e.key==='F9'){e.preventDefault();click('#voidBtn');return}
   if(e.key==='F10'){e.preventDefault();click('#newItemBtn');return}
   if(e.key==='F12'||e.key==='?'){e.preventDefault();showKeys();return}
+  /* F11 = account kholna / band karna. Yehi pehla aur aakhri kaam hota
+     hai har shift ka, is liye iski apni key. */
+  if(e.key==='F11'&&(hasMod('shift')||CAN.manage)){e.preventDefault();shift?closeShift():openGate();return}
 
   if(e.ctrlKey||e.metaKey){
     var k=(e.key||'').toLowerCase();

@@ -1642,3 +1642,58 @@ paper.
 session, pointing at Tax / Digital Invoice. Provider set but the service
 did not answer → the bill prints and the message names the reason.
 Nothing fails in silence any more.
+
+---
+
+## 39. Opening / closing the account from Sale Point
+
+A cashier was given exactly two modules — **Opening & Closing Shift**
+and **Sale Point**. The POS opened, a new bill started, and on saving it
+said *"open account first"* — with no way anywhere on the screen to open
+one.
+
+### Why
+
+The controls existed, but only as a small text link inside the status
+strip (`Shift closed · Open`) and a **My Shift** button that is injected
+next to `#dupBtn` — and that button is hidden for some roles, so the
+insert had nothing to anchor to. Everything else on the screen was
+billing, which is precisely the thing that cannot start yet.
+
+The gate was right; the door was hidden.
+
+### Now
+
+The shortcut bar carries the account control as its **first** item, and
+it is impossible to miss:
+
+| State | Button |
+|---|---|
+| No shift | **red** — `F11 Open account` |
+| Shift open | **green** — `F11 Close account` |
+
+- Shown to anyone with the `shift` module (or a manager) — no role
+  guessing.
+- **F11** does the same from the keyboard.
+- Repainted on every strip render, so it always matches reality.
+
+### Closing prints the report
+
+Closing the account now **opens the full shift report for printing by
+itself** — category-wise sales, item lines, payment mix, cash
+reconciliation and a signature line. The dialog still appears for a
+reprint or a cash handover.
+
+Previously the cashier had to notice the Print button in the dialog; if
+they clicked Done, the shift closed with no paper at all.
+
+### Tested as that exact cashier
+
+```
+login          : ok, modules ['shift','pos']
+restaurant_pos : 200, account button present
+shift-open     : ok  S-260912-0DFC, Counter 1, opening 5000
+shift-current  : returns the open shift
+shift-preview  : report with expected cash
+shift-close    : ok, report carries shift_id (so auto-print can find it)
+```
