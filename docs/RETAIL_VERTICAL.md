@@ -1420,3 +1420,59 @@ grace  5 days past       : locked, 26 days left, nothing deleted
 grace 40 days past       : 27 rows removed; users/tenant/sync token kept
 purge run twice          : second run does nothing
 ```
+
+---
+
+## 35. Tax mode — inclusive or exclusive (both verticals)
+
+A new setting in **Settings → Tax** for restaurant and retail alike.
+
+| Mode | Shelf price 117, tax 17% | What the customer pays |
+|---|---|---|
+| **Inclusive** | 100 net + 17 tax | **117** — nothing extra |
+| **Exclusive** | 117 net + 19.89 tax | **136.89** |
+
+### Why this had to become a setting
+
+Retail was deciding it from the **region profile** (PK/UK inclusive, US
+exclusive), so two shops in the same country could not differ. The
+restaurant was worse: the POS **browser** sent whatever `tax_amount` it
+had calculated and the server saved it as-is — two tills could disagree,
+and the number that reached FBR had no server-side check at all.
+
+Now there is one setting, in one place, used by both verticals and by
+FBR. The region still supplies the **default**, so nothing changes for an
+existing shop until someone deliberately changes it.
+
+### What changed underneath
+
+- New `TaxMode` service — `current()`, `set()`, `split()`.
+- **Retail:** `RegionProfile::isExclusive()` now prefers the saved
+  setting and falls back to the region.
+- **Restaurant:** `PosService::finalize()` computes the tax **on the
+  server** from the mode and rate instead of trusting the client. If an
+  older POS sends no rate, its own figure is still accepted — otherwise
+  old builds would suddenly bill without tax.
+- Admin only (`isManager`), because this changes the figures on every
+  bill and on every FBR invoice.
+
+### FBR
+
+The digital invoice carries taxable value and tax amount separately. Get
+the mode wrong and both are wrong on every invoice — so this setting
+decides what is *reported*, not just what prints. The settings screen
+shows FBR status right next to the control, and warns plainly when FBR
+is off for that business.
+
+### Tested
+
+```
+split 117 @17%   INCLUSIVE : net 100.00  tax 17.00  gross 117.00
+                 EXCLUSIVE : net 117.00  tax 19.89  gross 136.89
+retail bill      INCLUSIVE : subtotal 100.00  tax 14.53  total 100.00
+                 EXCLUSIVE : subtotal 100.00  tax 17.00  total 117.00
+restaurant 1000  INCLUSIVE : tax 145.30  customer pays 1000.00
+                 EXCLUSIVE : tax 170.00  customer pays 1170.00
+save/read (both verticals, over HTTP) : OK
+invalid value                          : rejected
+```

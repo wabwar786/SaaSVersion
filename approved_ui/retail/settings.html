@@ -33,6 +33,23 @@
       </div>
 
       <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Tax on POS bills</h2>
+          <p>Are your prices tax-inclusive or tax-exclusive?</p></div>
+          <span class="spacer" style="flex:1"></span>
+          <span class="tag neutral plain" id="taxFbr">—</span></div>
+        <div class="panel-body">
+          <div id="taxBox"></div>
+          <label class="field" style="margin-top:12px"><span>Price mode</span>
+            <select id="taxMode">
+              <option value="INCLUSIVE">Tax included in the price</option>
+              <option value="EXCLUSIVE">Tax added at the till</option>
+            </select></label>
+          <div class="note" id="taxEg" style="margin-bottom:12px"></div>
+          <button class="btn primary" id="taxSave">Save tax mode</button>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top:14px">
         <div class="panel-head"><div><h2>Receipt</h2><p>80 mm thermal par kya chhape</p></div>
           <span class="spacer" style="flex:1"></span>
           <button class="btn primary" id="btnSave">Save</button></div>
@@ -72,6 +89,32 @@
     cell(esc(r.tax_label)+' rate',r.default_tax+'%')+
     cell('Barcode',esc(r.barcode))+cell('Weight unit',esc(r.weight_unit))+'</div>';
   $('rHead').value=b.name; $('rAddr').value=br;
+  /* ---- Tax mode ---- */
+  function paintTax(t){
+    $('taxMode').value=t.mode;
+    $('taxEg').textContent=t.example;
+    $('taxFbr').textContent = t.fbr_on ? 'FBR active' : 'FBR off';
+    $('taxFbr').className = 'tag '+(t.fbr_on?'ok':'neutral')+' plain';
+    $('taxBox').innerHTML='<div class="note" style="margin:0">'
+      +'<b>'+esc(t.label)+'</b>'
+      +(t.saved?'':' <span class="hint">&middot; using the '+esc(t.default)+' default for your region</span>')
+      +(t.fbr_on?'':'<br><span style="color:var(--warn)">FBR is off for this business. '
+        +'The tax still prints on the bill, but no digital invoice is filed.</span>')
+      +'</div>';
+  }
+  if(S.online){
+    try{ paintTax(S.api('tax-mode-get').tax); }catch(e){ $('taxBox').textContent='Could not load the tax setting.'; }
+  }
+  $('taxSave').onclick=function(){
+    if(!S.online){toast('Sign in to change this',true);return}
+    var b=this; b.disabled=true; b.textContent='Saving…';
+    try{
+      var r=S.api('tax-mode-save',{mode:$('taxMode').value});
+      paintTax(r.tax); toast(r.message||'Saved');
+    }catch(e){ toast(e.message||'Could not save',true); }
+    b.disabled=false; b.textContent='Save tax mode';
+  };
+
   $('btnSave').onclick=function(){
     var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
     t.textContent='Receipt settings saved';t.className='toast show';setTimeout(function(){t.className='toast'},1700);

@@ -51,6 +51,15 @@ final class RegionProfile
 
     public static function isExclusive(?string $code = null): bool
     {
+        /* Region sirf DEFAULT deta hai. Agar business ne apna tax mode
+           chun liya hai (Settings > Tax) to wahi chalta hai — do dukanein
+           ek hi mulk mein alag tareeqe se kaam kar sakti hain. */
+        if ($code === null) {
+            try {
+                $saved = \Aio\Services\TaxMode::saved();
+                if ($saved !== null) return $saved === 'EXCLUSIVE';
+            } catch (\Throwable $e) { /* setting na mile to region par wapas */ }
+        }
         return self::get($code)['price_mode'] === 'EXCLUSIVE';
     }
 

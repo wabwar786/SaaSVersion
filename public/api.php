@@ -760,6 +760,18 @@ case 'fiscal-test':needLogin();
  if(!Auth::isManager())fail('Admins and Managers only',403);
  $r=FiscalService::test();ok(['result'=>$r]);
 
+case 'tax-mode-get':needLogin();
+ ok(['tax'=>\Aio\Services\TaxMode::describe()]);
+
+case 'tax-mode-save':needLogin();$d=body();
+ /* Yeh setting har bill ke aankron ko badalti hai — aur FBR par wahi
+    aankray jate hain. Is liye sirf Admin/Manager. */
+ if(!Auth::isManager())fail('Admins and Managers only',403);
+ try{ $m=\Aio\Services\TaxMode::set((string)($d['mode']??'')); }
+ catch(Throwable $e){ fail($e->getMessage()); }
+ ok(['tax'=>\Aio\Services\TaxMode::describe($m),
+     'message'=>'Saved. New bills use this from now on; bills already closed are not changed.']);
+
 case 'fiscal-pending':needLogin();
  ok(['pending'=>FiscalService::pending(),'available_here'=>FiscalService::availableHere()]);
 

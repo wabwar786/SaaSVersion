@@ -36,8 +36,21 @@
             <label class="field"><span>Cash payment tax % <span class="hint">&middot; cash bills</span></span><input type="number" step="0.01" min="0" max="100" data-s="tax_cash"></label>
             <label class="field"><span>Card / online payment tax % <span class="hint">&middot; card, wallet, bank</span></span><input type="number" step="0.01" min="0" max="100" data-s="tax_card"></label>
             <label class="field full"><span>Service charge %</span><input type="number" step="0.01" min="0" max="100" data-s="service_charge"></label>
+            <label class="field full"><span>Price mode
+              <span class="hint">&middot; are your menu prices tax-inclusive?</span></span>
+              <select id="taxMode">
+                <option value="INCLUSIVE">Tax included in the price</option>
+                <option value="EXCLUSIVE">Tax added at the till</option>
+              </select></label>
+            <div class="note full" id="taxEg" style="margin-top:4px"></div>
             <div class="note full" style="margin-top:4px">These are the same rates used by the <b>Sale Point</b> &mdash; changing them here applies immediately on the POS.</div>
-          </div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+            <span class="tag neutral plain" id="taxFbr">&mdash;</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn primary" id="taxSave">Save price mode</button>
+          </div>
+          </div>
         </section>
       </div>
       <div class="split" style="margin-top:14px">
@@ -111,6 +124,29 @@
 
   function load(){
     if(!window.DBApi){toast('Server connection not found. Page refresh plea.',true);return}
+    /* ---- Price mode (tax inclusive / exclusive) ----
+       Yeh alag endpoint par hai kyunke dono verticals (restaurant aur
+       retail) ek hi setting istemal karte hain. */
+    (function(){
+      function paint(t){
+        var el=document.getElementById('taxMode'); if(!el)return;
+        el.value=t.mode;
+        document.getElementById('taxEg').textContent=t.example;
+        var f=document.getElementById('taxFbr');
+        f.textContent = t.fbr_on ? 'FBR active' : 'FBR off for this business';
+        f.className   = 'tag '+(t.fbr_on?'ok':'warn')+' plain';
+      }
+      try{ var g=DBApi.req('tax-mode-get'); if(g&&g.ok)paint(g.tax); }catch(e){}
+      var b=document.getElementById('taxSave');
+      if(b)b.onclick=function(){
+        this.disabled=true;this.textContent='Saving...';
+        var r=DBApi.req('tax-mode-save',{mode:document.getElementById('taxMode').value});
+        this.disabled=false;this.textContent='Save price mode';
+        if(!r||!r.ok){toast((r&&r.message)||'Could not save',true);return}
+        paint(r.tax); toast(r.message||'Saved');
+      };
+    })();
+
     var r=DBApi.req('settings-get');
     if(!r.ok){toast(r.message||'Settings could not be loaded',true);return}
     var d=r.settings||{};
