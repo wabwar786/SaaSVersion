@@ -1484,9 +1484,11 @@ function slipHtml(kind,lines,info){
       +'<tr><td>Subtotal</td><td class="r">'+money(t.sub)+'</td></tr>'
       +(t.disc?'<tr><td>Discount</td><td class="r">-'+money(t.disc)+'</td></tr>':'')
       +(t.svc?'<tr><td>Service Charge</td><td class="r">'+money(t.svc)+'</td></tr>':'')
-      +(t.tax?(t.inclusive
-          ? '<tr><td>Sales Tax (incl.)</td><td class="r">'+money(t.tax)+'</td></tr>'
-          : '<tr><td>Sales Tax</td><td class="r">'+money(t.tax)+'</td></tr>'):'')
+      /* Tax ke sath uska % bhi — customer aur auditor dono ko foran
+         pata chale ke kis rate par laga hai. Inclusive mein "incl."
+         likha jata hai, kyunke wo raqam subtotal ke ANDAR hai. */
+      +(t.tax?('<tr><td>Sales Tax '+orderTax+'%'+(t.inclusive?' (incl.)':'')
+               +'</td><td class="r">'+money(t.tax)+'</td></tr>'):'')
       +'<tr class="gt"><td>GRAND TOTAL</td><td class="r">'+money(t.grand)+'</td></tr>'
       +(info?'<tr><td>Paid ('+esc(info.pay)+')</td><td class="r">'+money(info.rcv)+'</td></tr>'
         +'<tr><td>Change</td><td class="r">'+money(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')

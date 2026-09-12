@@ -1531,3 +1531,62 @@ path. A service that computes correctly is not a feature that works.
 | After (inclusive, as set) | 3,900 | 537.93 | **3,900.00** |
 
 Net value 3,362.07 — that is what goes to FBR as the taxable amount.
+
+---
+
+## 37. EXCLUSIVE had no effect either — same bug, second door
+
+Inclusive worked after the last fix. Switching to "Tax added at the
+till" changed nothing: no extra tax was added.
+
+### Why
+
+The POS builds its `SET` object from **`pos-boot`**, not from
+`settings-get`:
+
+```js
+if (BOOT.settings) { SET = BOOT.settings; ... }   // line 700
+```
+
+Last round I added `tax_mode` to `settings-get`. The POS does call that
+endpoint — but only for the receipt footer and paper size. `SET` is
+overwritten from `pos-boot`, which did not carry the mode. So
+`SET.tax_mode` was `undefined`, and:
+
+```js
+function taxInclusive(){ return String(SET.tax_mode||'INCLUSIVE')... }
+```
+
+…fell back to INCLUSIVE every time. Inclusive appeared to work for the
+right reason by accident; exclusive could never work at all.
+
+**The lesson I keep relearning on this feature:** I verified the
+endpoint returned the value instead of verifying the POS *used* it. Two
+rounds, same class of mistake.
+
+### Fixed
+
+- `pos-boot` and `pos-settings` now both return `tax_mode`.
+- Verified through the endpoint the POS actually reads:
+  `set EXCLUSIVE -> pos-boot returns EXCLUSIVE`.
+
+### Tax % on the bill
+
+Now printed next to the amount, in both verticals:
+
+```
+Sales Tax 16%            PKR 624.00       (exclusive)
+Sales Tax 16% (incl.)    PKR 537.93       (inclusive)
+```
+
+Retail prints the rate too, and only when every line on the bill shares
+one rate — with mixed rates a single percentage would be misleading, so
+it is left off.
+
+### The real POS function, both modes
+
+```
+Bill: 3,900 of goods, cash tax 16%
+INCLUSIVE   Subtotal 3,900   Sales Tax 16%   537.93   GRAND 3,900.00
+EXCLUSIVE   Subtotal 3,900   Sales Tax 16%   624.00   GRAND 4,524.00
+```

@@ -807,7 +807,13 @@ function buildReceipt(sale,dup){
     '<div class="rw"><span>'+esc(sale.customer)+'</span><span>'+esc(sale.price_level)+'</span></div><hr>'+rows+'<hr>'+
     '<div class="rw"><span>Subtotal</span><span>'+R.moneyPlain(sale.subtotal)+'</span></div>'+
     (sale.discount>0?'<div class="rw"><span>Discount</span><span>-'+R.moneyPlain(sale.discount)+'</span></div>':'')+
-    '<div class="rw"><span>'+p.tax_label+'</span><span>'+R.moneyPlain(sale.tax)+'</span></div>'+
+    /* Tax ke sath rate bhi — aur inclusive mein saaf likha jaye ke yeh
+       raqam subtotal ke ANDAR hai, warna "subtotal + tax = total" ka
+       hisaab customer ke samne ghalat lagta hai. */
+    '<div class="rw"><span>'+p.tax_label
+      +(sale.tax_rate?' '+sale.tax_rate+'%':'')
+      +(p.price_mode==='INCLUSIVE'?' (incl.)':'')
+      +'</span><span>'+R.moneyPlain(sale.tax)+'</span></div>'+
     '<div class="rw big"><span>TOTAL</span><span>'+R.moneyPlain(sale.total)+'</span></div><hr>'+
     (sale.paid_cash?'<div class="rw"><span>Cash</span><span>'+R.moneyPlain(sale.paid_cash)+'</span></div>':'')+
     (sale.paid_card?'<div class="rw"><span>Card</span><span>'+R.moneyPlain(sale.paid_card)+'</span></div>':'')+

@@ -190,6 +190,13 @@ final class RetailPos
                 'id' => $saleId, 'bill_no' => $billNo,
                 'subtotal' => $tot['subtotal'], 'discount' => $tot['discount'],
                 'tax' => $tot['tax'], 'total' => $tot['total'],
+                /* Receipt par tax ke sath rate bhi chhapta hai. Agar bill ki
+                   saari lines ek hi rate par hain to wahi bhej do; mixed
+                   rates hon to koi ek % likhna gumraah karega, is liye khali. */
+                'tax_rate' => (function() use ($clean) {
+                    $rates = \array_unique(\array_map(fn($l) => (float)($l['tax_rate'] ?? 0), $clean));
+                    return \count($rates) === 1 ? (float)\reset($rates) : null;
+                })(),
                 'paid_cash' => $cash, 'paid_card' => $card, 'change' => $change,
                 'status' => $method === 'CREDIT' ? 'Credit' : 'Completed',
                 'customer_name' => $custName, 'price_level' => $priceLevel,
