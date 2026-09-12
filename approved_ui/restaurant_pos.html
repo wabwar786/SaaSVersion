@@ -411,7 +411,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v33';
+var VERSION='POS v36';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -771,7 +771,30 @@ function renderCtx(){
   var t=$('#ctxTable'); if(t)t.onclick=changeTable;
   var c=$('#ctxCust'); if(c)c.onclick=function(){newBillFlow(true)};
 }
-function renderAll(){renderStrip();renderCats();renderGrid();renderCart()}
+/* ============================================================
+   Render kabhi KHAMOSHI se na mare.
+
+   `renderAll()` chaar kaam tarteeb se karta hai. Pehle agar `renderStrip()`
+   mein exception aa jati thi, to strip to ban chuki hoti thi magar items
+   aur categories kabhi draw hi nahi hote — screen khali, aur wajah sirf
+   browser console mein. Counter par koi console nahi kholta.
+
+   Ab har hissa alag chalta hai: ek toote to baqi phir bhi chalte hain,
+   aur laal patti par saaf likha aata hai ke kaunsa hissa toota.
+   ============================================================ */
+function renderAll(){
+  var broke=[];
+  [['strip',renderStrip],['categories',renderCats],['items',renderGrid],['cart',renderCart]]
+    .forEach(function(part){
+      try{ part[1](); }
+      catch(e){ broke.push(part[0]+': '+(e&&e.message||e)); }
+    });
+  if(broke.length){
+    try{ banner('Part of the screen did not load &mdash; '+esc(broke.join(' | '))
+      +' <button class="tb" id="diagBtn">Diagnostics</button>'); }catch(_){}
+    try{ console.error('renderAll failed:',broke); }catch(_){}
+  }
+}
 
 function renderStrip(){
   var n=BOOT.products.length;
@@ -2192,7 +2215,17 @@ function repRows(r){
 }
 function closeShift(){
   var pr=api('shift-preview');
-  if(!pr.ok){toast(pr.message||'Failed');return}
+  if(!pr.ok){
+    /* Server kehta hai meri koi shift khuli nahi — to client ka apna
+       khayal ghalat tha. State theek karo aur seedha kholne ka mauqa do,
+       warna cashier "Close" aur "no open shift" ke beech phansa rehta. */
+    if(/no open shift/i.test(pr.message||'')){
+      shift=null; renderStrip();
+      toast('No open account for you — opening one now');
+      openGate(); return;
+    }
+    toast(pr.message||'Failed');return;
+  }
   var rep=pr.report;
   var ov=modal('<div class="dh"><h3>Shift Closing &mdash; '+esc(rep.shift_no)+'</h3><p>Cash count karke actual amount enter please</p></div>'
     +'<div class="db">'+repRows(rep)+'<div class="box"><label class="f">Actual Counted Cash (PKR)</label>'

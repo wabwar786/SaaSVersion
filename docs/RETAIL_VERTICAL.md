@@ -1750,3 +1750,59 @@ CAN undefined        -> no exception
 page                 -> canMod present, old scope bug gone
 pos-boot             -> 13 products, 5 categories
 ```
+
+---
+
+## 41. "No open shift" — the POS was showing someone else's shift
+
+The strip said `Shift S-260910-C5EE · Close`, the button said **Close
+account**, and pressing it answered **"No open shift"**. The cashier
+could neither open an account nor close one.
+
+### Cause
+
+`PageData::posBoot()` picked up **any** open shift in the branch:
+
+```php
+SELECT id,shift_no FROM cashier_shifts
+ WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1
+```
+
+No `cashier_user_id`. So an old shift left open by the admin — dated
+**10 September**, two days earlier — was handed to a cashier who had no
+shift of their own.
+
+Meanwhile `shift-preview` and `shift-close` both scope correctly:
+
+```php
+WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+```
+
+Boot said "you have a shift", the close said "you don't". Both were
+answering honestly; they were answering different questions. The cashier
+was stuck between them.
+
+### Fixed
+
+- `posBoot()` now carries the same condition: **only my open shift**.
+- The client also self-heals: if the server replies "no open shift", the
+  POS clears its own state and opens the shift dialog instead of leaving
+  the cashier arguing with a button.
+
+### Reproduced, then verified
+
+```
+admin leaves S-260910-C5EE open (2 days old)
+cashier signs in   -> BOOT.shift: None          (was: the admin's shift)
+cashier opens      -> S-260912-BD9C, Counter 2
+BOOT.shift         -> S-260912-BD9C             (their own)
+shift-preview      -> ok
+shift-close        -> ok
+```
+
+### Note on the build
+
+The screenshot still showed **POS v33** while the fixes were in v34/v35.
+The on-screen version is now bumped with every POS change for exactly
+this reason — so "is the fix even loaded?" can be answered by looking at
+the screen instead of guessing.

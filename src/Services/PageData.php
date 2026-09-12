@@ -73,7 +73,26 @@ final class PageData {
   $mc=$p->prepare("SELECT mc.name,COALESCE(LOWER(NULLIF(p.station_code,'')),'main') printer FROM menu_categories mc LEFT JOIN menu_category_printer_routes r ON r.category_id=mc.id AND r.is_active=1 AND r.is_primary=1 LEFT JOIN printers p ON p.id=r.printer_id WHERE mc.site_id=? AND mc.deleted_at IS NULL ORDER BY mc.sort_order");$mc->execute([site_id()]);$cats=array_map(fn($x)=>['name'=>$x['name'],'icon'=>'•','printer'=>$x['printer']],$mc->fetchAll());
   $cu=$p->prepare("SELECT c.id,c.full_name name,c.phone,c.customer_type type,ca.address_text address,ca.area FROM customers c LEFT JOIN customer_addresses ca ON ca.customer_id=c.id AND ca.is_default=1 WHERE c.tenant_id=? AND c.status='ACTIVE' ORDER BY c.full_name LIMIT 300");$cu->execute([tenant_id()]);$customers=array_merge([['id'=>'walkin','name'=>'Walk-in Customer','phone'=>'','address'=>'','area'=>'','type'=>'Walk-in']],$cu->fetchAll());
   $tb=$p->prepare("SELECT id,display_name,status,seats FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$tb->execute([site_id()]);$tables=$tb->fetchAll();
-  $sh=$p->prepare("SELECT id,shift_no FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$sh->execute([site_id()]);$shift=$sh->fetch()?:null;
+  /* ============================================================
+     POS ko SIRF apni shift dikhani chahiye.
+
+     Yeh query poore branch ki koi bhi khuli shift utha leti thi. Agar
+     kisi doosre cashier ki shift khuli reh gayi ho (ya kal ki band na
+     hui ho), to naya cashier login karta aur POS use "Shift S-xxxx"
+     dikha deta — jabke uski apni koi shift hai hi nahi.
+
+     Nateeja: strip par shift khuli nazar aati, button "Close account"
+     kehta, magar close dabate hi server sach bolta:
+     "No open shift" — kyunke `shift-close`/`shift-preview` dono
+     `cashier_user_id = mera` par chalte hain. Cashier phans jata tha:
+     na account khul sakta tha, na band ho sakta tha.
+
+     Ab wahi shart yahan bhi: sirf MERI khuli shift.
+     ============================================================ */
+  $sh=$p->prepare("SELECT id,shift_no FROM cashier_shifts
+                    WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                    ORDER BY opened_at DESC LIMIT 1");
+  $sh->execute([site_id(), current_user()['id'] ?? '']);$shift=$sh->fetch()?:null;
   $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,dt.display_name table_name,c.full_name customer_name,pm.name payment_name,fi.provider_invoice_no fbr_no FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN payments py ON py.order_id=o.id LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED' ORDER BY o.closed_at DESC LIMIT 50");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
   return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
  /** Har node ka apna bill prefix (offline package config se; cloud par khali).
