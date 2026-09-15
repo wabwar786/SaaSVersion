@@ -93,7 +93,25 @@ final class PageData {
                     WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
                     ORDER BY opened_at DESC LIMIT 1");
   $sh->execute([site_id(), current_user()['id'] ?? '']);$shift=$sh->fetch()?:null;
-  $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,dt.display_name table_name,c.full_name customer_name,pm.name payment_name,fi.provider_invoice_no fbr_no FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN payments py ON py.order_id=o.id LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED' ORDER BY o.closed_at DESC LIMIT 50");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
+  /* PEHLE 50 bills chunein, PHIR unki tafseel.
+     Ek hi query paanch tables join kar ke phir sort karti thi — 6,000
+     orders par MySQL ko 2,895 rows join karni partin, sirf 50 dikhane ke
+     liye. 27 ms har POS load par, aur data barhne ke sath barhta jata.
+     Ab andar wali query index se seedha 50 ids nikalti hai aur join
+     unhi 50 par lagta hai. */
+  $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,
+                          dt.display_name table_name,c.full_name customer_name,
+                          pm.name payment_name,fi.provider_invoice_no fbr_no
+                     FROM (SELECT id FROM orders
+                            WHERE site_id=? AND business_date=? AND order_status='CLOSED'
+                            ORDER BY closed_at DESC LIMIT 50) pick
+                     JOIN orders o ON o.id=pick.id
+                     LEFT JOIN dining_tables dt ON dt.id=o.table_id
+                     LEFT JOIN customers c ON c.id=o.customer_id
+                     LEFT JOIN payments py ON py.order_id=o.id
+                     LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id
+                     LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id
+                    ORDER BY o.closed_at DESC");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
   return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
  /** Har node ka apna bill prefix (offline package config se; cloud par khali).
   *  Is ke baghair offline aur online dono aaj ke din 0001 banate the aur

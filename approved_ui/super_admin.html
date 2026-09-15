@@ -194,7 +194,9 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
     </div>
     <div class="side-group">
       <h4>System</h4>
+      <button class="side-link" data-nav="usage"><span class="i">◱</span> Usage Analytics</button>
       <button class="side-link" data-nav="console"><span class="i">▶</span> Command Console</button>
+      <button class="side-link" data-nav="commands"><span class="i">?</span> Command Guide</button>
       <button class="side-link" data-nav="audit"><span class="i">≣</span> Audit Log</button>
       <button class="side-link" data-nav="health"><span class="i">✓</span> Health</button>
       <button class="side-link" data-nav="account"><span class="i">⚙</span> Account</button>
@@ -401,6 +403,46 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       </section>
 
       <!-- ---------- COMMAND CONSOLE ---------- -->
+      <section class="sec" data-sec="usage">
+        <div class="card">
+          <div class="card-h"><h3>Daily usage by business</h3>
+            <span class="spacer" style="flex:1"></span>
+            <select id="uDays" style="width:auto">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <button class="btn ghost" id="uCsv">Export CSV</button>
+          </div>
+          <div class="card-b">
+            <div class="note" style="margin-bottom:12px">
+              <b>Usage %</b> = days with at least one bill &divide; days in the window.
+              Signing in is not counted &mdash; a login with no bill is not usage.
+              A business created 5 days ago is measured over 5 days, not 30.
+            </div>
+            <div id="uKpis" class="kpis" style="margin-bottom:12px"></div>
+            <div id="uTable"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" data-sec="commands">
+        <div class="card">
+          <div class="card-h"><h3>Command guide</h3>
+            <span class="spacer" style="flex:1"></span>
+            <div class="search" style="width:260px"><input id="cmdQ" placeholder="Search a task or command"></div>
+          </div>
+          <div class="card-b">
+            <div class="note" style="margin-bottom:14px">
+              Type these in <b>Command Console</b>. Replace <code>&lt;slug&gt;</code>
+              with the business slug (run <code>list</code> to see them) and type the
+              name <b>exactly</b> as it appears &mdash; without the angle brackets.
+            </div>
+            <div id="cmdList"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="sec" data-sec="console">
         <div class="pagehead"><div><h2>Command Console</h2>
           <p class="lead">Type a command to inspect, back up, reset or delete a business</p></div></div>
@@ -510,7 +552,9 @@ function sModal(html,wide){
 }
 
 /* ===================== NAV ===================== */
-var TITLES={dash:['Dashboard','Platform overview'],
+var TITLES={
+  usage:['Usage Analytics','Who is actually using the software, and how much'],
+  commands:['Command Guide','Every console command, with a worked example'],dash:['Dashboard','Platform overview'],
   sync:['Sync Monitor','Branch computers and data transfers'],
   biz:['All Businesses','Every tenant on the platform'],
   create:['Create Business','New tenant setup'],
@@ -523,7 +567,28 @@ var TITLES={dash:['Dashboard','Platform overview'],
   account:['Account','Super admin password']};
 
 function nav(sec){
-  Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b){
+  document.addEventListener('click',function(e){
+  var c=e.target.closest('[data-cmd]');
+  if(c){ copyText(c.getAttribute('data-cmd')); c.textContent='Copied';
+         setTimeout(function(){c.textContent='Copy'},1200); }
+});
+document.addEventListener('input',function(e){ if(e.target.id==='cmdQ')paintCommands(); });
+document.addEventListener('change',function(e){ if(e.target.id==='uDays')loadUsage(); });
+document.addEventListener('click',function(e){
+  if(e.target.id!=='uCsv')return;
+  if(!__usage.length){toast('Nothing to export yet');return}
+  var cols=['name','slug','industry','usage_pct','active_days','window_days','bills',
+            'bills_per_day','amount','last_bill','idle_days','users','modules_used','health'];
+  var csv=[cols.join(',')].concat(__usage.map(function(r){
+    return cols.map(function(c){return '"'+String(r[c]===null||r[c]===undefined?'':r[c]).replace(/"/g,'""')+'"'}).join(',');
+  })).join('\r\n');
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='usage-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+});
+
+Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b){
     b.classList.toggle('on',b.dataset.nav===sec)});
   Array.prototype.forEach.call(document.querySelectorAll('[data-sec]'),function(d){
     d.classList.toggle('on',d.dataset.sec===sec)});
@@ -534,6 +599,8 @@ function nav(sec){
   if(sec==='console'){setTimeout(function(){var i=$('termIn');if(i)i.focus()},60);}
   if(sec==='audit')loadAudit();
   if(sec==='health')checkHealth();
+  if(sec==='usage')loadUsage();
+  if(sec==='commands')loadCommands();
   if(sec==='backup'||sec==='import')fillBizSelects();
   document.querySelector('.sidebar').classList.remove('open');
 }
@@ -759,6 +826,174 @@ async function bizBrand(id){
    screen par `fbr` 40 modules ki list mein ek checkbox tha — is liye
    yahan uska apna saaf button rakha gaya hai.
    ============================================================ */
+/* ============================================================
+   USAGE ANALYTICS
+   ============================================================ */
+var __usage=[];
+async function loadUsage(){
+  var days=Number((document.getElementById('uDays')||{}).value||30);
+  var box=document.getElementById('uTable'); if(box)box.innerHTML='<p class="muted">Loading…</p>';
+  var r=await api('sa-usage&days='+days);
+  if(!r.ok){ if(box)box.innerHTML='<p class="muted">'+esc(r.message||'Could not load')+'</p>'; return }
+  __usage=r.usage||[];
+  paintUsage();
+}
+
+function paintUsage(){
+  var rows=__usage, live=rows.filter(function(x){return !x.is_demo});
+  var active=live.filter(function(x){return x.active_days>0});
+  var risk  =live.filter(function(x){return x.health==='AT_RISK'||x.health==='NEVER_USED'});
+  var bills =rows.reduce(function(a,x){return a+x.bills},0);
+  var avg   =active.length?Math.round(active.reduce(function(a,x){return a+x.usage_pct},0)/active.length):0;
+
+  document.getElementById('uKpis').innerHTML=
+     kpi('Paying businesses',live.length,'')
+    +kpi('Used at least once',active.length,live.length?Math.round(active.length/live.length*100)+'% of them':'')
+    +kpi('Average usage',avg+'%','of days with a bill')
+    +kpi('Need attention',risk.length,'idle 14+ days or never used','warn');
+
+  var H=['Business','Type','Usage','Active days','Bills','Per active day','Last bill','Idle','Users','Modules','Health'];
+  var body=rows.map(function(x){
+    var tone = x.health==='HEALTHY'?'green' : (x.health==='LIGHT'?'amber'
+             : (x.health==='NEVER_USED'||x.health==='AT_RISK'?'red':'amber'));
+    var bar='<div style="height:6px;background:#eceff1;border-radius:4px;overflow:hidden;min-width:70px">'
+      +'<div style="height:100%;width:'+Math.min(100,x.usage_pct)+'%;background:'
+      +(x.usage_pct>=70?'#1f8a5f':(x.usage_pct>=30?'#c98a00':'#b3261e'))+'"></div></div>';
+    return '<tr>'
+      +'<td><b>'+esc(x.name)+'</b>'+(x.is_demo?' <span class="tag">demo</span>':'')
+        +'<br><span class="muted" style="font-size:11px">'+esc(x.slug)+'</span></td>'
+      +'<td>'+(x.industry==='RETAIL'?'Retail':'Restaurant')+'</td>'
+      +'<td><b>'+x.usage_pct+'%</b>'+bar+'</td>'
+      +'<td>'+x.active_days+' / '+x.window_days+'</td>'
+      +'<td>'+x.bills+'</td>'
+      +'<td>'+x.bills_per_day+'</td>'
+      +'<td>'+(x.last_bill||'&mdash;')+'</td>'
+      +'<td>'+(x.idle_days===null?'&mdash;':x.idle_days+'d')+'</td>'
+      +'<td>'+x.users+'</td>'
+      +'<td>'+x.modules_used+'</td>'
+      +'<td><span class="tag '+tone+'">'+x.health.replace(/_/g,' ')+'</span></td>'
+      +'</tr>';
+  }).join('');
+  document.getElementById('uTable').innerHTML=
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr>'
+    +H.map(function(h){return '<th>'+h+'</th>'}).join('')+'</tr></thead><tbody>'
+    +(body||'<tr><td colspan="11" class="muted">No businesses</td></tr>')+'</tbody></table></div>';
+}
+
+function kpi(label,val,sub,tone){
+  return '<div class="kpi'+(tone?' '+tone:'')+'"><div class="lab">'+esc(label)+'</div>'
+    +'<div class="val">'+esc(String(val))+'</div>'
+    +'<div class="sub">'+esc(sub||'')+'</div></div>';
+}
+
+/* ============================================================
+   COMMAND GUIDE — har command, kaam ke saath aur ek chalti hui misaal.
+   Yeh list console ki apni help se juri hui hai (neeche "Full list"),
+   magar har command ke saath yeh bhi likha hai ke KAB istemal karni hai.
+   ============================================================ */
+var CMD_GUIDE=[
+ {g:'Everyday', items:[
+  {t:'See every business and its slug', c:'list',
+   d:'The slug is what every other command needs. Start here.'},
+  {t:'Check one business in detail', c:'info <slug>',
+   d:'Counts, subscription, branch, last activity.'},
+  {t:'See staff accounts of a business', c:'users <slug>',
+   d:'Who can sign in, and which of them is the admin.'},
+  {t:'See what each user may open', c:'permissions <slug>',
+   d:'Modules per user and where they come from (role or direct).'},
+ ]},
+ {g:'Access', items:[
+  {t:'Block a business temporarily', c:'suspend <slug>',
+   d:'Sign-in stops at once. Data is untouched. Use for unpaid invoices.'},
+  {t:'Restore a blocked business', c:'activate <slug>', d:'Undoes suspend.'},
+  {t:'Reset the owner password', c:'(Businesses list) → Reset pass',
+   d:'The new password is shown once on screen. There is no console command for this on purpose — it should not end up in the audit text.'},
+  {t:'Turn FBR on or off', c:'(Businesses list) → FBR',
+   d:'Off means no invoice number and no QR on their bills. Reaches the offline node on its next sync.'},
+  {t:'Turn other modules on or off', c:'(Businesses list) → Features',
+   d:'Tick only the modules that business paid for. Everything unticked is hidden from every user there.'},
+ ]},
+ {g:'Data — reversible', items:[
+  {t:'Take a backup before anything risky', c:'backup <slug> full',
+   d:'Downloads a file. A backup within the last hour is REQUIRED before reset or purge.'},
+  {t:'Clear only transactions, keep setup', c:'reset <slug> txn --confirm "<Business Name>"',
+   d:'Bills, orders, shifts go. Menu, staff, customers, settings stay. This is what you want after a demo or training.'},
+  {t:'Clear one kind of data only', c:'purge <slug> orders --confirm "<Business Name>"',
+   d:'Groups: transactions, orders, shifts, stock, qr, expenses, logs, sync, all-logs.'},
+  {t:'Clear old data only', c:'purge <slug> orders --before 2026-01-01 --confirm "<Business Name>"',
+   d:'Anything newer than that date is kept.'},
+ ]},
+ {g:'Data — permanent', items:[
+  {t:'Wipe a business back to empty', c:'reset <slug> full --confirm "<Business Name>"',
+   d:'Everything goes except the admin sign-in. Take a backup first — this cannot be undone.'},
+  {t:'Remove a business completely', c:'delete <slug> --confirm "<Business Name>"',
+   d:'Tenant, users, data — all of it. Connected offline nodes clear themselves on their next sync. There is no undo.'},
+ ]},
+ {g:'Creating', items:[
+  {t:'Create a new business', c:'create "Business Name" --email=owner@example.com --owner="Owner Name" --expiry=2027-01-31',
+   d:'The admin password is shown once when it is created. Copy it then.'},
+  {t:'Create a demo business', c:'demo "Demo Name"',
+   d:'Comes with sample data and clears itself every 5 days. One demo per business type.'},
+ ]},
+ {g:'Offline branches', items:[
+  {t:'See branch computers', c:'nodes', d:'Last seen, build, pending items.'},
+  {t:'See transfer activity', c:'sync <slug>', d:'What went up and came down, and when.'},
+  {t:'Force a branch back in line with the cloud', c:'resync <slug> transactions --confirm "<Business Name>"',
+   d:'The branch clears those tables and pulls again. Cloud data is not touched.'},
+  {t:'See pending delete signals', c:'tombstones <slug>',
+   d:'Deletes waiting to reach a branch that has been offline.'},
+ ]},
+ {g:'Checking', items:[
+  {t:'See what you changed', c:'audit <slug>', d:'Every super-admin action, with time and result.'},
+  {t:'Read the database (safely)', c:'query SELECT bill_no, grand_total FROM orders LIMIT 20',
+   d:'Read-only, 100 rows maximum. Nothing can be modified from here.'},
+  {t:'List tenant-scoped tables', c:'tables', d:'Useful before writing a query.'},
+  {t:'If a command misbehaves', c:'selftest <slug>', d:'Checks the plumbing for that business.'},
+ ]},
+];
+
+async function loadCommands(){
+  var box=document.getElementById('cmdList'); if(!box)return;
+  paintCommands();
+  /* Console ki apni help bhi neeche laga do — agar wahan koi nayi command
+     add ho to yahan bhi nazar aa jaye, chahe yeh guide purani ho. */
+  try{
+    var r=await api('sa-console-help');
+    var lines=(r&&r.help&&r.help.lines)||[];
+    if(lines.length){
+      box.insertAdjacentHTML('beforeend',
+        '<div class="card" style="margin-top:16px"><div class="card-h"><h3>Full list from the console</h3></div>'
+        +'<div class="card-b"><pre style="margin:0;font-size:12px;line-height:1.7;white-space:pre-wrap">'
+        + lines.map(function(l){return esc(l.v||'')}).join('\n')
+        +'</pre></div></div>');
+    }
+  }catch(e){}
+}
+
+function paintCommands(){
+  var q=((document.getElementById('cmdQ')||{}).value||'').toLowerCase();
+  var out=CMD_GUIDE.map(function(grp){
+    var items=grp.items.filter(function(it){
+      return !q || (it.t+' '+it.c+' '+it.d).toLowerCase().indexOf(q)>-1;
+    });
+    if(!items.length)return '';
+    return '<h4 style="margin:18px 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">'
+      +esc(grp.g)+'</h4>'
+      +items.map(function(it){
+        return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px">'
+          +'<div style="font-weight:700;font-size:13px">'+esc(it.t)+'</div>'
+          +'<div style="margin:7px 0;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">'
+            +'<code style="background:#0f2b24;color:#dff3ea;padding:6px 10px;border-radius:7px;'
+              +'font-size:12px;flex:1;min-width:220px;word-break:break-all">'+esc(it.c)+'</code>'
+            +'<button class="btn ghost" data-cmd="'+esc(it.c)+'">Copy</button>'
+          +'</div>'
+          +'<div class="muted" style="font-size:12px;line-height:1.6">'+esc(it.d)+'</div>'
+        +'</div>';
+      }).join('');
+  }).join('');
+  document.getElementById('cmdList').innerHTML=out||'<p class="muted">Nothing matches that.</p>';
+}
+
 async function bizFbr(id){
   const st=await api('sa-fbr-status&tenant_id='+encodeURIComponent(id));
   if(!st.ok){toast(st.message||'Status not found');return}

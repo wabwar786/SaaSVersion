@@ -1806,3 +1806,73 @@ The screenshot still showed **POS v33** while the fixes were in v34/v35.
 The on-screen version is now bumped with every POS change for exactly
 this reason — so "is the fix even loaded?" can be answered by looking at
 the screen instead of guessing.
+
+---
+
+## 42. Super Admin: Command Guide + Usage Analytics, and POS speed
+
+### Command Guide (new page)
+
+**Super Admin → Command Guide.** Every console command grouped by the
+job it does, each with a copyable example and a note on *when* to use
+it — not just the syntax:
+
+| Group | Covers |
+|---|---|
+| Everyday | list, info, users, permissions |
+| Access | suspend, activate, reset password, FBR on/off, features |
+| Data — reversible | backup, reset txn, purge by type, purge before a date |
+| Data — permanent | reset full, delete |
+| Creating | create, demo |
+| Offline branches | nodes, sync, resync, tombstones |
+| Checking | audit, query, tables, selftest |
+
+The console's own `help` output is appended underneath, pulled live —
+so a command added later shows up even if this guide is not updated.
+
+### Usage Analytics (new page)
+
+Answers the question the Businesses list never did: **who is actually
+using the software.**
+
+- **Usage %** = days with at least one bill ÷ days in the window.
+  A sign-in with no bill is not usage.
+- A business created 5 days ago is measured over **5** days, not 30 —
+  otherwise every new customer looks like a failure.
+- Health: HEALTHY (70%+), LIGHT, RARE, SLOWING (idle 7d), AT_RISK
+  (idle 14d), NEVER_USED.
+- Per business: active days, bills, bills per active day, last bill,
+  idle days, users, modules touched. CSV export included.
+
+Restaurant and retail bills live in different tables; both are counted.
+
+### POS speed — measured, not guessed
+
+On demo data (13 items) everything looked fine. At a real month's volume
+(**413 menu items, 6,000 orders**) `pos-boot` took **50 ms**, and it grew
+with the data. Profiling showed 10 queries — 45 ms of it in two:
+
+| Query | Problem |
+|---|---|
+| next bill number | `ORDER BY created_at` → **filesort over 2,895 rows** |
+| today's bills | five JOINs, then sort, to show 50 rows |
+
+**Fixes**
+
+1. Two indexes on `orders` — `(site_id, business_date, created_at)` and
+   `(site_id, business_date, closed_at)`. Same class of bug that was
+   fixed in retail earlier; the restaurant side still had it.
+2. Today's-bills query now **picks the 50 ids first, then joins**. It was
+   joining 2,895 rows to display 50.
+
+| | Before | After |
+|---|---|---|
+| `posBoot()` | 50 ms | **9 ms** |
+| `pos-boot` over HTTP | ~55 ms | **21 ms** |
+
+Same output: 413 products, 50 bills.
+
+**Note:** these indexes are created by `migrate_retail.php`, which runs
+on every deploy and start-up — nothing manual to do. On a busy shop the
+gap widens, because the old queries got slower as orders accumulated
+while the indexed ones do not.

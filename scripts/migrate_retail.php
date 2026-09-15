@@ -365,5 +365,26 @@ if (rtab($pdo, 'rtl_products') && !$hasIx('rtl_products', 'ft_rp_name')) {
     } catch (\Throwable $e) { /* purana MySQL — prefix search phir bhi chalti hai */ }
 }
 
+/* ============================================================
+   RESTAURANT POS ka index bhi — wahi masla jo retail mein tha.
+
+   Har POS load par do queries `orders` par chalti hain:
+     - agla bill number   (ORDER BY created_at)
+     - aaj ke bills       (ORDER BY closed_at)
+   Dono `ix_order_site_status` par range scan karti thin aur phir
+   FILESORT — 6,000 orders par 2,895 rows har dafa, ~45 ms sirf inhi do
+   par. Ek aam dukan ka ek mahina hi 6,000 bills ka hota hai.
+   ============================================================ */
+if (rtab($pdo, 'orders')) {
+    if (!$hasIx('orders', 'ix_ord_site_date_created')) {
+        $pdo->exec("ALTER TABLE orders ADD INDEX ix_ord_site_date_created (site_id, business_date, created_at)");
+        $added[] = 'orders: ix_ord_site_date_created (bill number ka filesort khatam)';
+    }
+    if (!$hasIx('orders', 'ix_ord_site_date_closed')) {
+        $pdo->exec("ALTER TABLE orders ADD INDEX ix_ord_site_date_closed (site_id, business_date, closed_at)");
+        $added[] = 'orders: ix_ord_site_date_closed (aaj ke bills)';
+    }
+}
+
 echo "RETAIL_MIGRATION_READY added=" . count($added) . "\n";
 foreach ($added as $a) echo "  + $a\n";

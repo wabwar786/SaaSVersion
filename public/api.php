@@ -1964,6 +1964,19 @@ case 'sa-fbr-toggle':needSuper();$d=body();
  ok(['enabled'=>$on,'modules'=>count($cur),
      'message'=>'FBR '.($on?'enabled':'band').' done. It takes effect on the offline node at the next sync.']);
 
+case 'sa-usage':needSuper();
+ ok(['usage'=>\Aio\Services\Usage::report((int)($_GET['days']??30)),
+     'days'=>(int)($_GET['days']??30)]);
+
+case 'sa-usage-daily':needSuper();
+ $tid=(string)($_GET['tenant_id']??''); if($tid==='')fail('tenant_id is required');
+ ok(['daily'=>\Aio\Services\Usage::daily($tid,(int)($_GET['days']??30))]);
+
+case 'sa-console-help':needSuper();
+ /* Commands ki fehrist wahin se aati hai jahan se console khud parhta
+    hai — do jagah list rakhne se wo hamesha aage peeche ho jati hai. */
+ ok(['help'=>\Aio\Services\AdminConsole::run('help',(string)(Platform::superUser()['email']??'super'))]);
+
 case 'sa-fbr-status':needSuper();
  $tid=(string)($_GET['tenant_id']??''); if($tid==='')fail('tenant_id is required');
  $q=DB::pdo()->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
