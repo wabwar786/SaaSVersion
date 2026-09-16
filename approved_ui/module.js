@@ -63,6 +63,15 @@
     };
   }
 
+  /* select ke options — array ya function, dono chalte hain */
+  function selOptions(f,selected){
+    var opts=(typeof f.options==='function')?f.options():(f.options||[]);
+    return opts.map(function(o){
+      var v=(typeof o==='object')?o.value:o, l=(typeof o==='object')?o.label:o;
+      return '<option value="'+esc(v)+'"'+(String(v)===String(selected)?' selected':'')+'>'+esc(l)+'</option>';
+    }).join('');
+  }
+
   function toast(m,err){var t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
     t.textContent=m;t.className='toast show'+(err?' err':'');clearTimeout(window.__tt);window.__tt=setTimeout(function(){t.className='toast'},1900)}
   function closeM(){document.querySelectorAll('.modal').forEach(function(m){m.classList.remove('show')})}
@@ -114,7 +123,18 @@
         var wrap='field'+(f.full?' full':'');
         var lab='<span>'+esc(f.label)+(f.required?' <span class="hint">· required</span>':'')+'</span>';
         var inp;
-        if(f.type==='select'){inp='<select data-f="'+f.key+'">'+(f.options||[]).map(function(o){return '<option>'+esc(o)+'</option>'}).join('')+'</select>'}
+        if(f.type==='select'){
+          /* `options` ab function bhi ho sakti hai — taake list server ke
+             asal data se aaye, na ke code mein likhi hui purani fehrist se.
+             Menu ka Category dropdown isi wajah se POS se alag chal raha
+             tha: wahan hardcoded 'Pakistani, Pizza, BBQ...' thi. */
+          inp='<select data-f="'+f.key+'">'+selOptions(f)+'</select>';
+          if(f.addable){
+            inp='<div style="display:flex;gap:6px">'+inp
+              +'<button type="button" class="btn icon" data-addopt="'+f.key+'" '
+              +'data-mod="'+f.addable+'" title="Add new" style="flex-shrink:0;width:38px">+</button></div>';
+          }
+        }
         else if(f.type==='textarea'){inp='<textarea data-f="'+f.key+'" placeholder="'+esc(f.placeholder||'')+'"></textarea>'}
         else{var t=(f.type==='number'||f.type==='money')?'number':(f.type||'text');inp='<input data-f="'+f.key+'" type="'+t+'"'+(f.type==='money'||f.type==='number'?' min="0"':'')+' placeholder="'+esc(f.placeholder||'')+'">'}
         return '<label class="'+wrap+'">'+lab+inp+'</label>';
@@ -149,7 +169,10 @@
       editId=id||null;var r=id?rows.find(function(x){return x.id===id}):null;
       $('#mFormTitle').textContent=r?('Edit '+(cfg.recordName||'record')):(cfg.addLabel||'New');
       (cfg.fields||[]).forEach(function(f){var el=document.querySelector('[data-f="'+f.key+'"]');if(!el)return;
-        el.value=r?(r[f.key]!=null?r[f.key]:''):(f.default!=null?f.default:'')});
+        var val=r?(r[f.key]!=null?r[f.key]:''):(f.default!=null?f.default:'');
+        /* dropdown har dafa taza — "+" se jo abhi bani wo bhi nazar aaye */
+        if(f.type==='select'&&typeof f.options==='function')el.innerHTML=selOptions(f,val);
+        el.value=val;});
       openM('mForm');var first=document.querySelector('[data-f]');if(first)setTimeout(function(){first.focus()},60);
     }
     function save(){
@@ -164,6 +187,23 @@
     }
 
     document.addEventListener('click',function(e){
+      /* dropdown ke saath wala "+" — form chhore baghair nayi category */
+      var ao=e.target.closest('[data-addopt]');
+      if(ao){
+        var fkey=ao.getAttribute('data-addopt'), mod=ao.getAttribute('data-mod');
+        var nm=prompt('New '+mod.replace(/s$/,'')+' name:');
+        if(!nm||!nm.trim())return;
+        var res;
+        try{ res=DBApi.req(mod==='menu_category'?'menu-category-create':'records-save',
+                mod==='menu_category'?{name:nm.trim()}:{module:mod,data:{name:nm.trim()}}); }
+        catch(err){ toast('Could not add',true); return; }
+        if(!res||!res.ok){ toast((res&&res.message)||'Could not add',true); return; }
+        var fld=(cfg.fields||[]).filter(function(x){return x.key===fkey})[0];
+        var sel=document.querySelector('[data-f="'+fkey+'"]');
+        if(fld&&sel){ sel.innerHTML=selOptions(fld,nm.trim()); sel.value=nm.trim(); }
+        toast(nm.trim()+' added');
+        return;
+      }
       if(e.target.closest('#mNewBtn')||e.target.closest('#mEmptyAdd')){openForm();return}
       if(e.target.closest('#mSave')){save();return}
       var c=e.target.closest('[data-close]');if(c){closeM();return}

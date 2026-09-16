@@ -2054,3 +2054,62 @@ CASHIER, correct password -> deleted
 
 If the item is in use (an open bill), the server still refuses and the
 POS shows the real reason rather than a vague "failed".
+
+---
+
+## 46. Delete said "deleted" while the item stayed, and two separate category lists
+
+### 1. "Spicy Fish Fillet deleted" — but it was still there
+
+Server-side delete is correct; verified end to end (13 items → 12, the
+row gone from the next `pos-boot`). So the toast was telling the truth
+about the API call and lying about the screen.
+
+Two things were wrong on the client:
+
+**It never checked.** `runDelete()` showed the success toast and called
+`boot()`. Whether the item actually left the list was never verified. If
+a **second item shares the name** — easy to create twice at a busy
+counter — one goes and the other stays, and the message still says
+"deleted".
+
+Now the POS re-reads the menu and looks for that exact id. If it is
+still present:
+
+```
+Deleted — but an item with this name is still in the menu (a duplicate?)
+```
+
+**`boot()` was too heavy for this.** It rebuilds everything, and with an
+empty cart it opens the **New Bill** dialog — which is why a bill-type
+popup appeared right after a delete (visible in the screenshot). Delete
+now calls `refreshMenu()`: products and categories only. Cart, shift and
+bill are left alone.
+
+### 2. The POS and "Menu & Categories" had different categories
+
+Not a sync problem — **two unrelated lists**.
+
+The POS reads `menu_categories` (FISH, Mutton…). The Menu & Categories
+page read a **hardcoded array** in `module_config.js`:
+
+```js
+options:['Pakistani','Pizza','BBQ','Fast Food','Drinks','Desserts','Sides']
+```
+
+Nothing to do with the database. That is why the Category dropdown on
+that page was useless for a shop whose categories are FISH and Mutton.
+
+**Fixed:**
+- New `menu-categories` endpoint — one list, read by both.
+- The restaurant form engine now accepts `options` as a **function**, so
+  the dropdown is filled from the server instead of from code.
+- A **+** next to the Category dropdown creates one without leaving the
+  form (same as the retail product form).
+
+```
+POS       : BBQ, Karahi, Rice, Breads, Beverages, General
+Menu page : BBQ, Karahi, Rice, Breads, Beverages, General
+same?     : True
++ created : appears in both immediately
+```

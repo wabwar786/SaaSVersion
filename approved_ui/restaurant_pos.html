@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v38';
+var VERSION='POS v39';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -935,8 +935,29 @@ function runDelete(btn,ov,id,name,pw){
     return;
   }
   ov.remove();
-  toast((name||'Item')+' deleted');
-  boot();
+  /* `boot()` poora POS dobara khara karta hai — aur bill khali ho to
+     "New Bill" ka popup bhi khol deta hai. Delete ke baad wo bemauqa
+     hai. Yahan sirf menu dobara parha jata hai. */
+  var fresh=refreshMenu();
+  var gone = !fresh || !(fresh.products||[]).some(function(x){return x.id===id});
+  if(gone){ toast((name||'Item')+' deleted'); }
+  else{
+    /* Server ne "deleted" kaha magar item list mein maujood hai — aksar
+       isi naam ka doosra item hota hai. Chup rehne se behtar hai saaf
+       batana, warna cashier dobara dabata rehta hai. */
+    toast('Deleted — but an item with this name is still in the menu (a duplicate?)',true);
+  }
+}
+
+/* Sirf menu taza karo — bill, shift aur cart ko haath na lagao. */
+function refreshMenu(){
+  var r; try{ r=api('pos-boot'); }catch(e){ return null; }
+  if(!r||!r.ok||!r.boot) return null;
+  BOOT.products=r.boot.products||[];
+  BOOT.categories=r.boot.categories||[];
+  if(cat!=='All' && !BOOT.categories.some(function(c){return c.name===cat})) cat='All';
+  renderCats(); renderGrid();
+  return r.boot;
 }
 
 function catCount(n){return BOOT.products.filter(function(p){return p.cat===n}).length}

@@ -1619,6 +1619,15 @@ case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo()
  ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
+case 'menu-categories':needLogin();
+ /* Menu page aur POS dono ek hi fehrist par chalen — yehi wo jagah hai
+    jahan se dono lete hain. */
+ $q=DB::pdo()->prepare("SELECT id,name FROM menu_categories
+                          WHERE site_id=? AND deleted_at IS NULL
+                          ORDER BY sort_order,name");
+ $q->execute([site_id()]);
+ ok(['rows'=>$q->fetchAll()]);
+
 case 'menu-category-create':needLogin();
  try{Scope::requireManagement('creating categories');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
 case 'menu-category-delete':needLogin();

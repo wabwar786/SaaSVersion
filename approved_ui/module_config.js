@@ -213,7 +213,18 @@ window.MODULE_CONFIGS={
       {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Inactive:'neutral'}}
     ],
     fields:[
-      {key:'name',label:'Item name',type:'text',required:true,full:true},{key:'category',label:'Category',type:'select',options:['Pakistani','Pizza','BBQ','Fast Food','Drinks','Desserts','Sides']},
+      {key:'name',label:'Item name',type:'text',required:true,full:true},{key:'category',label:'Category',type:'select',addable:'menu_category',
+       /* ASAL categories, server se — wahi jo POS par nazar aati hain.
+          Pehle yahan ek hardcoded fehrist thi ('Pakistani, Pizza, BBQ...')
+          jiska database se koi taalluq nahi tha. Nateeja: POS par FISH aur
+          Mutton, aur is page par kuch aur — do alag duniyaein. */
+       options:function(){
+         try{
+           var r=DBApi.req('menu-categories');
+           if(r&&r.ok&&r.rows&&r.rows.length)return r.rows.map(function(c){return c.name});
+         }catch(e){}
+         return [];
+       }},
       {key:'price',label:'Selling price',type:'money',required:true},{key:'cost',label:'Food cost',type:'money',default:0},
       {key:'status',label:'Status',type:'select',options:['Active','Inactive'],default:'Active'}
     ],
