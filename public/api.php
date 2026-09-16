@@ -1274,6 +1274,29 @@ case 'entity-delete':needLogin();$d=body();
    foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
    if(!$okpw)fail('Incorrect manager password',401);
  }
+ /* ============================================================
+    Admin / Manager ke ilawa kisi ko delete karna ho to manager ka
+    password lazmi — screen par bhi maanga jata hai, magar screen ki
+    shart kaafi nahi: koi seedha API par bhi call kar sakta hai.
+    (Admin ke liye kuch nahi maanga jata — wo malik hai.)
+    ============================================================ */
+ if(!Auth::isManager() && !Auth::isAdmin()){
+   $pw=(string)($d['manager_password']??'');
+   if($pw==='')fail('A manager password is required to delete this',403);
+   $p=DB::pdo();
+   $mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u
+                      LEFT JOIN user_roles ur ON ur.user_id=u.id
+                      LEFT JOIN roles r ON r.id=ur.role_id
+                     WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                       AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%'
+                            OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+   $mq->execute([tenant_id()]);
+   $okPw=false;
+   foreach($mq->fetchAll() as $m){ if($m['password_hash'] && password_verify($pw,$m['password_hash'])){$okPw=true;break;} }
+   if(!$okPw)fail('Incorrect manager password',403);
+   /* Password sahi nikla — is ek request ke liye manager ki haisiyat. */
+   DeleteService::$managerVerified = true;
+ }
  try{$r=DeleteService::delete($ent,$id,$mode,(string)($d['reason']??''));}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r);

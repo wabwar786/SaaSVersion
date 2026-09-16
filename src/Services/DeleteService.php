@@ -362,8 +362,24 @@ final class DeleteService
 
     /* ================= permission ================= */
 
+    /**
+     * Jab manager ka password mauqe par verify ho chuka ho.
+     *
+     * Cashier ke paas `menu.delete` permission nahi hoti — aur honi bhi
+     * nahi chahiye. Magar counter par manager khara ho kar apna password
+     * daal de, to kaam rukna nahi chahiye. Pehle aisa mumkin hi nahi tha:
+     * password sahi hone ke bawajood module permission raasta rok deti
+     * thi, aur cashier ko "You do not have permission" milta tha —
+     * halanke manager wahin maujood tha.
+     *
+     * `public/api.php` yeh flag sirf password verify karne ke BAAD lagata
+     * hai, usi ek request ke liye.
+     */
+    public static bool $managerVerified = false;
+
     private static function mayDelete(array $e): bool
     {
+        if (self::$managerVerified) return true;
         if (Auth::isAdmin()) return true;
         $m = (string)($e['module'] ?? '');
         if ($m === '') return Auth::isManager();

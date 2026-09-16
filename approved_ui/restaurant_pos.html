@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v37';
+var VERSION='POS v38';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -876,6 +876,69 @@ function renderStrip(){
 }
 
 /* ================= CATEGORIES + GRID ================= */
+/* ============================================================
+   MENU ITEM DELETE
+
+   Pehle yeh DeleteKit se guzarta tha: ek confirm box jo REASON maangta
+   tha, aur wo bhi har user se. Counter par ek ghalat item banne par
+   manager ko pehle wajah likhni parti — jabke wo khud malik hai.
+
+   Ab do saaf raaste:
+     ADMIN / MANAGER -> Delete dabate hi item chala jata hai. Na wajah,
+                        na password. (Ek chhoti si tasdeeq, kyunke yeh
+                        wapas nahi aata.)
+     BAAQI SAB       -> manager ka password maanga jata hai — wahi jo
+                        void ke liye maanga jata hai.
+   ============================================================ */
+function delMenuItem(id,name){
+  if(!id)return;
+
+  if(CAN.manage){
+    var ov=modal('<div class="dh"><h3>Delete this item?</h3><p>'+esc(name)+'</p></div>'
+      +'<div class="db"><div class="box">Item POS grid aur menu dono se hat jayega. '
+      +'<b>Purane bills par koi asar nahi</b> hota.</div></div>'
+      +'<div class="df"><button class="sec" data-x>Cancel</button>'
+      +'<button class="go" id="dmGo" style="background:#8c1d24;border-color:#8c1d24">Delete</button></div>');
+    ov.querySelector('#dmGo').onclick=function(){ runDelete(this,ov,id,name,''); };
+    setTimeout(function(){var g=ov.querySelector('#dmGo'); if(g)g.focus()},60);
+    return;
+  }
+
+  var ov2=modal('<div class="dh"><h3>Manager approval required</h3>'
+    +'<p>'+esc(name)+'</p></div>'
+    +'<div class="db"><div class="box">Item delete karne ke liye kisi Admin, Owner '
+    +'ya Manager ka password chahiye.</div>'
+    +'<div class="box" style="margin-top:10px"><label class="f">Manager password</label>'
+    +'<input class="inp" id="dmPass" type="password" placeholder="Admin / Owner / Manager password"></div></div>'
+    +'<div class="df"><button class="sec" data-x>Cancel</button>'
+    +'<button class="go" id="dmGo2" style="background:#8c1d24;border-color:#8c1d24">Delete</button></div>');
+  setTimeout(function(){var i=ov2.querySelector('#dmPass'); if(i)i.focus()},60);
+  ov2.querySelector('#dmGo2').onclick=function(){
+    var pw=(ov2.querySelector('#dmPass')||{}).value||'';
+    if(!pw){toast('Manager password is required');return}
+    var v=api('pos-verify-manager',{password:pw});
+    if(!v||!v.ok){toast((v&&v.message)||'Incorrect manager password');return}
+    runDelete(this,ov2,id,name,pw);
+  };
+}
+
+function runDelete(btn,ov,id,name,pw){
+  btn.disabled=true; btn.textContent='Deleting…';
+  var r=api('entity-delete',{entity:'menu_item',id:id,mode:'auto',manager_password:pw||''});
+  if(!r||!r.ok){
+    btn.disabled=false; btn.textContent='Delete';
+    /* Agar item kisi khule bill mein laga hua ho to server rok deta hai —
+       wajah wahi dikhao, "failed" jaisa mubham lafz nahi. */
+    var msg=(r&&r.message)||'Could not delete';
+    if(r&&r.blockers&&r.blockers.length) msg=r.blockers.join(' · ');
+    toast(msg,true);
+    return;
+  }
+  ov.remove();
+  toast((name||'Item')+' deleted');
+  boot();
+}
+
 function catCount(n){return BOOT.products.filter(function(p){return p.cat===n}).length}
 function renderCats(){
   var h='<button class="cat'+(cat==='All'?' on':'')+'" data-cat="All">All Items<i>'+BOOT.products.length+'</i></button>';
@@ -937,11 +1000,7 @@ function renderGrid(){
      hai) — khamosh "done" kabhi nahi. */
   Array.prototype.forEach.call(g2.querySelectorAll('[data-delitem]'),function(b){b.onclick=function(e){
     e.stopPropagation();
-    if(!CAN.manage){toast('Only an Admin or Manager can delete items');return}
-    window.DeleteKit.confirm({entity:'menu_item',id:b.dataset.delitem,name:b.dataset.name||'',
-      what:'Menu item',title:'Delete this item?',
-      warning:'The item will be removed from the POS grid and menu. Past bills are unchanged.',
-      onDone:function(){boot()}});
+    delMenuItem(b.dataset.delitem, b.dataset.name||'');
   }});
   Array.prototype.forEach.call(g2.querySelectorAll('[data-calc]'),function(b){b.onclick=function(e){
     e.stopPropagation();var id=this.dataset.calc;

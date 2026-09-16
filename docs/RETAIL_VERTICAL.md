@@ -2002,3 +2002,55 @@ Tested on a real offline node (local role, sealed config): creating a
 category works, the duplicate check works, and creating one with a
 printer station works. Nothing reproduced here — the exact error message
 from that node would be needed to go further.
+
+---
+
+## 45. Deleting a menu item — simplified
+
+### What was wrong
+
+Deleting an item went through `DeleteKit`, which asked **every user for a
+reason** before it would proceed. The owner, standing at his own counter,
+had to justify removing an item he had just mistyped.
+
+Worse, a cashier could never complete it at all. Even with the correct
+manager password the server refused:
+
+```
+CASHIER + correct manager password -> "You do not have permission to menu item"
+```
+
+`DeleteService::mayDelete()` checks the **module** permission, which a
+cashier does not have — and rightly should not. But that check ran even
+when a manager had just stood there and typed their password. The two
+layers never spoke to each other.
+
+### Now
+
+| Who | What happens |
+|---|---|
+| **Admin / Manager** | One short confirmation, then gone. No reason, no password. |
+| **Anyone else** | Manager password — the same one used for voids. |
+
+The confirmation for an admin exists only because a delete cannot be
+undone; it takes one keystroke (the Delete button is focused).
+
+### Server side too
+
+The screen asking for a password is not a control — anyone can call the
+API directly. `entity-delete` now enforces it: a non-manager must supply
+a valid manager password or the request is refused.
+
+And when that password **is** valid, `DeleteService::$managerVerified`
+is set for that single request, so the module-permission check no longer
+blocks a delete a manager has just authorised in person.
+
+```
+ADMIN, no password        -> deleted
+CASHIER, no password      -> "A manager password is required to delete this"
+CASHIER, wrong password   -> "Incorrect manager password"
+CASHIER, correct password -> deleted
+```
+
+If the item is in use (an open bill), the server still refuses and the
+POS shows the real reason rather than a vague "failed".
