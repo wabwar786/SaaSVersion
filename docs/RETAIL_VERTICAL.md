@@ -2165,3 +2165,52 @@ duplicate — and it says plainly what to do rather than guessing.
 **What this cost:** the previous round I added a message that blamed
 duplicates on a hunch instead of checking why the same id came back. The
 message was honest about the symptom and wrong about the cause.
+
+---
+
+## 48. When a deleted item still shows — a diagnostic instead of a guess
+
+The item stayed after a hard refresh, so it was not the browser cache
+either. Server-side delete works on every system I can test (13 items →
+12, the row gone from the next `pos-boot`), so the answer is in that
+installation's data, not in the code path.
+
+Rather than guess a third time, `scripts/diagnose_item.php` reports what
+is actually there. Read-only.
+
+```
+php scripts/diagnose_item.php "Spicy Fish"
+```
+
+It prints every matching row across every branch — id, active, on-POS,
+`deleted_at`, how many bill lines use it, which site — then what the POS
+would show, then a plain reading:
+
+| It finds | It says |
+|---|---|
+| One copy deleted, another live | **DUPLICATE** — delete the live one, id shown |
+| Rows only on another site | Belongs to another **branch** — sign in there |
+| Every copy has `deleted_at` | Already gone; the screen is stale |
+| Live and used in bills | Delete is refused on purpose — mark it **inactive** |
+| Live and nothing blocking | The delete did not reach it; note the exact message |
+
+On an offline node it adds the check that matters there: `menu_items` is
+a table the node **pulls from the cloud**. Delete it on the node while
+it still exists online and the next sync can bring it back. It also
+prints how many delete signals are queued.
+
+Sample run against a deliberately duplicated item:
+
+```
+Rows found: 2
+  895de117  Spicy Fish Fillet  active yes  on POS yes  — (LIVE)
+  834e00a4  Spicy Fish Fillet  active yes  on POS yes  2026-09-16 11:33:55
+
+What the POS shows: 1 row — Spicy Fish Fillet (895de117)
+Reading: DUPLICATE. One copy is deleted, another is still live.
+```
+
+**Why a tool and not another fix:** the last two rounds I shipped a
+cause I had not verified — first duplicates, then the cache. Each was
+plausible and neither was confirmed against that installation. This
+prints the facts in one run.
