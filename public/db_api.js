@@ -10,8 +10,12 @@
     var url='/api.php?action='+(amp<0
       ? encodeURIComponent(action)
       : encodeURIComponent(action.slice(0,amp))+action.slice(amp));
+    /* GET par cache-buster — warna browser purana jawab apne paas se de
+       deta hai aur abhi kiya hua change screen par nazar nahi aata. */
+    if(payload===undefined) url += (url.indexOf('?')<0?'?':'&') + '_=' + Date.now();
     x.open(payload===undefined?'GET':'POST',url,false);
     x.setRequestHeader('Accept','application/json');
+    x.setRequestHeader('Cache-Control','no-cache');
     if(payload!==undefined){
       x.setRequestHeader('Content-Type','application/json');
       x.setRequestHeader('X-CSRF-Token',token||'');

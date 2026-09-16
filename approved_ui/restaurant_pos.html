@@ -445,15 +445,19 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v39';
+var VERSION='POS v40';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
 function api(action,payload){
   try{
     var x=new XMLHttpRequest();
-    x.open(payload?'POST':'GET','/api.php?action='+action,false);
+    /* GET par cache-buster — kuch browser aur proxy warna purana jawab
+       apne paas se de dete hain. POST par zaroorat nahi. */
+    var url='/api.php?action='+action+(payload?'':('&_='+Date.now()));
+    x.open(payload?'POST':'GET',url,false);
     x.setRequestHeader('Accept','application/json');
+    x.setRequestHeader('Cache-Control','no-cache');
     if(payload){x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-CSRF-Token',CSRF);}
     x.send(payload?JSON.stringify(payload):null);
     var txt=x.responseText||'';
@@ -945,7 +949,9 @@ function runDelete(btn,ov,id,name,pw){
     /* Server ne "deleted" kaha magar item list mein maujood hai — aksar
        isi naam ka doosra item hota hai. Chup rehne se behtar hai saaf
        batana, warna cashier dobara dabata rehta hai. */
-    toast('Deleted — but an item with this name is still in the menu (a duplicate?)',true);
+    /* Ab yeh sirf tab chalega jab server ne DELETED to kaha magar wahi id
+       list mein wapas aayi — yani duplicate ya koi aur gehri wajah. */
+    toast('Deleted on the server, but it is still in this list. Press Ctrl+Shift+R once.',true);
   }
 }
 

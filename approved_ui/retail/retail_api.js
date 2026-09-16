@@ -30,7 +30,11 @@
       throw new Error((r && r.message) || 'Request failed');
     }
     var x = new XMLHttpRequest();
-    x.open(payload === undefined ? 'GET' : 'POST', '/api.php?action=' + action, false);
+    /* GET par cache-buster — warna browser purana jawab apne paas se de
+       deta hai aur abhi-abhi kiya hua change nazar hi nahi aata. */
+    var url = '/api.php?action=' + action + (payload === undefined ? ('&_=' + Date.now()) : '');
+    x.open(payload === undefined ? 'GET' : 'POST', url, false);
+    x.setRequestHeader('Cache-Control', 'no-cache');
     x.setRequestHeader('Accept', 'application/json');
     if (payload !== undefined) {
       x.setRequestHeader('Content-Type', 'application/json');

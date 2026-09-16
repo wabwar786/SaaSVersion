@@ -10,6 +10,21 @@ error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
 use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;use Aio\Services\RetailCatalog;use Aio\Services\RetailPos;use Aio\Services\RetailReportService;use Aio\Services\RegionProfile;
 header('Content-Type: application/json; charset=utf-8');
+/* ============================================================
+   API ka jawab kabhi cache na ho.
+
+   GET requests (pos-boot, pos-holds, shift-current...) par na server
+   koi Cache-Control bhejta tha, na client cache-buster lagata tha. Is
+   liye browser purana jawab apne paas se de deta tha.
+
+   Sab se saaf misaal: item delete karne ke baad POS menu dobara
+   maangta hai, magar browser wahi PURANI list lauta deta hai jismein
+   item maujood hai. Server par item ja chuka hota, screen par baitha
+   rehta — aur Ctrl+Shift+R karne par gayab ho jata. Ghalti kahin aur
+   dhoondi jati rahi.
+   ============================================================ */
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
      phrase ke baghair aage nahi bhejta aur client tak 500 pohanchta tha.

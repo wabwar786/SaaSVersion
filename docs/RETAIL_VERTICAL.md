@@ -2113,3 +2113,55 @@ Menu page : BBQ, Karahi, Rice, Breads, Beverages, General
 same?     : True
 + created : appears in both immediately
 ```
+
+---
+
+## 47. The item was deleted; the browser was showing a cached list
+
+The new honest message appeared — "still in the menu (a duplicate?)" —
+and it was wrong about the cause. The check compares by **id**, so the
+same row was coming back, not a second item with the same name.
+
+### Cause
+
+API GET requests were cacheable at both ends:
+
+- The client (`api()` in the POS, `db_api.js`, `retail_api.js`) sent no
+  cache-buster.
+- The server sent **no `Cache-Control`** on JSON responses.
+
+So the browser was free to answer `pos-boot` from its own cache. After a
+delete the POS asked for the menu again and got the **old list back** —
+with the item still in it. The row was gone on the server the whole
+time, which is why `Ctrl+Shift+R` "fixed" it and why every test through
+curl passed.
+
+This explains more than the delete: any change made in one place and not
+appearing until a hard refresh had the same root.
+
+### Fixed on both ends
+
+```php
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+```
+
+and a `&_=<timestamp>` on every GET, in all three clients — POS,
+`db_api.js` (admin pages) and `retail_api.js`.
+
+```
+Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+Pragma: no-cache
+
+before : 13 items
+delete : DELETED
+after  : 12 items, item gone
+message: "Chicken Karahi (Full) deleted"
+```
+
+The duplicate warning stays, but it can now only fire for a genuine
+duplicate — and it says plainly what to do rather than guessing.
+
+**What this cost:** the previous round I added a message that blamed
+duplicates on a hunch instead of checking why the same id came back. The
+message was honest about the symptom and wrong about the cause.
