@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v42';
+var VERSION='POS v43';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -2525,17 +2525,20 @@ function showDiagnostics(){
 function openGate(){
   if(document.getElementById('gateOv'))return;
   var ov=modal('<div class="dh"><h3>Shift Opening</h3><p>POS billing starts only after a shift is open. Count the opening cash in the drawer and enter it.</p></div>'
-    +'<div class="db"><div class="fg">'
-    +'<div><label class="f">Counter</label><input class="inp" id="ctr" value="Counter 1"></div>'
-    +'<div><label class="f">Opening Cash (PKR)</label><input class="inp" id="oc" type="number" value="0" style="font-size:17px;font-weight:800"></div>'
-    +'</div><div id="openMsg" style="font-size:11.5px;color:var(--brand);margin-top:9px"></div></div>'
+    /* Counter ka khaana hata diya gaya. Shift us user ki hoti hai jo
+       login hai — counter ka naam cashier se poochhna bemaani tha, aur
+       ghalat naam likhne se "counter par kisi aur ki shift khuli hai"
+       jaisi rukawatein khud-ba-khud ban jati thin. */
+    +'<div class="db">'
+    +'<div><label class="f">Opening Cash (PKR)</label>'
+    +'<input class="inp" id="oc" type="number" value="0" style="font-size:19px;font-weight:800"></div>'
+    +'<div id="openMsg" style="font-size:11.5px;color:var(--brand);margin-top:9px"></div></div>'
     +'<div class="df"><button class="go" id="ob" style="flex:1">Open Shift and Start Billing</button></div>',false,true);
   ov.id='gateOv';
   setTimeout(function(){var i=ov.querySelector('#oc');i.focus();i.select()},60);
   ov.querySelector('#ob').onclick=function(){
     this.disabled=true;this.textContent='Opening...';
-    var r=api('shift-open',{opening_cash:Number(ov.querySelector('#oc').value||0),
-                            counter:(ov.querySelector('#ctr').value||'Counter 1').trim()});
+    var r=api('shift-open',{opening_cash:Number(ov.querySelector('#oc').value||0)});
     if(!r.ok){
       this.disabled=false;this.textContent='Open Shift and Start Billing';
       ov.querySelector('#openMsg').textContent=r.message||'Failed';
@@ -2589,8 +2592,75 @@ function closeShift(){
   var ov=modal('<div class="dh"><h3>Shift Closing &mdash; '+esc(rep.shift_no)+'</h3><p>Cash count karke actual amount enter please</p></div>'
     +'<div class="db">'+repRows(rep)+'<div class="box"><label class="f">Actual Counted Cash (PKR)</label>'
     +'<input class="inp" id="ac" type="number" value="'+Math.round(rep.expected_cash)+'" style="font-size:17px;font-weight:800">'
-    +'<label class="f" style="margin-top:10px">Note</label><input class="inp" id="cn" placeholder="Optional"></div></div>'
-    +'<div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="cb">Close Shift and Report</button></div>');
+    +'<label class="f" style="margin-top:10px">Note</label><input class="inp" id="cn" placeholder="Optional"></div>'
+    /* ---------- HANDOVER ----------
+       Shift khatam karte waqt do sawal alag hain: bills kis ke zimme
+       jayenge, aur paisa kis ke zimme. Pehle koi raasta tha hi nahi —
+       cashier ko rukay hue bills ke sath hi shift band karni parti thi,
+       aur agla cashier un bills tak pohanch hi nahi sakta tha. */
+    +'<div class="box" style="margin-top:10px">'
+      +'<label class="f">Hand over to another user</label>'
+      +'<select class="inp" id="hoUser"><option value="">&mdash; nobody, I am closing myself &mdash;</option></select>'
+      +'<div id="hoOpts" class="hide" style="margin-top:9px">'
+        +'<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:7px;cursor:pointer">'
+          +'<input type="radio" name="homode" value="pending" checked style="margin-top:3px">'
+          +'<span style="font-size:12px"><b>Pending bills only</b><br>'
+          +'<span style="color:var(--ink2)">Unpaid / open bills move to them. '
+          +'The money you already took stays yours — you close and hand your cash to the manager.</span></span></label>'
+        +'<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">'
+          +'<input type="radio" name="homode" value="all" style="margin-top:3px">'
+          +'<span style="font-size:12px"><b>Everything, including amounts</b><br>'
+          +'<span style="color:var(--ink2)">All bills and their money go to them. '
+          +'You do not close with cash — they close including these amounts.</span></span></label>'
+      +'</div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Cancel</button>'
+    +'<button class="go" id="hoGo" class="hide" style="display:none">Hand over</button>'
+    +'<button class="go" id="cb">Close Shift and Report</button></div>');
+
+  /* Users ki list — sirf tab load ho jab zaroorat ho */
+  (function(){
+    var sel=ov.querySelector('#hoUser');
+    try{
+      var pr2=api('shift-peers');
+      ((pr2&&pr2.rows)||[]).forEach(function(u){
+        var o=document.createElement('option');
+        o.value=u.id;
+        o.textContent=u.full_name+(u.open_shift?(' · shift '+u.open_shift+' open'):' · no open shift');
+        sel.appendChild(o);
+      });
+    }catch(e){}
+    sel.onchange=function(){
+      var on=!!this.value;
+      ov.querySelector('#hoOpts').classList.toggle('hide',!on);
+      ov.querySelector('#hoGo').style.display=on?'':'none';
+      ov.querySelector('#cb').style.display=on?'none':'';
+    };
+  })();
+
+  ov.querySelector('#hoGo').onclick=function(){
+    var to=ov.querySelector('#hoUser').value;
+    if(!to){toast('Choose a user first');return}
+    var mode=(ov.querySelector('input[name=homode]:checked')||{}).value||'pending';
+    this.disabled=true;this.textContent='Handing over…';
+    var r=api('shift-handover',{to_user:to,mode:mode});
+    this.disabled=false;this.textContent='Hand over';
+    if(!r||!r.ok){toast((r&&r.message)||'Handover failed',true);return}
+    toast(r.message||'Handed over');
+    ov.remove();
+    if(mode==='all'){
+      /* Sab kuch ja chuka — ab is shift mein kuch bacha hi nahi. Seedha
+         zero par band karo, warna cashier ek khali closing screen par
+         atka rehta hai. */
+      var z=api('shift-close',{actual_cash:0,note:'handed over to '+(r.to||'')});
+      if(z&&z.ok){ shift=null; renderStrip(); showReport(z.report); }
+      else toast((z&&z.message)||'Could not close');
+    }else{
+      /* Rukay hue bills chale gaye — baqi closing wahi cashier karega. */
+      closeShift();
+    }
+  };
   ov.querySelector('#cb').onclick=function(){
     this.disabled=true;this.textContent='Closing...';
     var r=api('shift-close',{actual_cash:Number(ov.querySelector('#ac').value||0),

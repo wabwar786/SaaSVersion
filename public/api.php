@@ -34,11 +34,40 @@ function body():array{$x=json_decode(file_get_contents('php://input'),true);retu
   exit;
 }}}
 function shift_report(array $sh, ?string $until): array {
+  /* ============================================================
+     Shift ka hisaab AB US SHIFT KA hai, site ka nahi.
+
+     Pehle yeh sirf WAQT dekhta tha: shift khulne se ab tak, poore site
+     ke saare bills. Ek counter par to chalta tha, magar do cashier ek
+     sath baithte hi dono ki closing report ek jaisi aa jati thi — har
+     ek doosre ki sale apne naam par gin raha hota. Cash handover ka
+     koi matlab hi nahi rehta tha, kyunke raqam kisi ek ke zimme thi hi
+     nahi.
+
+     Ab bills `shift_id` se jurte hain. Isi wajah se handover kaam karta
+     hai: bill ka shift badalte hi uska paisa bhi agle cashier ke hisse
+     mein chala jata hai.
+
+     Waqt ki shart phir bhi lagi hai un purane bills ke liye jinke paas
+     `shift_id` hai hi nahi (us build se pehle ke).
+     ============================================================ */
   $p=DB::pdo();$from=$sh['opened_at'];$to=$until?:date('Y-m-d H:i:s.u');
-  $mq=$p->prepare("SELECT pm.method_type t, COALESCE(SUM(py.amount),0) a, COUNT(*) n FROM payments py JOIN payment_methods pm ON pm.id=py.payment_method_id WHERE py.site_id=? AND py.status='COMPLETED' AND py.paid_at>=? AND py.paid_at<=? GROUP BY pm.method_type");
-  $mq->execute([site_id(),$from,$to]);$methods=[];$sales=0.0;foreach($mq->fetchAll() as $m){$methods[$m['t']]=['amount'=>(float)$m['a'],'count'=>(int)$m['n']];$sales+=(float)$m['a'];}
-  $oq=$p->prepare("SELECT COUNT(*) c, COALESCE(SUM(grand_total),0) g, MIN(bill_no) f, MAX(bill_no) l FROM orders WHERE site_id=? AND order_status='CLOSED' AND closed_at>=? AND closed_at<=?");
-  $oq->execute([site_id(),$from,$to]);$o=$oq->fetch();
+  $sid=(string)($sh['id']??'');
+  $scope = $sid!=='' ? "(o.shift_id=? OR (o.shift_id IS NULL AND o.closed_at>=? AND o.closed_at<=?))"
+                     : "(o.closed_at>=? AND o.closed_at<=?)";
+  $scopeArgs = $sid!=='' ? [$sid,$from,$to] : [$from,$to];
+
+  $mq=$p->prepare("SELECT pm.method_type t, COALESCE(SUM(py.amount),0) a, COUNT(*) n
+                     FROM payments py
+                     JOIN payment_methods pm ON pm.id=py.payment_method_id
+                     JOIN orders o ON o.id=py.order_id
+                    WHERE py.site_id=? AND py.status='COMPLETED' AND $scope
+                    GROUP BY pm.method_type");
+  $mq->execute(array_merge([site_id()],$scopeArgs));
+  $methods=[];$sales=0.0;foreach($mq->fetchAll() as $m){$methods[$m['t']]=['amount'=>(float)$m['a'],'count'=>(int)$m['n']];$sales+=(float)$m['a'];}
+  $oq=$p->prepare("SELECT COUNT(*) c, COALESCE(SUM(o.grand_total),0) g, MIN(o.bill_no) f, MAX(o.bill_no) l
+                     FROM orders o WHERE o.site_id=? AND o.order_status='CLOSED' AND $scope");
+  $oq->execute(array_merge([site_id()],$scopeArgs));$o=$oq->fetch();
   $eq=$p->prepare("SELECT COALESCE(SUM(CASE WHEN payment_method='CASH' THEN amount ELSE 0 END),0) cashx, COALESCE(SUM(amount),0) allx FROM expenses WHERE site_id=? AND status='APPROVED' AND created_at>=? AND created_at<=?");
   $eq->execute([site_id(),$from,$to]);$e=$eq->fetch();
   $cash=(float)($methods['CASH']['amount']??0);$expected=(float)$sh['opening_cash']+$cash-(float)$e['cashx'];
@@ -1547,10 +1576,22 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
  $q->execute([site_id(),$uid]);
  if($sn=$q->fetchColumn())fail('Aap ki shift '.$sn.' is already open. Close it first.');
  /* 2) Isi counter par kisi aur ki shift open? (do cashier ek counter par nahi) */
- $counter=trim((string)($d['counter']??''))?:'Counter 1';
- $c=$p->prepare("SELECT cs.shift_no,u.full_name FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN' AND cs.counter_name=? LIMIT 1");
- $c->execute([site_id(),$counter]);
- if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') is open. Close or transfer it first.');
+ /* Counter ab cashier se nahi poochha jata — shift user ki hai, counter
+    ki nahi. Agar naam bheja gaya ho to wahi, warna pehla khali counter
+    chun liya jata hai. Pehle har cashier "Counter 1" likh deta tha aur
+    doosre ko "Counter 1 par kisi aur ki shift khuli hai" ka samna hota. */
+ $counter=trim((string)($d['counter']??''));
+ if($counter===''){
+   $used=$p->prepare("SELECT counter_name FROM cashier_shifts WHERE site_id=? AND status='OPEN'");
+   $used->execute([site_id()]);
+   $taken=array_column($used->fetchAll(),'counter_name');
+   $n=1; while(in_array('Counter '.$n,$taken,true) && $n<50) $n++;
+   $counter='Counter '.$n;
+ }else{
+   $c=$p->prepare("SELECT cs.shift_no,u.full_name FROM cashier_shifts cs LEFT JOIN users u ON u.id=cs.cashier_user_id WHERE cs.site_id=? AND cs.status='OPEN' AND cs.counter_name=? LIMIT 1");
+   $c->execute([site_id(),$counter]);
+   if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') is open. Close or transfer it first.');
+ }
  /* 3) Pichli shift ka cash clear hua? */
  $lc=$p->prepare("SELECT shift_no,cash_cleared FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
  $lc->execute([site_id(),$uid]);
@@ -1614,6 +1655,90 @@ case 'shift-handovers':needLogin();
  $q->execute([site_id()]);ok(['handovers'=>$q->fetchAll()]);
 
 case 'shift-preview':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No open shift.');ok(['report'=>shift_report($sh,null)]);
+case 'shift-peers':needLogin();Auth::requireModule('pos');
+ /* Jin users ko shift handover ki ja sakti hai — POS chalane wale,
+    apne aap ke ilawa. */
+ $p=DB::pdo();$me=current_user()['id']??'';
+ $q=$p->prepare("SELECT DISTINCT u.id,u.full_name,
+                        (SELECT cs.shift_no FROM cashier_shifts cs
+                          WHERE cs.cashier_user_id=u.id AND cs.site_id=? AND cs.status='OPEN'
+                          ORDER BY cs.opened_at DESC LIMIT 1) open_shift
+                   FROM users u
+                   LEFT JOIN user_roles ur ON ur.user_id=u.id
+                   LEFT JOIN roles r ON r.id=ur.role_id
+                  WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                    AND u.id<>? ORDER BY u.full_name");
+ $q->execute([site_id(),tenant_id(),$me]);
+ ok(['rows'=>$q->fetchAll()]);
+
+case 'shift-handover':needLogin();Auth::requireModule('pos');$d=body();
+ /* ============================================================
+    SHIFT HANDOVER — ek cashier se doosre ko.
+
+    Do bilkul alag soortein, aur farq paise ka hai:
+
+      mode = 'pending'
+        Sirf wo bills jinka paisa abhi aana hai (khule/held bills).
+        Bik chuke aur paid bills apni jagah rehte hain, aur unka cash
+        isi cashier ke zimme rehta hai. Phir yeh apni shift band kar ke
+        apna cash manager ko handover karta hai.
+
+      mode = 'all'
+        Saare bills — paise samet — agle user ke khaate mein chale jate
+        hain. Yeh cashier apni closing NAHI karta; uski shift bina kisi
+        raqam ke band hoti hai, aur closing wahi naya user karega jiske
+        hisse mein ab yeh sab aaya hai.
+
+    Dono soorton mein har bill par likha jata hai ke kis ne kis ko diya
+    — warna kal koi nahi bata sakta ke paisa kis ke zimme tha.
+    ============================================================ */
+ $p=DB::pdo();$me=current_user()['id']??'';
+ $to=(string)($d['to_user']??'');
+ $mode=strtolower((string)($d['mode']??'pending'));
+ if(!in_array($mode,['pending','all'],true))fail('Unknown handover mode');
+ if($to==='')fail('Choose the user to hand over to');
+ if($to===$me)fail('You cannot hand over to yourself');
+
+ $uq=$p->prepare("SELECT id,full_name FROM users WHERE id=? AND tenant_id=? AND status='ACTIVE' AND deleted_at IS NULL");
+ $uq->execute([$to,tenant_id()]);
+ $tu=$uq->fetch(); if(!$tu)fail('That user was not found',404);
+
+ $sq=$p->prepare("SELECT id,shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");
+ $sq->execute([site_id(),$me]); $mine=$sq->fetch();
+ if(!$mine)fail('You have no open shift.');
+
+ /* Target ki khuli shift — na ho to bills bina shift ke us ke naam par
+    chale jate hain aur uski agli shift unhein utha legi. */
+ $tq=$p->prepare("SELECT id,shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");
+ $tq->execute([site_id(),$to]); $theirs=$tq->fetch();
+
+ $where = $mode==='pending'
+   ? "o.shift_id=? AND o.order_status NOT IN ('CLOSED','VOID')"
+   : "o.shift_id=?";
+ $cq=$p->prepare("SELECT COUNT(*) n, COALESCE(SUM(o.grand_total),0) amt FROM orders o WHERE $where");
+ $cq->execute([$mine['id']]);
+ $tot=$cq->fetch();
+ if((int)$tot['n']===0)fail($mode==='pending'?'There are no pending bills to hand over.':'This shift has no bills.');
+
+ $note=' [handed to '.($tu['full_name']?:'user').' by '.((current_user()['full_name']??'')?:'cashier').' '.date('Y-m-d H:i').']';
+ $upd=$p->prepare("UPDATE orders o SET o.created_by_user_id=?, o.shift_id=?,
+                          o.notes=CONCAT(COALESCE(o.notes,''),?), o.updated_at=NOW(6)
+                    WHERE $where");
+ $upd->execute([$to, $theirs['id']??null, $note, $mine['id']]);
+
+ Audit::log('SHIFT_HANDOVER','pos',['record_id'=>$mine['id'],
+   'label'=>$mine['shift_no'],'mode'=>$mode,'to'=>$tu['full_name'],
+   'bills'=>(int)$tot['n'],'amount'=>(float)$tot['amt']]);
+
+ $msg = $mode==='pending'
+   ? ((int)$tot['n'].' pending bill(s) moved to '.$tu['full_name'].'. Your own cash stays with you — close your shift as usual.')
+   : ((int)$tot['n'].' bill(s) and '.number_format((float)$tot['amt'],2).' moved to '.$tu['full_name']
+      .'. They will close with these amounts; your shift closes at zero.');
+
+ ok(['moved'=>(int)$tot['n'],'amount'=>(float)$tot['amt'],
+     'to'=>$tu['full_name'],'to_shift'=>$theirs['shift_no']??null,
+     'mode'=>$mode,'message'=>$msg]);
+
 case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
  $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
    ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');

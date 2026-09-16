@@ -2380,3 +2380,56 @@ an empty list that makes the form unsubmittable.
 **The lesson:** "I changed the file" is not "the browser runs it". Two
 copies of a file with the same name is a trap that will keep catching
 people; `check_assets.php` at least makes it visible.
+
+---
+
+## 52. Shift opening, and handing a shift to the next cashier
+
+### Opening asks one question now
+
+The Counter field is gone. A shift belongs to the **user who is signed
+in**, not to a counter, and asking the cashier to type a counter name
+created a problem out of nothing: everyone typed "Counter 1", so the
+second cashier was told *"Counter 1 already has an open shift"*.
+
+The server picks the first free counter itself (Counter 1, Counter 2 …).
+Two cashiers opening at once now land on separate counters without
+either of them thinking about it.
+
+### Handover on closing
+
+Two situations, and the difference is the money:
+
+**Pending bills only.** Unpaid and open bills move to the chosen user.
+The cash already taken stays with the cashier, who closes normally and
+hands their drawer to the manager.
+
+**Everything, including amounts.** All bills *and* their money go to the
+next user. The outgoing cashier does not close with cash — their shift
+closes at zero, and the incoming user closes later including these
+amounts.
+
+Both write on each bill who handed it to whom and when, so tomorrow
+nobody has to guess whose money it was.
+
+### The flaw underneath, which had to be fixed first
+
+The shift report counted by **time and site**: every bill closed at that
+site since the shift opened. Fine with one counter. With two cashiers
+side by side, **both closing reports showed the same site totals** —
+each counting the other's sales as their own. Cash accountability did
+not exist, and no handover feature could have worked on top of it.
+
+Bills are now tied to the shift by `shift_id`. That is what makes
+handover real: move the bill's shift and its money moves with it. Old
+bills without a `shift_id` still fall back to the time window.
+
+```
+start                one: 1 bill / 1500     two: 0 bills / 0
+pending handover  -> 2 pending bills moved; cash unchanged on both
+all handover      -> 1 bill and 1,500.00 moved
+after             one: 0 bills / 0        two: 1 bill / 1500
+```
+
+Also checked: handing over to yourself is refused, and so is a handover
+with nothing to move.
