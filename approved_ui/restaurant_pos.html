@@ -184,6 +184,40 @@ button{cursor:pointer;border:0;background:none}
 .scrim.on{opacity:1;pointer-events:auto}
 
 /* ---------- modals ---------- */
+/* ============================================================
+   DeleteKit ke popups (delete_kit.js) ka apna markup hai:
+     .modal.show > .dialog > .dialog-head / .dialog-body / .dialog-foot
+
+   Yeh classes `shared.css` mein maujood hain, magar Sale Point
+   shared.css load HI NAHI karta — is ka apna CSS hai (.ov/.dlg/.dh...).
+   Nateeja: item delete ka confirm box bilkul bina style ke aata tha —
+   sadi safed patti, bina padding, bina buttons ke shakl ke.
+
+   Yahan un classes ko POS ke apne dialog jaisa bana diya gaya hai, taake
+   dono ek jaise lagen.
+   ============================================================ */
+.modal{position:fixed;inset:0;background:rgba(10,24,17,.55);backdrop-filter:blur(3px);
+  z-index:950;display:none;align-items:center;justify-content:center;padding:16px}
+.modal.show{display:flex}
+.modal .dialog{background:var(--panel);border-radius:16px;box-shadow:0 28px 74px rgba(0,0,0,.34);
+  width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.modal .dialog-head{padding:15px 18px 12px;border-bottom:1px solid var(--l)}
+.modal .dialog-head h3{font-size:14.5px;font-weight:800;margin:0}
+.modal .dialog-head p{font-size:11.5px;color:var(--ink2);margin-top:3px}
+.modal .dialog-body{padding:15px 18px;overflow:auto;flex:1;font-size:12.5px;line-height:1.6}
+.modal .dialog-body label{display:block;font-size:11px;font-weight:700;color:var(--ink2);
+  margin:10px 0 5px;text-transform:uppercase;letter-spacing:.03em}
+.modal .dialog-body input,.modal .dialog-body select,.modal .dialog-body textarea{
+  width:100%;box-sizing:border-box;height:38px;padding:0 11px;border:1px solid var(--l);
+  border-radius:9px;font:inherit;font-size:13px;background:#fff}
+.modal .dialog-foot{padding:12px 18px;border-top:1px solid var(--l);display:flex;gap:8px;
+  justify-content:flex-end;flex-wrap:wrap}
+.modal .dialog-foot .btn{height:38px;padding:0 16px;border-radius:9px;border:1px solid var(--l);
+  background:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.modal .dialog-foot .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.modal .dialog-foot .btn.danger{background:#8c1d24;border-color:#8c1d24;color:#fff}
+.modal .dialog-foot .btn:hover{filter:brightness(.97)}
+
 .ov{position:fixed;inset:0;background:rgba(10,24,17,.55);backdrop-filter:blur(3px);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px}
 .dlg{background:var(--panel);border-radius:16px;box-shadow:0 28px 74px rgba(0,0,0,.34);width:100%;max-width:420px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
 .dlg.wide{max-width:620px}
@@ -411,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v36';
+var VERSION='POS v37';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -749,9 +783,29 @@ function boot(){
   applyBrand();
   applyRole();
   orderTax=taxPct('Cash');
-  loadHolds(); loadQr(); setInterval(loadQr,20000); renderAll();
+  /* ============================================================
+     Delete ke baad grid khali kyun ho jata tha.
+
+     `cat` category ka NAAM rakhta hai aur boot() ke baad bhi wahi rehta
+     hai. Jis category ka aakhri item delete ho, wo category BOOT se
+     nikal jati hai — filter ek aisi category par laga reh jata jo ab
+     wujood mein hi nahi. Grid khali, aur wo chip bhi gayab jis par
+     click kar ke wapas aaya ja sakta. Sirf page refresh se `cat` dobara
+     'All' hota tha.
+
+     Ab: category ghayab ho to filter khud 'All' par wapas. */
+  if(cat!=='All' && !(BOOT.categories||[]).some(function(c){return c.name===cat})) cat='All';
+
+  loadHolds(); loadQr(); renderAll();
   refreshSync();
-  setInterval(refreshSync,30000);           /* chip har 30s update */
+  /* Timers sirf EK dafa. boot() har delete/refresh par dobara chalta hai —
+     pehle har dafa naye interval lag jate the aur POS waqt ke sath
+     bhaari hota chala jata tha. */
+  if(!window.__posTimers){
+    window.__posTimers=1;
+    setInterval(loadQr,20000);
+    setInterval(refreshSync,30000);         /* chip har 30s update */
+  }
   /* V64 — pehle yahan har 2 minute par asal sync chalti thi, aur POS se
      hatte hi timer mar jata tha. Ab background loop (60s) kaam karta hai;
      yahan sirf chip refresh hota hai. */
@@ -1757,6 +1811,44 @@ function loadHolds(){
   holds=(r&&r.ok&&r.rows)?r.rows:[];
   $('#holdCount').textContent='('+holds.length+')';
 }
+/* Held bill cancel — apna proper dialog, prompt() nahi.
+   Kitchen ko ja chuke items par manager ka password maanga jata hai:
+   wo khana ban chuka hota hai aur bina hisaab ke gayab nahi ho sakta. */
+function cancelHold(h,done){
+  var sent=!!h.sent;
+  var ov=modal('<div class="dh"><h3>Cancel this bill?</h3>'
+    +'<p>Bill #'+esc(h.billNo)+' &middot; '+esc(h.table||h.mode||'')+'</p></div>'
+    +'<div class="db">'
+      +'<div class="kv"><span>Items</span><b>'+(h.lines||0)+'</b></div>'
+      +'<div class="kv"><span>Amount</span><b>'+money(h.total||0)+'</b></div>'
+      +(sent?'<div class="box" style="background:#fdecec;border-color:#f5c2c2;margin-top:10px">'
+             +'<b style="color:#8c1d24">These items have already gone to the kitchen.</b>'
+             +'<div style="font-size:11px;margin-top:4px">Manager approval is required to cancel.</div></div>':'')
+      +'<div class="box" style="margin-top:10px">'
+        +'<label class="f">Reason</label>'
+        +'<select class="inp" id="chReason">'
+          +'<option>Customer left</option><option>Wrong entry</option>'
+          +'<option>Duplicate bill</option><option>Item unavailable</option><option>Other</option></select>'
+        +(sent?'<label class="f" style="margin-top:9px">Manager password</label>'
+               +'<input class="inp" id="chPass" type="password" placeholder="Admin / Owner / Manager password">':'')
+      +'</div>'
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Keep it</button>'
+    +'<button class="go" id="chGo" style="background:#8c1d24;border-color:#8c1d24">Cancel bill</button></div>');
+
+  ov.querySelector('#chGo').onclick=function(){
+    var pw=(ov.querySelector('#chPass')||{}).value||'';
+    if(sent&&!pw){toast('Manager password is required');return}
+    this.disabled=true;this.textContent='Cancelling…';
+    var r=api('pos-hold-cancel',{id:h.id,reason:(ov.querySelector('#chReason')||{}).value||'',password:pw});
+    this.disabled=false;this.textContent='Cancel bill';
+    if(!r||!r.ok){toast((r&&r.message)||'Could not cancel');return}
+    ov.remove(); toast('Bill #'+esc(h.billNo)+' cancelled');
+    if(curHoldId===h.id){ curHoldId=''; cart=[]; renderAll(); }
+    if(done)done();
+  };
+}
+
 function holdCurrent(silent){
   if(!cart.length){if(!silent)toast('Your cart is empty');return false}
   var t=totals();
@@ -1779,11 +1871,23 @@ $('#holdsBtn').onclick=function(){
       +(h.sent?' <span style="color:var(--ok);font-size:10px;font-weight:800">KITCHEN</span>':'')
       +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)
       +(h.by?(' &middot; '+esc(h.by)):'')+' &middot; '+esc(h.at||'')+'</small></div>'
-      +'<button data-res="'+i+'">Resume</button></div>';
+      +'<div style="display:flex;gap:6px">'
+      +'<button data-res="'+i+'">Resume</button>'
+      +'<button data-hdel="'+i+'" title="Cancel this bill" '
+        +'style="background:#fdecec;border-color:#f5c2c2;color:#8c1d24">Cancel</button>'
+      +'</div></div>';
   }).join(''):'<div class="cempty">No open bills</div>';
   var ov=modal('<div class="dh"><h3>Held Bills</h3><p>Rukay hue orders resume please</p></div><div class="db">'+body+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button>'+(cart.length?'<button class="go" id="hNow">Hold Current Bill</button>':'')+'</div>',true);
   var hb=ov.querySelector('#hNow'); if(hb)hb.onclick=function(){if(holdCurrent())ov.remove()};
+  /* Held bill ko KHATAM karna.
+     Pehle yeh option tha hi nahi — cashier resume kar ke items hata deta
+     aur samajhta ke bill gaya, magar server par order khula rehta aur
+     hold list mein hamesha baitha rehta. */
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-hdel]'),function(b){b.onclick=function(){
+    var h=holds[this.dataset.hdel]; if(!h)return;
+    cancelHold(h,function(){ ov.remove(); loadHolds(); });
+  }});
   Array.prototype.forEach.call(ov.querySelectorAll('[data-res]'),function(b){b.onclick=function(){
     var h=holds[this.dataset.res];
     /* V94 — items SERVER se. Pehle yahan `ui_records` mein rakha hua
@@ -1924,7 +2028,23 @@ function openItemModal(startTab){
     +'<div data-p="category" class="hide"><div class="fg">'
       +'<div><label class="f">Category Name *</label><input class="inp" id="cName" placeholder="Beverages"></div>'
       +'<div><label class="f">Icon</label><input class="inp" id="cIcon" value="*"></div>'
-      +'<div class="full"><label class="f">Kitchen Printer Station</label><input class="inp" id="cPrn" value="main"></div></div></div>'
+      +'<div class="full"><label class="f">Kitchen Printer Station</label><input class="inp" id="cPrn" value="main"></div>'
+      /* Maujooda categories, hatane ke option ke saath. Delete ka koi
+         raasta tha hi nahi — ek dafa banayi hui category hamesha ke liye
+         POS par baith jati thi. */
+      +'<div class="full" style="margin-top:6px"><label class="f">Existing categories</label>'
+        +'<div id="catList" style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto">'
+        +((BOOT.categories||[]).length?(BOOT.categories||[]).map(function(c){
+            var n=catCount(c.name);
+            return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;'
+              +'border:1px solid var(--l);border-radius:9px">'
+              +'<b style="flex:1;font-size:12.5px">'+esc(c.name)+'</b>'
+              +'<span style="font-size:11px;color:var(--ink2)">'+n+' item'+(n===1?'':'s')+'</span>'
+              +'<button class="tb" data-catdel="'+esc(c.name)+'" '
+                +'style="color:#8c1d24;border-color:#f5c2c2">Delete</button></div>';
+          }).join(''):'<div style="font-size:11.5px;color:var(--ink2)">No categories yet.</div>')
+        +'</div></div>'
+      +'</div></div>'
     +'<div data-p="rate" class="hide"><div class="fg">'
       +'<div class="full"><label class="f">Item</label><select class="inp" id="rSel">'+(BOOT.products.length?BOOT.products.map(function(p){return '<option value="'+esc(p.id)+'" data-pr="'+p.price+'">'+esc(p.name)+' - '+money(p.price)+'</option>'}).join(''):'<option value="">(no item nahi)</option>')+'</select></div>'
       +'<div><label class="f">Current Rate</label><input class="inp" id="rCur" disabled></div>'
@@ -1946,6 +2066,36 @@ function openItemModal(startTab){
   };
   function syncRate(){var s=ov.querySelector('#rSel'),o=s&&s.options[s.selectedIndex];if(o&&o.dataset.pr)ov.querySelector('#rCur').value=money(o.dataset.pr)}
   if(ov.querySelector('#rSel')){ov.querySelector('#rSel').onchange=syncRate;syncRate()}
+
+  /* Category delete — jin mein items hon un ke liye pehle poochha jata
+     hai, chupchaap kuch gayab nahi hota. */
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-catdel]'),function(b){b.onclick=function(){
+    var name=this.dataset.catdel;
+    var c=(BOOT.categories||[]).filter(function(x){return x.name===name})[0];
+    var id=c&&c.id;
+    if(!id){
+      /* Purana boot payload category ki id nahi bhejta tha — naam se
+         server par dhoondne ka raasta niche wala endpoint deta hai. */
+      var f=api('menu-category-find&name='+encodeURIComponent(name));
+      if(!f||!f.ok){toast((f&&f.message)||'Category not found');return}
+      id=f.id;
+    }
+    var n=catCount(name);
+    var msg=n? ('"'+name+'" mein '+n+' item'+(n===1?'':'s')+' hain. Delete karne par wo <b>General</b> mein chale jayenge.')
+             : ('"'+name+'" khali hai.');
+    var d2=modal('<div class="dh"><h3>Delete category?</h3><p>'+esc(name)+'</p></div>'
+      +'<div class="db"><div class="box">'+msg+'</div></div>'
+      +'<div class="df"><button class="sec" data-x>Keep it</button>'
+      +'<button class="go" id="cdGo" style="background:#8c1d24;border-color:#8c1d24">Delete</button></div>');
+    d2.querySelector('#cdGo').onclick=function(){
+      this.disabled=true;this.textContent='Deleting…';
+      var r=api('menu-category-delete',{id:id,move:n>0});
+      if(!r||!r.ok){this.disabled=false;this.textContent='Delete';toast((r&&r.message)||'Could not delete');return}
+      d2.remove(); ov.remove();
+      toast('Category "'+name+'" deleted'+(r.moved?(' — '+r.moved+' item'+(r.moved===1?'':'s')+' moved to General'):''));
+      boot();
+    };
+  }});
 
   ov.querySelector('#saveIt').onclick=function(){
     var btn=this;btn.disabled=true;btn.textContent='Saving...';

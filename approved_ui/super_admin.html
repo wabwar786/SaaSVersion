@@ -15,6 +15,31 @@
    ============================================================ */
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 
+/* ---------- Usage Analytics ki table ----------
+   Screenshot par teen cheezein kharab thin: usage % apne column se nikal
+   kar "Type" par chadh gaya tha, adad baayen taraf the jabke unke
+   headers beech mein, aur LIGHT ke pill ka koi background nahi tha. */
+.usage-tbl td, .usage-tbl th{vertical-align:middle}
+.usage-tbl td.num, .usage-tbl th.num{text-align:right;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.usage-tbl .biz{min-width:200px}
+.usage-tbl .biz .t-main{display:inline}
+.usage-tbl .biz .t-sub{display:block;margin-top:2px}
+
+/* Usage cell: number upar, bar theek uske neeche — dono apne column mein */
+.usage-tbl .usage-cell{width:118px}
+.usage-tbl .usage-cell b{display:block;font-size:13px;line-height:1.2}
+.ubar{display:block;height:5px;margin-top:5px;background:var(--line);
+  border-radius:3px;overflow:hidden}
+.ubar i{display:block;height:100%;border-radius:3px}
+
+/* Health pills — sab ka apna background, warna sirf laal nazar aata hai */
+.usage-tbl .tag{white-space:nowrap;font-size:10.5px;letter-spacing:.02em}
+@media(max-width:1100px){
+  .usage-tbl .biz{min-width:150px}
+  .usage-tbl .usage-cell{width:92px}
+}
+
 /* Dialog ke andar ka form grid — yeh bhi kahin define nahi tha, is liye
    Branding aur PMS wale popups ke fields poori chaurai le kar bikhar
    jate the. */
@@ -846,37 +871,49 @@ function paintUsage(){
   var bills =rows.reduce(function(a,x){return a+x.bills},0);
   var avg   =active.length?Math.round(active.reduce(function(a,x){return a+x.usage_pct},0)/active.length):0;
 
+  /* Rang maani rakhte hain: pehle teen sirf ittila hain, chautha hi
+     tawajjo maangta hai. Pehle chaaron laal the — nazar kahin nahi
+     tikti thi. */
   document.getElementById('uKpis').innerHTML=
-     kpi('Paying businesses',live.length,'')
-    +kpi('Used at least once',active.length,live.length?Math.round(active.length/live.length*100)+'% of them':'')
-    +kpi('Average usage',avg+'%','of days with a bill')
-    +kpi('Need attention',risk.length,'idle 14+ days or never used','warn');
+     kpi('Paying businesses',live.length,'demo businesses not counted','info')
+    +kpi('Used at least once',active.length,live.length?Math.round(active.length/live.length*100)+'% of them':'','info')
+    +kpi('Average usage',avg+'%','of days with a bill', avg>=70?'ok':'warn')
+    +kpi('Need attention',risk.length,'idle 14+ days or never used', risk.length?'warn':'ok');
 
   var H=['Business','Type','Usage','Active days','Bills','Per active day','Last bill','Idle','Users','Modules','Health'];
   var body=rows.map(function(x){
-    var tone = x.health==='HEALTHY'?'green' : (x.health==='LIGHT'?'amber'
-             : (x.health==='NEVER_USED'||x.health==='AT_RISK'?'red':'amber'));
-    var bar='<div style="height:6px;background:#eceff1;border-radius:4px;overflow:hidden;min-width:70px">'
-      +'<div style="height:100%;width:'+Math.min(100,x.usage_pct)+'%;background:'
-      +(x.usage_pct>=70?'#1f8a5f':(x.usage_pct>=30?'#c98a00':'#b3261e'))+'"></div></div>';
+    /* Sirf wahi classes jo shared.css mein waqai maujood hain:
+       ok/green, orange, red/danger, neutral. `amber` yahan hai hi nahi —
+       us se pill bina background ke nikalta tha (screenshot mein LIGHT). */
+    var tone = x.health==='HEALTHY' ? 'green'
+             : (x.health==='NEVER_USED'||x.health==='AT_RISK') ? 'red'
+             : 'orange';   /* LIGHT, RARE, SLOWING — teeno tawajjo maangte hain */
+    var bar='<span class="ubar"><i style="width:'+Math.min(100,x.usage_pct)+'%;background:'
+      +(x.usage_pct>=70?'var(--ok)':(x.usage_pct>=30?'var(--warn)':'var(--danger)'))+'"></i></span>';
     return '<tr>'
-      +'<td><b>'+esc(x.name)+'</b>'+(x.is_demo?' <span class="tag">demo</span>':'')
-        +'<br><span class="muted" style="font-size:11px">'+esc(x.slug)+'</span></td>'
+      +'<td class="biz"><span class="t-main">'+esc(x.name)+'</span>'
+        +(x.is_demo?' <span class="tag">demo</span>':'')
+        +'<span class="t-sub">'+esc(x.slug)+'</span></td>'
       +'<td>'+(x.industry==='RETAIL'?'Retail':'Restaurant')+'</td>'
-      +'<td><b>'+x.usage_pct+'%</b>'+bar+'</td>'
-      +'<td>'+x.active_days+' / '+x.window_days+'</td>'
-      +'<td>'+x.bills+'</td>'
-      +'<td>'+x.bills_per_day+'</td>'
+      +'<td class="num usage-cell"><b>'+x.usage_pct+'%</b>'+bar+'</td>'
+      +'<td class="num">'+x.active_days+' / '+x.window_days+'</td>'
+      +'<td class="num">'+x.bills+'</td>'
+      +'<td class="num">'+x.bills_per_day+'</td>'
       +'<td>'+(x.last_bill||'&mdash;')+'</td>'
-      +'<td>'+(x.idle_days===null?'&mdash;':x.idle_days+'d')+'</td>'
-      +'<td>'+x.users+'</td>'
-      +'<td>'+x.modules_used+'</td>'
-      +'<td><span class="tag '+tone+'">'+x.health.replace(/_/g,' ')+'</span></td>'
+      +'<td class="num">'+(x.idle_days===null?'&mdash;':x.idle_days+'d')+'</td>'
+      +'<td class="num">'+x.users+'</td>'
+      +'<td class="num">'+x.modules_used+'</td>'
+      +'<td><span class="tag '+tone+'">'+esc(x.health.replace(/_/g,' '))+'</span></td>'
       +'</tr>';
   }).join('');
+  /* Baqi page `table` class istemal karta hai — maine pehle `tbl` likh
+     diya tha jo kahin define hi nahi. Isi liye columns bikhre hue the
+     aur "Restaurant67%" ek saath chipak gaya tha. */
+  var NUM=[2,3,4,5,7,8,9];   /* jo columns adad hain — daayen taraf */
   document.getElementById('uTable').innerHTML=
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr>'
-    +H.map(function(h){return '<th>'+h+'</th>'}).join('')+'</tr></thead><tbody>'
+    '<div class="table-wrap"><table class="table usage-tbl"><thead><tr>'
+    +H.map(function(h,i){return '<th'+(NUM.indexOf(i)>=0?' class="num"':'')+'>'+h+'</th>'}).join('')
+    +'</tr></thead><tbody>'
     +(body||'<tr><td colspan="11" class="muted">No businesses</td></tr>')+'</tbody></table></div>';
 }
 

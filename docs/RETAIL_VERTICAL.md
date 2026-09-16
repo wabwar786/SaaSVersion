@@ -1876,3 +1876,129 @@ Same output: 413 products, 50 bills.
 on every deploy and start-up — nothing manual to do. On a busy shop the
 gap widens, because the old queries got slower as orders accumulated
 while the indexed ones do not.
+
+---
+
+## 43. Usage Analytics — design fixes
+
+The page worked; it did not look right. Four problems, all mine.
+
+### 1. The table class did not exist
+
+I wrote `<table class="tbl">`. Every other table on the page uses
+`class="table"` — `tbl` is defined nowhere. With no styling the columns
+collapsed onto each other, which is why the screenshot showed
+**"Restaurant67%"** running together.
+
+### 2. Numbers were left-aligned under centred headers
+
+Bills, Idle, Users, Modules and Usage now carry `class="num"` on both
+the header and the cell, with `tabular-nums` so the digits line up.
+
+### 3. LIGHT had no pill background
+
+I used `tag amber`. That class does not exist either — `shared.css` has
+`green`, `orange`, `red`, `danger`, `neutral`, `info`, `blue`, `brand`.
+An undefined class renders as bare text, so LIGHT looked broken next to
+a properly filled NEVER USED.
+
+Health colours now: HEALTHY green · LIGHT / RARE / SLOWING orange ·
+NEVER_USED / AT_RISK red.
+
+### 4. All four KPI cards were red
+
+The default `.kpi` accent is the brand colour, which is red here. Every
+card shouted equally, so the eye landed nowhere. Now: the first two are
+informational (blue), average usage is green or amber on its own value,
+and "Need attention" is amber only when it is not zero.
+
+Also: the usage bar now sits **under** the percentage inside its own
+fixed-width cell instead of stretching into the next column.
+
+### Verified by rendering the page, not by reading it
+
+```
+JS errors     : 0
+table class   : table usage-tbl
+header align  : -,-,num,num,num,num,-,num,num,num,-
+row cells     : biz,-,num usage-cell,num,num,num,-,num,num,num,-
+bar present   : true
+health pill   : <span class="tag orange">RARE</span>
+kpi cards     : kpi info | kpi info | kpi warn | kpi warn
+Command Guide : 25 commands in 7 groups, 0 errors
+```
+
+**The lesson, again:** I checked that the markup was in the page. I did
+not check that the classes I used were real. Two of the four bugs were
+simply invented class names.
+
+---
+
+## 44. POS: delete dialog, blank grid, held bills, categories
+
+### 1. The delete confirmation had no styling
+
+`delete_kit.js` builds its popup with `.modal > .dialog > .dialog-head /
+-body / -foot`. Those classes live in `shared.css` — and **Sale Point
+does not load shared.css**; it has its own CSS (`.ov/.dlg/.dh/.db/.df`).
+
+So on every other page the delete dialog looks right, and on the POS it
+rendered as bare unstyled text. Those classes are now defined in the POS
+stylesheet, matched to its own dialogs.
+
+### 2. The item grid went blank after a delete
+
+`cat` holds the selected category **name** and survives `boot()`. Delete
+the last item in a category and that category disappears from the boot
+payload — the filter stays pointed at a category that no longer exists,
+so `visible()` returns nothing. The chip to click back to "All" was gone
+too. Only a page refresh reset it.
+
+→ After boot, if the selected category is no longer there, the filter
+falls back to **All**.
+
+Found alongside it: `boot()` called `setInterval()` twice on every run,
+and `boot()` runs after every delete and refresh. The timers piled up
+and the POS grew heavier the longer it stayed open. They are now created
+once.
+
+### 3. Held bills could not be deleted
+
+There was **no cancel option at all** — only Resume. The cashier would
+resume a held bill, clear the items, and assume it was gone; the order
+stayed open on the server, sat in the Hold list forever, and brought all
+its items back on the next resume. That is exactly the two bills that
+would not go away.
+
+→ New `pos-hold-cancel` endpoint and a **Cancel** button on each held
+bill, with its own dialog (reason + amount + item count). Items already
+sent to the kitchen need a manager password — that food has been cooked
+and cannot vanish without a record. The bill is marked VOID and audited.
+
+### 4. Categories could not be deleted
+
+Also missing entirely. New `menu-category-delete`:
+
+| Case | Behaviour |
+|---|---|
+| Empty category | Deleted |
+| Has items, no choice made | **Refused**, with the count and the name |
+| Has items, `move` chosen | Items move to **General**, then delete |
+
+Soft delete (`deleted_at`), so old bills still report correctly. The
+category list with a Delete button now sits in the POS "New item →
+Category" tab, and the boot payload carries category ids.
+
+```
+delete empty : ok
+with items   : refused — 3 items are still in "BBQ"
+move=true    : ok, deleted BBQ, moved 3
+hold bad id  : This bill was not found
+```
+
+### 5. Offline category creation
+
+Tested on a real offline node (local role, sealed config): creating a
+category works, the duplicate check works, and creating one with a
+printer station works. Nothing reproduced here — the exact error message
+from that node would be needed to go further.

@@ -552,6 +552,54 @@ case 'pos-holds':needLogin();Auth::requireModule('pos');
     counter par kahin nazar nahi aata tha. */
  ok(['rows'=>OpsService::holdBills()]);
 
+case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
+ /* ============================================================
+    Ek rukay hue bill ko KHATAM karna.
+
+    Yeh pehle tha hi nahi. Cashier hold bill kholta, items cart se hata
+    deta, aur samajhta ke bill khatam ho gaya — magar server par order
+    waise ka waisa khula rehta. Hold ki list mein wo bill hamesha ke
+    liye baith jata, aur dobara resume karne par saare items wapas aa
+    jate. Do bill is tarah kabhi delete nahi hote the.
+
+    Kitchen ko ja chuke items par manager ki ijazat lazmi hai — us ka
+    khana ban chuka hota hai, aur bina hisaab ke gayab nahi ho sakta.
+    ============================================================ */
+ $id=(string)($d['id']??''); if($id==='')fail('Bill id is required');
+ $p=DB::pdo();
+ $q=$p->prepare("SELECT id,bill_no,order_status,
+                        (SELECT COUNT(*) FROM order_items oi
+                          WHERE oi.order_id=o.id AND COALESCE(oi.sent_qty,0)>0) sent
+                   FROM orders o WHERE o.id=? AND o.site_id=? LIMIT 1");
+ $q->execute([$id,site_id()]);
+ $ord=$q->fetch();
+ if(!$ord)fail('This bill was not found',404);
+ if(($ord['order_status']??'')==='CLOSED')fail('This bill is already closed');
+
+ if((int)$ord['sent']>0 && !Auth::isManager()){
+   $pw=(string)($d['password']??'');
+   if($pw==='')fail('Items have gone to the kitchen — manager approval is required',403);
+   /* Wahi tareeqa jo `pos-verify-manager` istemal karta hai: koi bhi
+      Admin / Owner / Manager ka apna login password. */
+   $mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u
+                      LEFT JOIN user_roles ur ON ur.user_id=u.id
+                      LEFT JOIN roles r ON r.id=ur.role_id
+                     WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                       AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%'
+                            OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+   $mq->execute([tenant_id()]);
+   $okPw=false;
+   foreach($mq->fetchAll() as $m){ if($m['password_hash'] && password_verify($pw,$m['password_hash'])){$okPw=true;break;} }
+   if(!$okPw)fail('Incorrect manager password',403);
+ }
+ $reason=trim((string)($d['reason']??''));
+ $p->prepare("UPDATE orders SET order_status='VOID',
+                 notes=CONCAT(COALESCE(notes,''),?), closed_at=NOW(6), updated_at=NOW(6)
+               WHERE id=? AND site_id=?")
+   ->execute([($reason!==''?(' [cancelled: '.$reason.']'):' [cancelled]'),$id,site_id()]);
+ Audit::log('VOID','pos',['record_id'=>$id,'bill_no'=>$ord['bill_no'],'reason'=>$reason]);
+ ok(['cancelled'=>$ord['bill_no']]);
+
 case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
  try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(Throwable $e){fail($e->getMessage());}
@@ -1550,6 +1598,49 @@ case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
 case 'menu-category-create':needLogin();
  try{Scope::requireManagement('creating categories');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);
+case 'menu-category-delete':needLogin();
+ /* ============================================================
+    Category delete — yeh option maujood hi nahi tha.
+
+    Ehtiyat: jis category mein items hon usay chupchaap nahi mitaya
+    jata, warna wo items POS se gayab ho jate aur koi nahi samajhta
+    ke gaye kahan. Do raaste diye gaye hain:
+
+      move=1  -> items "General" mein chale jate hain, category jati hai
+      (default) -> agar items maujood hon to saaf mana kar diya jata hai,
+                   ginti ke saath
+
+    Category khud soft-delete hoti hai (deleted_at), taake purane bills
+    ki reporting tooti na rahe.
+    ============================================================ */
+ try{Scope::requireManagement('deleting categories');}catch(Throwable $e){fail($e->getMessage(),403);}
+ if(!Auth::isManager())fail('Only an Admin or Manager can delete categories',403);
+ $d=body(); $id=(string)($d['id']??''); $move=(bool)($d['move']??false);
+ if($id==='')fail('Category id is required');
+ $p=DB::pdo();
+ $q=$p->prepare("SELECT id,name FROM menu_categories WHERE id=? AND site_id=? AND deleted_at IS NULL LIMIT 1");
+ $q->execute([$id,site_id()]); $cat=$q->fetch();
+ if(!$cat)fail('Category not found',404);
+
+ $c=$p->prepare("SELECT COUNT(*) FROM menu_items WHERE category_id=? AND deleted_at IS NULL");
+ $c->execute([$id]); $n=(int)$c->fetchColumn();
+
+ if($n>0 && !$move){
+   fail($n.' item'.($n===1?'':'s').' are still in "'.$cat['name'].'". Move them to General first, or choose that option.',409);
+ }
+ if($n>0){
+   $g=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name='General' AND deleted_at IS NULL LIMIT 1");
+   $g->execute([site_id()]); $gid=$g->fetchColumn();
+   if(!$gid){ $gid=uuid();
+     $p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,'General','•',99,1)")
+       ->execute([$gid,tenant_id(),site_id()]); }
+   $p->prepare("UPDATE menu_items SET category_id=?,updated_at=NOW(6) WHERE category_id=?")->execute([$gid,$id]);
+ }
+ $p->prepare("UPDATE menu_categories SET deleted_at=NOW(6),is_active=0,updated_at=NOW(6) WHERE id=? AND site_id=?")
+   ->execute([$id,site_id()]);
+ Audit::log('DELETE','menu',['record_id'=>$id,'label'=>$cat['name'],'moved'=>$n]);
+ ok(['deleted'=>$cat['name'],'moved'=>$n]);
+
 case 'menu-item-rate':needLogin();
  Audit::log('PRICE_CHANGE','menu',['id'=>(string)(body()['id']??''),'new'=>(string)(body()['price']??'')]);
  try{Scope::requireManagement('changing prices');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
