@@ -254,7 +254,12 @@ function moduleFingerprint():string{
 function moduleId($key){$q=DB::pdo()->prepare("SELECT id FROM platform_modules WHERE module_key=? LIMIT 1");$q->execute([$key]);return$q->fetchColumn();}function roleIdByName($name){$q=DB::pdo()->prepare("SELECT id FROM roles WHERE tenant_id=? AND name=? LIMIT 1");$q->execute([tenant_id(),$name]);return$q->fetchColumn();}
 function accessState():array{$p=DB::pdo();$rolesQ=$p->prepare("SELECT id,name FROM roles WHERE tenant_id=? AND is_active=1 ORDER BY name");$rolesQ->execute([tenant_id()]);$roles=[];foreach($rolesQ->fetchAll() as $r){$m=$p->prepare("SELECT pm.module_key FROM role_modules rm JOIN platform_modules pm ON pm.id=rm.module_id WHERE rm.role_id=? AND rm.is_allowed=1 ORDER BY pm.sort_order");$m->execute([$r['id']]);$roles[]=['id'=>$r['id'],'name'=>$r['name'],'modules'=>array_column($m->fetchAll(),'module_key')];}$users=[];$req=[];if(Auth::user()){$uq=$p->prepare("SELECT u.*,COALESCE(r.name,IF(u.is_tenant_admin=1,'Owner / Admin','User')) role_name,COALESCE(s.name,'All Branches') branch_name FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id LEFT JOIN sites s ON s.id=ur.site_id WHERE u.tenant_id=? AND u.deleted_at IS NULL GROUP BY u.id ORDER BY u.created_at DESC");$uq->execute([tenant_id()]);foreach($uq->fetchAll() as $u){$mods=Auth::moduleKeys($u['id']);$users[]=['id'=>$u['id'],'name'=>$u['full_name'],'email'=>$u['email'],'username'=>$u['username']??'','phone'=>$u['phone']?:'','role'=>$u['role_name'],'status'=>ucfirst(strtolower($u['status'])),'branch'=>$u['branch_name'],'modules'=>$mods,'permissions'=>['view'=>true,'add'=>false,'edit'=>false,'delete'=>false,'approve'=>(bool)$u['is_tenant_admin']], 'password'=>''];}$rq=$p->query("SELECT * FROM signup_requests WHERE status='PENDING' ORDER BY requested_at DESC");foreach($rq->fetchAll() as $r)$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}else{$email=$_SESSION['pending_signup_email']??null;if($email){$q=$p->prepare("SELECT * FROM signup_requests WHERE email=? AND status='PENDING' ORDER BY requested_at DESC LIMIT 1");$q->execute([$email]);if($r=$q->fetch())$req[]=['id'=>$r['id'],'name'=>$r['full_name'],'email'=>$r['email'],'phone'=>$r['phone']?:'','business'=>$r['requested_org_name']?:'Restaurant','requestedAt'=>$r['requested_at'],'status'=>'Pending'];}}return['users'=>$users,'requests'=>$req,'roles'=>$roles];}
 function applyUser(string $id,array $d,bool $create=false,?string $requestId=null):string{$p=DB::pdo();$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;$perm=$d['permissions']??[];if($create){return UserService::create(['full_name'=>$d['name'],'email'=>$d['email'],'username'=>$d['username']??'','phone'=>$d['phone']??'','password'=>$d['password']?:'1234','role_id'=>$role,'modules'=>$mods,'is_admin'=>($d['role']??'')==='Owner / Admin','form_permissions'=>[]],$requestId);}return DB::tx(function($p)use($id,$d,$role,$mods){$p->prepare("UPDATE users SET full_name=?,email=?,phone=?,updated_at=NOW(6) WHERE id=? AND tenant_id=?")->execute([$d['name'],$d['email'],$d['phone']??'',$id,tenant_id()]);if(!empty($d['password'])){[$h,$a]=UserService::passwordHash($d['password']);$p->prepare("UPDATE users SET password_hash=?,password_algo=? WHERE id=?")->execute([$h,$a,$id]);}$p->prepare("DELETE FROM user_roles WHERE user_id=?")->execute([$id]);$p->prepare("DELETE FROM user_module_access WHERE user_id=?")->execute([$id]);if($role)$p->prepare("INSERT INTO user_roles(id,user_id,role_id,site_id,assigned_by) VALUES(?,?,?,?,?)")->execute([uuid(),$id,$role,site_id(),current_user()['id']??null]);foreach($mods as $m)$p->prepare("INSERT INTO user_module_access(id,user_id,site_id,module_id,access_mode) VALUES(?,?,?,?, 'ALLOW')")->execute([uuid(),$id,site_id(),$m]);return$id;});}
-try{$a=$_GET['action']??'';if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping','sa-login'],true))csrf_json();switch($a){
+try{$a=$_GET['action']??'';/* `app-order` yahan is liye hai ke customer ka koi session hota hi nahi.
+   CSRF us hamle se bachata hai jismein kisi ke LOGIN ki sawari li jati
+   hai — yahan login hai hi nahi, is liye bachane ko kuch nahi. Is ki
+   apni hifazat alag hai: qeematein server se aati hain (jo app bheje
+   usay nahi maana jata), aur ek phone se ek minute mein 3 order. */
+if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping','sa-login','app-order'],true))csrf_json();switch($a){
 case 'csrf-token':
  /* Client isay tab bulata hai jab token expire ho jaye (misal container
     restart ke baad purana tab khula reh gaya ho). GET hai, is liye khud
@@ -1289,7 +1294,131 @@ case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok===
  $p->prepare("INSERT INTO qr_orders(id,tenant_id,site_id,session_id,table_name,items_json,total,status,note,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
    ->execute([$oid,$ses['tenant_id'],$ses['site_id'],$ses['id'],$ses['table_name'],json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,(string)($d['note']??'')]);
  ok(['order_id'=>$oid,'total'=>$tot,'status'=>'PENDING','message'=>'Order cashier ko bhej diya gaya - confirm hone ka intezar please']);
-case 'qr-pending':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT id,table_name,items_json,total,note,created_at FROM qr_orders WHERE site_id=? AND status='PENDING' ORDER BY created_at");$q->execute([site_id()]);$rows=[];foreach($q->fetchAll() as $r){$rows[]=['id'=>$r['id'],'table'=>$r['table_name'],'items'=>json_decode((string)$r['items_json'],true)?:[],'total'=>(float)$r['total'],'note'=>$r['note'],'at'=>substr((string)$r['created_at'],11,5)];}ok(['orders'=>$rows]);
+/* ================= CUSTOMER MOBILE APP (PWA) =================
+   Yeh wahi qr_sessions / qr_orders istemal karta hai jo table-QR
+   istemal karta hai — naya system nahi. Farq sirf itna: session kisi
+   table se nahi juri, customer ka naam aur phone us mein rakhe jate
+   hain, aur order POS ke usi "Online Orders" panel mein aata hai jahan
+   se cashier confirm karta hai.
+   ============================================================ */
+case 'app-menu':$p=DB::pdo();
+ $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)($_GET['b']??'')));
+ if($slug==='')fail('Business not specified',404);
+ $tq=$p->prepare("SELECT id,COALESCE(NULLIF(display_name,''),name) n,logo_url,brand_color,status
+                    FROM tenants WHERE slug=? LIMIT 1");
+ $tq->execute([$slug]); $t=$tq->fetch();
+ if(!$t)fail('Business not found',404);
+ if(($t['status']??'')==='SUSPENDED')fail('This business is not accepting orders right now',403);
+ $sq=$p->prepare("SELECT id,name FROM sites WHERE tenant_id=? ORDER BY created_at LIMIT 1");
+ $sq->execute([$t['id']]); $site=$sq->fetch();
+ if(!$site)fail('Business not set up yet',404);
+ $mq=$p->prepare("SELECT mi.id,mi.name,mi.description,mi.base_price,mi.image_url,
+                         COALESCE(mc.name,'General') cat
+                    FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id=mi.category_id
+                   WHERE mi.site_id=? AND mi.is_active=1 AND mi.is_online=1 AND mi.deleted_at IS NULL
+                   ORDER BY COALESCE(mc.sort_order,999),mi.name");
+ $mq->execute([$site['id']]);
+ $items=array_map(fn($x)=>['id'=>$x['id'],'name'=>$x['name'],'desc'=>(string)($x['description']??''),
+                           'price'=>(float)$x['base_price'],'cat'=>$x['cat'],'img'=>$x['image_url']?:''],
+                  $mq->fetchAll());
+ ok(['business'=>['slug'=>$slug,'name'=>$t['n'],'logo'=>$t['logo_url']?:'','color'=>$t['brand_color']?:'',
+                  'branch'=>$site['name']],
+     'menu'=>$items,'open'=>count($items)>0]);
+
+case 'app-order':$p=DB::pdo();$d=body();
+ $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)($d['b']??'')));
+ $name=trim((string)($d['name']??''));
+ $phone=trim((string)($d['phone']??''));
+ $mode=strtoupper(trim((string)($d['mode']??'TAKEAWAY')));
+ if(!in_array($mode,['TAKEAWAY','DELIVERY'],true))$mode='TAKEAWAY';
+ $addr=trim((string)($d['address']??''));
+ if($slug==='')fail('Business not specified',404);
+ if($name==='')fail('Please enter your name');
+ if(strlen(preg_replace('/\D/','',$phone))<10)fail('Please enter a valid phone number');
+ if($mode==='DELIVERY'&&$addr==='')fail('Please enter the delivery address');
+
+ $tq=$p->prepare("SELECT id FROM tenants WHERE slug=? AND status<>'SUSPENDED' LIMIT 1");
+ $tq->execute([$slug]); $tid=$tq->fetchColumn();
+ if(!$tid)fail('Business not found',404);
+ $sq=$p->prepare("SELECT id FROM sites WHERE tenant_id=? ORDER BY created_at LIMIT 1");
+ $sq->execute([$tid]); $sid=$sq->fetchColumn();
+
+ $items=is_array($d['items']??null)?$d['items']:[];
+ if(!$items)fail('Your cart is empty');
+ /* Qeematein HAMESHA server se — jo app ne bheja usay nahi maana jata,
+    warna koi bhi rate badal kar order kar sakta hai. */
+ $clean=[];$tot=0.0;
+ foreach($items as $it){
+   $mid=(string)($it['id']??''); $qty=(float)($it['qty']??0);
+   if($mid===''||$qty<=0)continue;
+   $mq=$p->prepare("SELECT name,base_price FROM menu_items
+                      WHERE id=? AND site_id=? AND is_active=1 AND is_online=1 AND deleted_at IS NULL");
+   $mq->execute([$mid,$sid]); $m=$mq->fetch(); if(!$m)continue;
+   $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],
+             'note'=>substr((string)($it['note']??''),0,80)];
+   $tot+=$qty*(float)$m['base_price'];
+ }
+ if(!$clean)fail('None of those items are available right now');
+
+ /* Ek chhota sa band: ek phone se ek minute mein 3 se zyada order nahi. */
+ $rl=$p->prepare("SELECT COUNT(*) FROM qr_orders o JOIN qr_sessions s ON s.id=o.session_id
+                   WHERE o.site_id=? AND s.guest_phone=? AND o.created_at>DATE_SUB(NOW(6),INTERVAL 1 MINUTE)");
+ $rl->execute([$sid,$phone]);
+ if((int)$rl->fetchColumn()>=3)fail('Too many orders in a minute. Please wait a moment.',429);
+
+ $tok=bin2hex(random_bytes(20)); $qid=uuid();
+ $p->prepare("INSERT INTO qr_sessions(id,tenant_id,site_id,table_id,table_name,token,status,started_at,expires_at,guest_name,guest_phone)
+              VALUES(?,?,?,NULL,?,?,'ACTIVE',NOW(6),DATE_ADD(NOW(6),INTERVAL 2 HOUR),?,?)")
+   ->execute([$qid,$tid,$sid,'App · '.$mode,$tok,$name,$phone]);
+
+ $oid=uuid();
+ $label=($mode==='DELIVERY'?'Delivery':'Takeaway').' · '.$name;
+ $note=trim(($mode==='DELIVERY'?('Address: '.$addr.'. '):'').(string)($d['note']??''));
+ $p->prepare("INSERT INTO qr_orders(id,tenant_id,site_id,session_id,table_name,items_json,total,status,note,created_at)
+              VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
+   ->execute([$oid,$tid,$sid,$qid,$label,json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,substr($note,0,255)]);
+
+ ok(['order_id'=>$oid,'token'=>$tok,'total'=>$tot,'status'=>'PENDING',
+     'message'=>'Order sent. The counter will confirm it shortly.']);
+
+case 'app-order-status':$p=DB::pdo();
+ $id=(string)($_GET['id']??''); $tok=(string)($_GET['token']??'');
+ if($id===''||$tok==='')fail('Order not specified',404);
+ $q=$p->prepare("SELECT o.status,o.total,o.created_at,o.handled_at,o.order_id,
+                        s.guest_name, ord.order_status kitchen
+                   FROM qr_orders o
+                   JOIN qr_sessions s ON s.id=o.session_id
+                   LEFT JOIN orders ord ON ord.id=o.order_id
+                  WHERE o.id=? AND s.token=? LIMIT 1");
+ $q->execute([$id,$tok]); $r=$q->fetch();
+ if(!$r)fail('Order not found',404);
+ /* Customer ke liye saada zubaan — andar ke status codes nahi. */
+ $stage='PLACED'; $text='Sent to the counter';
+ if($r['status']==='REJECTED'){ $stage='REJECTED'; $text='Sorry, the counter could not take this order'; }
+ elseif($r['status']==='ACCEPTED'){
+   $stage='ACCEPTED'; $text='Confirmed — being prepared';
+   if(($r['kitchen']??'')==='CLOSED'){ $stage='READY'; $text='Ready — please collect at the counter'; }
+ }
+ ok(['stage'=>$stage,'text'=>$text,'total'=>(float)$r['total'],
+     'name'=>$r['guest_name'],'at'=>substr((string)$r['created_at'],11,5)]);
+
+case 'qr-pending':needLogin();$p=DB::pdo();
+ /* Ab guest ka naam/phone bhi — app se aaye orders ke liye cashier ko
+    yeh jaanna zaroori hai ke kis ko dena hai aur kahan bhejna hai. */
+ $q=$p->prepare("SELECT o.id,o.table_name,o.items_json,o.total,o.note,o.created_at,
+                        s.guest_name,s.guest_phone,s.table_id
+                   FROM qr_orders o JOIN qr_sessions s ON s.id=o.session_id
+                  WHERE o.site_id=? AND o.status='PENDING' ORDER BY o.created_at");
+ $q->execute([site_id()]);$rows=[];
+ foreach($q->fetchAll() as $r){
+   $rows[]=['id'=>$r['id'],'table'=>$r['table_name'],
+            'items'=>json_decode((string)$r['items_json'],true)?:[],
+            'total'=>(float)$r['total'],'note'=>$r['note'],
+            'name'=>$r['guest_name'],'phone'=>$r['guest_phone'],
+            'source'=>$r['table_id']?'TABLE':'APP',
+            'at'=>substr((string)$r['created_at'],11,5)];
+ }
+ ok(['orders'=>$rows]);
 case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtoupper((string)($d['action']??''));if(!in_array($act,['ACCEPTED','REJECTED'],true))fail('action required');
  $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
 case 'qr-session-close':needLogin();$d=body();$p=DB::pdo();$p->prepare("UPDATE qr_sessions SET status='CLOSED',closed_at=NOW(6) WHERE site_id=? AND table_name=? AND status='ACTIVE'")->execute([site_id(),(string)($d['table']??'')]);ok();

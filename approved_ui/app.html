@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0f2b24">
+<title>Order online</title>
+<link rel="manifest" href="/app-manifest.json">
+<link rel="apple-touch-icon" href="/app-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+/* ============================================================
+   CUSTOMER ORDERING APP
+
+   Phone par chalta hai, aur "Add to Home Screen" ke baad app jaisa
+   dikhta hai. Har dukan ka apna rang uske branding se aata hai — CSS
+   variables se, taake ek hi file har business par chale.
+
+   Design ka usool: ungli se chalne wali screen. Har tap target 44px se
+   bara, aur cart hamesha neeche chipka hua — customer ko dhoondna na
+   pare ke aage kaise barhein.
+   ============================================================ */
+:root{
+  --brand:#0f2b24; --brand2:#1f8a5f; --ink:#12201b; --ink2:#5d6f68;
+  --bg:#f4f7f5; --card:#fff; --line:#e2e9e5; --danger:#8c1d24;
+  --r:16px; --shadow:0 2px 10px rgba(16,40,32,.07);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font:400 15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overscroll-behavior-y:none}
+body{padding-bottom:env(safe-area-inset-bottom)}
+img{max-width:100%;display:block}
+button{font:inherit;cursor:pointer;border:0}
+
+/* ---------- header ---------- */
+.hd{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 14px}
+.hd .biz{display:flex;align-items:center;gap:11px}
+.hd .logo{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.16);
+  display:grid;place-items:center;font-size:19px;overflow:hidden;flex-shrink:0}
+.hd h1{margin:0;font-size:17px;font-weight:800;letter-spacing:-.01em}
+.hd small{opacity:.78;font-size:11.5px;display:block;margin-top:1px}
+.srch{margin-top:12px;position:relative}
+.srch input{width:100%;height:42px;border-radius:11px;border:0;padding:0 14px 0 38px;
+  background:rgba(255,255,255,.15);color:#fff;font-size:14px}
+.srch input::placeholder{color:rgba(255,255,255,.65)}
+.srch span{position:absolute;left:13px;top:11px;opacity:.7}
+
+/* ---------- categories ---------- */
+.cats{position:sticky;top:0;z-index:15;display:flex;gap:8px;padding:11px 14px;
+  overflow-x:auto;background:var(--bg);scrollbar-width:none}
+.cats::-webkit-scrollbar{display:none}
+.cats button{white-space:nowrap;padding:9px 15px;border-radius:22px;background:var(--card);
+  border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink2)}
+.cats button.on{background:var(--brand2);border-color:var(--brand2);color:#fff}
+
+/* ---------- menu ---------- */
+.list{padding:2px 14px 150px;display:grid;gap:11px}
+.item{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);
+  display:flex;gap:12px;padding:11px;align-items:center}
+.item .th{width:64px;height:64px;border-radius:12px;flex-shrink:0;
+  background:linear-gradient(135deg,#e8f3ee,#cfe7db);display:grid;place-items:center;
+  font-size:26px;overflow:hidden}
+.item .th img{width:100%;height:100%;object-fit:cover}
+.item .nm{font-weight:700;font-size:14.5px;line-height:1.3}
+.item .ds{color:var(--ink2);font-size:12px;margin-top:2px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item .pr{font-weight:800;color:var(--brand2);font-size:14px;margin-top:5px}
+.item .act{margin-left:auto;flex-shrink:0}
+.add{width:38px;height:38px;border-radius:12px;background:var(--brand2);color:#fff;
+  font-size:21px;font-weight:700;line-height:1}
+.qty{display:flex;align-items:center;gap:2px;background:var(--brand2);border-radius:12px}
+.qty button{width:32px;height:38px;background:none;color:#fff;font-size:19px}
+.qty b{color:#fff;min-width:22px;text-align:center;font-size:14px}
+
+/* ---------- bottom cart ---------- */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:11px 14px calc(11px + env(safe-area-inset-bottom));
+  background:var(--card);border-top:1px solid var(--line);box-shadow:0 -4px 20px rgba(16,40,32,.09)}
+.bar button{width:100%;height:52px;border-radius:14px;background:var(--brand2);color:#fff;
+  font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;gap:10px}
+.bar button:disabled{background:#c6d3cd}
+.bar .n{background:rgba(255,255,255,.22);border-radius:8px;padding:2px 8px;font-size:13px}
+
+/* ---------- sheets ---------- */
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(10,24,17,.5);display:none}
+.sheet.on{display:block}
+.sheet .in{position:absolute;left:0;right:0;bottom:0;background:var(--bg);
+  border-radius:22px 22px 0 0;max-height:92vh;display:flex;flex-direction:column;
+  animation:up .22s ease}
+@keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet h2{margin:0;font-size:17px;font-weight:800}
+.sh-hd{padding:16px 16px 12px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;background:var(--card);border-radius:22px 22px 0 0}
+.sh-bd{padding:14px 16px;overflow:auto;flex:1}
+.sh-ft{padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--card);
+  border-top:1px solid var(--line)}
+.x{margin-left:auto;width:34px;height:34px;border-radius:10px;background:var(--bg);font-size:19px;color:var(--ink2)}
+.row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+label.f{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);
+  text-transform:uppercase;letter-spacing:.03em;margin:12px 0 6px}
+input.i,textarea.i,select.i{width:100%;min-height:46px;border:1px solid var(--line);
+  border-radius:12px;padding:12px;font:inherit;font-size:15px;background:var(--card)}
+textarea.i{min-height:70px;resize:vertical}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;height:46px;border-radius:12px;border:1px solid var(--line);
+  background:var(--card);font-weight:700;font-size:14px;color:var(--ink2)}
+.seg button.on{background:var(--brand2);border-color:var(--brand2);color:#fff}
+.tot{display:flex;justify-content:space-between;align-items:center;padding:12px 0 4px;
+  font-size:18px;font-weight:800}
+.go{width:100%;height:52px;border-radius:14px;background:var(--brand2);color:#fff;font-weight:800;font-size:15px}
+.go:disabled{background:#c6d3cd}
+
+/* ---------- order status ---------- */
+.steps{display:grid;gap:0;margin:8px 0 4px}
+.step{display:flex;gap:13px;align-items:flex-start;padding-bottom:20px;position:relative}
+.step:last-child{padding-bottom:0}
+.step:not(:last-child):after{content:"";position:absolute;left:15px;top:32px;bottom:2px;
+  width:2px;background:var(--line)}
+.step.done:not(:last-child):after{background:var(--brand2)}
+.dot{width:32px;height:32px;border-radius:50%;background:var(--card);border:2px solid var(--line);
+  display:grid;place-items:center;font-size:15px;flex-shrink:0;z-index:1}
+.step.done .dot{background:var(--brand2);border-color:var(--brand2);color:#fff}
+.step.now .dot{border-color:var(--brand2);color:var(--brand2)}
+.step b{font-size:14.5px}.step small{display:block;color:var(--ink2);font-size:12px;margin-top:1px}
+
+.empty{text-align:center;padding:60px 24px;color:var(--ink2)}
+.empty .ic{font-size:46px;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(20px);
+  background:#12201b;color:#fff;padding:12px 20px;border-radius:12px;font-size:13.5px;
+  font-weight:600;opacity:0;transition:.22s;z-index:60;pointer-events:none;max-width:88vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.install{margin:12px 14px 0;background:#fff;border:1px solid var(--line);border-radius:14px;
+  padding:12px 14px;display:none;align-items:center;gap:11px;box-shadow:var(--shadow)}
+.install.on{display:flex}
+.install b{font-size:13.5px}.install small{color:var(--ink2);font-size:11.5px;display:block}
+.install button{margin-left:auto;height:38px;padding:0 15px;border-radius:11px;
+  background:var(--brand2);color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header class="hd">
+  <div class="biz">
+    <div class="logo" id="logo">🍽️</div>
+    <div><h1 id="bizName">Loading…</h1><small id="bizSub">&nbsp;</small></div>
+  </div>
+  <div class="srch"><span>🔍</span><input id="q" placeholder="Search the menu" autocomplete="off"></div>
+</header>
+
+<div class="install" id="installBar">
+  <div><b>Install this app</b><small>One tap from your home screen, next time</small></div>
+  <button id="installBtn">Install</button>
+</div>
+
+<nav class="cats" id="cats"></nav>
+<main class="list" id="list"></main>
+
+<div class="bar" id="bar" style="display:none">
+  <button id="cartBtn"><span class="n" id="cartN">0</span> View cart <span id="cartT"></span></button>
+</div>
+
+<!-- ============ CART ============ -->
+<div class="sheet" id="cartSheet">
+  <div class="in">
+    <div class="sh-hd"><h2>Your order</h2><button class="x" data-close>&times;</button></div>
+    <div class="sh-bd" id="cartBody"></div>
+    <div class="sh-ft">
+      <div class="tot"><span>Total</span><span id="cartTotal">PKR 0</span></div>
+      <button class="go" id="toCheckout">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CHECKOUT ============ -->
+<div class="sheet" id="coSheet">
+  <div class="in">
+    <div class="sh-hd"><h2>Your details</h2><button class="x" data-close>&times;</button></div>
+    <div class="sh-bd">
+      <label class="f">How would you like it?</label>
+      <div class="seg" id="modeSeg">
+        <button data-mode="TAKEAWAY" class="on">Takeaway</button>
+        <button data-mode="DELIVERY">Delivery</button>
+      </div>
+      <label class="f">Your name</label>
+      <input class="i" id="cName" autocomplete="name" placeholder="Name">
+      <label class="f">Phone number</label>
+      <input class="i" id="cPhone" type="tel" autocomplete="tel" placeholder="03xx xxxxxxx">
+      <div id="addrWrap" style="display:none">
+        <label class="f">Delivery address</label>
+        <textarea class="i" id="cAddr" placeholder="House, street, area — and a landmark"></textarea>
+      </div>
+      <label class="f">Anything to tell the kitchen?</label>
+      <input class="i" id="cNote" placeholder="Optional — e.g. less spicy">
+      <p style="font-size:12px;color:var(--ink2);margin:14px 0 0;line-height:1.6">
+        Payment is made at the counter. The counter confirms your order first —
+        you will see it here as soon as they do.</p>
+    </div>
+    <div class="sh-ft">
+      <div class="tot"><span>Total</span><span id="coTotal">PKR 0</span></div>
+      <button class="go" id="placeBtn">Place order</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STATUS ============ -->
+<div class="sheet" id="stSheet">
+  <div class="in">
+    <div class="sh-hd"><h2>Order status</h2><button class="x" data-close>&times;</button></div>
+    <div class="sh-bd" id="stBody"></div>
+    <div class="sh-ft"><button class="go" id="newOrderBtn">Order something else</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+(function(){
+
+var BIZ = new URLSearchParams(location.search).get('b') || '';
+var MENU=[], CATS=[], cat='All', cart={}, ORDER=null, poll=null;
+
+function $(s){return document.querySelector(s)}
+function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function money(n){return 'PKR '+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0})}
+function toast(m){var t=$('#toast');t.textContent=m;t.className='toast on';
+  clearTimeout(window.__t);window.__t=setTimeout(function(){t.className='toast'},2400)}
+
+/* API — customer login nahi karta, yeh endpoints public hain. */
+function api(action,payload){
+  return fetch('/api.php?action='+action+(payload?'':('&_='+Date.now())),
+    payload?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}
+           :{headers:{'Accept':'application/json'}})
+    .then(function(r){return r.json()})
+    .catch(function(){return {ok:false,message:'No internet connection'}});
+}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  if(!BIZ){ $('#list').innerHTML='<div class="empty"><div class="ic">🔗</div>'
+    +'<b>This link is incomplete</b><p>Please scan the restaurant\'s QR code again.</p></div>'; return }
+  api('app-menu&b='+encodeURIComponent(BIZ)).then(function(r){
+    if(!r.ok){ $('#list').innerHTML='<div class="empty"><div class="ic">😕</div><b>'
+      +esc(r.message||'Could not load the menu')+'</b></div>'; return }
+    var b=r.business||{};
+    document.title='Order from '+(b.name||'us');
+    $('#bizName').textContent=b.name||'Menu';
+    $('#bizSub').textContent=b.branch||'';
+    if(b.logo){ $('#logo').innerHTML='<img src="'+esc(b.logo)+'" alt="">'; }
+    if(b.color){
+      document.documentElement.style.setProperty('--brand',b.color);
+      document.documentElement.style.setProperty('--brand2',b.color);
+      var m=document.querySelector('meta[name=theme-color]'); if(m)m.content=b.color;
+    }
+    MENU=r.menu||[];
+    CATS=['All'].concat(MENU.map(function(x){return x.cat}).filter(function(v,i,a){return a.indexOf(v)===i}));
+    renderCats(); render();
+    restoreOrder();
+  });
+}
+
+function renderCats(){
+  $('#cats').innerHTML=CATS.map(function(c){
+    return '<button data-cat="'+esc(c)+'"'+(c===cat?' class="on"':'')+'>'+esc(c)+'</button>'}).join('');
+}
+
+function visible(){
+  var s=($('#q').value||'').trim().toLowerCase();
+  return MENU.filter(function(p){
+    if(cat!=='All'&&p.cat!==cat)return false;
+    if(!s)return true;
+    return (p.name+' '+p.cat+' '+(p.desc||'')).toLowerCase().indexOf(s)>=0;
+  });
+}
+
+function render(){
+  var list=visible();
+  if(!MENU.length){ $('#list').innerHTML='<div class="empty"><div class="ic">🍽️</div>'
+    +'<b>Nothing on the menu yet</b><p>Please check back a little later.</p></div>'; return }
+  if(!list.length){ $('#list').innerHTML='<div class="empty"><div class="ic">🔍</div>'
+    +'<b>No match</b><p>Try another name or category.</p></div>'; return }
+  $('#list').innerHTML=list.map(function(p){
+    var n=cart[p.id]?cart[p.id].qty:0;
+    return '<div class="item">'
+      +'<div class="th">'+(p.img?('<img src="'+esc(p.img)+'" alt="" loading="lazy">'):'🍛')+'</div>'
+      +'<div style="min-width:0"><div class="nm">'+esc(p.name)+'</div>'
+        +(p.desc?('<div class="ds">'+esc(p.desc)+'</div>'):'')
+        +'<div class="pr">'+money(p.price)+'</div></div>'
+      +'<div class="act">'+(n
+          ? ('<div class="qty"><button data-dec="'+esc(p.id)+'">&minus;</button><b>'+n
+             +'</b><button data-inc="'+esc(p.id)+'">+</button></div>')
+          : ('<button class="add" data-inc="'+esc(p.id)+'">+</button>'))
+      +'</div></div>';
+  }).join('');
+  paintBar();
+}
+
+function paintBar(){
+  var n=0,t=0;
+  Object.keys(cart).forEach(function(k){ n+=cart[k].qty; t+=cart[k].qty*cart[k].price; });
+  $('#bar').style.display=n?'block':'none';
+  $('#cartN').textContent=n; $('#cartT').textContent=money(t);
+  $('#cartTotal').textContent=money(t); $('#coTotal').textContent=money(t);
+  try{ localStorage.setItem('cart:'+BIZ,JSON.stringify(cart)); }catch(e){}
+}
+
+function inc(id,by){
+  var p=MENU.filter(function(x){return x.id===id})[0]; if(!p)return;
+  var c=cart[id]||{id:id,name:p.name,price:p.price,qty:0};
+  c.qty+=by;
+  if(c.qty<=0) delete cart[id]; else cart[id]=c;
+  render(); renderCart();
+}
+
+function renderCart(){
+  var ids=Object.keys(cart);
+  $('#cartBody').innerHTML=ids.length?ids.map(function(k){
+    var c=cart[k];
+    return '<div class="row"><div style="flex:1"><b>'+esc(c.name)+'</b>'
+      +'<small style="display:block;color:var(--ink2);font-size:12px">'+money(c.price)+' each</small></div>'
+      +'<div class="qty"><button data-dec="'+esc(k)+'">&minus;</button><b>'+c.qty
+      +'</b><button data-inc="'+esc(k)+'">+</button></div>'
+      +'<b style="min-width:76px;text-align:right">'+money(c.qty*c.price)+'</b></div>';
+  }).join(''):'<div class="empty"><div class="ic">🛒</div><b>Your cart is empty</b></div>';
+  $('#toCheckout').disabled=!ids.length;
+}
+
+/* ---------------- order ---------------- */
+function place(){
+  var items=Object.keys(cart).map(function(k){return {id:k,qty:cart[k].qty}});
+  if(!items.length){toast('Your cart is empty');return}
+  var mode=$('#modeSeg').querySelector('.on').dataset.mode;
+  var d={b:BIZ,name:$('#cName').value.trim(),phone:$('#cPhone').value.trim(),
+         mode:mode,address:$('#cAddr').value.trim(),note:$('#cNote').value.trim(),items:items};
+  var btn=$('#placeBtn'); btn.disabled=true; btn.textContent='Sending…';
+  api('app-order',d).then(function(r){
+    btn.disabled=false; btn.textContent='Place order';
+    if(!r.ok){ toast(r.message||'Could not place the order'); return }
+    ORDER={id:r.order_id,token:r.token,total:r.total};
+    try{ localStorage.setItem('order:'+BIZ,JSON.stringify(ORDER)); }catch(e){}
+    cart={}; paintBar(); render();
+    close('#coSheet'); close('#cartSheet');
+    open('#stSheet'); trackOrder();
+  });
+}
+
+function restoreOrder(){
+  try{
+    var o=JSON.parse(localStorage.getItem('order:'+BIZ)||'null');
+    if(o&&o.id){ ORDER=o; open('#stSheet'); trackOrder(); }
+    var c=JSON.parse(localStorage.getItem('cart:'+BIZ)||'null');
+    if(c&&typeof c==='object'){ cart=c; render(); renderCart(); }
+  }catch(e){}
+}
+
+function trackOrder(){
+  if(!ORDER)return;
+  clearInterval(poll);
+  function tick(){
+    api('app-order-status&id='+encodeURIComponent(ORDER.id)+'&token='+encodeURIComponent(ORDER.token))
+      .then(function(r){
+        if(!r.ok){ clearInterval(poll); return }
+        paintStatus(r);
+        if(r.stage==='REJECTED'||r.stage==='READY') clearInterval(poll);
+      });
+  }
+  tick(); poll=setInterval(tick,12000);
+}
+
+function paintStatus(r){
+  var order=['PLACED','ACCEPTED','READY'];
+  var idx=order.indexOf(r.stage);
+  var rejected=(r.stage==='REJECTED');
+  var steps=[
+    ['📝','Order placed','Sent to the counter'],
+    ['👨‍🍳','Confirmed','The kitchen is preparing it'],
+    ['✅','Ready','Collect at the counter and pay']
+  ];
+  $('#stBody').innerHTML=
+    (rejected
+      ? '<div class="empty"><div class="ic">😔</div><b>Order not accepted</b>'
+        +'<p>'+esc(r.text||'')+'</p><p style="font-size:12.5px">Please call the restaurant if this looks wrong.</p></div>'
+      : '<div style="background:var(--card);border-radius:var(--r);padding:16px;box-shadow:var(--shadow)">'
+        +'<div style="font-size:12px;color:var(--ink2)">'+esc(r.name||'')+' &middot; '+esc(r.at||'')+'</div>'
+        +'<div style="font-size:20px;font-weight:800;margin:2px 0 14px">'+money(r.total)+'</div>'
+        +'<div class="steps">'+steps.map(function(s,i){
+            var cls=i<idx?'done':(i===idx?'now done':'');
+            return '<div class="step '+cls+'"><div class="dot">'+s[0]+'</div>'
+              +'<div><b>'+s[1]+'</b><small>'+s[2]+'</small></div></div>';
+          }).join('')+'</div>'
+        +'<div style="margin-top:12px;font-size:12.5px;color:var(--ink2);line-height:1.6">'
+        +'Payment is made at the counter.</div></div>');
+}
+
+/* ---------------- sheets ---------------- */
+function open(sel){ $(sel).classList.add('on'); document.body.style.overflow='hidden' }
+function close(sel){ $(sel).classList.remove('on'); document.body.style.overflow='' }
+
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var c=t.closest('[data-cat]'); if(c){ cat=c.dataset.cat; renderCats(); render(); return }
+  var i=t.closest('[data-inc]'); if(i){ inc(i.dataset.inc,1); return }
+  var d=t.closest('[data-dec]'); if(d){ inc(d.dataset.dec,-1); return }
+  if(t.closest('[data-close]')){ close('#cartSheet'); close('#coSheet'); close('#stSheet'); return }
+  if(t.closest('#cartBtn')){ renderCart(); open('#cartSheet'); return }
+  if(t.closest('#toCheckout')){ close('#cartSheet'); open('#coSheet'); return }
+  if(t.closest('#placeBtn')){ place(); return }
+  if(t.closest('#newOrderBtn')){
+    try{ localStorage.removeItem('order:'+BIZ); }catch(e){}
+    ORDER=null; clearInterval(poll); close('#stSheet'); return;
+  }
+  var m=t.closest('[data-mode]');
+  if(m){
+    $('#modeSeg').querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b===m)});
+    $('#addrWrap').style.display=(m.dataset.mode==='DELIVERY')?'':'none';
+    return;
+  }
+});
+$('#q').addEventListener('input',render);
+$('.sheet').parentNode.querySelectorAll('.sheet').forEach(function(sh){
+  sh.addEventListener('click',function(e){ if(e.target===sh) close('#'+sh.id) });
+});
+
+/* ---------------- install prompt ---------------- */
+var deferred=null;
+window.addEventListener('beforeinstallprompt',function(e){
+  e.preventDefault(); deferred=e; $('#installBar').classList.add('on');
+});
+$('#installBtn').onclick=function(){
+  if(!deferred)return;
+  deferred.prompt();
+  deferred.userChoice.then(function(){ deferred=null; $('#installBar').classList.remove('on') });
+};
+if(window.matchMedia('(display-mode: standalone)').matches) $('#installBar').classList.remove('on');
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/app-sw.js').catch(function(){});
+}
+
+boot();
+})();
+</script>
+</body>
+</html>

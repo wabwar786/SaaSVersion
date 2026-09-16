@@ -45,15 +45,50 @@ button{cursor:pointer;border:0;background:none}
 .main{min-width:0;display:flex;flex-direction:column;min-height:0}
 .scroll{overflow:auto;-webkit-overflow-scrolling:touch;padding:12px 14px 96px}
 
-.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.tcard{border:1px solid var(--l);border-radius:14px;padding:12px;background:var(--panel);text-align:left;
-  box-shadow:var(--sh);min-height:106px;display:flex;flex-direction:column;gap:3px}
-.tcard.busy{border-color:var(--brand);background:var(--brandSoft)}
-.tcard b{font-size:15px}
-.tcard small{font-size:11px;color:var(--ink2)}
-.tcard .amt{font-size:19px;font-weight:800;margin-top:auto}
-.tcard .pill{align-self:flex-start;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;
+/* ============================================================
+   TABLE CARDS — rang ka apna matlab hai, sajawat nahi.
+
+   Waiter door se floor par nazar daalta hai; usay parhne se pehle rang
+   se pata chalna chahiye ke kahan jana hai:
+
+     HARA  khali            — baithaya ja sakta hai
+     LAAL  chal raha bill   — order liya ja chuka
+     PEELA kitchen se ready — serve karna hai, yehi sab se ahem hai
+     NEELA bill chhap gaya  — payment baqi
+
+   Card ka poora background nahi rangaa gaya: bara rang aankh thaka deta
+   hai. Sirf baayen kinare ki patti aur chhota sa nishan.
+   ============================================================ */
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:12px}
+.tcard{position:relative;border:1px solid var(--l);border-radius:16px;padding:13px 13px 13px 17px;
+  background:var(--panel);text-align:left;box-shadow:var(--sh);min-height:118px;
+  display:flex;flex-direction:column;gap:3px;overflow:hidden;transition:transform .08s}
+.tcard:active{transform:scale(.97)}
+.tcard:before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:#2f9e6b}
+.tcard b{font-size:16px}
+.tcard small{font-size:11.5px;color:var(--ink2)}
+.tcard .amt{font-size:20px;font-weight:800;margin-top:auto;letter-spacing:-.01em}
+.tcard .pill{align-self:flex-start;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;
   background:var(--warnbg);color:var(--warn)}
+.tcard .dot{position:absolute;right:11px;top:11px;width:9px;height:9px;border-radius:50%;background:#2f9e6b}
+
+/* khali */
+.tcard.free .amt{color:var(--ink2);font-weight:600;font-size:14px}
+/* bill chal raha */
+.tcard.busy:before,.tcard.busy .dot{background:#c8442f}
+.tcard.busy{background:#fdf5f3;border-color:#f0cfc6}
+/* kitchen se ready — sab se numayan */
+.tcard.ready:before,.tcard.ready .dot{background:#d99205}
+.tcard.ready{background:#fff8e8;border-color:#f0dcae}
+.tcard.ready .dot{animation:blip 1.6s infinite}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
+/* bill chhap gaya, payment baqi */
+.tcard.billed:before,.tcard.billed .dot{background:#2a6db5}
+.tcard.billed{background:#f2f7fd;border-color:#cddff2}
+
+.tlegend{display:flex;gap:14px;flex-wrap:wrap;padding:0 2px 12px;font-size:11.5px;color:var(--ink2)}
+.tlegend span{display:flex;align-items:center;gap:6px}
+.tlegend i{width:10px;height:10px;border-radius:50%;display:inline-block}
 
 .cats{display:flex;gap:8px;overflow:auto;padding:10px 14px;border-bottom:1px solid var(--l);
   -webkit-overflow-scrolling:touch}
@@ -205,12 +240,25 @@ function drawTables(){
   renderCart();
   if(!TABLES.length){
     $('#stage').innerHTML='<div class="empty">No dining tables yet.<br>Add tables from <b>Tables &amp; Floors</b> on the POS.</div>';return}
-  $('#stage').innerHTML='<div class="tgrid">'+TABLES.map(function(t){
-    return '<button class="tcard'+(t.busy?' busy':'')+'" data-tbl="'+esc(t.id)+'">'
+  var legend='<div class="tlegend">'
+    +'<span><i style="background:#2f9e6b"></i>Free</span>'
+    +'<span><i style="background:#c8442f"></i>Order running</span>'
+    +'<span><i style="background:#d99205"></i>Ready to serve</span>'
+    +'<span><i style="background:#2a6db5"></i>Billed &middot; payment due</span></div>';
+
+  $('#stage').innerHTML=legend+'<div class="tgrid">'+TABLES.map(function(t){
+    /* Halat ka faisla ek jagah — card ka rang aur likha hua matn dono
+       isi se bante hain, warna dono kabhi na kabhi alag baat kehne lag
+       jate hain. */
+    var st='free', label='free';
+    if(t.billed){ st='billed'; label='billed · payment due'; }
+    else if(t.ready){ st='ready'; label='ready to serve'; }
+    else if(t.busy){ st='busy'; label=t.items+' item'+(t.items===1?'':'s')+' · '+t.mins+'m'; }
+    return '<button class="tcard '+st+'" data-tbl="'+esc(t.id)+'">'
+      +'<span class="dot"></span>'
       +(t.unsent>0?'<span class="pill">'+t.unsent+' not sent</span>':'')
-      +'<b>'+esc(t.name)+'</b><small>'+esc(t.floor)
-      +(t.busy?(' &middot; '+t.items+' item &middot; '+t.mins+'m'):' &middot; free')+'</small>'
-      +'<div class="amt">'+(t.busy?money(t.running):'&mdash;')+'</div></button>';
+      +'<b>'+esc(t.name)+'</b><small>'+esc(t.floor)+' &middot; '+label+'</small>'
+      +'<div class="amt">'+(t.busy||t.billed?money(t.running):'Free')+'</div></button>';
   }).join('')+'</div>';
 }
 

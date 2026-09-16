@@ -2490,3 +2490,90 @@ translated, in the files that ship.
 One string broke a script again — "Today's closed bills" inside a
 single-quoted JS string. Same apostrophe trap as the first translation
 pass; caught by lint, reworded.
+
+---
+
+## 54. Customer ordering app (PWA), online orders on the POS, colour-coded tablet
+
+Approved: PWA + APK wrapper · cashier confirms · payment at the counter ·
+the proposed table colours.
+
+### What was there before
+
+`customer_mobile_app.html` was **79 lines with zero API calls** — a
+picture of a phone, not an app. `customer_web_qr.html` the same. Only
+the tablet was real.
+
+### The app — `/app.html?b=<slug>`
+
+A working PWA. Menu, search, categories, cart, checkout, and a live
+order-status screen (Placed → Confirmed → Ready). Installable from the
+browser; each business gets its own colour and logo from its branding.
+
+Built on the **existing** `qr_sessions` / `qr_orders` tables rather than
+a second ordering system — which is why the POS needed almost no change
+to receive app orders.
+
+What it refuses, and why:
+
+```
+no name                -> Please enter your name
+short phone            -> Please enter a valid phone number
+delivery, no address   -> Please enter the delivery address
+empty cart             -> Your cart is empty
+price sent as 1        -> ignored; server total 380
+4th order in a minute  -> refused (per phone)
+```
+
+Prices always come from the database. Whatever the app posts is never
+trusted — otherwise anyone could order at their own rate.
+
+`app-order` is exempt from CSRF deliberately: the customer has no
+session, so there is nothing for CSRF to protect. Its real defences are
+server-side pricing and the per-phone rate limit.
+
+### On the POS
+
+The existing **QR Orders** button is now **Online & QR Orders** and shows
+where each one came from:
+
+```
+[APP] Takeaway · Bilal · 08:26 · 03211234567
+      1x Chicken Biryani = 380
+```
+
+App orders carry the customer's name, phone and (for delivery) the
+address. Nothing reaches the kitchen until the cashier accepts —
+as agreed. The customer sees the change on their own screen within
+seconds.
+
+### The tablet
+
+Table colour now carries meaning rather than decoration:
+
+| Colour | Meaning |
+|---|---|
+| Green | Free |
+| Red | Order running |
+| **Amber** | **Ready to serve** — the dot pulses |
+| Blue | Billed, payment due |
+
+Only a left edge stripe and a dot are coloured; a fully coloured card
+tires the eye across a shift. A legend sits above the grid.
+
+`ready` comes from `kitchen_tickets.ticket_status='READY'`. `billed` is
+derived from `printer_jobs` — there is no bill-print record for
+restaurant orders, so this is the honest signal available rather than an
+invented one.
+
+### The APK
+
+Config and instructions in `tools/apk/` (`twa-manifest.json`, README).
+I cannot build it here — no Android SDK, no signing key. It is a
+one-time `bubblewrap build` on any machine with Node and Java, and after
+that **the app updates itself**: screens and menu come from the server,
+so a new APK is only needed if the icon, name or start URL changes.
+
+`/app-download.html` checks whether `app-release.apk` actually exists.
+Until it does, the page says so and points customers at the web version
+instead of offering a broken download.

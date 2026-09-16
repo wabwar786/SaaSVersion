@@ -958,7 +958,22 @@ final class OpsService
                     (SELECT COALESCE(SUM(oi.qty*oi.unit_price),0) FROM order_items oi
                       WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS running,
                     (SELECT COALESCE(SUM(GREATEST(oi.qty-oi.sent_qty,0)),0) FROM order_items oi
-                      WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS unsent
+                      WHERE oi.order_id=o.id AND oi.status='ACTIVE') AS unsent,
+                    /* Kitchen se taiyar — KDS ne jin lines ko READY kaha.
+                       Tablet par yeh peela rang banta hai: waiter ko sab se
+                       pehle yahi table nazar aani chahiye, kyunke khana
+                       bana hua mez par janey ka intezar kar raha hai. */
+                    (SELECT COUNT(*) FROM kitchen_tickets kt
+                      WHERE kt.order_id=o.id AND kt.ticket_status='READY') AS ready_lines,
+                    /* Bill chhap chuka magar payment baqi.
+
+                       Restaurant orders ke liye bill-print ka koi apna
+                       record nahi hai — sirf `printer_jobs` mein nishan
+                       milta hai. Ideal nahi, magar maujood hai; is se
+                       behtar yehi ke jhooti halat dikhane ke bajaye asal
+                       nishan par bharosa karein. */
+                    (SELECT COUNT(*) FROM printer_jobs pj
+                      WHERE pj.reference_id=o.id AND pj.job_type='BILL') AS printed
                FROM dining_tables dt
                LEFT JOIN floors f ON f.id = dt.floor_id
                LEFT JOIN orders o ON o.table_id = dt.id AND o.order_status='OPEN'
@@ -978,6 +993,8 @@ final class OpsService
             'unsent'   => (float)$x['unsent'],
             'mins'     => (int)($x['mins'] ?? 0),
             'busy'     => !empty($x['order_id']),
+            'ready'    => (int)($x['ready_lines'] ?? 0) > 0,
+            'billed'   => (int)($x['printed'] ?? 0) > 0,
         ], $q->fetchAll(PDO::FETCH_ASSOC));
     }
 

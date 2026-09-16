@@ -34,46 +34,47 @@
   <aside class="sidebar" id="side"></aside>
   <main class="main">
     <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Customer Mobile App</h1><p>Branded ordering app your customers install</p></div>
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Customer Ordering App</h1>
+        <p>Your customers order from their phone; the counter confirms</p></div>
       <div class="header-spacer"></div>
-      <span class="tag ok">Live preview</span>
     </header>
     <div class="content">
-      <div class="preview-wrap">
-        <div class="phone"><div class="phone-screen">
-          <div class="pa-top"><small>Deliver to · F-10 Markaz</small><h3>Urban Spoon</h3>
-            <div class="pa-search">🔍 Search biryani, pizza, deals…</div></div>
-          <div class="pa-cats"><span class="on">Popular</span><span>Pakistani</span><span>Pizza</span><span>BBQ</span><span>Drinks</span></div>
-          <div class="pa-list" id="paList"></div>
-          <div class="pa-bar"><button id="checkoutBtn">View cart · <span id="cartCount">0</span> items</button></div>
-        </div></div>
-        <div class="feat">
-          <h2 style="font-family:var(--display);margin:2px 0 4px">Everything customers need</h2>
-          <div class="feat-item"><div class="feat-ico">🛵</div><div><b>Live order tracking</b><p>Customers watch their order move from kitchen to doorstep in real time.</p></div></div>
-          <div class="feat-item"><div class="feat-ico">⭐</div><div><b>Loyalty built in</b><p>Points on every order, tiers and rewards — same data as the admin loyalty screen.</p></div></div>
-          <div class="feat-item"><div class="feat-ico">💳</div><div><b>Cash, card & Raast</b><p>Multiple payment options with FBR-compliant digital receipts.</p></div></div>
-          <div class="feat-item"><div class="feat-ico">🔔</div><div><b>WhatsApp updates</b><p>Order confirmations and offers pushed straight to WhatsApp.</p></div></div>
-          <div class="note" style="margin-top:6px">This is a working preview of the customer app UI. Add-to-cart updates the live cart count below.</div>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Share it with customers</h2>
+          <p>A QR and a link they can open or install</p></div></div>
+        <div class="panel-body">
+          <div class="note">The app is live. Open the page below, print the QR for
+            your counter or tables, and customers can order without installing anything.
+            Android users can also install the APK.</div>
+          <div class="row" style="margin-top:14px">
+            <a class="btn primary" id="dlLink" href="/app-download.html" target="_blank">Open the share page</a>
+            <a class="btn" id="appLink" href="/app.html" target="_blank">Preview the app</a>
+          </div>
+          <div class="note" style="margin-top:14px"><b>Orders arrive on the POS</b> under
+            <b>Online &amp; QR Orders</b>. Nothing reaches the kitchen until a cashier accepts it,
+            and payment is taken at the counter.</div>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
-<div class="toast" id="toast"></div>
 <script src="shared_store.js"></script>
 <script src="live_store.js"></script>
 <script src="access_store.js"></script>
-<script src="shell.js" data-active="customer_app"></script>
+<script src="shell.js" data-active="mobile_app"></script>
 <script>
-var items=[['🍛','Chicken Biryani','Aromatic, spicy',750],['🍕','Fajita Pizza','Loaded & cheesy',1520],['🍢','Seekh Kabab','Charcoal grilled',560],['🍔','Zinger Burger','Crispy fillet',560],['🥤','Mint Margarita','Fresh & cold',280]];
-var cart=0;
-document.getElementById('paList').innerHTML=items.map(function(it){return '<div class="pa-card"><div class="pa-thumb">'+it[0]+'</div><div><b>'+it[1]+'</b><small>'+it[2]+'</small></div><div class="pa-price"><b>Rs '+it[3]+'</b><br><button class="pa-add">+</button></div></div>'}).join('');
-document.querySelectorAll('.pa-add').forEach(function(b){b.onclick=function(){cart++;document.getElementById('cartCount').textContent=cart;var t=document.getElementById('toast');t.textContent='Added to cart';t.className='toast show';setTimeout(function(){t.className='toast'},1100)}});
-document.getElementById('checkoutBtn').onclick=function(){var t=document.getElementById('toast');t.textContent=cart?('Checkout · '+cart+' items'):'Cart is empty';t.className='toast show';setTimeout(function(){t.className='toast'},1400)};
+(function(){
+  /* Business ka slug session se — taake link seedha isi dukan ka khule. */
+  try{
+    var b=(window.APP_TENANT_SLUG||'');
+    if(b){
+      document.getElementById('dlLink').href='/app-download.html?b='+encodeURIComponent(b);
+      document.getElementById('appLink').href='/app.html?b='+encodeURIComponent(b);
+    }
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
-
-<!-- build: V17.1 build 2026-08-25 -->

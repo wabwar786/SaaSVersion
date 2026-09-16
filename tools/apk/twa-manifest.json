@@ -1,0 +1,21 @@
+{
+  "packageId": "pk.wabwar.orderapp",
+  "host": "saasversion-production.up.railway.app",
+  "name": "Order Online",
+  "launcherName": "Order",
+  "display": "standalone",
+  "themeColor": "#0f2b24",
+  "navigationColor": "#0f2b24",
+  "backgroundColor": "#f4f7f5",
+  "startUrl": "/app.html",
+  "iconUrl": "https://saasversion-production.up.railway.app/app-icon-512.png",
+  "maskableIconUrl": "https://saasversion-production.up.railway.app/app-icon-512.png",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://saasversion-production.up.railway.app/app-manifest.json",
+  "fallbackType": "customtabs",
+  "enableNotifications": false,
+  "orientation": "portrait"
+}

@@ -63,7 +63,11 @@ $retailModule=[
 
 $publicPages=['login.html','signup.html','signup_pending.html','setup.html','super_admin.html','qr.html','pair.html',
   /* V86 — customer khud yahan se register karta hai; login ka sawaal hi nahi. */
-  'register.html'];
+  'register.html',
+  /* Customer ka ordering app aur uska share page — yeh dukan ke GAHAK ke
+     liye hain, staff ke liye nahi. Login maangna yahan poore maqsad ko
+     khatam kar deta: customer ke paas account hai hi nahi. */
+  'app.html','app-download.html'];
 /* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
    `approved_ui/` se aate hain, chahe tenant retail ho. */
 $sharedPages=['activate.html','backup_restore.html'];
@@ -207,6 +211,16 @@ $html=str_replace(
 }
 $html=preg_replace('/(["\'])assets\//','$1/assets/',$html);
 
+/* Logged-in business ka slug — customer app ke link ke liye. */
+$tenantSlug='';
+try{
+  $tsid=Auth::user()?($_SESSION['user']['tenant_id']??null):null;
+  if($tsid){
+    $sq=\Aio\DB::pdo()->prepare("SELECT slug FROM tenants WHERE id=? LIMIT 1");
+    $sq->execute([$tsid]); $tenantSlug=(string)($sq->fetchColumn()?:'');
+  }
+}catch(\Throwable $e){}
+
 // ---- Tenant branding (naam / logo / colors) ----
 $brand=['name'=>'','logo'=>'','color'=>'','accent'=>''];
 try{
@@ -225,7 +239,10 @@ try{
 }catch(\Throwable $e){}
 
 $head='<script src="/ui_state_reset.js?b=v14"></script>'
-     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';window.APP_ROLE='.json_encode((string)($GLOBALS['config']['app']['role']??'local')).';</script>'
+     .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';window.APP_ROLE='.json_encode((string)($GLOBALS['config']['app']['role']??'local'))
+     /* Business ka slug — customer app ka link isi se banta hai, taake
+        har dukan ka apna QR aur apna raasta ho. */
+     .';window.APP_TENANT_SLUG='.json_encode((string)($tenantSlug ?? '')).';</script>'
      .'<script src="/db_api.js?b=v14"></script>'
      /* V62 — delete confirm har page par available hona is required (POS samet),
         warna har screen apna alag adhoora delete likhti hai. */

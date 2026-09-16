@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v44';
+var VERSION='POS v45';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -2353,13 +2353,24 @@ function loadQr(){
 $('#qrBtn').onclick=function(){
   loadQr();
   var body=qrPending.length?qrPending.map(function(o,i){
-    return '<div class="lrow" style="align-items:flex-start"><div style="flex:1"><b>'+esc(o.table||'Table')+' &middot; '+esc(o.at)+'</b>'
+    /* App se aaye order ke liye cashier ko teen cheezein foran chahiye:
+       kaun, kis number par, aur takeaway hai ya delivery. Table wale QR
+       order mein yeh nahi hotin — is liye dono alag dikhte hain. */
+    var isApp=(o.source==='APP');
+    var head = isApp
+      ? ('<span class="tag" style="background:#e8f1fb;color:#1c4f8f;font-size:9.5px;padding:1px 6px;'
+         +'border-radius:5px;font-weight:800">APP</span> '+esc(o.table||'Order'))
+      : esc(o.table||'Table');
+    return '<div class="lrow" style="align-items:flex-start"><div style="flex:1">'
+      +'<b>'+head+' &middot; '+esc(o.at)+'</b>'
+      +(isApp&&o.phone?('<small style="font-weight:700">&#128222; '+esc(o.phone)+'</small>'):'')
       +'<small>'+o.items.map(function(x){return qfmt(x.qty)+' x '+esc(x.name)}).join(', ')+'</small>'
+      +(o.note?('<small style="color:var(--ink2)">'+esc(o.note)+'</small>'):'')
       +'<small style="color:var(--ok);font-weight:800">'+money(o.total)+'</small></div>'
       +'<div style="display:flex;gap:6px"><button data-rej="'+i+'" style="background:#fdecec;color:var(--brand)">Reject</button>'
       +'<button data-acc="'+i+'">Accept</button></div></div>';
-  }).join(''):'<div class="cempty">No pending QR orders</div>';
-  var ov=modal('<div class="dh"><h3>QR / Customer Orders</h3><p>Orders sent by customers &mdash; they only enter the cart once accepted</p></div>'
+  }).join(''):'<div class="cempty">No pending orders</div>';
+  var ov=modal('<div class="dh"><h3>Online &amp; QR Orders</h3><p>From the customer app and table QR codes &mdash; nothing reaches the kitchen until you accept it</p></div>'
     +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
   Array.prototype.forEach.call(ov.querySelectorAll('[data-acc]'),function(b){b.onclick=function(){
     var o=qrPending[b.dataset.acc];
