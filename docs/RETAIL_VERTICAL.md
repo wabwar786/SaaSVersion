@@ -2214,3 +2214,63 @@ Reading: DUPLICATE. One copy is deleted, another is still live.
 cause I had not verified — first duplicates, then the cache. Each was
 plausible and neither was confirmed against that installation. This
 prints the facts in one run.
+
+---
+
+## 49. Found it: `ok:true` did not mean "deleted"
+
+Cloud, not offline. Not the cache. The cause was in my own client code.
+
+`entity-delete` returns HTTP success for a request it **refused**:
+
+```json
+{ "ok": true,
+  "result": "BLOCKED",
+  "blockers": ["used in 1 bill line(s) - marking it inactive is safer than deleting"],
+  "can_deactivate": true, "can_force": true }
+```
+
+`runDelete()` only looked at `r.ok`. So for any item that had **ever been
+sold**, the POS announced "deleted" and the item stayed exactly where it
+was. Every item I tested against was a fresh one with no bill lines —
+which is why it worked here every single time and never on their counter.
+
+`ok` means the request was handled. `result` says what was decided:
+
+| result | meaning |
+|---|---|
+| `DELETED` | gone |
+| `DEACTIVATED` | hidden, data kept |
+| `BLOCKED` | not deleted — `blockers` says why |
+
+And BLOCKED is **correct** behaviour: the item's name is printed on old
+bills. It should be hidden, not erased.
+
+### Now
+
+A blocked delete opens a dialog that states the reason and offers the two
+real choices:
+
+- **Mark inactive** — off the POS and the menu; old bills and reports
+  untouched. This is the right answer nearly always.
+- **Force delete** — also strips it from those old bills; reports for
+  those days change. Manager password required, warning shown, no undo.
+
+```
+sold item, auto       -> BLOCKED, "used in 1 bill line(s)"
+                         can_deactivate: yes, can_force: yes
+        deactivate    -> DEACTIVATED, is_active=0
+POS afterwards        -> 12 items, the item is gone from the grid
+```
+
+### Three rounds of wrong guesses
+
+Duplicates, then the browser cache, then a diagnostic script. The first
+two were plausible stories I never confirmed on the failing system. The
+answer was two lines above the code I kept editing: I was reading `ok`
+and ignoring `result`, which the server had been sending all along.
+
+What the earlier work did leave behind, and is worth keeping: the
+`no-store` headers and GET cache-busting (real, if not this bug), and
+`item-debug` / `diagnose_item.php`, which now print the database's own
+account instead of inviting another guess.

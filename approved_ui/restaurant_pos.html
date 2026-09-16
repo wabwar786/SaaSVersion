@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v40';
+var VERSION='POS v41';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -929,6 +929,29 @@ function delMenuItem(id,name){
 function runDelete(btn,ov,id,name,pw){
   btn.disabled=true; btn.textContent='Deleting…';
   var r=api('entity-delete',{entity:'menu_item',id:id,mode:'auto',manager_password:pw||''});
+
+  /* ============================================================
+     `ok:true` ka matlab "item delete ho gaya" NAHI hai.
+
+     Server request kamyab hone par bhi `result` mein faisla bhejta hai:
+       DELETED      -> waqai chala gaya
+       DEACTIVATED  -> chhupa diya gaya, data mehfooz
+       BLOCKED      -> delete nahi hua, aur `blockers` mein wajah
+
+     Yahan sirf `r.ok` dekha ja raha tha. Jo item kisi bill mein bik
+     chuka ho, uska jawab BLOCKED aata hai — magar POS "deleted" ka
+     paigham dikha deta aur item apni jagah baitha rehta. Bilkul wahi
+     jo screen par ho raha tha.
+
+     Aur BLOCKED hona DURUST hai: us item ka naam purane bills par
+     laga hua hai. Isay mitane ke bajaye chhupana chahiye.
+     ============================================================ */
+  if(r&&r.ok&&r.result==='BLOCKED'){
+    btn.disabled=false; btn.textContent='Delete';
+    ov.remove();
+    blockedDialog(id,name,r,pw);
+    return;
+  }
   if(!r||!r.ok){
     btn.disabled=false; btn.textContent='Delete';
     /* Agar item kisi khule bill mein laga hua ho to server rok deta hai —
@@ -944,15 +967,114 @@ function runDelete(btn,ov,id,name,pw){
      hai. Yahan sirf menu dobara parha jata hai. */
   var fresh=refreshMenu();
   var gone = !fresh || !(fresh.products||[]).some(function(x){return x.id===id});
-  if(gone){ toast((name||'Item')+' deleted'); }
+  if(gone){ toast((name||'Item')+(r.result==='DEACTIVATED'?' is now inactive':' deleted')); }
   else{
     /* Server ne "deleted" kaha magar item list mein maujood hai — aksar
        isi naam ka doosra item hota hai. Chup rehne se behtar hai saaf
        batana, warna cashier dobara dabata rehta hai. */
-    /* Ab yeh sirf tab chalega jab server ne DELETED to kaha magar wahi id
-       list mein wapas aayi — yani duplicate ya koi aur gehri wajah. */
-    toast('Deleted on the server, but it is still in this list. Press Ctrl+Shift+R once.',true);
+    /* Server ne DELETED kaha magar wahi id wapas aayi. Yahan andaza
+       lagane ka koi faida nahi — DB se asal haal maang kar dikha do. */
+    showItemDebug(id,name,r);
   }
+}
+
+/* Item delete nahi ho saka — wajah batao aur asal raaste do. */
+function blockedDialog(id,name,r,pw){
+  var why=(r.blockers&&r.blockers.length)?r.blockers.join('<br>&bull; '):(r.message||'It is in use.');
+  var ov=modal('<div class="dh"><h3>Cannot delete this item</h3><p>'+esc(name)+'</p></div>'
+    +'<div class="db">'
+      +'<div class="box" style="background:#fdecec;border-color:#f5c2c2">&bull; '+why+'</div>'
+      +'<div class="box" style="margin-top:10px;font-size:11.5px">'
+        +'<b>Mark inactive</b> is the right choice here. The item disappears from the '
+        +'POS and the menu, but its name stays on the bills where it was sold, so old '
+        +'receipts and reports keep working.</div>'
+      +(r.can_force?'<div class="box" style="margin-top:8px;font-size:11px;color:#8c1d24">'
+        +'Force delete removes it from those bills too. Reports for those days will change.'
+        +'</div>':'')
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Cancel</button>'
+    +(r.can_deactivate?'<button class="go" id="bdOff">Mark inactive</button>':'')
+    +(r.can_force?'<button class="go" id="bdForce" style="background:#8c1d24;border-color:#8c1d24">Force delete</button>':'')
+    +'</div>');
+
+  var off=ov.querySelector('#bdOff');
+  if(off)off.onclick=function(){
+    this.disabled=true;this.textContent='Saving…';
+    var x=api('entity-delete',{entity:'menu_item',id:id,mode:'deactivate',manager_password:pw||''});
+    this.disabled=false;this.textContent='Mark inactive';
+    if(!x||!x.ok){toast((x&&x.message)||'Could not update',true);return}
+    ov.remove(); refreshMenu(); toast((name||'Item')+' is now inactive — hidden from the POS');
+  };
+
+  var fc=ov.querySelector('#bdForce');
+  if(fc)fc.onclick=function(){
+    /* Force par manager password hamesha — chahe admin hi kyun na ho.
+       Yeh purane bills ki lines bhi mitata hai. */
+    var pass=pw||'';
+    if(!pass){
+      var d2=modal('<div class="dh"><h3>Force delete</h3><p>'+esc(name)+'</p></div>'
+        +'<div class="db"><div class="box" style="background:#fdecec;border-color:#f5c2c2">'
+        +'This also removes the item from old bills. Reports for those days will change. '
+        +'It cannot be undone.</div>'
+        +'<div class="box" style="margin-top:10px"><label class="f">Manager password</label>'
+        +'<input class="inp" id="fdPass" type="password"></div></div>'
+        +'<div class="df"><button class="sec" data-x>Cancel</button>'
+        +'<button class="go" id="fdGo" style="background:#8c1d24;border-color:#8c1d24">Force delete</button></div>');
+      d2.querySelector('#fdGo').onclick=function(){
+        var p2=(d2.querySelector('#fdPass')||{}).value||'';
+        if(!p2){toast('Manager password is required');return}
+        var x=api('entity-delete',{entity:'menu_item',id:id,mode:'force',manager_password:p2});
+        if(!x||!x.ok){toast((x&&x.message)||'Could not delete',true);return}
+        d2.remove(); ov.remove(); refreshMenu(); toast((name||'Item')+' force deleted');
+      };
+      return;
+    }
+    var x=api('entity-delete',{entity:'menu_item',id:id,mode:'force',manager_password:pass});
+    if(!x||!x.ok){toast((x&&x.message)||'Could not delete',true);return}
+    ov.remove(); refreshMenu(); toast((name||'Item')+' force deleted');
+  };
+}
+
+/* Delete "ok" kehne ke bawajood item baaqi — asal DB haal dikhao.
+   Yeh sirf parhta hai, badalta kuch nahi. */
+function showItemDebug(id,name,delRes){
+  var d={}; try{ d=api('item-debug&id='+encodeURIComponent(id))||{}; }catch(e){}
+  var m=(d.matches&&d.matches[0])||null;
+  var rows='';
+  if(m){
+    rows='<div class="kv"><span>deleted_at</span><b>'+esc(String(m.deleted_at||'— (still live)'))+'</b></div>'
+        +'<div class="kv"><span>is_active</span><b>'+m.is_active+'</b></div>'
+        +'<div class="kv"><span>is_pos</span><b>'+m.is_pos+'</b></div>'
+        +'<div class="kv"><span>same branch</span><b>'+(m.same_site?'yes':'NO')+'</b></div>'
+        +'<div class="kv"><span>POS would show it</span><b>'+(m.pos_would_show?'YES':'no')+'</b></div>'
+        +'<div class="kv"><span>updated_at</span><b>'+esc(String(m.updated_at||'—'))+'</b></div>';
+  }else{
+    rows='<div class="kv"><span>Database</span><b>row not found</b></div>';
+  }
+  var ov=modal('<div class="dh"><h3>Why is it still here?</h3>'
+    +'<p>'+esc(name||'')+'</p></div>'
+    +'<div class="db">'
+      +'<div class="box">The server replied <b>'+esc((delRes&&delRes.result)||'OK')+'</b>. '
+      +'This is what the database actually holds for that exact row:</div>'
+      +'<div style="margin-top:10px">'+rows+'</div>'
+      +'<div class="box" style="margin-top:10px;font-size:11.5px">'
+        +'<b>Reading:</b> '
+        +(!m ? 'The row is gone from the database. The screen is stale — reload once.'
+           : (m.deleted_at ? 'It IS deleted in the database. The list you are seeing is stale.'
+              : (!m.same_site ? 'It belongs to a different branch, so deleting here never touched it.'
+                 : 'It is still live in the database — the delete did not reach this row.')))
+      +'</div>'
+      +'<div class="box" style="margin-top:8px;font-size:11px;color:var(--ink2)">'
+        +'branch: '+esc(String(d.session_site||'?')).slice(0,8)+' &middot; items on POS: '+esc(String(d.pos_item_count||'?'))
+        +' &middot; server: '+esc(String(d.role||'?'))+'</div>'
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Close</button>'
+    +'<button class="go" id="idCopy">Copy for support</button></div>');
+  ov.querySelector('#idCopy').onclick=function(){
+    var txt=JSON.stringify({delete_response:delRes,db:d},null,2);
+    try{ navigator.clipboard.writeText(txt); this.textContent='Copied'; }
+    catch(e){ toast('Copy failed'); }
+  };
 }
 
 /* Sirf menu taza karo — bill, shift aur cart ko haath na lagao. */

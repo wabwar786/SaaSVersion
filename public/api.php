@@ -1634,6 +1634,49 @@ case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo()
  ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
+case 'item-debug':needLogin();
+ /* ============================================================
+    Ek item ka ASAL database haal — bina kisi tabdeeli ke.
+
+    Delete "ok" kehta hai magar item screen par rehta hai, aur yeh
+    sirf ek installation par hota hai. Andaza lagane ke bajaye yeh
+    endpoint wahi dikhata hai jo DB mein waqai likha hai: deleted_at,
+    is_active, is_pos, site, aur kya POS ki apni query usay uthati hai.
+
+    Browser mein kholein:
+      /api.php?action=item-debug&name=Spicy
+    ============================================================ */
+ $nm=trim((string)($_GET['name']??''));
+ $id=trim((string)($_GET['id']??''));
+ if($nm===''&&$id==='')fail('Pass name= or id=');
+ $p=DB::pdo();
+ if($id!==''){ $q=$p->prepare("SELECT * FROM menu_items WHERE id=?"); $q->execute([$id]); }
+ else { $q=$p->prepare("SELECT * FROM menu_items WHERE name LIKE ? ORDER BY name"); $q->execute(['%'.$nm.'%']); }
+ $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+ $out=[];
+ foreach($rows as $r){
+   $out[]=[
+     'id'=>$r['id'],'name'=>$r['name'],
+     'site_id'=>$r['site_id'],'tenant_id'=>$r['tenant_id'],
+     'is_active'=>(int)($r['is_active']??0),'is_pos'=>(int)($r['is_pos']??0),
+     'deleted_at'=>$r['deleted_at'],
+     'updated_at'=>$r['updated_at']??null,
+     'same_site'=>((string)$r['site_id']===(string)site_id()),
+     /* Bilkul wahi shartein jo POS ki query lagati hai */
+     'pos_would_show'=>((string)$r['site_id']===(string)site_id()
+                        && (int)($r['is_active']??0)===1
+                        && (int)($r['is_pos']??0)===1
+                        && $r['deleted_at']===null),
+   ];
+ }
+ /* POS ki asal query se ginti — taake dono ka farq foran nazar aaye */
+ $pc=$p->prepare("SELECT COUNT(*) FROM menu_items WHERE site_id=? AND is_active=1 AND is_pos=1 AND deleted_at IS NULL");
+ $pc->execute([site_id()]);
+ ok(['session_site'=>site_id(),'session_tenant'=>tenant_id(),
+     'role'=>(string)cfg('app.role'),'db'=>(string)cfg('db.database'),
+     'pos_item_count'=>(int)$pc->fetchColumn(),
+     'matches'=>$out]);
+
 case 'menu-categories':needLogin();
  /* Menu page aur POS dono ek hi fehrist par chalen — yehi wo jagah hai
     jahan se dono lete hain. */
