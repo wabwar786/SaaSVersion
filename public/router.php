@@ -185,9 +185,23 @@ if($uiDir==='approved_ui/retail'){
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
                      '$1="/retail/$2?b=r1"', $html);
 }else{
+/* ============================================================
+   JS/CSS par cache-bust — poori list.
+
+   Yahan sirf chaar files ka naam tha. `module.js`, `module_config.js`
+   aur `shell.js` chhoot gayi thin, aur wo `max-age=3600` ke sath jati
+   hain. Nateeja: in files mein kiya gaya koi bhi change deploy ke baad
+   bhi purana hi chalta rehta tha — misaal ke tor par Menu page ka
+   Category dropdown, jo nayi list aane ke bawajood purani hardcoded
+   fehrist ('Pakistani, Pizza, BBQ...') dikhata raha.
+
+   `?b=` ka number badalna hi in files ko taza karwane ka tareeqa hai.
+   ============================================================ */
 $html=str_replace(
- ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"'],
- ['href="/shared.css?b=v14"','src="/shared_store.js?b=v14"','src="/live_store.js?b=v14"','src="/access_store.js?b=v14"'],
+ ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
+  'src="shell.js"','src="module.js"','src="module_config.js"'],
+ ['href="/shared.css?b=v15"','src="/shared_store.js?b=v15"','src="/live_store.js?b=v15"','src="/access_store.js?b=v15"',
+  'src="/shell.js?b=v15"','src="/module.js?b=v15"','src="/module_config.js?b=v15"'],
  $html
 );
 }

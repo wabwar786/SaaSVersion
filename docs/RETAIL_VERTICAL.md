@@ -2327,3 +2327,56 @@ printed verbatim in the toast. It is now translated:
 > This item is attached to older records (usually bills that were already
 > printed). Those cannot be broken. Use "Delete" normally — it hides the
 > item from the POS and leaves old bills exactly as they are.
+
+---
+
+## 51. My fix never shipped: two copies of the same file
+
+The Category dropdown still listed `Pakistani, Pizza, BBQ…` after V122,
+where I had supposedly replaced it with the real categories.
+
+The edit was real. It was in the wrong file.
+
+```
+./public/module_config.js          38516 bytes   <- the browser gets this one
+./approved_ui/module_config.js     40695 bytes   <- I edited this one
+```
+
+Production's document root is `public/`, so Apache serves `.js` straight
+from there and never reaches the router. Five files exist in both places
+and differ:
+
+```
+access_store.js  live_store.js  module.js  module_config.js  shell.js
+```
+
+And there is no single winner: `shell.js` is newer in `public/`,
+`module.js` was newer in `approved_ui/`. Copying one over the other
+would have broken something else.
+
+### Fixed
+
+- The change applied to the **served** copies: `public/module.js` and
+  `public/module_config.js`.
+- `scripts/check_assets.php` lists every duplicated pair that has
+  diverged, with sizes and dates, and says plainly that the browser gets
+  the `public/` copy. It reports; it does not overwrite, because the
+  right side differs per file.
+- `module.js`, `module_config.js` and `shell.js` were also missing from
+  the router's `?b=` cache-bust list, so even the right edit could sit
+  behind a one-hour browser cache. All three are on the list now (v15).
+
+```
+served module_config.js -> menu-categories call present, hardcoded list gone
+served module.js        -> "+" button code present
+menu page categories    -> BBQ, Karahi, Rice, Breads, Beverages, General
+POS categories          -> BBQ, Karahi, Rice, Breads, Beverages, General
+```
+
+A fallback was added too: if the category call fails, the dropdown falls
+back to the categories already on the loaded items rather than showing
+an empty list that makes the form unsubmittable.
+
+**The lesson:** "I changed the file" is not "the browser runs it". Two
+copies of a file with the same name is a trap that will keep catching
+people; `check_assets.php` at least makes it visible.

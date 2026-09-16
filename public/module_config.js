@@ -214,7 +214,29 @@ window.MODULE_CONFIGS={
       {label:'Status',field:'status',format:'tag',tags:{Active:'ok',Inactive:'neutral'}}
     ],
     fields:[
-      {key:'name',label:'Item name',type:'text',required:true,full:true},{key:'category',label:'Category',type:'select',options:['Pakistani','Pizza','BBQ','Fast Food','Drinks','Desserts','Sides']},
+      {key:'name',label:'Item name',type:'text',required:true,full:true},{key:'category',label:'Category',type:'select',addable:'menu_category',
+       /* ASAL categories, server se — wahi jo POS par nazar aati hain.
+          Pehle yahan hardcoded fehrist thi jiska database se koi taalluq
+          nahi tha: POS par FISH aur Mutton, aur is page par Pizza/BBQ. */
+       options:function(){
+         try{
+           if(window.DBApi&&DBApi.req){
+             var r=DBApi.req('menu-categories');
+             if(r&&r.ok&&r.rows&&r.rows.length)return r.rows.map(function(c){return c.name});
+           }
+         }catch(e){}
+         /* Server tak na pohancha ja saka — to kam az kam wo categories
+            dikhao jo maujooda items par lagi hui hain. Khali dropdown se
+            behtar hai: banda item save hi nahi kar payega. */
+         try{
+           var seen={},out=[];
+           (window.Store&&Store.all?Store.all('menu'):[]).forEach(function(x){
+             if(x&&x.category&&!seen[x.category]){seen[x.category]=1;out.push(x.category)}
+           });
+           if(out.length)return out;
+         }catch(e){}
+         return [];
+       }},
       {key:'price',label:'Selling price',type:'money',required:true},{key:'cost',label:'Food cost',type:'money',default:0},
       {key:'status',label:'Status',type:'select',options:['Active','Inactive'],default:'Active'}
     ],
