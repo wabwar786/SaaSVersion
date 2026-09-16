@@ -79,7 +79,7 @@
            nikal diye — woh baad mein edit se set hote hain. Counter par
            ek item banane mein aadha minute nahi lagna chahiye. */
         { key: 'barcode', label: 'Barcode', type: 'text', required: true,
-          hint: 'scanner se scan kar dein', placeholder: '8964000112233' },
+          hint: 'scan it with the scanner', placeholder: '8964000112233' },
         { key: 'name', label: 'Item name', type: 'text', required: true, full: true,
           placeholder: 'Falak Super Basmati Rice 5 KG' },
         { key: 'department_id', label: 'Department', type: 'select', options: opts('departments'), addable: 'departments' },
@@ -199,7 +199,7 @@
         { key: 'code', label: 'Unit code', type: 'text', required: true, placeholder: 'CTN24' },
         { key: 'name', label: 'Unit name', type: 'text', required: true, placeholder: 'Carton (24)' },
         { key: 'unit_type', label: 'Type', type: 'select', options: ['COUNT', 'WEIGHT', 'VOLUME', 'PACK'] },
-        { key: 'base_unit_id', label: 'Base unit', type: 'select', options: opts('units'), hint: 'pack units ke liye' },
+        { key: 'base_unit_id', label: 'Base unit', type: 'select', options: opts('units'), hint: 'for pack units' },
         { key: 'conversion_factor', label: 'Conversion factor', type: 'number', default: 1, hint: '1 pack = kitne base units' },
         { key: 'decimal_places', label: 'Decimal places', type: 'number', default: 0 }
       ]
@@ -210,7 +210,7 @@
       key: 'batches', title: 'Batch & Expiry', storeKey: 'batches',
       recordName: 'Batch', addLabel: '+ New batch',
       note: 'FIFO: on a sale the batch that expires soonest is consumed first. A near-expiry alert also appears on the dashboard.',
-      listTitle: 'Stock batches', listSub: 'Expiry-tracked items ka batch-wise stock',
+      listTitle: 'Stock batches', listSub: 'Batch-wise stock for expiry-tracked items',
       searchPlaceholder: 'Search batch number', searchFields: ['batch_no'], emptyIcon: '◷',
       kpis: [
         { label: 'Live batches', calc: function (r) { return r.filter(function (b) { return b.qty > 0; }).length; } },
@@ -386,7 +386,7 @@
     /* ---------------- Stock on hand ---------------- */
     stock: {
       key: 'products', title: 'Stock on Hand', storeKey: 'products', canAdd: false,
-      listTitle: 'Stock position', listSub: 'Reorder level se neeche wale items all se upar see',
+      listTitle: 'Stock position', listSub: 'Items below their reorder level appear first',
       filters: [
         { key: 'department_id', label: 'Department',
           options: function () { return S.get('departments').map(function (d) { return { value: d.id, label: d.name }; }); } },
@@ -467,7 +467,7 @@
       ],
       fields: [
         { key: 'name', label: 'Product name', type: 'text', required: true, full: true },
-        { key: 'barcode', label: 'Barcode', type: 'text', hint: 'scan kar dein' },
+        { key: 'barcode', label: 'Barcode', type: 'text', hint: 'scan it' },
         { key: 'cost_price', label: 'Cost price', type: 'money', default: 0 },
         { key: 'retail_price', label: 'Retail price', type: 'money', required: true, default: 0 },
         { key: 'wholesale_price', label: 'Wholesale price', type: 'money', default: 0 },
@@ -520,7 +520,7 @@
         { label: 'Total receivable', tone: 'warn', calc: function (r, M) { return M.money(M.sum(r, 'balance')); } },
         { label: 'Khata customers', calc: function (r) { return r.filter(function (c) { return Number(c.balance) > 0; }).length; } },
         { label: 'Near limit', tone: 'danger', calc: function (r) { return r.filter(function (c) { return Number(c.credit_limit) > 0 && Number(c.balance) >= Number(c.credit_limit) * 0.9; }).length; } },
-        { label: 'Limit se upar', tone: 'info', calc: function (r) { return r.filter(function (c) { return Number(c.credit_limit) > 0 && Number(c.balance) > Number(c.credit_limit); }).length; } }
+        { label: 'Over the limit', tone: 'info', calc: function (r) { return r.filter(function (c) { return Number(c.credit_limit) > 0 && Number(c.balance) > Number(c.credit_limit); }).length; } }
       ],
       columns: [
         { label: 'Customer', field: 'name', sub: 'phone' },
@@ -541,7 +541,7 @@
     expenses: {
       key: 'expenses', title: 'Expenses', storeKey: 'expenses',
       recordName: 'Expense', addLabel: '+ New expense',
-      listTitle: 'Store expenses', listSub: 'Cash drawer se nikla hua paisa yahan darj please',
+      listTitle: 'Store expenses', listSub: 'Record money taken out of the cash drawer here',
       searchPlaceholder: 'Search expense', searchFields: ['title', 'category', 'paid_to'], emptyIcon: '\u25bc',
       kpis: [
         { label: 'Entries', calc: function (r) { return r.length; } },
@@ -732,7 +732,7 @@
       key: 'grn', title: 'Goods Receipt (GRN)', storeKey: 'rtl_grn',
       recordName: 'GRN', addLabel: '+ New GRN',
       note: 'A GRN is the moment stock <b>actually</b> arrives. A PO is an order, a GRN is the receipt \u2014 the difference is what keeps stock honest.',
-      listTitle: 'Goods received', listSub: 'Supplier se receive done maal',
+      listTitle: 'Goods received', listSub: 'Goods received from a supplier',
       searchPlaceholder: 'Search GRN or supplier', searchFields: ['grn_no', 'supplier', 'po_no'], emptyIcon: '\u2295',
       kpis: [
         { label: 'Receipts', calc: function (r) { return r.length; } },
@@ -791,7 +791,7 @@
     transfer: {
       key: 'transfer', title: 'Stock Transfer', storeKey: 'rtl_transfer',
       recordName: 'Transfer', addLabel: '+ New transfer',
-      listTitle: 'Branch transfers', listSub: 'Ek branch se doosre branch maal',
+      listTitle: 'Branch transfers', listSub: 'Stock moved from one branch to another',
       searchPlaceholder: 'Search transfer', searchFields: ['ref_no', 'from_branch', 'to_branch'], emptyIcon: '\u21c4',
       kpis: [
         { label: 'Transfers', calc: function (r) { return r.length; } },

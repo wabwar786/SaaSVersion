@@ -83,10 +83,10 @@
     if (res.can_force) {
       body += '<label class="field" style="margin-top:12px"><span>Manager password for force delete</span>'
             + '<input type="password" data-dk="pw" placeholder="Manager password" autocomplete="off"></label>'
-            + '<label class="field"><span>Reason (audit log ke liye)</span>'
+            + '<label class="field"><span>Reason (for the audit log)</span>'
             + '<input data-dk="reason" placeholder="e.g. entered by mistake"></label>'
             + '<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger);margin-top:8px">'
-            + 'Force delete including related rows permanent hai aur <b>cannot be undone</b>. '
+            + 'Force delete removes related rows too and <b>cannot be undone</b>. '
             + 'It will also apply on branch computers.</div>';
     }
     body += '</div><div class="dialog-foot"><button class="btn" data-dk="x">Cancel</button>'

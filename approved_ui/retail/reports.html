@@ -169,7 +169,7 @@
   $('to').onchange=function(){if(current)run(current)};
   $('btnPrint').onclick=function(){window.print()};
   $('btnCsv').onclick=function(){
-    if(!current){alert('Pehle no report choo.');return}
+    if(!current){alert('Choose a report first.');return}
     window.location.href='/api.php?action=report-csv&id='+encodeURIComponent(current)+
       '&from='+$('from').value+'&to='+$('to').value;
   };

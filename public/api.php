@@ -1593,9 +1593,31 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
    if($row=$c->fetch())fail($counter.' par '.($row['full_name']?:'kisi user').' ki shift ('.$row['shift_no'].') is open. Close or transfer it first.');
  }
  /* 3) Pichli shift ka cash clear hua? */
- $lc=$p->prepare("SELECT shift_no,cash_cleared FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
+ $lc=$p->prepare("SELECT id,shift_no,cash_cleared,actual_cash FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");
  $lc->execute([site_id(),$uid]);
- if($last=$lc->fetch()){ if(!(int)$last['cash_cleared'])fail('Pichli shift '.$last['shift_no'].' ka cash clear failed. Pehle usay clear please.'); }
+ if($last=$lc->fetch()){
+   if(!(int)$last['cash_cleared']){
+     /* ============================================================
+        Jawab mein `needs_clear` bhi — sirf matn par bharosa nahi.
+
+        Client pehle is paighaam ke ALFAZ dhoondta tha ("cash clear
+        nahi"). Jab poora software English mein hua to matn badal gaya
+        aur us se juda "Clear Cash Now" ka button hamesha ke liye
+        gayab ho gaya — cashier ko sirf inkar milta tha aur aage koi
+        raasta nahi. Matn tarjuma hota hai; flag nahi hota.
+        ============================================================ */
+     http_response_code(400);
+     echo json_encode(['ok'=>false,
+       'needs_clear'=>true,
+       'shift_id'=>$last['id'] ?? '',
+       'shift_no'=>$last['shift_no'],
+       'amount'=>(float)($last['actual_cash'] ?? 0),
+       'message'=>'Your previous shift '.$last['shift_no'].' has not been cash-cleared yet. '
+                . 'Hand the cash to the manager and clear it, then open a new shift.'],
+       JSON_UNESCAPED_UNICODE);
+     exit;
+   }
+ }
  $sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));
  $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
    VALUES(?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")

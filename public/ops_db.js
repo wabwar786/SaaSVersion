@@ -83,7 +83,9 @@
         + esc(open.opened) + ' &middot; opening float <b>' + money(open.opening) + '</b></div>'
       : '<div class="note" style="margin:12px">No shift is open. Open one before taking payments.</div>';
 
-    replace(panel('Opening &amp; Closing Shift', 'Cashier tills, opening float and closing cash',
+    /* `panel()` khud esc() karta hai — yahan pehle se likha `&amp;` dobara
+       escape ho kar screen par "&amp;" ban jata tha. Saada "&" hi theek hai. */
+    replace(panel('Opening & Closing Shift', 'Cashier tills, opening float and closing cash',
       top + table([
         { l: 'Shift', k: 'shift' }, { l: 'Date', k: 'date' }, { l: 'Cashier', k: 'cashier' },
         { l: 'Opened', k: 'opened' }, { l: 'Closed', f: function (x) { return esc(x.closed || '-'); } },
@@ -531,7 +533,7 @@
       + '.<br>Automatic backup on shift close is <b>' + (r.auto ? 'ON' : 'OFF') + '</b>. '
       + 'Backups older than 60 days are removed by themselves.</div>';
 
-    replace(panel('Backup &amp; Restore', rows.length + ' backup(s) kept',
+    replace(panel('Backup & Restore', rows.length + ' backup(s) kept',
       head + table([
         { l: 'When', k: 'when' },
         { l: 'File', f: function (x) { return esc(x.file); } },

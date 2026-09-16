@@ -66,7 +66,7 @@
       if(grid){
         var d=document.createElement('div');
         d.style.cssText='grid-column:1/-1;padding:30px;text-align:center;color:#5f6f66;font-size:13px';
-        d.innerHTML='🍽️ Menu abhi is empty — POS ya Menu & Categories se items banayein, yahan foran aa jayenge.';
+        d.innerHTML='🍽️ The menu is empty — add items from the POS or Menu & Categories and they appear here at once.';
         grid.appendChild(d);
       }
     }
@@ -93,7 +93,7 @@
           })
         };
         var kr=req('pos-kot',payload);
-        if(!kr.ok){toast(kr.message||'KOT save failed — kitchen ko NahI gaya');return}
+        if(!kr.ok){toast(kr.message||'KOT could not be saved — it did not reach the kitchen');return}
         window.__AIO_TABLET_BILL=kr.bill_no||payload.bill_no;
         pending.forEach(function(i){i.sentQty=i.qty});
         renderCart();

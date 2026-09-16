@@ -122,7 +122,7 @@
       '<div class="table-wrap"><table class="table"><thead><tr>' + colHead +
       (canAdd ? '<th style="text-align:right">Actions</th>' : '') + '</tr></thead><tbody id="mRows"></tbody></table></div>' +
       '<div id="mEmpty" class="empty" style="display:none"><div class="ico">' + (cfg.emptyIcon || '▦') + '</div>' +
-      '<h3>Nothing found</h3><p>' + esc(cfg.emptyText || 'Filter badal kar see ya new record add please.') + '</p>' +
+      '<h3>Nothing found</h3><p>' + esc(cfg.emptyText || 'Change the filter, or add a new record.') + '</p>' +
       (canAdd ? '<button class="btn primary" id="mEmptyAdd">' + esc(cfg.addLabel || '+ New') + '</button>' : '') + '</div>' +
       '<div id="mPager" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)">' +
       '<span id="mCount" style="color:var(--muted);font-size:12px"></span>' +

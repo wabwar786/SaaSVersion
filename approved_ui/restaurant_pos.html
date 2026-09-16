@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v43';
+var VERSION='POS v44';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -637,7 +637,7 @@ function pairDevice(role,label){
     +'<p>Connect the device to this WiFi, then scan this QR. Code '+(r.expires_min||15)+' minutes.</p></div>'
     +'<div class="db">'+body
     +'<div class="box" style="font-size:11px;color:var(--ink2)">'
-    +'<b>Note:</b> Tablet POS computer ke saath usi local network (WiFi/LAN) par hona is required. '
+    +'<b>Note:</b> The tablet must be on the same local network (WiFi/LAN) as the POS computer is required. '
     +'No internet needed — everything runs from this computer.</div></div>'
     +'<div class="df"><button class="sec" data-x>Close (Esc)</button><button class="sec" id="pairList">Connected Devices</button>'
     +'<button class="go" id="pairNew">New Code</button></div>',true);
@@ -899,8 +899,8 @@ function delMenuItem(id,name){
 
   if(CAN.manage){
     var ov=modal('<div class="dh"><h3>Delete this item?</h3><p>'+esc(name)+'</p></div>'
-      +'<div class="db"><div class="box">Item POS grid aur menu dono se hat jayega. '
-      +'<b>Purane bills par koi asar nahi</b> hota.</div></div>'
+      +'<div class="db"><div class="box">The item is removed from the POS grid and the menu. '
+      +'<b>Old bills are not affected.</b></div></div>'
       +'<div class="df"><button class="sec" data-x>Cancel</button>'
       +'<button class="go" id="dmGo" style="background:#8c1d24;border-color:#8c1d24">Delete</button></div>');
     ov.querySelector('#dmGo').onclick=function(){ runDelete(this,ov,id,name,''); };
@@ -910,8 +910,8 @@ function delMenuItem(id,name){
 
   var ov2=modal('<div class="dh"><h3>Manager approval required</h3>'
     +'<p>'+esc(name)+'</p></div>'
-    +'<div class="db"><div class="box">Item delete karne ke liye kisi Admin, Owner '
-    +'ya Manager ka password chahiye.</div>'
+    +'<div class="db"><div class="box">Deleting an item needs the password of an Admin, Owner '
+    +'or Manager.</div>'
     +'<div class="box" style="margin-top:10px"><label class="f">Manager password</label>'
     +'<input class="inp" id="dmPass" type="password" placeholder="Admin / Owner / Manager password"></div></div>'
     +'<div class="df"><button class="sec" data-x>Cancel</button>'
@@ -1361,7 +1361,7 @@ function imageModal(id){
 /* ============ NEW BILL FLOW (mode -> table / customer) ============ */
 function newBillFlow(isEdit){
   var chosen=isEdit?mode:null;
-  var ov=modal('<div class="dh"><h3>'+(isEdit?'Change Bill Context':'New Bill #'+billNo)+'</h3><p>Bill ki type select please</p></div>'
+  var ov=modal('<div class="dh"><h3>'+(isEdit?'Change Bill Context':'New Bill #'+billNo)+'</h3><p>Choose the bill type</p></div>'
     +'<div class="db"><div id="nbStep1">'
       +'<div class="nbmodes">'
       +'<button class="nbm" data-m="Dine In"><b>&#127869; Dine In</b><small>Table par serve</small></button>'
@@ -2068,7 +2068,7 @@ function holdCurrent(silent){
   var r=api('records-save',{module:HOLD,data:d});
   if(!r.ok){toast(r.message||'Hold failed');return false}
   loadHolds();newBill();
-  if(!silent)toast('Bill hold kar diya');
+  if(!silent)toast('Bill put on hold');
   return true;
 }
 $('#holdsBtn').onclick=function(){
@@ -2124,7 +2124,7 @@ $('#dupBtn').onclick=function(){
       +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)+' &middot; '+esc(b.payment||'')+'</small></div>'
       +'<button data-dup="'+i+'">Reprint</button></div>';
   }).join(''):'<div class="cempty">No closed bills today</div>';
-  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Aaj ke closed bills &mdash; reprint please</p></div>'
+  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Closed bills from today &mdash; reprint</p></div>'
     +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer" style="margin-bottom:10px">'
     +'<div id="dupList">'+body+'</div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   function bind(){
@@ -2228,7 +2228,7 @@ function openItemModal(startTab){
       +'<div class="box"><label class="f" style="margin-bottom:8px">Inventory Link (stock deduction)</label><div class="fg">'
         +'<div><label class="f">Mode</label><select class="inp" id="iMode"><option value="none">No inventory link</option><option value="existing">Deduct existing item</option><option value="new">Create new inventory item</option></select></div>'
         +'<div class="hide" id="iQtyW"><label class="f">Deduct qty / sale</label><input class="inp" id="iQty" type="number" step="0.001" value="1"></div>'
-        +'<div class="full hide" id="iExW"><label class="f">Inventory item</label><select class="inp" id="iEx">'+(inv.length?inv.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' - '+(Math.round((x.stockQty||0)*100)/100)+' '+esc(x.stockUnit||'')+'</option>'}).join(''):'<option value="">(no inventory item nahi)</option>')+'</select></div>'
+        +'<div class="full hide" id="iExW"><label class="f">Inventory item</label><select class="inp" id="iEx">'+(inv.length?inv.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' - '+(Math.round((x.stockQty||0)*100)/100)+' '+esc(x.stockUnit||'')+'</option>'}).join(''):'<option value="">(no inventory items)</option>')+'</select></div>'
         +'<div class="hide" id="iNnW"><label class="f">New inventory name</label><input class="inp" id="iNn" placeholder="Same as item"></div>'
         +'<div class="hide" id="iNuW"><label class="f">Stock unit</label><select class="inp" id="iNu"><option>PCS</option><option>G</option><option>KG</option><option>ML</option><option>L</option></select></div>'
         +'<div class="hide" id="iNoW"><label class="f">Opening stock</label><input class="inp" id="iNo" type="number" step="0.001" value="0"></div>'
@@ -2290,8 +2290,8 @@ function openItemModal(startTab){
       id=f.id;
     }
     var n=catCount(name);
-    var msg=n? ('"'+name+'" mein '+n+' item'+(n===1?'':'s')+' hain. Delete karne par wo <b>General</b> mein chale jayenge.')
-             : ('"'+name+'" khali hai.');
+    var msg=n? ('"'+name+'" mein '+n+' item'+(n===1?'':'s')+' items. Deleting it moves them to <b>General</b>.')
+             : ('"'+name+'" is empty.');
     var d2=modal('<div class="dh"><h3>Delete category?</h3><p>'+esc(name)+'</p></div>'
       +'<div class="db"><div class="box">'+msg+'</div></div>'
       +'<div class="df"><button class="sec" data-x>Keep it</button>'
@@ -2363,7 +2363,7 @@ $('#qrBtn').onclick=function(){
     +'<div class="db">'+body+'</div><div class="df"><button class="sec" data-x>Close (Esc)</button></div>',true);
   Array.prototype.forEach.call(ov.querySelectorAll('[data-acc]'),function(b){b.onclick=function(){
     var o=qrPending[b.dataset.acc];
-    if(!shift){toast('Pehle shift open please');return}
+    if(!shift){toast('Open a shift first');return}
     if(!billStarted){mode='Dine In';curTable=o.table||'';billStarted=true}
     o.items.forEach(function(x){
       var mp=BOOT.products.filter(function(m){return m.id===x.id})[0];
@@ -2375,7 +2375,7 @@ $('#qrBtn').onclick=function(){
   }});
   Array.prototype.forEach.call(ov.querySelectorAll('[data-rej]'),function(b){b.onclick=function(){
     api('qr-handle',{id:qrPending[b.dataset.rej].id,action:'REJECTED'});
-    ov.remove();loadQr();toast('Order reject kar diya');
+    ov.remove();loadQr();toast('Order rejected');
   }});
 };
 
@@ -2399,7 +2399,7 @@ $('#sysBtn').onclick=function(){
     +'<div class="kv"><span>Menu items</span><b>'+BOOT.products.length+'</b></div>'
     +'<div class="kv"><span>Tables</span><b>'+(BOOT.tables||[]).length+'</b></div>'
     +'<div class="kv"><span>Version</span><b>'+VERSION+'</b></div>'
-    +'<div class="box"><b style="font-size:11px">Tax &amp; Charges (is branch ke liye)</b><div class="fg" style="margin-top:8px">'
+    +'<div class="box"><b style="font-size:11px">Tax &amp; Charges (for this branch)</b><div class="fg" style="margin-top:8px">'
     +'<div><label class="f">Cash Tax %</label><input class="inp" id="stCash" type="number" step="0.1" value="'+SET.tax_cash+'"></div>'
     +'<div><label class="f">Card / Online Tax %</label><input class="inp" id="stCard" type="number" step="0.1" value="'+SET.tax_card+'"></div>'
     +'<div class="full"><label class="f">Default Service Charge %</label><input class="inp" id="stSvc" type="number" step="0.1" value="'+SET.service_charge+'"></div>'
@@ -2501,7 +2501,7 @@ function showDiagnostics(){
   var rb=api('pos-boot'), rawHtml='';
   if(rb.ok&&rb.boot&&rb.boot.products&&rb.boot.products.length){
     var sp=rb.boot.products[0];
-    rawHtml='<div class="box"><b style="font-size:11px">pos-boot ka pehla product (raw)</b>'
+    rawHtml='<div class="box"><b style="font-size:11px">first product from pos-boot (raw)</b>'
       +'<pre style="font-size:10.5px;white-space:pre-wrap;margin-top:6px">'+esc(JSON.stringify({id:sp.id,name:sp.name,cat:sp.cat,price:sp.price,img:String(sp.img).slice(0,60)},null,1))+'</pre>'
       +'<div style="font-size:11px;margin-top:5px">name field: <b style="color:'+(sp.name?'var(--ok)':'var(--brand)')+'">'
       +(sp.name?('OK - "'+esc(sp.name)+'"'):'EMPTY! Re-save the item name from the Menu page')+'</b></div></div>';
@@ -2510,7 +2510,7 @@ function showDiagnostics(){
   if(d.menu_items_pos_visible===0&&d.stranded_ui_records_menu>0)tip='Items are in the old format (ui_records) — redeploy the service.';
   else if(d.menu_items_pos_visible===0&&d.menu_items_other_sites>0)tip='The items were created in another branch.';
   else if(d.menu_items_pos_visible===0)tip='This branch has no POS-visible items - "+ New Item" to create one.';
-  var ov=modal('<div class="dh"><h3>POS Diagnostics</h3><p>Seedhe database se</p></div><div class="db">'+h
+  var ov=modal('<div class="dh"><h3>POS Diagnostics</h3><p>Straight from the database</p></div><div class="db">'+h
     +(tip?'<div class="box" style="border-color:#f0c98a;background:var(--warnbg)"><b>Please note:</b> '+esc(tip)+'</div>':'')
     +rawHtml
     +'<div class="box"><b style="font-size:11px">Recent menu items</b><div style="margin-top:6px">'+items+'</div></div></div>'
@@ -2542,18 +2542,28 @@ function openGate(){
     if(!r.ok){
       this.disabled=false;this.textContent='Open Shift and Start Billing';
       ov.querySelector('#openMsg').textContent=r.message||'Failed';
-      /* pichli shift ka cash clear pending ho to yahin se clear karayein */
-      if(/cash clear nahi/i.test(r.message||'')){
-        var lr=api('shift-last-report');
-        if(lr.ok&&lr.report&&lr.report.shift_id){
-          var el=ov.querySelector('#openMsg');
-          el.innerHTML=esc(r.message)+' <button class="tb" id="clrBtn" style="padding:3px 10px;margin-left:6px">Clear Cash Now</button>';
-          ov.querySelector('#clrBtn').onclick=function(){
-            var c=api('shift-clear-cash',{shift_id:lr.report.shift_id,amount:lr.report.actual_cash});
-            toast(c.ok?('Cash cleared: '+money(c.cleared||0)):(c.message||'Failed'));
-            if(c.ok)el.textContent='Cash cleared. Ab shift open plea.';
-          };
-        }
+      /* Pichli shift ka cash clear baqi ho — server `needs_clear` bhejta
+         hai. Pehle yahan message ke ALFAZ dhoonde jate the; software
+         English hua, matn badla, aur yeh button hamesha ke liye chhup
+         gaya. Cashier ko inkar milta tha aur aage koi raasta nahi. */
+      if(r.needs_clear){
+        var sid=r.shift_id||'', amt=Number(r.amount||0);
+        if(!sid){ try{ var lr=api('shift-last-report');
+          if(lr&&lr.ok&&lr.report){ sid=lr.report.shift_id||''; amt=Number(lr.report.actual_cash||0); } }catch(e){} }
+        var el=ov.querySelector('#openMsg');
+        el.innerHTML=esc(r.message||'')
+          +'<div style="margin-top:8px"><button class="tb" id="clrBtn" style="padding:5px 12px">'
+          +'Cash handed over &mdash; clear it now</button></div>';
+        var cb=ov.querySelector('#clrBtn');
+        if(cb)cb.onclick=function(){
+          if(!sid){toast('Could not find the previous shift');return}
+          this.disabled=true;this.textContent='Clearing…';
+          var c=api('shift-clear-cash',{shift_id:sid,amount:amt});
+          if(!c||!c.ok){this.disabled=false;this.textContent='Cash handed over — clear it now';
+            toast((c&&c.message)||'Could not clear',true);return}
+          el.textContent='Cleared. You can open your shift now.';
+          toast('Cash cleared'+(c.cleared?(': '+money(c.cleared)):''));
+        };
       }
       return;
     }
@@ -2775,7 +2785,7 @@ function showKeys(){
     ['F11','Open / close account (shift)'],
     ['Ctrl + K','Search menu'],['Ctrl + P','Charge'],['Ctrl + H','Hold bills'],
     ['Esc','Close dialog'],
-    ['+  /  -','Last item ka qty barhao / ghatao'],
+    ['+  /  -','Increase / decrease quantity of the last item'],
     ['Delete','Last item hatao'],
     ['A-Z, 0-9','Just start typing in the search box'],
     ['1 - 6','Payment dialog: payment method'],

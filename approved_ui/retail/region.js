@@ -18,7 +18,7 @@
       barcode: 'EAN13', weight_unit: 'kg', scale_prefix: '20',
       credit_label: 'Khata / Udhaar',
       date_fmt: 'DD MMM YYYY',
-      fiscal_note: 'FBR digital invoice localhost service se — offline PC par.'
+      fiscal_note: 'FBR digital invoice runs from the localhost service — on the offline PC.'
     },
     UK: {
       code: 'UK', label: 'United Kingdom', flag: '🇬🇧',

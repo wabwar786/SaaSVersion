@@ -555,7 +555,7 @@ function hold(){
   paintHeld(); flash('Bill held');
 }
 function recall(id){
-  if(cart.length){flash('Pehle current bill khatam please',true);return}
+  if(cart.length){flash('Finish the current bill first',true);return}
   var h=S.get('held_bills'),b=null;
   for(var i=0;i<h.length;i++) if(h[i].id===id){b=h[i];break}
   if(!b)return;
@@ -757,7 +757,7 @@ function confirmPay(quickCash){
   var cash=quickCash?t.grand:Number($('payCash').value||0),card=Number($('payCard').value||0);
   var paid=payMethod==='CREDIT'?t.grand:(payMethod==='CARD'?card:(payMethod==='MIXED'?cash+card:cash));
   if(!quickCash&&payMethod!=='CREDIT'&&paid+0.001<t.grand){flash('Short by '+money(t.grand-paid),true);return}
-  if(payMethod==='CREDIT'&&custId==='cu1'){flash('Credit ke liye customer choose (F6)',true);return}
+  if(payMethod==='CREDIT'&&custId==='cu1'){flash('Choose a customer for credit (F6)',true);return}
 
   var c=S.byId('customers',custId);
   var sale={id:'INV-'+billNo,bill_no:'INV-'+billNo,counter:'Counter 1',cashier:'Ali Raza',
@@ -847,7 +847,7 @@ function fillDup(q){
       (rp? '<span class="tag warn plain" style="height:18px;font-size:10px">'+rp+' reprint'+(rp>1?'s':'')+'</span>'
          : '<span style="color:var(--faint);font-size:10.5px">original only</span>')+
       '</div></div>';
-  }).join('') : '<div class="empty" style="padding:26px"><h3>No bill found</h3><p>Bill number ya customer se dhoondein.</p></div>';
+  }).join('') : '<div class="empty" style="padding:26px"><h3>No bill found</h3><p>Bill number or customer se dhoondein.</p></div>';
 }
 function markDup(){var n=$('dupList').children;for(var i=0;i<n.length;i++)n[i].className='dl'+(i===dIdx?' on':'')}
 function printDup(){

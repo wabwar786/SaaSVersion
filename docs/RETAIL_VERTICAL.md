@@ -2433,3 +2433,60 @@ after             one: 0 bills / 0        two: 1 bill / 1500
 
 Also checked: handing over to yourself is refused, and so is a handover
 with nothing to move.
+
+---
+
+## 53. The English translation silently removed the way out of a stuck shift
+
+A cashier could not open a shift:
+
+> Pichli shift S-260910-16AB ka cash clear failed. Pehle usay clear please.
+
+Two faults in one screen.
+
+### The "Clear Cash Now" button had disappeared
+
+The POS decided whether to offer that button by **matching the words of
+the server's message**:
+
+```js
+if (/cash clear nahi/i.test(r.message || '')) { ...show the button... }
+```
+
+When the app was translated the message became "cash clear failed". The
+test stopped matching, the button stopped appearing, and the cashier was
+left with a refusal and no way forward — no billing at all until someone
+touched the database.
+
+The server now returns a **flag**:
+
+```json
+{ "ok": false, "needs_clear": true, "shift_id": "...", "amount": 4500 }
+```
+
+Text gets translated; flags do not. The button is driven by
+`needs_clear` and carries the shift id and amount with it.
+
+```
+open shift        -> ok:false, needs_clear:true, S-TEST-CLR, 4500
+clear cash        -> ok:true, cleared 4500
+open shift again  -> ok:true, S-260916-C12B
+```
+
+### "Opening &amp; Closing Shift"
+
+The title was written with `&amp;` and then passed through `panel()`,
+which escapes its arguments — so the ampersand was escaped twice and
+printed literally. Fixed here and in "Backup & Restore", which had the
+same mistake.
+
+### Leftover Roman Urdu — in the copies that are actually served
+
+47 user-facing strings were still in Roman Urdu, most of them in
+`public/*.js`. The translation pass had run over `approved_ui/`, and as
+§51 established, the browser is served the `public/` copy. Those are now
+translated, in the files that ship.
+
+One string broke a script again — "Today's closed bills" inside a
+single-quoted JS string. Same apostrophe trap as the first translation
+pass; caught by lint, reworded.

@@ -331,7 +331,7 @@
     if(typeof window.markPendingAsSent==='function'){
       var originalKot=window.markPendingAsSent;
       window.markPendingAsSent=function(){
-        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open please');return false;}
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Open a shift first');return false;}
         var payload=buildPayload();
         var r=req('pos-kot',payload);
         if(!r.ok){
@@ -347,7 +347,7 @@
     if(typeof window.completeCharge==='function'){
       var originalCharge=window.completeCharge;
       window.completeCharge=function(action){
-        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Pehle shift open please');return false;}
+        if(!window.__AIO_SHIFT_ID){showOpenGate();if(typeof toast==='function')toast('Open a shift first');return false;}
         if(typeof validateTender==='function'&&!validateTender())return false;
         var payload=buildPayload();
         var r=req('pos-finalize',payload);

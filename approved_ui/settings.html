@@ -21,8 +21,8 @@
         <section class="panel">
           <div class="panel-head"><div><h2>Business information</h2><p>Shown on receipts and invoices</p></div></div>
           <div class="panel-body"><div class="form-grid">
-            <label class="field full"><span>Restaurant name</span><input data-s="business_name" placeholder="Business ka naam"></label>
-            <label class="field full"><span>Branch</span><input data-s="branch_name" placeholder="Branch ka naam"></label>
+            <label class="field full"><span>Restaurant name</span><input data-s="business_name" placeholder="Business name"></label>
+            <label class="field full"><span>Branch</span><input data-s="branch_name" placeholder="Branch name"></label>
             <label class="field"><span>Phone</span><input data-s="phone" placeholder="051-XXXXXXX"></label>
             <label class="field"><span>NTN / STRN</span><input data-s="ntn" placeholder="1234567-8"></label>
             <label class="field full"><span>Address</span><textarea data-s="address" placeholder="Branch ka poora pata"></textarea></label>
@@ -57,8 +57,8 @@
         <section class="panel">
           <div class="panel-head"><div><h2>Receipt</h2></div></div>
           <div class="panel-body"><div class="form-grid">
-            <label class="field full"><span>Header line</span><input data-s="receipt_header" placeholder="Bill ke upar likhi jane wali line"></label>
-            <label class="field full"><span>Footer line</span><input data-s="receipt_footer" placeholder="Bill ke neeche likhi jane wali line"></label>
+            <label class="field full"><span>Header line</span><input data-s="receipt_header" placeholder="Line printed at the top of the bill"></label>
+            <label class="field full"><span>Footer line</span><input data-s="receipt_footer" placeholder="Line printed at the bottom of the bill"></label>
             <label class="field"><span>Print logo</span><select data-s="receipt_logo"><option>Yes</option><option>No</option></select></label>
             <label class="field"><span>Paper size</span><select data-s="receipt_paper"><option>80mm</option><option>58mm</option></select></label>
             <label class="field"><span>Bill template <span class="hint">&middot; 80mm</span></span><select data-s="receipt_template" id="tplSel"></select></label>
@@ -123,7 +123,7 @@
   function fields(){return document.querySelectorAll('[data-s]')}
 
   function load(){
-    if(!window.DBApi){toast('Server connection not found. Page refresh plea.',true);return}
+    if(!window.DBApi){toast('Server connection not found. Please refresh the page.',true);return}
     /* ---- Price mode (tax inclusive / exclusive) ----
        Yeh alag endpoint par hai kyunke dono verticals (restaurant aur
        retail) ek hi setting istemal karte hain. */
