@@ -63,10 +63,24 @@ final class DeleteService
             'label' => 'Menu item', 'table' => 'menu_items', 'scope' => 'site',
             'name' => 'name', 'soft' => 'deleted_at', 'active' => 'is_active',
             'module' => 'menu', 'form' => 'menu_items',
-            'deps' => [
-                ['sql' => "SELECT COUNT(*) FROM order_items WHERE menu_item_id=?",
-                 'msg' => 'used in {n} bill line(s) - marking it inactive is safer than deleting'],
-            ],
+            /* ============================================================
+               Bill lines yahan RUKAWAT NAHI hain — jaan boojh kar.
+
+               Pehle yahan `order_items` ki ginti ek blocker thi: jo item
+               ek dafa bhi bik chuka ho, usay delete karne se inkar ho jata
+               tha. Yeh soch hi ghalat thi.
+
+               Menu item delete karne ka matlab hai "yeh aage nahi bikega".
+               Uska purane bills se koi taalluq nahi. Aur delete yahan SOFT
+               hai (`deleted_at`) — row apni jagah rehti hai, sirf chhup
+               jati hai. `order_items` ki foreign key salamat rehti hai aur
+               har purana bill bilkul waisa hi chhapta hai jaisa pehle.
+
+               Blocker rakhne ka nateeja yeh nikla ke log Force delete par
+               jate — aur wahi cheez purane bills ko waqai nuqsan pohanchati
+               hai (FK todti hai). Yani rukawat us khatre ki taraf dhakel
+               rahi thi jis se bachna maqsood tha.
+               ============================================================ */
             'kids' => [
                 ['table' => 'recipes', 'col' => 'menu_item_id'],
                 ['table' => 'menu_item_variants', 'col' => 'menu_item_id'],

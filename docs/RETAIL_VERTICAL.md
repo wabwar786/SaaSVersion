@@ -2274,3 +2274,56 @@ What the earlier work did leave behind, and is worth keeping: the
 `no-store` headers and GET cache-busting (real, if not this bug), and
 `item-debug` / `diagnose_item.php`, which now print the database's own
 account instead of inviting another guess.
+
+---
+
+## 50. Deleting an item must not touch old bills — and it never had to
+
+The force delete failed with a raw database error:
+
+```
+SQLSTATE[23000] ... CONSTRAINT `fk_oi_menu` FOREIGN KEY (`menu_item_id`)
+```
+
+The customer's point settles the design: **deleting a menu item means it
+will not be sold again. It says nothing about what was already sold.**
+
+### The blocker was pushing people toward the only dangerous option
+
+`menu_item` already deletes **soft** (`deleted_at`): the row stays, the
+foreign key stays, every old bill prints exactly as before, and the item
+simply disappears from the POS and the menu. Nothing about that can harm
+history.
+
+Yet bill lines were listed as a *dependency*, so a plain delete on any
+item that had ever sold came back BLOCKED — and the dialog then offered
+**Force delete**, which is the one operation that really does damage old
+bills (and, as the screenshot shows, cannot even complete because of the
+foreign key).
+
+The guard meant to protect history was steering people into the one
+action that breaks it.
+
+That dependency is gone. Delete on a sold item now does what it always
+should have:
+
+```
+item: sold in a bill
+delete     -> DELETED
+menu row   -> deleted_at set, row still present
+bill lines -> 1, untouched
+POS        -> item gone from the grid
+```
+
+### Two more fixes from the same screenshot
+
+**Admins were asked for a manager password.** On force delete the POS
+prompted every user. An admin already proved who they are at sign-in.
+Now the prompt only appears for someone who is not a manager.
+
+**Raw SQL errors reached the counter.** A foreign-key violation was
+printed verbatim in the toast. It is now translated:
+
+> This item is attached to older records (usually bills that were already
+> printed). Those cannot be broken. Use "Delete" normally — it hides the
+> item from the POS and leaves old bills exactly as they are.

@@ -1313,7 +1313,26 @@ case 'entity-delete':needLogin();$d=body();
    DeleteService::$managerVerified = true;
  }
  try{$r=DeleteService::delete($ent,$id,$mode,(string)($d['reason']??''));}
- catch(Throwable $e){fail($e->getMessage());}
+ catch(Throwable $e){
+   /* ============================================================
+      Database ka foreign-key error kabhi jyun ka tyun na dikhaya jaye.
+
+      Counter par cashier ko yeh nazar aata tha:
+        "SQLSTATE[23000] ... CONSTRAINT `fk_oi_menu` FOREIGN KEY ..."
+      Yeh na usay samajh aata hai, na batata hai ke ab kya kare.
+
+      Matlab hamesha ek hi hota hai: yeh record kisi aur record se juda
+      hua hai. Menu item ke liye wo purane bills hote hain — aur unhein
+      todna galat hai. Sahi raasta yehi hai ke item chhupa diya jaye.
+      ============================================================ */
+   $msg=$e->getMessage();
+   if(stripos($msg,'foreign key')!==false || stripos($msg,'23000')!==false){
+     $msg='This item is attached to older records (usually bills that were '
+        . 'already printed). Those cannot be broken. Use "Delete" normally — '
+        . 'it hides the item from the POS and leaves old bills exactly as they are.';
+   }
+   fail($msg);
+ }
  ok($r);
 
 case 'entity-restore':needLogin();$d=body();
