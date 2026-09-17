@@ -1093,8 +1093,37 @@ final class Sync
                 }
                 $rows = $r['rows'] ?? [];
                 if ($rows) {
-                    self::applyRows($table, $rows, null, true);
-                    self::setWatermark("pull:$table", (string)($r['watermark'] ?? $since), 'OK', null, \count($rows));
+                    /* ============================================================
+                       Watermark SIRF us surat mein aage barhe jab rows waqai
+                       lag chuki hon.
+
+                       Pehle `applyRows()` ka nateeja dekha hi nahi jata tha:
+                       chahe saari rows reject ho jatin, watermark phir bhi
+                       aage kar diya jata. Agli pull par node poochta "is
+                       waqt ke baad kya naya hai?" aur cloud kehta "kuch
+                       nahi" — kyunke wo rows us waqt se PURANI hain. Wo
+                       rows phir kabhi nahi maangi jatin.
+
+                       Yahi wajah thi ke node par categories to aa gayin
+                       magar items nahi, aur sync har dafa itminan se
+                       "already up to date" kehti rahi. Data hamesha ke
+                       liye adhoora reh jata, aur kahin koi shikayat nahi.
+
+                       Ab: sab lag gayin -> watermark aage. Kuch bhi reh
+                       gayi -> watermark wahin, taake agli dafa dobara aayen.
+                       ============================================================ */
+                    $applied = self::applyRows($table, $rows, null, true);
+                    $total   = \count($rows);
+                    if ($applied >= $total) {
+                        self::setWatermark("pull:$table", (string)($r['watermark'] ?? $since), 'OK', null, $applied);
+                    } else {
+                        $miss = $total - $applied;
+                        self::setWatermark("pull:$table", $since, 'PARTIAL',
+                            $miss . ' of ' . $total . ' row(s) could not be applied - will retry', $applied);
+                        self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table,
+                            'error' => $miss . ' of ' . $total . ' row(s) rejected locally'
+                                     . (self::$lastRowErrors[$table] ?? '' ? ': ' . self::$lastRowErrors[$table] : '')];
+                    }
                 }
                 $summary[$table] = \count($rows);
             }

@@ -2922,3 +2922,79 @@ cloud           : ERROR | sync/test: branch computer error should reach cloud
 
 The `PULL rtl_*: not allowed` lines in the same run are correct — those
 are retail tables and this is a restaurant tenant.
+
+---
+
+## 61. Found it: the pull watermark advanced even when rows were rejected
+
+The node's own sync log gave it away:
+
+```
+9/17 5:34:03 PM   ERROR   ↑33 ↓36 rows
+  role_modules 33 / role_modules 36
+  ✗ Not synced (22)
+  role_modules: 3 row(s) rejected - number already used by another device
+
+9/17 5:34:48 PM   OK   ↑0 ↓0 rows
+  Nothing to transfer - already up to date.
+```
+
+Rows were **rejected**, and the very next run said **"already up to date"**.
+
+### The bug
+
+```php
+$rows = $r['rows'] ?? [];
+if ($rows) {
+    self::applyRows($table, $rows, null, true);   // return value ignored
+    self::setWatermark("pull:$table", $r['watermark'], 'OK', null, count($rows));
+}
+```
+
+`applyRows()` returns how many rows it actually applied. The pull never
+looked. Whether 12 of 12 landed or 0 of 12, the watermark moved to the
+cloud's latest timestamp either way.
+
+Next pull asks "what changed after that time?" — and those rows are
+*older* than it. The cloud answers "nothing". **They are never offered
+again.** The node stays permanently incomplete and sync reports success
+for ever after.
+
+That is exactly the symptom: categories arrived, items were rejected once
+and then never re-offered, and every later run said "up to date".
+
+The **push** side already had this guard (`if ($applied >= $sent)`).
+Only pull was missing it.
+
+### Fixed
+
+```
+all rows applied  -> watermark moves forward
+any row rejected  -> watermark stays, marked PARTIAL, retried next run
+                     and the reason is written to the Error Log
+```
+
+Proved by breaking a node on purpose (a column too small for the data):
+
+```
+first sync   : 12 of 12 row(s) rejected
+               node items = 0, watermark = 1970-01-01, status = PARTIAL
+fix the node, sync again
+second sync  : pulled menu_items 12 -> node items = 12
+```
+
+Before this change that second sync would have said "already up to date"
+and the twelve items would have been lost to that branch permanently.
+
+### Repairing a node that is already in this state
+
+The watermark on the customer's node is already ahead, so the fix alone
+will not bring the missing rows back. One command rewinds it:
+
+```
+php scripts/diagnose_sync.php --repull
+php scripts/sync_worker.php
+```
+
+It deletes nothing and does not touch the node's own bills or shifts —
+it only says "send me everything again".

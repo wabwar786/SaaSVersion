@@ -97,8 +97,31 @@ if ($bad) {
     echo "    - the watermark is already ahead (rows changed before this node\n";
     echo "      was set up, so the cloud sees nothing 'new' to send)\n";
     echo "\n";
-    echo "  For the second one, clear that table's watermark and pull again:\n";
-    echo "     php scripts/diagnose_sync.php --reset=menu_items\n";
+    echo "  For the second one, rewind and pull everything again:\n";
+    echo "     php scripts/diagnose_sync.php --repull\n";
+    echo "     php scripts/sync_worker.php\n";
+}
+
+/* ---------- sab kuch dobara maangna ---------- */
+if (in_array('--repull', $argv, true)) {
+    /* Jab watermark aage nikal chuka ho aur rows peeche reh gayi hon, to
+       sync hamesha "already up to date" kehti rehti hai. Yeh har pull
+       table ka watermark sifar par le jata hai: agli sync poora catalog
+       dobara maangegi.
+
+       Kuch mitta nahi. Node ka apna data (bills, shifts) chhua tak nahi
+       jata — sirf "mujhe sab kuch phir se bhejo" kaha jata hai. */
+    $n = 0;
+    foreach ($tables as $t) {
+        $pdo->prepare("INSERT INTO sync_state (scope, watermark, last_run_at, last_status, rows_synced)
+                       VALUES (?, '1970-01-01 00:00:00', NOW(6), 'RESET', 0)
+                       ON DUPLICATE KEY UPDATE watermark='1970-01-01 00:00:00', last_status='RESET'")
+            ->execute(["pull:$t"]);
+        $n++;
+    }
+    echo "\n  {$n} table(s) rewound. The next sync will ask for everything again:\n";
+    echo "     php scripts/sync_worker.php\n\n";
+    return;
 }
 
 /* ---------- watermark reset (jaan boojh kar alag flag ke peeche) ---------- */

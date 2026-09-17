@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Customers · Urban Spoon</title>
+<title>Customers · Retail OS</title>
 <link rel="stylesheet" href="shared.css">
 </head>
 <body>
@@ -12,21 +12,19 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Customers</h1><p>Walk-in, delivery and app customers</p></div>
+      <div class="header-title"><h1>Customers</h1><p>Retail, wholesale and credit customers</p></div>
       <div class="header-spacer"></div>
     </header>
     <div class="content"></div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
-<script src="shared_store.js"></script>
-<script src="live_store.js"></script>
-<script src="access_store.js"></script>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
 <script src="shell.js" data-active="customers"></script>
 <script src="module.js"></script>
 <script src="module_config.js"></script>
-<script>RestaurantModule.render(MODULE_CONFIGS['customers']);</script>
+<script>RetailModule.render(MODULE_CONFIGS['customers']);</script>
 </body>
 </html>
-
-<!-- build: V17.1 build 2026-08-25 -->
