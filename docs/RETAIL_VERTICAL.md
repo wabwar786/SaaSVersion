@@ -3124,3 +3124,50 @@ reads `window.APP_ROLE` now.
 A console command prints text; it cannot hand you a file. The honest
 answer is to use **F8** in the POS, or the customer's own
 **System → Download offline version**.
+
+---
+
+## 64. Owner told "Only an Admin or Manager can download" — my own regression
+
+The owner pressed F8 and was refused. The permission was right; the
+information had gone missing.
+
+### Cause
+
+In V134 I replaced the POS's six start-up calls with one `pos-start`.
+But `pos-boot` does **more** than call `PageData::posBoot()` — after it,
+the endpoint adds:
+
+```php
+$bb['can']     = ['manage'=>Auth::isManager(), ...];
+$bb['cashier'] = ['name'=>..., 'role'=>...];
+$bb['site']    = ['name'=>...];
+$bb['brand']   = ...;
+```
+
+I took `posBoot()` and left all of that behind. So `CAN.manage` stayed
+`false` for everyone, including the owner — and the F8 check refused the
+very person allowed to do it. The cashier's name and the branch name were
+missing too.
+
+I tested `pos-start` against `pos-boot` for products, categories,
+settings and licence — and never compared `can`. The parts I remembered
+to check matched; the part I forgot was the one that mattered.
+
+### Fixed
+
+`pos-start` now builds the same payload, with the added lines copied from
+`pos-boot` so the two cannot drift apart again.
+
+```
+OWNER/ADMIN
+  pos-start   can.manage=True   offline_download=True   cashier=Admin   site=Main Branch
+  pos-boot    can.manage=True   offline_download=True   cashier=Admin   site=Main Branch
+
+CASHIER
+  can.manage=False, cashier=Cashier
+  server refuses the download: "Only an Admin or Manager can download..."
+```
+
+The restriction still holds where it should — it just no longer applies
+to the owner.

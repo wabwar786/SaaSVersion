@@ -637,7 +637,37 @@ case 'pos-start':needLogin();Auth::requireModule('pos');
     Ab ek request. Andar wahi khaane, wahi naam — POS ka baqi code
     waisa hi chalta hai.
     ============================================================ */
- $out = ['boot'=>PageData::posBoot()];
+ /* ============================================================
+    `pos-boot` apne jawab mein posBoot() ke ILAWA bhi kai cheezein daalta
+    hai: `can` (permissions), `cashier`, `site`, branding. `pos-start`
+    banate waqt maine sirf posBoot() liya aur wo sab chhor diya.
+
+    Nateeja seedha nazar aaya: owner/admin ko F8 par "Only an Admin or
+    Manager can download" milta tha — kyunke `CAN.manage` hi khali reh
+    jata tha. Isi tarah cashier ka naam aur branch ka naam bhi ghayab
+    hote.
+
+    Is liye ab bilkul wahi payload banaya jata hai jo `pos-boot` banata
+    hai: neeche wala hissa usi se liya gaya hai, taake dono kabhi alag
+    na hon.
+    ============================================================ */
+ $bu=Auth::user(); $out = ['boot'=>PageData::posBoot()];
+ try{
+   $sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");
+   $sq->execute([site_id()]);
+   $out['boot']['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];
+ }catch(Throwable $e){}
+ $out['boot']['can']=['manage'=>Auth::isManager(),
+                      'reports'=>Auth::canModule('reports'),
+                      'offline_download'=>(cfg('app.role')==='cloud'),
+                      'modules'=>(Auth::user()['modules']??[])];
+ $out['boot']['cashier']=['name'=>$bu['full_name']??'Cashier',
+                          'role'=>Auth::isManager()?(!empty($bu['is_tenant_admin'])?'Admin':'Manager'):'Cashier'];
+ try{
+   $bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");
+   $bq->execute([tenant_id()]);
+   if($br=$bq->fetch()) $out['boot']['brand']=$br;
+ }catch(Throwable $e){}
  /* Har hissa alag try mein: koi ek toote to POS bina us hisse ke chal
     jaye, poora aghaz na ruke. */
  try{ $st=SettingsService::get(); $st['tax_mode']=\Aio\Services\TaxMode::current();
