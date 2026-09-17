@@ -445,7 +445,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v45';
+var VERSION='POS v46';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -766,7 +766,27 @@ function banner(html){
   var d=document.getElementById('diagBtn'); if(d)d.onclick=showDiagnostics;
 }
 function boot(){
-  var r; try{r=api('pos-boot')}catch(e){r={ok:false,message:'JS error: '+(e&&e.message)}}
+  /* ============================================================
+     Ek hi request mein sab kuch.
+
+     Pehle yahan chhe alag SYNCHRONOUS calls jati thin. Cloud par farq
+     mehsoos nahi hota; branch computer par `php -S` ek waqt mein ek hi
+     request leta hai, is liye wo chhe calls qatar mein lagti thin aur
+     POS chalne se pehle hi jam jata tha — aur boot() har delete/refresh
+     par dobara chalta hai.
+
+     `pos-start` wahi saara data ek jawab mein deta hai. Purana raasta
+     (pos-boot) waise hi maujood hai: agar node abhi purane server par
+     ho to POS chalta rahe, bas thora sust.
+     ============================================================ */
+  var r; try{ r=api('pos-start'); }catch(e){ r=null; }
+  if(!r||!r.ok){ try{ r=api('pos-boot'); }catch(e){ r={ok:false,message:'JS error: '+(e&&e.message)}; } }
+  if(r&&r.ok){
+    if(r.settings){ SET=r.settings; }
+    if(r.fiscal){ r.boot=r.boot||{}; r.boot.fiscal=r.fiscal; }
+    if(r.holds){ window.__preHolds=r.holds; }
+    if(r.qr_orders){ window.__preQr=r.qr_orders; }
+  }
   if(!r||!r.ok){
     renderAll();
     banner('<span>&#9888; Menu did not load &mdash; server: <b>'+esc((r&&r.message)||'no response')+'</b></span>'
@@ -2011,6 +2031,10 @@ function onNewBill(){
   }else newBill();
 }
 function loadHolds(){
+  /* Aghaz par yeh data `pos-start` ke sath hi aa chuka hota hai — ek
+     aur request bhejne ki zaroorat nahi. */
+  if(window.__preHolds){ holds=window.__preHolds; window.__preHolds=null;
+    var hb=$('#holdBtn'); if(hb)hb.textContent='Hold Bills ('+holds.length+')'; return; }
   /* V94 — ASLI khule orders se, `ui_records` se nahi.
      Tablet `pos-hold` se seedha `orders` mein likhta hai; POS yahan
      `ui_records` parh raha tha (jahan sirf counter ke apne hold jate
@@ -2344,8 +2368,14 @@ function openItemModal(startTab){
 /* ================= QR ORDERS (customer se) ================= */
 var qrPending=[];
 function loadQr(){
+  /* Aghaz par yeh data `pos-start` ke sath aa chuka hota hai — ek aur
+     request bhejna sirf dair barhata hai. */
+  if(window.__preQr){ qrPending=window.__preQr; window.__preQr=null; paintQrBadge(); return; }
   var r=api('qr-pending');
   qrPending=(r.ok&&r.orders)?r.orders:[];
+  paintQrBadge();
+}
+function paintQrBadge(){
   var el=$('#qrCount'); if(el)el.textContent='('+qrPending.length+')';
   var btn=$('#qrBtn');
   if(btn)btn.style.background=qrPending.length?'#fdf4e9':'';

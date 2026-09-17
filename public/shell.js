@@ -260,3 +260,42 @@
 })();
 
 /* build: V17.1 build 2026-08-25 */
+
+
+/* ============================================================
+   JS errors server tak.
+
+   Yeh wo qism hai jo sab se zyada chhupti hai. Screen ka koi hissa
+   render hi nahi hota, cashier kehta hai "software kharab hai", aur
+   asal wajah sirf us ke browser console mein hoti hai — jahan counter
+   par koi nahi dekhta. Is session mein `hasMod is not defined` ne poori
+   items grid gayab kar di thi aur hum dono andhere mein the.
+
+   Sirf FATAL bheje jate hain, warnings nahi — warna shor ban jayega.
+   Ek page par ek hi dafa, taake loop chalne par server par hazaar
+   requests na jayein.
+   ============================================================ */
+(function(){
+  var sent = {};
+  function report(msg, file, line, stack){
+    try{
+      var key = String(msg).slice(0,120);
+      if (sent[key]) return; sent[key] = 1;
+      if (!window.DBApi || !DBApi.req) return;
+      DBApi.req('client-error', {
+        message: String(msg).slice(0,500),
+        file: String(file||'').split('/').pop(),
+        line: line||0,
+        stack: String(stack||'').split('\n').slice(0,6).join('\n'),
+        page: location.pathname.replace(/^\//,'')
+      });
+    }catch(e){ /* reporting khud kabhi masla na bane */ }
+  }
+  window.addEventListener('error', function(e){
+    report(e.message, e.filename, e.lineno, e.error && e.error.stack);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e.reason || {};
+    report('Unhandled promise: ' + (r.message || r), r.fileName, r.lineNumber, r.stack);
+  });
+})();

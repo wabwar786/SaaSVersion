@@ -57,7 +57,10 @@ return [
             'rtl_sales', 'rtl_sale_items', 'rtl_bill_reprints', 'rtl_customer_ledger',
             'units',
             'sync_tombstones',
-        ],
+        
+            /* Branch computer ke errors bhi upar aayen — warna wahan jo
+               tootta hai wo kabhi nazar hi nahi aata. */
+            'app_errors',],
         // Cloud -> Local PULL: sirf master/reference data neeche aati hai
         // (head-office se edit hone wali). ui_records per-branch hai -> pull nahi.
         'pull_tables' => [

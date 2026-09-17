@@ -102,3 +102,57 @@ spl_autoload_register(function(string $class): void {
 require_once __DIR__ . '/helpers.php';
 
 // build: V17.1 build 2026-08-25
+
+/* ============================================================
+   ERROR HANDLERS
+
+   Pehle errors kahin nahi jate the: `display_errors=Off` (theek hai) aur
+   `log_errors=On` unhein PHP ke apne log mein daal deta tha — Railway par
+   container logs mein, node par ek file mein jo koi nahi kholta. Yani jo
+   cheez toot rahi hoti thi uska pata sirf customer ki shikayat se chalta.
+
+   Ab teen raaste band kiye ja rahe hain:
+     - exception jo kisi ne na pakri
+     - warnings / notices
+     - FATAL error (yeh sab se ahem hai — shutdown ke baghair yeh
+       bilkul chup chaap gayab ho jate hain)
+
+   Har handler apne andar se kuch nahi phenkta. Error log ka toot jana
+   asal kaam ko na roke.
+   ============================================================ */
+(static function (): void {
+
+    $log = static function (string $msg, string $level, string $src,
+                            ?string $file = null, ?int $line = null, ?string $trace = null): void {
+        try {
+            if (!class_exists('Aio\\Services\\ErrorLog', true)) return;
+            \Aio\Services\ErrorLog::record($msg, $level, $src, $file, $line, $trace);
+        } catch (\Throwable $e) { /* chup */ }
+    };
+
+    $src = (PHP_SAPI === 'cli') ? 'cli' : (str_contains((string)($_SERVER['SCRIPT_NAME'] ?? ''), 'api.php') ? 'api' : 'page');
+
+    set_exception_handler(static function (\Throwable $e) use ($log, $src): void {
+        $log(get_class($e) . ': ' . $e->getMessage(), 'FATAL', $src,
+             $e->getFile(), $e->getLine(),
+             implode("\n", array_slice(explode("\n", $e->getTraceAsString()), 0, 6)));
+        /* PHP ka apna behaviour barqarar — response wahi rahe jo pehle tha. */
+        if (PHP_SAPI === 'cli') { fwrite(STDERR, $e->getMessage() . "\n"); exit(1); }
+    });
+
+    set_error_handler(static function (int $no, string $str, string $file = '', int $line = 0) use ($log, $src): bool {
+        /* @ se dabaye gaye errors ko chhor do — wo jaan boojh kar dabaye gaye hain. */
+        if (!(error_reporting() & $no)) return false;
+        $level = in_array($no, [E_WARNING, E_USER_WARNING, E_CORE_WARNING, E_COMPILE_WARNING], true)
+                 ? 'WARN' : 'ERROR';
+        $log($str, $level, $src, $file, $line);
+        return false;   /* PHP apna kaam bhi kare */
+    });
+
+    register_shutdown_function(static function () use ($log, $src): void {
+        $e = error_get_last();
+        if (!$e) return;
+        if (!in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
+        $log($e['message'], 'FATAL', $src, $e['file'] ?? null, (int)($e['line'] ?? 0));
+    });
+})();

@@ -608,6 +608,53 @@ case 'pos-hold-open':needLogin();Auth::requireModule('pos');
  }
  ok(OpsService::holdBillItems($oid));
 
+case 'pos-start':needLogin();Auth::requireModule('pos');
+ /* ============================================================
+    POS ka poora aghaz — EK request mein.
+
+    Pehle POS shuru hote waqt chhe alag calls karta tha: settings-get,
+    shift-current, pos-boot, pos-holds, qr-pending, sync-status. Aur
+    yeh sab SYNCHRONOUS hain — har ek browser ko rok deti hai.
+
+    Cloud par yeh mahsoos nahi hota. Branch computer par hota hai:
+    wahan `php -S` ek waqt mein EK hi request leta hai, is liye chhe
+    calls qatar mein lagti hain. Har ek 25-60 ms — yani POS chalne se
+    pehle hi ek chauthai second se zyada jam jata hai. Aur `boot()` har
+    delete aur refresh par dobara chalta hai, to yeh dair baar baar
+    aati hai.
+
+    Ab ek request. Andar wahi khaane, wahi naam — POS ka baqi code
+    waisa hi chalta hai.
+    ============================================================ */
+ $out = ['boot'=>PageData::posBoot()];
+ /* Har hissa alag try mein: koi ek toote to POS bina us hisse ke chal
+    jaye, poora aghaz na ruke. */
+ try{ $st=SettingsService::get(); $st['tax_mode']=\Aio\Services\TaxMode::current();
+      $out['settings']=$st; }catch(Throwable $e){ $out['settings']=null; }
+ try{ $out['fiscal']=['enabled'=>FiscalService::availableHere(),
+                      'tenant_on'=>FiscalService::enabledForTenant(),
+                      'provider'=>(string)(FiscalService::settings()['provider']??'NONE')];
+ }catch(Throwable $e){ $out['fiscal']=null; }
+ try{ $out['holds']=OpsService::holdBills(); }catch(Throwable $e){ $out['holds']=[]; }
+ try{ $q=DB::pdo()->prepare("SELECT o.id,o.table_name,o.items_json,o.total,o.note,o.created_at,
+                                    s.guest_name,s.guest_phone,s.table_id
+                               FROM qr_orders o JOIN qr_sessions s ON s.id=o.session_id
+                              WHERE o.site_id=? AND o.status='PENDING' ORDER BY o.created_at");
+      $q->execute([site_id()]);
+      $rows=[];
+      foreach($q->fetchAll() as $r){
+        $rows[]=['id'=>$r['id'],'table'=>$r['table_name'],
+                 'items'=>json_decode((string)$r['items_json'],true)?:[],
+                 'total'=>(float)$r['total'],'note'=>$r['note'],
+                 'name'=>$r['guest_name'],'phone'=>$r['guest_phone'],
+                 'source'=>$r['table_id']?'TABLE':'APP',
+                 'at'=>substr((string)$r['created_at'],11,5)];
+      }
+      $out['qr_orders']=$rows;
+ }catch(Throwable $e){ $out['qr_orders']=[]; }
+ try{ $out['licence']=Licence::current(); }catch(Throwable $e){ $out['licence']=null; }
+ ok($out);
+
 case 'pos-holds':needLogin();Auth::requireModule('pos');
  /* V94 — POS ka Hold Bills ab ASLI khule orders se. Pehle yeh
     `ui_records` se aata tha, jahan sirf counter ke apne hold jate hain.
@@ -2453,6 +2500,27 @@ case 'sa-fbr-toggle':needSuper();$d=body();
  \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'enabled':'band').' done');
  ok(['enabled'=>$on,'modules'=>count($cur),
      'message'=>'FBR '.($on?'enabled':'band').' done. It takes effect on the offline node at the next sync.']);
+
+case 'sa-errors':needSuper();
+ ok(['rows'=>\Aio\Services\ErrorLog::recent([
+       'tenant_id'=>(string)($_GET['tenant_id']??''),
+       'level'=>(string)($_GET['level']??''),
+       'q'=>(string)($_GET['q']??''),
+       'show_resolved'=>!empty($_GET['resolved']),
+       'limit'=>(int)($_GET['limit']??200),
+     ]),'counts'=>\Aio\Services\ErrorLog::counts()]);
+
+case 'sa-error-resolve':needSuper();$d=body();
+ $id=(string)($d['id']??''); if($id==='')fail('id is required');
+ ok(['done'=>\Aio\Services\ErrorLog::resolve($id,(bool)($d['resolve']??true))]);
+
+case 'client-error':needLogin();$d=body();
+ /* Browser mein girne wala JS. Yahi wo qism hai jo sab se zyada chhupti
+    hai: screen khali ho jati hai, cashier samajhta hai "software kharab
+    hai", aur wajah sirf us ke browser console mein hoti hai jahan koi
+    nahi dekhta. */
+ \Aio\Services\ErrorLog::fromClient($d);
+ ok([]);
 
 case 'sa-usage':needSuper();
  ok(['usage'=>\Aio\Services\Usage::report((int)($_GET['days']??30)),

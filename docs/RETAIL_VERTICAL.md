@@ -2688,3 +2688,135 @@ replacement was run against a real php.ini — 5 opcache lines disabled,
 **The general lesson:** a performance setting must never be able to stop
 installation. Anything added for speed needs a path that gives up on the
 speed and keeps the product working.
+
+---
+
+## 57. Cloud data not arriving on the branch — a diagnostic, not a guess
+
+Symptom: on the node the **categories arrived** (all the chips are
+there, every one showing 0) but **no menu items** — while the cloud has
+43. The dashboard says *Synced, 0 rows waiting*.
+
+Both tables are in the same pull list, so one arriving and the other not
+is the whole clue. Two explanations fit, and they need opposite fixes:
+
+- `menu_items` **errored** while being applied — usually a column this
+  node's database does not have.
+- The cloud **returned nothing** for it — either the node's `site_id`
+  does not match the site the items live in, or the watermark is already
+  past them (the rows changed before this node existed, so the cloud
+  sees nothing "new").
+
+Guessing between those wastes a day. Sync already records the answer:
+every table's result goes into `sync_state`.
+
+### `scripts/diagnose_sync.php`
+
+Run **on the branch computer**. Read-only.
+
+```
+php scripts/diagnose_sync.php
+```
+
+```
+=== This computer ===
+  role      : local
+  site_id   : 3b1f11be-...
+  sites here: 1
+     3b1f11be  Main Branch  <= configured
+
+=== What sync did, table by table ===
+  table              rows here  status  last watermark       last error
+  menu_categories    13         OK      2026-09-17 10:00:00
+  menu_items         12         ERROR   2026-09-17 10:00:00  Unknown column is_online...
+```
+
+It also flags the quiet killer: if the configured `site_id` is not one
+of this tenant's sites, site-scoped tables (menu_items among them) come
+back empty with **no error at all** — sync reports success and nothing
+arrives.
+
+If the watermark is the problem:
+
+```
+php scripts/diagnose_sync.php --reset=menu_items
+php scripts/sync_worker.php
+```
+
+That rewinds the watermark to 1970 so the next pull asks for the whole
+table again. It deletes nothing — it only says "send it all again".
+
+---
+
+## 58. Error log in Super Admin, and a faster start on the branch
+
+### Errors had nowhere to go
+
+There was **no error handler at all**. `display_errors=Off` (right — a
+customer must not see a stack trace) and `log_errors=On` sent everything
+to PHP's own log: container logs on Railway, a file nobody opens on the
+branch. So the only way a fault reached you was a customer complaining.
+
+**New: `app_errors` + Super Admin → Error Log.**
+
+Three handlers in `bootstrap.php`: uncaught exceptions, warnings/notices,
+and `register_shutdown_function` for fatals — that last one matters most,
+because a fatal otherwise vanishes without a trace. Browser JS errors
+come in too (`window.onerror` and unhandled promise rejections), which is
+the class of fault that hides best: the screen half-renders, the cashier
+says "the software is broken", and the reason sits in a console nobody
+looks at.
+
+Three deliberate choices:
+
+- **Grouping.** One fault repeating 500 times is **one row with a
+  count**, not 500 rows. Without this the table is noise within a day
+  and nobody reads it.
+- **Request bodies are never stored.** They can hold passwords, card
+  numbers, customer phones. Only the action name is kept — enough to
+  find the fault, without taking on a second problem.
+- **The logger never throws.** If writing a log fails, it fails quietly.
+  A logging fault must not take down the work it was watching.
+
+Emails, bcrypt hashes and long digit strings are stripped from the
+message before saving:
+
+```
+Login failed for ali@shop.com card 4111111111111111
+  ->  Login failed for <email> card <number>
+```
+
+Node errors are in the sync **push** list, so what breaks on a branch
+computer reaches you too. Anything older than 30 days is cleared.
+
+### Local speed: six requests became one
+
+Measured on the node, POS start:
+
+```
+settings-get     7.3 ms
+shift-current    5.7 ms
+pos-boot         8.9 ms
+pos-holds        6.4 ms
+qr-pending       5.6 ms
+licence-status   5.7 ms
+TOTAL           39.7 ms
+```
+
+Those are **synchronous** calls, and on the branch `php -S` serves
+**one request at a time** — so they queue. On a Windows counter PC each
+is 25–60 ms, so this is a frozen quarter-second before the POS is
+usable, repeated on every delete and refresh (`boot()` runs again).
+
+New `pos-start` returns all of it in one response:
+
+```
+pos-start       10.3 ms
+requests: 6 -> 1
+time:     39.7 ms -> 10.3 ms   (74% less)
+```
+
+Each section is wrapped in its own `try` — if one part fails the POS
+still starts without it rather than not starting at all. The old
+`pos-boot` still works and the POS falls back to it, so a node running
+an older server keeps working.

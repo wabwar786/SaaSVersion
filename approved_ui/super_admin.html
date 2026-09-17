@@ -220,6 +220,7 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
     <div class="side-group">
       <h4>System</h4>
       <button class="side-link" data-nav="usage"><span class="i">◱</span> Usage Analytics</button>
+      <button class="side-link" data-nav="errors"><span class="i">!</span> Error Log</button>
       <button class="side-link" data-nav="console"><span class="i">▶</span> Command Console</button>
       <button class="side-link" data-nav="commands"><span class="i">?</span> Command Guide</button>
       <button class="side-link" data-nav="audit"><span class="i">≣</span> Audit Log</button>
@@ -428,6 +429,31 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       </section>
 
       <!-- ---------- COMMAND CONSOLE ---------- -->
+      <section class="sec" data-sec="errors">
+        <div class="card">
+          <div class="card-h"><h3>Errors</h3>
+            <span class="spacer" style="flex:1"></span>
+            <select id="eBiz" style="width:auto"><option value="">All businesses</option></select>
+            <select id="eLvl" style="width:auto">
+              <option value="">All levels</option><option>FATAL</option>
+              <option>ERROR</option><option>WARN</option></select>
+            <div class="search" style="width:190px"><input id="eQ" placeholder="Search"></div>
+            <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">
+              <input type="checkbox" id="eRes"> resolved</label>
+            <button class="btn ghost" id="eCsv">CSV</button>
+          </div>
+          <div class="card-b">
+            <div class="note" style="margin-bottom:12px">
+              The same fault repeating is <b>one row with a count</b>, not a thousand rows.
+              Request bodies are never stored, and emails, card numbers and password hashes
+              are stripped from the message before it is saved.
+            </div>
+            <div id="eKpis" class="kpis" style="margin-bottom:12px"></div>
+            <div id="eTable"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="sec" data-sec="usage">
         <div class="card">
           <div class="card-h"><h3>Daily usage by business</h3>
@@ -578,6 +604,7 @@ function sModal(html,wide){
 
 /* ===================== NAV ===================== */
 var TITLES={
+  errors:['Error Log','Every error, per business — grouped so one fault is one row'],
   usage:['Usage Analytics','Who is actually using the software, and how much'],
   commands:['Command Guide','Every console command, with a worked example'],dash:['Dashboard','Platform overview'],
   sync:['Sync Monitor','Branch computers and data transfers'],
@@ -598,7 +625,37 @@ function nav(sec){
          setTimeout(function(){c.textContent='Copy'},1200); }
 });
 document.addEventListener('input',function(e){ if(e.target.id==='cmdQ')paintCommands(); });
-document.addEventListener('change',function(e){ if(e.target.id==='uDays')loadUsage(); });
+document.addEventListener('change',function(e){
+  if(e.target.id==='uDays')loadUsage();
+  if(e.target.id==='eBiz'||e.target.id==='eLvl'||e.target.id==='eRes')loadErrors();
+});
+document.addEventListener('input',function(e){
+  if(e.target.id!=='eQ')return;
+  clearTimeout(window.__eq); window.__eq=setTimeout(loadErrors,350);
+});
+document.addEventListener('click',async function(e){
+  var res=e.target.closest('[data-res]');
+  if(res){
+    e.stopPropagation();
+    var er=__errs[res.getAttribute('data-res')]; if(!er)return;
+    var r=await api('sa-error-resolve',{id:er.id,resolve:!er.resolved_at});
+    if(r.ok)loadErrors(); else toast(r.message||'Could not update');
+    return;
+  }
+  var row=e.target.closest('[data-err]');
+  if(row){ var x=__errs[row.getAttribute('data-err')]; if(x)showError(x); }
+});
+document.addEventListener('click',function(e){
+  if(e.target.id!=='eCsv')return;
+  if(!__errs.length){toast('Nothing to export');return}
+  var cols=['business','level','source','action','hits','first_seen','last_seen','file','line','message'];
+  var csv=[cols.join(',')].concat(__errs.map(function(r){
+    return cols.map(function(c){return '"'+String(r[c]==null?'':r[c]).replace(/"/g,'""')+'"'}).join(',');
+  })).join('\r\n');
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='errors-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+});
 document.addEventListener('click',function(e){
   if(e.target.id!=='uCsv')return;
   if(!__usage.length){toast('Nothing to export yet');return}
@@ -625,6 +682,7 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b)
   if(sec==='audit')loadAudit();
   if(sec==='health')checkHealth();
   if(sec==='usage')loadUsage();
+  if(sec==='errors')loadErrors();
   if(sec==='commands')loadCommands();
   if(sec==='backup'||sec==='import')fillBizSelects();
   document.querySelector('.sidebar').classList.remove('open');
@@ -851,6 +909,82 @@ async function bizBrand(id){
    screen par `fbr` 40 modules ki list mein ek checkbox tha — is liye
    yahan uska apna saaf button rakha gaya hai.
    ============================================================ */
+/* ============================================================
+   ERROR LOG
+   ============================================================ */
+var __errs=[];
+async function loadErrors(){
+  var box=document.getElementById('eTable'); if(box)box.innerHTML='<p class="muted">Loading…</p>';
+  var q='&tenant_id='+encodeURIComponent((document.getElementById('eBiz')||{}).value||'')
+       +'&level='+encodeURIComponent((document.getElementById('eLvl')||{}).value||'')
+       +'&q='+encodeURIComponent((document.getElementById('eQ')||{}).value||'')
+       +((document.getElementById('eRes')||{}).checked?'&resolved=1':'');
+  var r=await api('sa-errors'+q);
+  if(!r.ok){ if(box)box.innerHTML='<p class="muted">'+esc(r.message||'Could not load')+'</p>'; return }
+  __errs=r.rows||[];
+  fillErrBiz();
+  var c=r.counts||{};
+  document.getElementById('eKpis').innerHTML=
+     kpi('Open',c.open||0,'not marked resolved', (c.open?'warn':'ok'))
+    +kpi('Fatal',c.fatal||0,'crashed outright', (c.fatal?'warn':'ok'))
+    +kpi('Last hour',c.last_hour||0,'still happening', (c.last_hour?'warn':'ok'))
+    +kpi('Groups shown',__errs.length,'one fault = one row','info');
+  paintErrors();
+}
+
+function fillErrBiz(){
+  var sel=document.getElementById('eBiz'); if(!sel||sel.dataset.filled)return;
+  var seen={};
+  (__errs||[]).forEach(function(e){
+    if(!e.tenant_id||seen[e.tenant_id])return; seen[e.tenant_id]=1;
+    var o=document.createElement('option'); o.value=e.tenant_id;
+    o.textContent=e.business||e.tenant_id.slice(0,8); sel.appendChild(o);
+  });
+  sel.dataset.filled='1';
+}
+
+function paintErrors(){
+  var box=document.getElementById('eTable');
+  if(!__errs.length){ box.innerHTML='<p class="muted">No errors. That is the good outcome.</p>'; return }
+  var H=['Business','Level','Hits','Last seen','Where','Message',''];
+  box.innerHTML='<div class="table-wrap"><table class="table usage-tbl"><thead><tr>'
+    +H.map(function(h,i){return '<th'+(i===2?' class="num"':'')+'>'+h+'</th>'}).join('')
+    +'</tr></thead><tbody>'
+    +__errs.map(function(e,i){
+      var tone = e.level==='FATAL'?'red' : (e.level==='WARN'?'orange':'orange');
+      return '<tr data-err="'+i+'" style="cursor:pointer'+(e.resolved_at?';opacity:.5':'')+'">'
+        +'<td><span class="t-main">'+esc(e.business||'—')+'</span></td>'
+        +'<td><span class="tag '+tone+'">'+esc(e.level)+'</span></td>'
+        +'<td class="num"><b>'+esc(String(e.hits))+'</b></td>'
+        +'<td>'+esc(String(e.last_seen||'').slice(0,16))+'</td>'
+        +'<td><span class="t-main">'+esc(e.source||'')+'</span>'
+          +'<span class="t-sub">'+esc(e.action||'')+'</span></td>'
+        +'<td style="max-width:420px"><span class="t-main" style="font-weight:600">'
+          +esc(String(e.message||'').slice(0,110))+'</span>'
+          +(e.file?'<span class="t-sub">'+esc(e.file)+(e.line?(':'+e.line):'')+'</span>':'')+'</td>'
+        +'<td><button class="btn ghost" data-res="'+i+'">'
+          +(e.resolved_at?'Reopen':'Resolve')+'</button></td>'
+      +'</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function showError(e){
+  sModal('<h3 style="margin:0 0 4px">'+esc(e.level)+' &middot; '+esc(String(e.hits))+' time(s)</h3>'
+    +'<p class="lead" style="margin:0 0 14px">'+esc(e.business||'')+'</p>'
+    +'<div class="note" style="margin-bottom:12px;word-break:break-word">'+esc(e.message||'')+'</div>'
+    +'<div class="kv"><span>Where</span><b>'+esc(e.source||'')+' &middot; '+esc(e.action||'-')+'</b></div>'
+    +'<div class="kv"><span>File</span><b>'+esc(e.file||'-')+(e.line?(':'+e.line):'')+'</b></div>'
+    +'<div class="kv"><span>First seen</span><b>'+esc(String(e.first_seen||'').slice(0,19))+'</b></div>'
+    +'<div class="kv"><span>Last seen</span><b>'+esc(String(e.last_seen||'').slice(0,19))+'</b></div>'
+    +'<div class="kv"><span>Build</span><b>'+esc(e.build||'-')+' &middot; '+esc(e.app_role||'-')+'</b></div>'
+    +'<div class="kv"><span>User</span><b>'+esc(e.user_name||'-')+'</b></div>'
+    +(e.trace?('<div style="margin-top:12px"><label class="f">Stack</label>'
+      +'<pre style="margin:0;font-size:11px;line-height:1.7;white-space:pre-wrap;'
+      +'background:#0f2b24;color:#dff3ea;padding:11px;border-radius:9px;max-height:200px;overflow:auto">'
+      +esc(e.trace)+'</pre></div>'):'')
+    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Close</button></div>');
+}
+
 /* ============================================================
    USAGE ANALYTICS
    ============================================================ */
