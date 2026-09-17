@@ -1,6 +1,8 @@
 <?php
 namespace Aio\Services;
 
+use Aio\Services\ErrorLog;
+
 use Aio\DB;
 use PDO;
 
@@ -1328,6 +1330,30 @@ final class Sync
                 : ($problems ? \implode(' | ', $problems) : null);
             self::logRunEnd($runId, $t0, $pushed, $pulled, $status, $errText);
 
+            /* ============================================================
+               Nakami Error Log tak bhi jaye.
+
+               Yeh masail `sync_state` aur Sync Monitor par to darj hote
+               the, magar wahan koi rozana nahi dekhta — aur jab tak koi
+               dekhta, branch ka data kai din purana ho chuka hota.
+
+               Har table ki apni entry jati hai, taake grouping kaam kare:
+               "PULL menu_items" alag cheez hai "PUSH orders" se.
+               ============================================================ */
+            try {
+                foreach (self::$tableErrors as $te) {
+                    ErrorLog::op('sync/' . \strtolower($te['dir']) . '/' . $te['table'],
+                                 (string)$te['error'], 'ERROR');
+                }
+                foreach (self::$lastRowErrors as $tb => $er) {
+                    ErrorLog::op('sync/rows/' . $tb, (string)$er, 'WARN');
+                }
+                if (self::$abortedReason !== '') {
+                    ErrorLog::op('sync/aborted', self::friendlyError(self::$abortedReason),
+                                 'FATAL', self::$abortedReason);
+                }
+            } catch (\Throwable $e) { /* logging kabhi sync na roke */ }
+
             return ['ok' => empty(self::$abortedReason), 'run_id' => $runId,
                     'pushed' => $pushed, 'pulled' => $pulled, 'total' => $total,
                     'deleted_rows' => $tomb['rows'], 'tombstones' => $tomb['applied'],
@@ -1340,6 +1366,8 @@ final class Sync
             self::touchState('engine', 'ERROR', $e->getMessage());
             self::logRunEnd($runId, $t0, [], [], 'ERROR',
                 self::friendlyError($e->getMessage()) . '  [' . $e->getMessage() . ']');
+            try { ErrorLog::op('sync/failed', self::friendlyError($e->getMessage()), 'FATAL', $e->getMessage()); }
+            catch (\Throwable $x) { }
             return ['ok' => false, 'run_id' => $runId,
                     'message' => self::friendlyError($e->getMessage()),
                     'raw_error' => $e->getMessage()];

@@ -72,9 +72,9 @@ $url = $base.'?action=offline-package'.($tok !== '' ? ('&node_token='.rawurlenco
 $tmp = $dir.'/update-'.preg_replace('/[^0-9A-Za-z._-]/','',$there).'.zip';
 
 $in = @fopen($url, 'rb', false, $ctx);
-if (!$in) { echo "UPDATE_FAILED could not download the package\n"; return; }
+if (!$in) { upderr("could not download the package"); echo "UPDATE_FAILED could not download the package\n"; return; }
 $out = @fopen($tmp, 'wb');
-if (!$out) { @fclose($in); echo "UPDATE_FAILED could not write to updates/\n"; return; }
+if (!$out) { @fclose($in); upderr("could not write to updates/ (disk full or read-only?)"); echo "UPDATE_FAILED could not write to updates/\n"; return; }
 $n = 0;
 while (!feof($in)) { $b = fread($in, 65536); if ($b === false) break; $n += fwrite($out, $b); }
 fclose($in); fclose($out);
@@ -82,6 +82,7 @@ fclose($in); fclose($out);
 /* ZIP hai bhi ya error page? Aadhi file rakh dena sab se bura hai. */
 if ($n < 50000 || substr((string)@file_get_contents($tmp, false, null, 0, 2), 0, 2) !== 'PK') {
     @unlink($tmp);
+    upderr("the portal did not return a package - node may no longer be linked");
     echo "UPDATE_FAILED the portal did not return a package (check that this node is still linked)\n";
     return;
 }

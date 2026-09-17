@@ -2820,3 +2820,51 @@ Each section is wrapped in its own `try` — if one part fails the POS
 still starts without it rather than not starting at all. The old
 `pos-boot` still works and the POS falls back to it, so a node running
 an older server keeps working.
+
+---
+
+## 59. The Error Log was empty — because the errors it needed never threw
+
+The page worked; nothing appeared in it. Both faults were mine.
+
+### 1. Handled failures never reached the log
+
+The handlers I added catch **exceptions, warnings and fatals**. But the
+failures that actually matter here are all **caught deliberately**:
+
+```
+Sync.php    39 × catch (\Throwable)
+```
+
+A sync table failing, a package download failing, FBR not answering —
+each is caught so one failure does not stop everything else. That is
+right. The consequence was that none of them was an exception, so none
+reached the log. They went to `sync_state` and the Sync Monitor, where
+nobody looks daily.
+
+`ErrorLog::op()` now takes these directly, and it is called from:
+
+| Where | What it catches |
+|---|---|
+| `Sync::run()` | every failed table, per direction; row errors; aborted runs |
+| `self_update.php` | download failed, portal returned no package, cannot write to disk |
+| `FiscalService::submit()` | FBR did not respond |
+| `fail()` in api.php | **any 5xx** — 4xx stays out, or a wrong password would bury the real faults |
+
+Each table gets its own entry, so grouping works: `sync/pull/menu_items`
+is a different fault from `sync/push/orders`.
+
+Verified with a real failing sync against a dead endpoint:
+
+```
+[ERROR] sync/pull/menu_items    Cloud unreachable: stream: file_get_contents...
+[ERROR] sync/pull/rtl_products  Cloud unreachable: ...
+[FATAL] sync/aborted            Cannot reach the cloud server...
+```
+
+### 2. The toolbar was broken
+
+Filters, the resolved checkbox and the CSV button were inside `.card-h`,
+which has no room for them — so they scattered, the checkbox landing
+alone in the middle of the page. They now sit in their own `.err-bar`
+strip that wraps properly and collapses on narrow screens.

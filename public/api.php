@@ -25,7 +25,12 @@ header('Content-Type: application/json; charset=utf-8');
    ============================================================ */
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
-function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
+function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{
+  /* 5xx ka matlab hai server ki apni kharabi — yeh Error Log mein jana
+     chahiye. 4xx (ghalat password, khali khaana) rozana ki baat hai aur
+     us se log bhar jata to koi asal kharabi nazar hi na aati. */
+  if($s>=500){ try{ \Aio\Services\ErrorLog::op('api/'.(string)($_GET['action']??'?'),(string)$m,'ERROR'); }catch(Throwable $e){} }
+  http_response_code($s);echo json_encode(['ok'=>false,'message'=>$m],JSON_UNESCAPED_UNICODE);exit;}function csrf_json(){if($_SERVER['REQUEST_METHOD']==='POST'){try{Csrf::verifyOrFail($_SERVER['HTTP_X_CSRF_TOKEN']??'');}catch(Throwable $e){
   /* 403 use kar rahe hain, 419 nahi: Apache non-standard status ko reason
      phrase ke baghair aage nahi bhejta aur client tak 500 pohanchta tha.
      `csrf` flag se client naya token le kar khud ek dafa retry kar leta hai. */

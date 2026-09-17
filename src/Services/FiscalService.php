@@ -1,6 +1,8 @@
 <?php
 namespace Aio\Services;
 
+use Aio\Services\ErrorLog;
+
 use Aio\DB;
 use PDO;
 
@@ -245,6 +247,9 @@ final class FiscalService
             $msg = substr($e->getMessage(), 0, 200);
             try { self::record($orderId, '', $cfg ?? [], ['status'=>'FAILED','invoice_no'=>'','message'=>$msg], null); }
             catch (\Throwable $e2) {}
+            /* FBR ka na jana chup chaap na guzre — mahine ke aakhir mein
+               reconciliation par pata chalna bohat der ho jati hai. */
+            try { ErrorLog::op('fbr/submit', $msg, 'ERROR'); } catch (\Throwable $e3) {}
             return ['status' => 'FAILED', 'invoice_no' => '', 'message' => $msg];
         }
     }

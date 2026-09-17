@@ -90,6 +90,30 @@ final class ErrorLog
         }
     }
 
+    /**
+     * Wo nakamiyan jo exception nahi banteen.
+     *
+     * Software ka bara hissa nakami ko `catch` kar ke agay barh jata hai
+     * — sync ki ek table, package ka download, fiscal ka jawab. Yeh
+     * durust hai (ek table ke toot jane se poori sync nahi rukni
+     * chahiye), magar us ka matlab yeh nikla ke yeh nakamiyan kabhi
+     * kisi ko nazar hi nahi aatin. `Sync Monitor` par ek line aa jati
+     * thi jise koi nahi dekhta.
+     *
+     * Aisi har nakami ab yahan se guzarti hai.
+     */
+    public static function op(string $area, string $message, string $level = 'ERROR', ?string $detail = null): void
+    {
+        self::record(
+            \trim($area . ': ' . $message),
+            $level,
+            'ops',
+            null, null,
+            $detail,
+            $area
+        );
+    }
+
     /** Browser se aaya hua JS error. */
     public static function fromClient(array $d): void
     {
