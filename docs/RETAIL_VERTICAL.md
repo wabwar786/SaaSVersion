@@ -3059,3 +3059,68 @@ One more bug of mine caught on the way: the attempt counter was being
 written into `watermark`, a DATETIME column, so it never incremented and
 the table stayed PARTIAL for ever — the very stall this guard exists to
 prevent. The count lives in `rows_synced` now.
+
+---
+
+## 63. At 1024×768 the System button vanished — so the offline version could not be downloaded
+
+The POS top bar was:
+
+```css
+.top{ display:flex; align-items:center; gap:9px; ... }
+```
+
+No `wrap`, no `overflow`. On a 1024-wide screen the last buttons —
+**System** and **+ New Bill** — were simply clipped off the end. Not
+scrolled, not wrapped: gone, and unreachable.
+
+**System** is where "Download offline version" lives. So on exactly the
+kind of counter PC that most needs the offline build, downloading it was
+impossible.
+
+### Fixed two ways
+
+**The bar can no longer hide anything.** It scrolls horizontally when it
+runs out of room, with a thin visible scrollbar, and a new 1100px
+breakpoint tightens padding and font so a 1024 screen mostly fits
+without scrolling at all.
+
+**F8 downloads the offline version.** No need to reach the bar:
+
+| | |
+|---|---|
+| `F8` | Download the offline version |
+| Keybar | `F8 Offline version` button |
+| F12 list | listed with the rest |
+
+All three call one function, so the System panel button, the keybar and
+the key behave identically. It refuses honestly rather than doing
+nothing:
+
+```
+cloud + manager : builds and downloads
+offline node    : "You are already on the offline version..."
+cashier         : "Only an Admin or Manager can download..."
+```
+
+Verified against the live endpoint — `HTTP 200, 1,322,795 bytes,
+application/zip`, a real archive.
+
+### One line nearly repeated an old mistake
+
+My first version of `downloadOffline()` contained a leftover:
+
+```js
+if(BOOT.fiscal&&String(APP_ROLE||'')==='local'){ }
+```
+
+Bare `APP_ROLE` — which throws a `ReferenceError` when the router has not
+injected that variable, killing the whole handler. The same shape as the
+`hasMod` fault in §40 that blanked the POS. Caught before shipping; it
+reads `window.APP_ROLE` now.
+
+### Console: no, there is no command for this
+
+A console command prints text; it cannot hand you a file. The honest
+answer is to use **F8** in the POS, or the customer's own
+**System → Download offline version**.

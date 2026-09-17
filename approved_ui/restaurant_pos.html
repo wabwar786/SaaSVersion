@@ -44,7 +44,26 @@ button{cursor:pointer;border:0;background:none}
 .qtymode:hover{border-color:var(--green)}
 .qtymode input{width:17px;height:17px;accent-color:var(--green);cursor:pointer;margin:0}
 .qtymode.on{border-color:var(--green);background:var(--soft);color:var(--green2)}
-.top{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:8px 13px;background:var(--panel);border-bottom:1px solid var(--l)}
+/* ============================================================
+   TOP BAR — 1024x768 par buttons ghayab ho jate the.
+
+   Yeh `display:flex` tha bina `wrap` aur bina `overflow` ke. Chhoti
+   screen par aakhri buttons — System, + New Bill — bas kat kar gayab
+   ho jate the. Na wo nazar aate, na un tak pohancha ja sakta. Aur
+   "System" ke andar hi offline version ka download hai, yani chhoti
+   screen wale counter par offline version utaarna hi namumkin tha.
+
+   Ab bar zaroorat parne par khud khisakti hai (scroll), is liye koi
+   button pohanch se bahar nahi rehta. Sath hi F8 ka shortcut bhi hai —
+   taake download ke liye bar tak jana hi na pare.
+   ============================================================ */
+.top{grid-column:1/-1;display:flex;align-items:center;gap:9px;padding:8px 13px;
+  background:var(--panel);border-bottom:1px solid var(--l);
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.top::-webkit-scrollbar{height:5px}
+.top::-webkit-scrollbar-thumb{background:var(--l);border-radius:3px}
+.top > *{flex-shrink:0}
+.top .search{flex-shrink:1}
 .iconb{width:32px;height:32px;border-radius:9px;border:1px solid var(--l);display:grid;place-items:center;font-size:15px;flex:none}
 .iconb:hover{border-color:var(--brand);color:var(--brand)}
 .mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:grid;place-items:center;color:#fff;font-weight:800;flex:none}
@@ -325,6 +344,12 @@ textarea.inp{min-height:62px;resize:vertical}
   .pos{grid-template-columns:1fr 330px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px}
 }
+/* 1024x768 — aam counter PC. Bar ko compact karo taake sab fit ho. */
+@media(max-width:1100px){
+  .top{gap:5px;padding:7px 8px}
+  .tb{padding:6px 8px;font-size:11px}
+  .search{max-width:180px}
+}
 @media(max-width:1000px){
   .pos{grid-template-columns:1fr 290px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px}
@@ -434,6 +459,7 @@ textarea.inp{min-height:62px;resize:vertical}
     <button class="kb" data-key="F7"><i>F7</i> Bill type / table</button>
     <button class="kb" data-key="F9"><i>F9</i> Void / refund</button>
     <button class="kb" data-key="F10"><i>F10</i> New item</button>
+    <button class="kb" data-key="F8"><i>F8</i> Offline version</button>
     <span class="kb"><i>Ctrl+K</i> Search menu</span>
     <span class="kb"><i>+ / &minus;</i> Qty of last item</span>
     <span class="kb"><i>Del</i> Remove last item</span>
@@ -445,7 +471,7 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v46';
+var VERSION='POS v47';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -1096,6 +1122,21 @@ function showItemDebug(id,name,delRes){
     try{ navigator.clipboard.writeText(txt); this.textContent='Copied'; }
     catch(e){ toast('Copy failed'); }
   };
+}
+
+/* Offline version download — ek hi jagah, taake System ka panel, keybar
+   aur F8 teeno wahi kaam karein. */
+function downloadOffline(){
+  /* `window.` lazmi hai. Bare `APP_ROLE` likhna us waqt ReferenceError
+     deta hai jab router ne wo variable inject na kiya ho — aur wahi ek
+     line poore handler ko mar deti hai. */
+  if(String(window.APP_ROLE||'')==='local'){
+    toast('You are already on the offline version. Download it from the online portal.',true);
+    return;
+  }
+  if(!CAN.manage){ toast('Only an Admin or Manager can download the offline version',true); return; }
+  toast('Building the offline package — this takes a few seconds');
+  window.location.href='/api.php?action=offline-package';
 }
 
 /* Sirf menu taza karo — bill, shift aur cart ko haath na lagao. */
@@ -2466,10 +2507,7 @@ $('#sysBtn').onclick=function(){
     +(Object.keys(BOOT.printers||{}).map(function(k){return '<div style="font-size:11px;padding:3px 0">'+esc(BOOT.printers[k].name)+' &mdash; '+esc(k)+'</div>'}).join('')||'<span class="cempty">No printers</span>')
     +'</div></div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   var offBtn=ov.querySelector('#sysOffline');
-  if(offBtn)offBtn.onclick=function(){
-    toast('Building the offline package — one moment');
-    window.location.href='/api.php?action=offline-package';
-  };
+  if(offBtn)offBtn.onclick=downloadOffline;
   function paintSyncBox(){
     var s=SYNC.state||{};
     function row(k,v,c){return '<div class="kv"><span>'+k+'</span><b'+(c?(' style="color:'+c+'"'):'')+'>'+esc(v)+'</b></div>'}
@@ -2823,6 +2861,7 @@ function showKeys(){
     ['F1','New bill'],['F2','Send to kitchen'],['F3','Charge / payment'],
     ['F4','Hold bills'],['F6','Duplicate bill'],['F7','Change bill type / table'],
     ['F9','Void / refund'],['F10','New item'],
+    ['F8','Download the offline version'],
     ['F11','Open / close account (shift)'],
     ['Ctrl + K','Search menu'],['Ctrl + P','Charge'],['Ctrl + H','Hold bills'],
     ['Esc','Close dialog'],
@@ -2911,6 +2950,11 @@ document.addEventListener('keydown',function(e){
   /* F11 = account kholna / band karna. Yehi pehla aur aakhri kaam hota
      hai har shift ka, is liye iski apni key. */
   if(e.key==='F11'&&canMod('shift')){e.preventDefault();shift?closeShift():openGate();return}
+  /* F8 = offline version download. Yeh "System" ke andar chhupa hua tha,
+     aur 1024x768 par wo button hi bar se kat jata tha — yani jis counter
+     ko offline version ki sab se zyada zaroorat hai, wahan usay utaarna
+     namumkin tha. Ab ek key. */
+  if(e.key==='F8'){e.preventDefault();downloadOffline();return}
 
   if(e.ctrlKey||e.metaKey){
     var k=(e.key||'').toLowerCase();
