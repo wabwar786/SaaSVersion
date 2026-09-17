@@ -105,9 +105,31 @@ if ($phpText -match 'VCRUNTIME140|not compatible with this PHP build') {
   Bad 'This computer has an old Visual C++ runtime (PHP needs a newer one).'
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\fix_vcruntime.ps1"
   if ($LASTEXITCODE -ne 0) {
-    Bad 'Setup rok diya gaya. Ooper likhi hidayat par amal please.'
+    Bad 'Setup stopped. Please follow the instructions above.'
     exit 1
   }
+  $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
+  $phpText = ($phpOut | Out-String)
+}
+
+# ---------------------------------------------------------------
+# ASLR: kuch Windows machines par (Mandatory ASLR on) php.exe OPcache
+# ke sath foran mar jata hai:
+#     "Fatal Error Opcode handlers are unusable due to ASLR"
+# Yeh raftaar ka masla hai, chalne ka nahi — POS bina OPcache ke theek
+# chalta hai. Setup ka yahan ruk jana ghalat tha. Agar resolve_php is
+# se pehle hi nikal gaya ho, to php.ini yahan seedha theek kar ke dobara
+# koshish karte hain.
+# ---------------------------------------------------------------
+if ($phpText -match 'Opcode handlers are unusable|due to ASLR') {
+  Bad 'PHP will not start with OPcache on this computer (Windows ASLR).'
+  Bad 'Turning OPcache off - the POS works fine without it, just slightly slower.'
+  Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.ini' -Recurse -ErrorAction SilentlyContinue |
+    ForEach-Object {
+      $t = Get-Content $_.FullName -Raw
+      $t = [regex]::Replace($t, '(?m)^(zend_extension=opcache|opcache\.[^\r\n]*)', ';$1')
+      Set-Content -Path $_.FullName -Value $t -Encoding ASCII
+    }
   $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
   $phpText = ($phpOut | Out-String)
 }

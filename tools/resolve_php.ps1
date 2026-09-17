@@ -128,6 +128,11 @@ opcache.validate_timestamps=1
 opcache.revalidate_freq=60
 opcache.save_comments=0
 opcache.jit=disable
+; Windows par ASLR ke sath opcache ka handler table set nahi ho pata aur
+; php.exe "Opcode handlers are unusable due to ASLR" keh kar mar jata hai.
+; Yeh do settings usay file cache par girne deti hain.
+opcache.file_cache_fallback=1
+opcache.huge_code_pages=0
 
 ; File path resolve karna Windows par mehnga hai — cache barha do
 realpath_cache_size=4M
@@ -139,6 +144,37 @@ zlib.output_compression=Off
 # also drop a copy next to php.exe so any invocation picks it up
 if ($IniPath -ne (Join-Path $phpDir 'php.ini')) {
   Copy-Item $IniPath (Join-Path $phpDir 'php.ini') -Force
+}
+
+# ---------- 2b) Kya php.exe is machine par chal bhi raha hai? ----------
+# OPcache raftaar ke liye hai, shart nahi. Kuch Windows machines par
+# (Mandatory ASLR on) php.exe opcache ke sath foran mar jata hai:
+#   "Fatal Error Opcode handlers are unusable due to ASLR"
+# Aisi soorat mein setup ka ruk jana bilkul ghalat hai — POS bina
+# opcache ke theek chalta hai, bas thora sust. Is liye yahan test karte
+# hain, aur nakami par opcache nikal kar aage barhte hain.
+function Test-Php($iniPath) {
+  $out = & $php -c "$iniPath" -r "echo 'PHP_OK';" 2>&1
+  return ("$out" -match 'PHP_OK')
+}
+
+if (-not (Test-Php $IniPath)) {
+  Say 'PHP did not start with OPcache on this machine (Windows ASLR).' 'Yellow'
+  Say 'Turning OPcache off and continuing - the POS works fine without it.' 'Yellow'
+  $txt = Get-Content $IniPath -Raw
+  # opcache ki har line comment kar do — ini wapas likhne se baqi settings
+  # bhi dobara likhni partin, aur wahan ek aur ghalti ka mauqa banta.
+  $txt = [regex]::Replace($txt, '(?m)^(zend_extension=opcache|opcache\.[^\r\n]*)', ';$1')
+  Set-Content -Path $IniPath -Value $txt -Encoding ASCII
+  if ($IniPath -ne (Join-Path $phpDir 'php.ini')) {
+    Copy-Item $IniPath (Join-Path $phpDir 'php.ini') -Force
+  }
+  if (-not (Test-Php $IniPath)) {
+    Say 'PHP still will not start. This is not an OPcache problem.' 'Red'
+    Say ('Run this by hand to see the real reason:  "' + $php + '" -v') 'Red'
+    exit 1
+  }
+  Say 'PHP runs without OPcache. Setup continues.' 'Green'
 }
 
 # ---------- 3) verify required extensions ----------

@@ -2577,3 +2577,114 @@ so a new APK is only needed if the icon, name or start URL changes.
 `/app-download.html` checks whether `app-release.apk` actually exists.
 Until it does, the page says so and points customers at the web version
 instead of offering a broken download.
+
+---
+
+## 55. Password changed on the cloud never reached the branch
+
+An admin reset a business account's password online. The offline node
+kept asking for the old one — with the internet up the whole time.
+
+### Cause
+
+`users` **is** in the sync pull list, and `password_hash` is not
+excluded. The problem was one missing clause.
+
+`applyUser()` — the path behind **Users & Access → edit** — changed the
+password like this:
+
+```php
+UPDATE users SET password_hash=?, password_algo=? WHERE id=?
+```
+
+No `updated_at`, no `row_version`. Sync selects rows with
+`WHERE updated_at > ?` (`Sync::changedRows`), so as far as sync was
+concerned that row had never changed. It was never sent down. Not a
+network problem, not a timing problem — the change was invisible.
+
+### Why it sometimes appeared to work
+
+The same function updates name, email and phone in a **separate**
+statement, and that one does bump `updated_at`. So changing a name
+*together with* the password synced fine; changing only the password did
+not. That inconsistency is what made it look random.
+
+Other password paths were already correct: `SelfService` (owner's own
+password) and `sa-business-reset-admin` (Super Admin → Reset pass) both
+bump `row_version` and `updated_at`. Only this one was missing them.
+
+### Fixed
+
+```php
+UPDATE users SET password_hash=?, password_algo=?,
+                 row_version=row_version+1, updated_at=NOW(6)
+ WHERE id=?
+```
+
+```
+before : updated_at=09:14:17.372397  row_version=1
+after  : updated_at=09:14:28.011510  row_version=2
+```
+
+The node picks it up on its next sync. Nothing to do by hand — but a
+password changed *before* this build still carries its old timestamp, so
+for those, change the password once more after deploying.
+
+---
+
+## 56. Offline setup died on "Opcode handlers are unusable due to ASLR"
+
+Setup stopped at step 2 on a customer's machine:
+
+```
+php.exe : Fatal Error Opcode handlers are unusable due to ASLR.
+Setup did not complete.
+```
+
+### Cause — mine
+
+In V96 I added OPcache to the offline PHP for speed (compile once instead
+of on every request; it took boot from ~15 ms to ~2 ms). On Windows
+machines with **Mandatory ASLR** switched on, php.exe cannot lay out the
+opcode handler table and dies immediately — before doing anything.
+
+So a speed optimisation stopped the product from installing at all. That
+trade is wrong in every case: the POS runs perfectly well without
+OPcache, just a little slower.
+
+### Fixed
+
+Two layers, because either script can be the one that hits it:
+
+1. `resolve_php.ps1` now writes `opcache.file_cache_fallback=1` and
+   `opcache.huge_code_pages=0` (the documented mitigation), then **tests
+   that php.exe actually starts**. If it does not, it comments out every
+   opcache line in php.ini and tests again. Setup carries on and says
+   plainly what it did.
+2. `install_offline.ps1` watches for the ASLR text in the output and, if
+   it appears, disables opcache in every `php.ini` under `runtime\php`
+   and retries — in case resolve_php exited before its own check.
+
+Only the opcache lines are commented; timezone, error settings and
+realpath cache are left alone:
+
+```
+date.timezone=Asia/Karachi
+display_errors=Off
+;zend_extension=opcache
+;opcache.enable=1
+;opcache.enable_cli=1
+realpath_cache_size=4M
+```
+
+If PHP still will not start, the message says so and stops guessing —
+that would not be an OPcache problem, and it prints the command to see
+the real reason.
+
+Verified: both scripts parse clean under PowerShell 7, and the
+replacement was run against a real php.ini — 5 opcache lines disabled,
+3 other settings untouched.
+
+**The general lesson:** a performance setting must never be able to stop
+installation. Anything added for speed needs a path that gives up on the
+speed and keeps the product working.
