@@ -196,6 +196,12 @@ function syncTableAllowed(string $table): bool {
   static $allow=[
     /* Poora software sync hota hai. platform_users/tenants yahan NahI —
        wo platform-level hain aur tenant lock ke bawajood block rehte hain. */
+    /* `app_errors` — V134 mein isay node ki push list mein daala gaya tha
+       taake branch ki kharabiyan aap tak pohanchen, magar cloud ki is
+       allow-list mein daalna reh gaya. Nateeja: node har dafa bhejta
+       aur cloud har dafa "not allowed" keh kar chhor deta — aur yeh
+       nakami khud kisi ko nazar nahi aati thi. */
+    'app_errors',
     'users','user_roles','roles','role_modules','user_form_permissions','employee_profiles',
     /* V62.2: `user_module_access` yahan THI HI NAHI. Users page modules
        isi table mein likhta hai, is liye node par assign kiye hue modules

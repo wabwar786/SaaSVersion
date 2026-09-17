@@ -2868,3 +2868,57 @@ Filters, the resolved checkbox and the CSV button were inside `.card-h`,
 which has no room for them — so they scattered, the checkbox landing
 alone in the middle of the page. They now sit in their own `.err-bar`
 strip that wraps properly and collapses on narrow screens.
+
+---
+
+## 60. Items not syncing: a real two-database test
+
+Categories arrived on the node, items did not — same pull list, so the
+difference was the whole clue. Rather than reason about it again, I built
+a real cloud and a real empty node database and ran an actual sync.
+
+### Result: menu_items syncs correctly
+
+```
+  printers          1 rows
+  users             2 rows
+  roles             6 rows
+  role_modules    300 rows
+
+  node_db: menu_categories=6  menu_items=12  users=2
+```
+
+So the pull path is sound. Whatever is stopping it on that particular
+node is specific to that installation, and `diagnose_sync.php` reports
+it per table.
+
+Two dead ends worth recording so they are not chased again:
+
+- **Not the foreign keys.** `menu_items` does reference `inventory_items`
+  (which is push-only), but `applyRows()` runs with
+  `SET FOREIGN_KEY_CHECKS=0`, so a missing parent cannot block the insert.
+- **Not the collation or a missing column** — a clean node took all 12
+  rows without complaint.
+
+### What the test did catch — my own bug
+
+```
+PUSH app_errors: not allowed
+```
+
+In V134 I added `app_errors` to the node's push list so branch errors
+would reach you, but never added it to the **cloud's** allow-list. The
+node sent them on every sync and the cloud discarded every one — and that
+rejection was itself invisible. The feature built to surface hidden
+failures was failing in exactly that way.
+
+Fixed, and verified end to end:
+
+```
+app_errors push : OK
+rows pushed     : 7
+cloud           : ERROR | sync/test: branch computer error should reach cloud
+```
+
+The `PULL rtl_*: not allowed` lines in the same run are correct — those
+are retail tables and this is a restaurant tenant.
