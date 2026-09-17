@@ -2260,8 +2260,28 @@ case 'sync-schema':$stid=syncTenant();syncNodeSeen($stid);
    if($fj){ $a=json_decode((string)$fj,true); if(is_array($a)) $feat=$a; }
  }catch(Throwable $e){}
  $fbrOn = ($feat===null) ? true : in_array('fbr',$feat,true);
+
+ /* ============================================================
+    Super Admin ka hukm node tak.
+
+    Cloud node ko khud kuch nahi bhej sakta — node router ke peeche hai.
+    Is liye hukm yahan rakha jata hai aur node apni agli sync ke
+    handshake par khud utha leta hai.
+    ============================================================ */
+ $directive=null;
+ try{
+   $dq=DB::pdo()->prepare("SELECT kind,tables_csv,issued_at,note FROM sync_directives
+                            WHERE tenant_id=? ORDER BY issued_at DESC LIMIT 1");
+   $dq->execute([$stid]);
+   if($d=$dq->fetch()){
+     $directive=['kind'=>$d['kind'],'issued_at'=>(string)$d['issued_at'],
+                 'tables'=>array_values(array_filter(explode(',',(string)($d['tables_csv']??'')))),
+                 'note'=>$d['note']];
+   }
+ }catch(Throwable $e){}
+
  ok(['schema'=>$out,'module_fingerprint'=>moduleFingerprint(),
-     'features'=>$feat,'fbr_enabled'=>$fbrOn]);
+     'features'=>$feat,'fbr_enabled'=>$fbrOn,'directive'=>$directive]);
 
 case 'sync-pull-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
  if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();

@@ -3,36 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dashboard · Retail OS</title>
+<title>Dashboard · Urban Spoon</title>
 <link rel="stylesheet" href="shared.css">
 <style>
+/* Page-specific dashboard bits */
 .dash-hero{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:16px}
 .hero{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:22px;color:#fff;
-  background:linear-gradient(135deg,#07533f,#0d7a5f 55%,#1aa87c);box-shadow:var(--sh)}
+  background:linear-gradient(135deg,#b8210f,#e0301a 55%,#f0663c);box-shadow:var(--sh)}
 .hero:after{content:"";position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;background:rgba(255,255,255,.09)}
-.hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bfe8d8;font-weight:600}
+.hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#ffdfd7;font-weight:600}
 .hero h2{font-size:30px;margin:8px 0 0;letter-spacing:-.02em}
-.hero p{margin:8px 0 0;max-width:560px;font-size:12.5px;color:#d8f0e6;line-height:1.55}
+.hero p{margin:8px 0 0;max-width:560px;font-size:12.5px;color:#ffe4dd;line-height:1.55}
 .hero-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .hero-actions a{height:38px;padding:0 14px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,.32);color:#fff}
 .hero-actions a:hover{background:rgba(255,255,255,.14)}
 .hero-actions a.solid{background:#fff;color:var(--brand-ink);border-color:#fff}
+.hero-actions a.solid:hover{background:#fff5f3}
 .hero-side{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .htile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm)}
 .htile span{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
 .htile b{display:block;margin-top:5px;font-family:var(--display);font-weight:800;font-size:17px}
 .htile small{display:block;margin-top:3px;color:var(--faint);font-size:10.5px}
-.chart{height:220px;display:flex;align-items:flex-end;gap:7px;padding:8px 4px 0}
+.chart{height:230px;display:flex;align-items:flex-end;gap:9px;padding:8px 4px 0}
 .bar-col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
-.bar{width:100%;max-width:30px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#1aa87c,#0d7a5f);min-height:5px;position:relative}
-.bar:hover{background:linear-gradient(180deg,#0d7a5f,#07533f)}
+.bar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#f0663c,#e0301a);min-height:5px;transition:.5s;position:relative}
+.bar:hover{background:linear-gradient(180deg,#e0301a,#a81c0c)}
 .bar:hover:after{content:attr(data-v);position:absolute;left:50%;bottom:100%;transform:translate(-50%,-6px);background:var(--ink);color:#fff;font-size:10px;padding:3px 6px;border-radius:5px;white-space:nowrap;font-weight:600}
-.bar-col span{font-size:9.5px;color:var(--faint)}
+.bar-col span{font-size:10px;color:var(--faint)}
 .quick{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
-.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm);transition:.14s;display:block}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px;box-shadow:var(--sh-sm);transition:.14s}
 .qcard:hover{border-color:var(--brand-line);box-shadow:var(--sh);transform:translateY(-2px)}
 .qcard .qi{width:34px;height:34px;border-radius:9px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:16px;margin-bottom:9px}
-.qcard b{display:block;font-family:var(--display);font-weight:700;font-size:13px;color:var(--ink)}
+.qcard b{display:block;font-family:var(--display);font-weight:700;font-size:13px}
 .qcard span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
 .alert{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:9px}
 .alert:last-child{margin-bottom:0}
@@ -45,7 +47,24 @@
 .mix .cell span{color:var(--muted);font-size:11px}
 .mix .cell b{display:block;margin-top:3px;font-family:var(--display);font-weight:800;font-size:16px}
 @media(max-width:1100px){.quick{grid-template-columns:repeat(3,1fr)}.dash-hero{grid-template-columns:1fr}}
-@media(max-width:560px){.quick{grid-template-columns:1fr 1fr}.hero h2{font-size:23px}}
+@media(max-width:560px){.quick{grid-template-columns:1fr 1fr}.hero-side{grid-template-columns:1fr 1fr}.hero h2{font-size:23px}}
+
+/* ---- cloud sync panel ---- */
+.syncHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.syncActions{display:flex;gap:8px;align-items:center}
+.syncPill{padding:5px 12px;border-radius:999px;font-size:11.5px;font-weight:800}
+.sp-ok{background:#eaf6ef;color:#0f7a3d}
+.sp-warn{background:#fdf4e9;color:#b3541e}
+.sp-bad{background:#fdecec;color:#c02a37}
+.syncGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.syncBox{border:1px solid var(--line,#e2eae5);border-radius:11px;padding:10px 12px}
+.syncBox small{display:block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;opacity:.65;margin-bottom:4px}
+.syncBox b{font-size:15px;font-weight:800}
+.syncRow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line,#eef3f0);font-size:12.5px}
+.syncRow:last-child{border-bottom:0}
+.syncRow .ic{width:20px;flex:none}
+.syncRow small{display:block;opacity:.7;font-size:11px;word-break:break-word}
+.syncFix{background:#fdecec;border:1px solid #f3c3c7;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -54,187 +73,413 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Dashboard</h1><p>Sales, stock, expiry and counter health — live</p></div>
+      <div class="header-title"><h1>Dashboard</h1><p>Live command center for sales, kitchen, stock and delivery</p></div>
       <div class="header-spacer"></div>
-      <select id="regionSel" style="width:180px;height:36px"></select>
-      <span class="live-pill">Synced 2 min ago</span>
+      <span class="live-pill">Live</span>
+      <button class="btn" id="clockBtn">Today</button>
+      <a class="btn primary" href="restaurant_pos.html">Open POS</a>
     </header>
-
     <div class="content">
-      <div class="dash-hero">
+
+      <section class="dash-hero">
         <div class="hero">
-          <div class="eyebrow">Today · <span id="todayDate"></span></div>
-          <h2 id="heroSale">—</h2>
-          <p>Sales today 3 counters . Stock, credit and expiry alerts below — whatever needs action today is at the top.</p>
+          <span class="eyebrow">Islamabad — F10 · Shift <span id="heroShift">S-2048</span></span>
+          <h2 id="heroSales">PKR 0 net sales today</h2>
+          <p>Everything runs locally first — POS, kitchen and printers stay online on the branch network while the cloud syncs quietly in the background.</p>
           <div class="hero-actions">
-            <a href="pos.html" class="solid">▤ Open POS counter</a>
-            <a href="grn.html">⊕ Receive goods</a>
-            <a href="reports.html">▨ Day report</a>
+            <a class="solid" href="restaurant_pos.html">▤ New sale</a>
+            <a href="online_orders.html">◈ Online orders <b id="heroOnline" style="margin-left:4px">0</b></a>
+            <a href="kds.html">♨ Kitchen</a>
+            <a href="shift_management.html">◔ Shift</a>
           </div>
         </div>
         <div class="hero-side">
-          <div class="htile"><span>Bills today</span><b id="hBills">—</b><small>avg basket <span id="hBasket">—</span></small></div>
-          <div class="htile"><span>Cash in drawer</span><b id="hCash">—</b><small>3 counters</small></div>
-          <div class="htile"><span>Khata outstanding</span><b id="hKhata">—</b><small id="hKhataSub">—</small></div>
-          <div class="htile"><span>Stock value</span><b id="hStock">—</b><small id="hSku">—</small></div>
+          <div class="htile"><span>Local system</span><b style="color:var(--ok)">Online</b><small>Branch network healthy</small></div>
+          <div class="htile"><span>Cloud sync</span><b id="hCloudSync" style="color:var(--ok)">Checking</b><small id="lastSync">-</small></div>
+          <div class="htile"><span>Kitchen printers</span><b>5 / 5</b><small>All responding</small></div>
+          <div class="htile"><span>Signup requests</span><b id="heroReq">0</b><small>Awaiting approval</small></div>
         </div>
-      </div>
+      </section>
+
+      <section class="card" id="syncCard" style="display:none;margin-bottom:16px">
+        <div class="syncHead">
+          <div>
+            <h3 style="margin:0;font-size:15px">Cloud Synchronization</h3>
+            <div class="muted" id="syncSub" style="font-size:12px;margin-top:3px">Checking...</div>
+          </div>
+          <div class="syncActions">
+            <span class="syncPill" id="syncPill">checking</span>
+            <button class="btn ghost" id="syncLog">View log</button>
+            <button class="btn ghost" id="syncCheck">Check</button>
+            <button class="btn" id="syncGo">Sync now</button>
+          </div>
+        </div>
+        <div class="syncGrid" id="syncGrid"></div>
+        <div id="syncDiagBox" style="display:none;margin-top:12px"></div>
+      </section>
 
       <div class="kpis">
-        <div class="kpi"><div class="lab">Gross sale</div><div class="val" id="kSale">—</div><div class="sub">vs yesterday +8.4%</div></div>
-        <div class="kpi ok"><div class="lab">Gross margin</div><div class="val" id="kMargin">—</div><div class="sub" id="kMarginPct">—</div></div>
-        <div class="kpi warn"><div class="lab">Low stock items</div><div class="val" id="kLow">—</div><div class="sub">below reorder level</div></div>
-        <div class="kpi info"><div class="lab">Expiring in 7 days</div><div class="val" id="kExp">—</div><div class="sub">batch-tracked items</div></div>
-        <div class="kpi violet"><div class="lab">Out of stock</div><div class="val" id="kOos">—</div><div class="sub">needs purchase order</div></div>
+        <div class="kpi"><div class="lab">Net sales</div><div class="val" id="kNet">PKR 0</div><div class="sub" id="kOrders">0 orders</div><span class="trend up">▲ 12%</span></div>
+        <div class="kpi info"><div class="lab">Running orders</div><div class="val" id="kRun">0</div><div class="sub"><span id="kPrep">0</span> preparing · <span id="kReady">0</span> ready</div></div>
+        <div class="kpi warn"><div class="lab">Online waiting</div><div class="val" id="kOnline">0</div><div class="sub">Accept or reject</div></div>
+        <div class="kpi violet"><div class="lab">Gross profit</div><div class="val" id="kProfit">PKR 0</div><div class="sub">After food cost + expenses</div></div>
+        <div class="kpi ok"><div class="lab">Occupied tables</div><div class="val" id="kTables">0 / 0</div><div class="sub"><span id="kRiders">0</span> riders on road</div></div>
+        <div class="kpi cyan"><div class="lab">Low stock</div><div class="val" id="kLow">0</div><div class="sub">At or below reorder</div></div>
       </div>
 
       <div class="split">
         <section class="panel">
-          <div class="panel-head"><div><h2>Hourly sale</h2><p>Footfall pattern per counter — for staffing</p></div>
-            <span class="spacer"></span><span class="tag ok plain">Peak 6–8 PM</span></div>
+          <div class="panel-head"><div><h2>Hourly sales</h2><p>Reads the same local state POS writes to</p></div><span class="spacer"></span><span class="tag brand plain">Today</span></div>
           <div class="panel-body"><div class="chart" id="chart"></div></div>
         </section>
-
         <section class="panel">
-          <div class="panel-head"><div><h2>Needs attention</h2><p>Aaj action chahiye</p></div></div>
-          <div class="panel-body" id="alerts"></div>
+          <div class="panel-head"><div><h2>Needs attention</h2><p>Act on these first</p></div></div>
+          <div class="panel-body">
+            <div class="alert"><div class="ai" style="background:var(--danger-soft);color:var(--danger)">♨</div><div><b><span id="aDelay">0</span> delayed kitchen orders</b><small>Prioritise the oldest KOT</small></div><a class="btn sm danger" href="kds.html">Open</a></div>
+            <div class="alert"><div class="ai" style="background:var(--warn-soft);color:var(--warn)">◈</div><div><b><span id="aOnline">0</span> new online orders</b><small>Acceptance pending</small></div><a class="btn sm" href="online_orders.html">Review</a></div>
+            <div class="alert"><div class="ai" style="background:var(--info-soft);color:var(--info)">▣</div><div><b><span id="aLow">0</span> low-stock items</b><small>Raise a purchase order</small></div><a class="btn sm" href="inventory_creation.html">Stock</a></div>
+            <div class="alert"><div class="ai" style="background:var(--brand-soft);color:var(--brand-ink)">⚿</div><div><b><span id="aReq">0</span> signup approvals</b><small>Assign role and modules</small></div><a class="btn sm" href="users_access.html">Users</a></div>
+          </div>
         </section>
       </div>
 
-      <section class="panel">
-        <div class="panel-head"><div><h2>Quick actions</h2><p>The jobs you do most often</p></div></div>
-        <div class="panel-body">
-          <div class="quick">
-            <a class="qcard" href="pos.html"><div class="qi">▤</div><b>New sale</b><span>Open counter</span></a>
-            <a class="qcard" href="products.html"><div class="qi">▣</div><b>Add product</b><span>Catalog</span></a>
-            <a class="qcard" href="grn.html"><div class="qi">⊕</div><b>Receive stock</b><span>GRN</span></a>
-            <a class="qcard" href="labels.html"><div class="qi">⌗</div><b>Print labels</b><span>Shelf tags</span></a>
-            <a class="qcard" href="khata.html"><div class="qi">₨</div><b>Khata recovery</b><span>Credit ledger</span></a>
-            <a class="qcard" href="stock_count.html"><div class="qi">☑</div><b>Stock count</b><span>Scanner</span></a>
-          </div>
-        </div>
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-head"><div><h2>Quick operations</h2><p>Your most-used screens</p></div></div>
+        <div class="panel-body"><div class="quick">
+          <a class="qcard" href="restaurant_pos.html"><div class="qi">▤</div><b>Sale Point</b><span>New / running bill</span></a>
+          <a class="qcard" href="shift_management.html"><div class="qi">◔</div><b>Shift</b><span>Cashier & till</span></a>
+          <a class="qcard" href="online_orders.html"><div class="qi">◈</div><b>Online</b><span id="qOnline">0 waiting</span></a>
+          <a class="qcard" href="kds.html"><div class="qi">♨</div><b>Kitchen</b><span id="qDelay">0 delayed</span></a>
+          <a class="qcard" href="inventory_creation.html"><div class="qi">▣</div><b>Inventory</b><span id="qLow">0 low</span></a>
+          <a class="qcard" href="reports.html"><div class="qi">▥</div><b>Reports</b><span>Sales & profit</span></a>
+        </div></div>
       </section>
 
       <div class="split" style="margin-top:14px">
         <section class="panel">
-          <div class="panel-head"><div><h2>Recent bills</h2><p>Aakhri sales all counters se</p></div>
-            <span class="spacer"></span><a href="sales.html" class="btn sm">View all</a></div>
+          <div class="panel-head"><div><h2>Best sellers today</h2></div><span class="spacer"></span><a class="btn sm" href="reports.html">Full report</a></div>
           <div class="panel-body flush"><div class="table-wrap"><table class="table">
-            <thead><tr><th>Bill</th><th>Customer</th><th>Counter</th><th class="num">Total</th><th>Status</th></tr></thead>
-            <tbody id="recentRows"></tbody></table></div></div>
+            <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th class="num">Food cost</th></tr></thead>
+            <tbody id="bestRows"></tbody></table></div></div>
         </section>
-
         <section class="panel">
-          <div class="panel-head"><div><h2>Top sellers today</h2><p>By quantity</p></div></div>
+          <div class="panel-head"><div><h2>Sales mix & collection</h2></div></div>
           <div class="panel-body">
-            <div class="mix" style="margin-bottom:12px">
-              <div class="cell"><span>Units sold</span><b id="mUnits">—</b></div>
-              <div class="cell"><span>Departments active</span><b id="mDept">—</b></div>
+            <div class="mix">
+              <div class="cell"><span>Dine in</span><b id="mDine">PKR 0</b></div>
+              <div class="cell"><span>Takeaway</span><b id="mTake">PKR 0</b></div>
+              <div class="cell"><span>Delivery</span><b id="mDeliv">PKR 0</b></div>
+              <div class="cell"><span>Online</span><b id="mOnline">PKR 0</b></div>
             </div>
-            <div id="topList"></div>
+            <div class="mix" style="margin-top:10px">
+              <div class="cell"><span>Cash</span><b id="pCash">PKR 0</b></div>
+              <div class="cell"><span>Card</span><b id="pCard">PKR 0</b></div>
+              <div class="cell"><span>Raast</span><b id="pRaast">PKR 0</b></div>
+              <div class="cell"><span>Wallet / bank</span><b id="pWallet">PKR 0</b></div>
+            </div>
           </div>
         </section>
       </div>
+
     </div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
 
-<script src="region.js"></script>
-<script src="store.js"></script>
-<script src="retail_api.js"></script>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
 <script src="shell.js" data-active="dashboard"></script>
 <script>
+var $=function(s){return document.querySelector(s)};
+var money=function(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:0})};
+function render(){
+  var s=RestaurantLive.get(), inv=RestaurantStore.getState(), acc=RestaurantAccess.get();
+  var low=inv.inventoryItems.filter(function(i){return Number(i.stockQty)<=Number(i.reorderQty)}).length;
+  var pending=acc.requests.length, profit=s.netSales-s.foodCost-s.expenses;
+  $('#heroShift').textContent=s.shift; $('#heroSales').textContent=money(s.netSales)+' net sales today';
+  $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
+  $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
+  $('#kRun').textContent=s.runningOrders; $('#kPrep').textContent=s.preparing; $('#kReady').textContent=s.ready;
+  $('#kOnline').textContent=s.onlineNew; $('#kProfit').textContent=money(profit);
+  $('#kTables').textContent=s.occupiedTables+' / '+s.totalTables; $('#kRiders').textContent=s.ridersRoad; $('#kLow').textContent=low;
+  $('#aDelay').textContent=s.delayed; $('#aOnline').textContent=s.onlineNew; $('#aLow').textContent=low; $('#aReq').textContent=pending;
+  $('#qOnline').textContent=s.onlineNew+' waiting'; $('#qDelay').textContent=s.delayed+' delayed'; $('#qLow').textContent=low+' low';
+  $('#mDine').textContent=money(s.dineIn); $('#mTake').textContent=money(s.takeaway); $('#mDeliv').textContent=money(s.delivery); $('#mOnline').textContent=money(s.online);
+  $('#pCash').textContent=money(s.cash); $('#pCard').textContent=money(s.card); $('#pRaast').textContent=money(s.raast); $('#pWallet').textContent=money(s.walletBank);
+  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
+  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bar-col"><div class="bar" data-v="'+money(v)+'" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
+  $('#bestRows').innerHTML=s.best.map(function(x){return '<tr><td class="t-main">'+x.name+'</td><td class="num">'+x.qty+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+x.cost+'%</td></tr>'}).join('');
+  $('#lastSync').textContent='Updated '+new Date(s.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function clock(){var d=new Date();$('#clockBtn').textContent=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+render();clock();setInterval(clock,30000);window.addEventListener('storage',render);
+
+/* ================= CLOUD SYNC PANEL (admin dashboard) ================= */
 (function(){
-  var $=function(s){return document.querySelector(s)};
-  var R=window.Region, S=window.RetailStore, money=R.money, qtyf=R.qty;
+  'use strict';
+  var $$=function(id){return document.getElementById(id)};
+  var card=$$('syncCard'); if(!card)return;
+  var busy=false, state=null;
 
-  /* region switcher — demo ke liye, asal mein tenant.region_profile se aayega */
-  var sel=$('#regionSel');
-  sel.innerHTML=Object.keys(R.PROFILES).map(function(k){
-    var p=R.PROFILES[k];
-    return '<option value="'+k+'"'+(R.current().code===k?' selected':'')+'>'+p.flag+'  '+p.label+' · '+p.currency+'</option>';
-  }).join('');
-  sel.onchange=function(){ R.set(this.value); location.reload(); };
+  function xhr(action,payload,cb){
+    var x=new XMLHttpRequest();
+    x.open(payload?'POST':'GET','/api.php?action='+action,true);
+    x.setRequestHeader('Accept','application/json');
+    if(payload){x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-CSRF-Token',window.APP_CSRF||'')}
+    x.timeout=180000;   /* pehli sync bhaari ho sakti hai */
+    x.onload=function(){var j={ok:false,message:'Server error'};try{j=JSON.parse(x.responseText||'{}')}catch(e){}cb(j)};
+    x.onerror=function(){cb({ok:false,message:'Network error'})};
+    x.ontimeout=function(){cb({ok:false,message:'Request timed out'})};
+    try{x.send(payload?JSON.stringify(payload):null)}catch(e){cb({ok:false,message:'Request failed'})}
+  }
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function ago(ts){
+    if(!ts)return 'never';
+    var t=new Date(String(ts).replace(' ','T')).getTime(); if(isNaN(t))return 'never';
+    var m=Math.floor((Date.now()-t)/60000);
+    if(m<1)return 'just now'; if(m<60)return m+' min ago';
+    var h=Math.floor(m/60); return h<24?(h+' hr ago'):(Math.floor(h/24)+' days ago');
+  }
+  function fmtTime(ts){
+    if(!ts)return '-';
+    var d=new Date(String(ts).replace(' ','T'));
+    return isNaN(d.getTime())?String(ts).slice(0,19):d.toLocaleString();
+  }
+  function paintTile(){
+    /* Header ka "Cloud sync" tile pehle HAMESHA "Synced / Just now" likha
+       rehta tha - chahe sync band ho ya cloud reachable na ho. Ab asli
+       haalat dikhata hai. */
+    var b=document.getElementById('hCloudSync'), t=document.getElementById('lastSync');
+    if(!b||!state)return;
+    var green='#0f7a3d', amber='#b3541e', red='#c02a37';
+    if(state.role==='cloud'){
+      if(!state.has_offline_node){ b.textContent='Not in use'; b.style.color=amber;
+        t.textContent='No branch computer'; return; }
+      b.textContent=(state.nodes||1)+' branch'+((state.nodes||1)>1?'es':'');
+      b.style.color=green; t.textContent=state.last_run?fmtTime(state.last_run):'never'; return;
+    }
+    if(!state.enabled){ b.textContent='Off'; b.style.color=red; t.textContent=(state.reason||'not configured').slice(0,40); return; }
+    if(!state.cloud_online){ b.textContent='Offline'; b.style.color=red;
+      t.textContent=(state.pending||0)+' rows waiting'; return; }
+    if(state.pending>0){ b.textContent='Pending'; b.style.color=amber;
+      t.textContent=state.pending+' rows to upload'; return; }
+    b.textContent='Synced'; b.style.color=green;
+    t.textContent=state.last_run?fmtTime(state.last_run):'never';
+  }
 
-  $('#todayDate').textContent=new Date().toLocaleDateString(R.current().locale,{day:'numeric',month:'short',year:'numeric'});
+  function paint(){
+    if(!state)return;
+    paintTile();
+    card.style.display='';   /* cloud aur branch dono par card nazar aata hai */
+    var pill=$$('syncPill'), sub=$$('syncSub'), grid=$$('syncGrid');
+    if(state.role==='cloud'){
+      $$('syncGo').style.display='none'; $$('syncCheck').style.display='none';
+      if(!state.has_offline_node){
+        /* Abhi kisi branch computer ne connect nahi kiya - saaf batao,
+           card chhupao mat (warna lagta hai kuch toot gaya). */
+        pill.className='syncPill sp-warn'; pill.textContent='no branch computer yet';
+        sub.textContent='No offline installation has connected yet. Install the offline version on a branch computer and its activity will appear here automatically.';
+        grid.innerHTML=
+          '<div class="syncBox"><small>Server build</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
+          '<div class="syncBox"><small>Branch computers</small><b>0</b></div>'+
+          '<div class="syncBox"><small>Last activity</small><b>never</b></div>'+
+          '<div class="syncBox" style="grid-column:1/-1"><small>What to do</small>'+
+          '<b style="font-size:12px;font-weight:600">POS &rarr; System &amp; Settings &rarr; Download Offline Version</b></div>';
+        return;
+      }
+      pill.className='syncPill sp-ok';
+      pill.textContent=(state.nodes||1)+' branch computer'+((state.nodes||1)>1?'s':'');
+      sub.textContent='Branch computers upload their data here automatically.';
+      grid.innerHTML=
+        '<div class="syncBox"><small>Server build</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
+        '<div class="syncBox"><small>Branch computers</small><b>'+(state.nodes||1)+'</b></div>'+
+        '<div class="syncBox"><small>Last activity</small><b style="font-size:13px">'+esc(fmtTime(state.last_run))+'</b></div>'+
+        '<div class="syncBox"><small>Received (24h)</small><b>'+(state.rows_24h||0)+' rows</b></div>'+
+        '<div class="syncBox"><small>Transfers (24h)</small><b>'+(state.transfers_24h||0)+'</b></div>';
+      return;
+    }
+    if(busy){ pill.className='syncPill sp-warn'; pill.textContent='syncing...'; }
+    else if(!state.enabled){ pill.className='syncPill sp-bad'; pill.textContent='sync off'; }
+    else if(!state.cloud_online){ pill.className='syncPill sp-bad'; pill.textContent='cloud offline'; }
+    else if(state.pending>0){ pill.className='syncPill sp-warn'; pill.textContent=state.pending+' waiting'; }
+    else { pill.className='syncPill sp-ok'; pill.textContent='up to date'; }
 
-  var products=S.get('products'), sales=S.get('sales'), batches=S.get('batches'), customers=S.get('customers');
+    sub.textContent = state.enabled
+      /* V96 — server ka pata dashboard par nazar nahi aana chahiye.
+         Wo hamara infrastructure hai; customer ke kaam ka nahi, aur jo
+         cheez nazar aati hai wo screenshot mein bhi chali jati hai. */
+      ? (state.cloud_online ? 'Connected - runs automatically every 2 minutes.'
+                            : 'Cloud not reachable right now. Data is safe locally and uploads automatically when the internet returns.')
+      : (state.reason||'Sync is disabled in this installation.');
 
-  /* KPIs */
-  var todaySale=sales.reduce(function(a,s){return a+Number(s.total||0)},0);
-  var margin=products.reduce(function(a,p){return a+(p.retail_price-p.cost_price)*2},0)*0.11;
-  var low=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock}).length;
-  var oos=products.filter(function(p){return Number(p.stock_qty)<=0}).length;
-  var exp=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7}).length;
-  var stockVal=products.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0);
-  var khata=customers.reduce(function(a,c){return a+Number(c.balance||0)},0);
-  var khataCount=customers.filter(function(c){return Number(c.balance)>0}).length;
+    var mism=state.build_mismatch;
+    grid.innerHTML=
+      (mism?('<div class="syncFix" style="grid-column:1/-1;margin-top:0">'
+        +'<b>Version mismatch - sync fixes will not work</b><br>'
+        +'This computer: <b>'+esc(state.local_build||'?')+'</b> &nbsp;|&nbsp; Cloud server: <b>'+esc(state.cloud_build||'?')+'</b><br>'
+        +'Deploy the latest build to the cloud, then download the offline package again from '
+        +'POS &rarr; System &amp; Settings &rarr; Download Offline Version.</div>'):'')+
+      '<div class="syncBox"><small>Last sync</small><b>'+esc(ago(state.last_run))+'</b></div>'+
+      '<div class="syncBox"><small>Waiting to upload</small><b>'+(state.pending||0)+' rows</b></div>'+
+      '<div class="syncBox"><small>Cloud</small><b>'+(state.cloud_online?'Online':'Not reachable')+'</b></div>'+
+      '<div class="syncBox"><small>This computer</small><b style="font-size:13px">'+esc(state.local_build||'-')+'</b></div>'+
+      '<div class="syncBox"><small>Cloud server</small><b style="font-size:13px'+(mism?';color:#c02a37':'')+'">'+esc(state.cloud_build||'-')+'</b></div>'+
+      (state.last_error?('<div class="syncBox" style="grid-column:1/-1;border-color:#f3c3c7"><small>Last error</small><b style="font-size:12px;font-weight:600">'+esc(state.last_error)+'</b></div>'):'');
+  }
+  function refresh(cb){
+    xhr('sync-state',null,function(r){
+      if(r.ok&&r.sync){ state=r.sync; }
+      else { state={role:'unknown',enabled:false,reason:(r.message||'Sync status not available'),pending:0}; }
+      paint();
+      if(cb)cb(r);
+    });
+  }
+  function runSync(manual){
+    if(busy||!state||state.role==='cloud')return;
+    if(!state.enabled){ if(manual)showDiag(); return; }
+    busy=true;paint();
+    xhr('sync-run',{},function(r){
+      busy=false;
+      if(!r.ok&&manual){ showDiag(); }
+      refresh();
+      if(r.ok&&manual){
+        var n=0; for(var k in (r.pushed||{})) n+=r.pushed[k];
+        var sub=$$('syncSub');
+        if(sub)sub.textContent = n? ('Sync complete - '+n+' records uploaded to the cloud.')
+                                  : 'Sync complete - everything was already up to date.';
+      }
+    });
+  }
+  function fixHint(f){
+    var st=(f.step||'').toLowerCase(), d=(f.detail||'').toLowerCase();
+    if(st.indexOf('configuration')>=0||st.indexOf('cloud url')>=0)
+      return 'This installation has no cloud settings. Download a fresh offline package from the online portal and install it again.';
+    if(st.indexOf('ssl')>=0) return 'HTTPS certificates were not found. Download a fresh package (certificates are included) or run INSTALL_OFFLINE.bat again.';
+    if(st.indexOf('dns')>=0) return 'The internet is on but the server name could not be resolved. Check WiFi/DNS, or try a mobile hotspot.';
+    if(st.indexOf('connection')>=0) return 'Cannot reach the server. Usually Windows Firewall or antivirus is blocking php.exe - allow it. An office proxy can also block it.';
+    if(st.indexOf('token')>=0) return 'The cloud rejected this installation token. Download the offline package again from the portal.';
+    if(st.indexOf('cloud response')>=0) return 'The server replied with an error. Try again shortly; if it continues, send this report to support.';
+    return 'Send this report to support.';
+  }
+  function showDiag(){
+    var box=$$('syncDiagBox'); box.style.display=''; box.innerHTML='<div class="muted">Running checks...</div>';
+    xhr('sync-diagnose',null,function(r){
+      var checks=(r.ok&&r.checks)?r.checks:[{step:'Request',ok:false,detail:(r.message||'Check failed')}];
+      var first=null;
+      var h=checks.map(function(c){
+        if(!c.ok&&!first)first=c;
+        return '<div class="syncRow"><div class="ic">'+(c.ok?'\u2705':'\u274C')+'</div>'
+          +'<div><b>'+esc(c.step)+'</b><small>'+esc(c.detail)+'</small></div></div>';
+      }).join('');
+      if(first)h+='<div class="syncFix"><b>What to do</b><br>'+esc(fixHint(first))+'</div>';
+      box.innerHTML=h;
+    });
+  }
+  $$('syncGo').onclick=function(){runSync(true)};
+  $$('syncCheck').onclick=showDiag;
 
-  $('#heroSale').textContent=money(todaySale);
-  $('#kSale').textContent=money(todaySale);
-  $('#kMargin').textContent=money(margin);
-  $('#kMarginPct').textContent=(todaySale? (margin/todaySale*100).toFixed(1):'0')+'% of sale';
-  $('#kLow').textContent=low;
-  $('#kExp').textContent=exp;
-  $('#kOos').textContent=oos;
-  $('#hBills').textContent=sales.length;
-  $('#hBasket').textContent=money(sales.length? todaySale/sales.length : 0);
-  $('#hCash').textContent=money(sales.reduce(function(a,s){return a+Number(s.paid_cash||0)},0)+30000);
-  $('#hKhata').textContent=money(khata);
-  $('#hKhataSub').textContent=khataCount+' customers';
-  $('#hStock').textContent=money(stockVal);
-  $('#hSku').textContent=products.length+' SKUs';
-  $('#mUnits').textContent=qtyf(sales.reduce(function(a,s){return a+Number(s.lines||0)*3},0));
-  $('#mDept').textContent=S.get('departments').length;
+  /* ---- Synchronization log: kab, kaun si tables, kitni rows ---- */
+  function showLog(){
+    var box=$$('syncDiagBox'); box.style.display='';
+    box.innerHTML='<div class="muted">Loading log...</div>';
+    xhr('sync-log&limit=20',null,function(r){
+      if(!r.ok){box.innerHTML='<div class="muted">'+esc(r.message||'Log not available')+'</div>';return}
 
-  /* hourly chart */
-  var hours=['9a','10a','11a','12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p'];
-  var vals=[8,14,19,26,22,17,15,21,29,44,52,48,33,18];
-  var max=Math.max.apply(null,vals);
-  $('#chart').innerHTML=hours.map(function(h,i){
-    return '<div class="bar-col"><div class="bar" style="height:'+(vals[i]/max*100)+'%" data-v="'+vals[i]+' bills"></div><span>'+h+'</span></div>';
-  }).join('');
+      if(r.role==='cloud'){
+        var t=r.today||{}, a=r.activity||[];
+        var h='<div class="syncGrid" style="margin-top:0">'
+          +'<div class="syncBox"><small>Transfers (24h)</small><b>'+(t.transfers||0)+'</b></div>'
+          +'<div class="syncBox"><small>Rows received (24h)</small><b>'+(t.rows_total||0)+'</b></div>'
+          +'<div class="syncBox"><small>Last activity</small><b style="font-size:12px">'+esc(fmtTime(t.last_at))+'</b></div>'
+          +'</div>';
+        var nd=r.nodes||[];
+        if(nd.length){
+          h+='<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;opacity:.7;'
+            +'text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Connected branch computers</div>'
+            +nd.map(function(n){
+              return '<div class="syncRow"><div class="ic">&#128187;</div>'
+                +'<div style="flex:1"><b>'+esc(n.node_code||'Branch')+'</b> &middot; '+esc(n.ip||'')
+                +'<small>build '+esc(n.app_version||'unknown')+' &middot; last seen '+esc(fmtTime(n.last_seen_at))+'</small></div></div>';
+            }).join('')+'</div>';
+        }
+        h+= a.length
+          ? ('<div style="margin-top:12px;max-height:320px;overflow:auto">'+a.map(function(x){
+              var bad=(x.status==='FAILED');
+              return '<div class="syncRow"><div class="ic">'+(bad?'\u274C':(x.direction==='PUSH'?'\u2B06':'\u2B07'))+'</div>'
+                +'<div style="flex:1"><b'+(bad?' style="color:#c02a37"':'')+'>'+esc(x.table_name)+'</b> &middot; '+x.rows_count+' rows'
+                +'<small>'+esc(x.direction)+' &middot; '+esc(fmtTime(x.created_at))
+                +(x.node_ip?(' &middot; from '+esc(x.node_ip)):'')
+                +(x.note?('<br><span style="color:#c02a37">'+esc(x.note)+'</span>'):'')+'</small></div></div>';
+            }).join('')+'</div>')
+          : '<div class="syncFix" style="background:#fdf4e9;border-color:#f0cfa4;margin-top:12px">'
+            +'<b>No sync activity yet</b><br>'
+            +'This log fills up automatically once an offline installation connects. '
+            +'Download it from POS &rarr; System &amp; Settings &rarr; Download Offline Version.</div>';
+        box.innerHTML=h;
+        return;
+      }
 
-  /* alerts */
-  var a=[];
-  var lowItems=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock});
-  var oosItems=products.filter(function(p){return Number(p.stock_qty)<=0});
-  var expItems=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7});
+      var runs=r.runs||[];
+      if(!runs.length){box.innerHTML='<div class="muted">No sync has run yet.</div>';return}
+      var h='<div style="max-height:360px;overflow:auto">';
+      runs.forEach(function(run,i){
+        var badge=run.status==='OK'?'sp-ok':(run.status==='PARTIAL'?'sp-warn':'sp-bad');
+        h+='<div style="border:1px solid var(--line,#e2eae5);border-radius:11px;padding:11px 12px;margin-bottom:9px">'
+          +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'
+          +'<div><b>'+esc(fmtTime(run.started_at))+'</b>'
+          +'<small style="display:block;opacity:.7;font-size:11px">'+esc(run.trigger_by||'auto')+' &middot; '
+          +(run.duration_ms!=null?(run.duration_ms+' ms'):'-')+'</small></div>'
+          +'<div style="text-align:right"><span class="syncPill '+badge+'">'+esc(run.status)+'</span>'
+          +'<small style="display:block;opacity:.75;font-size:11px;margin-top:4px">&#11014; '+(run.pushed_rows||0)
+          +' &nbsp; &#11015; '+(run.pulled_rows||0)+' rows</small></div></div>';
+        var det=run.detail||[];
+        var okd=det.filter(function(d){return !d.failed});
+        var bad=det.filter(function(d){return d.failed});
+        if(okd.length){
+          h+='<div style="margin-top:9px;display:flex;flex-wrap:wrap;gap:5px">'
+            +okd.map(function(d){
+                return '<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;'
+                  +'background:'+(d.dir==='PUSH'?'#eaf6ef':'#eef3fb')+'">'
+                  +(d.dir==='PUSH'?'\u2B06':'\u2B07')+' '+esc(d.table)+' '+d.rows+'</span>';
+              }).join('')+'</div>';
+        }
+        if(bad.length){
+          /* Jo tables sync NAHI huin — naam aur wajah dono */
+          h+='<div style="margin-top:9px">'
+            +'<div style="font-size:11px;font-weight:800;color:#c02a37;margin-bottom:5px">'
+            +'\u274C Not synced ('+bad.length+')</div>'
+            +bad.map(function(d){
+                return '<div class="syncRow" style="border-bottom:0;padding:4px 0">'
+                  +'<div class="ic">'+(d.dir==='PUSH'?'\u2B06':'\u2B07')+'</div>'
+                  +'<div><b style="color:#c02a37">'+esc(d.table)+'</b>'
+                  +'<small>'+esc(d.error||'Unknown error')+'</small></div></div>';
+              }).join('')+'</div>';
+        }
+        if(!det.length && run.status==='OK'){
+          h+='<div class="muted" style="margin-top:7px;font-size:11.5px">Nothing to transfer - already up to date.</div>';
+        }
+        if(run.error_text)h+='<div class="syncFix" style="margin-top:8px">'+esc(run.error_text)+'</div>';
+        h+='</div>';
+      });
+      box.innerHTML=h+'</div>';
+    });
+  }
+  $$('syncLog').onclick=showLog;
 
-  if(oosItems.length) a.push(['danger','⊘','<b>'+oosItems.length+' items out of stock</b><small>'+
-    oosItems.slice(0,2).map(function(p){return p.name}).join(', ')+(oosItems.length>2?' +'+(oosItems.length-2)+' more':'')+'</small>','purchase_orders.html','Create PO']);
-  if(expItems.length) a.push(['warn','◷','<b>'+expItems.length+' batches expiring within 7 days</b><small>'+
-    expItems.slice(0,2).map(function(b){var p=S.byId('products',b.product_id);return (p?p.name:'')+' · '+b.expiry_date}).join(' · ')+'</small>','batches.html','Review']);
-  if(lowItems.length) a.push(['info','▽','<b>'+lowItems.length+' items below reorder level</b><small>Auto-PO suggestion ready</small>','purchase_orders.html','Suggest PO']);
-  var over=customers.filter(function(c){return Number(c.balance)>0 && Number(c.balance)>=Number(c.credit_limit)*0.9 && Number(c.credit_limit)>0});
-  if(over.length) a.push(['warn','₨','<b>'+over.length+' customers near credit limit</b><small>'+over.map(function(c){return c.name}).join(', ')+'</small>','khata.html','Open khata']);
-  a.push(['ok','✓','<b>Counter 3 is closed</b><small>Only 2 counters are running</small>','counters.html','Open counter']);
-
-  $('#alerts').innerHTML=a.map(function(x){
-    return '<div class="alert"><div class="ai" style="background:var(--'+x[0]+'-soft);color:var(--'+x[0]+')">'+x[1]+'</div>'+
-      '<div>'+x[2]+'</div><a class="btn sm" href="'+x[3]+'">'+x[4]+'</a></div>';
-  }).join('');
-
-  /* recent bills */
-  $('#recentRows').innerHTML=sales.slice(0,6).map(function(s){
-    var tone=s.status==='Credit'?'warn':'ok';
-    return '<tr><td><span class="t-main">'+s.bill_no+'</span><span class="t-sub">'+s.sold_at+'</span></td>'+
-      '<td><span class="t-main">'+s.customer+'</span><span class="t-sub">'+s.price_level+'</span></td>'+
-      '<td>'+s.counter+'</td><td class="num"><b>'+money(s.total)+'</b></td>'+
-      '<td><span class="tag '+tone+'">'+s.status+'</span></td></tr>';
-  }).join('');
-
-  /* top sellers */
-  var top=products.slice().sort(function(a,b){return (b.retail_price-b.cost_price)-(a.retail_price-a.cost_price)}).slice(0,5);
-  $('#topList').innerHTML=top.map(function(p,i){
-    var pct=100-i*16;
-    return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">'+
-      '<b style="font-weight:600">'+p.name+'</b><span style="color:var(--muted)">'+money((p.retail_price-p.cost_price)*(6-i)*3)+'</span></div>'+
-      '<div style="height:6px;background:var(--surface-2);border-radius:20px;overflow:hidden">'+
-      '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#0d7a5f,#1aa87c);border-radius:20px"></div></div></div>';
-  }).join('');
+  refresh();
+  setInterval(refresh,30000);
+  /* V64 — YEH TIMER PEHLE ASAL SYNC CHALATA THA, HAR 2 MINUTE.
+     Masla: har page load par sifar se shuru hota tha. User POS -> dashboard
+     -> menu karta rehta to yeh kabhi poora hota hi nahi tha.
+     Ab asal kaam `sync_loop.php` karta hai (alag OS process, har 60 second,
+     screen se koi taluq nahi). Yeh timer sirf status DIKHATA hai. */
+  setInterval(function(){ if(state&&state.role!=='cloud'&&state.enabled)refresh(); },20000);
 })();
+
+
 </script>
 </body>
 </html>
+
+<!-- build: V17.1 build 2026-08-25 -->

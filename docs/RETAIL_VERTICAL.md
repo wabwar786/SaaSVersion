@@ -2998,3 +2998,64 @@ php scripts/sync_worker.php
 
 It deletes nothing and does not touch the node's own bills or shifts —
 it only says "send me everything again".
+
+---
+
+## 62. `repull` — force a branch to take everything again, from Super Admin
+
+The cloud cannot push to a branch: the node sits behind a router with no
+address to call. Every conversation is started by the node. So a remote
+command has to be **left waiting** for the node to collect.
+
+### New table + one console command
+
+```
+repull <slug>              every catalogue table
+repull <slug> menu_items   just that one
+```
+
+The request is written to `sync_directives` on the cloud. The node picks
+it up in the handshake it already makes at the start of every sync,
+rewinds its pull watermarks, and the same run brings the data down. The
+branch does not need to be online when you type it — it applies whenever
+the node next starts.
+
+**This is not `resync`.** That one writes tombstones and the node
+*deletes* those tables before refilling them. `repull` deletes nothing:
+bills, shifts and cash on the branch are untouched. It only says "send it
+all again", which is what the day-to-day problem actually needs.
+
+Applied once, not on every sync — the `issued_at` is remembered.
+
+```
+1. first sync            pulled menu_items = 12
+2. items removed locally
+   sync again            pulled 0   (watermark is ahead — the real bug)
+3. repull demo-restaurant
+4. next sync             pulled menu_items = 12   -> node items = 12
+```
+
+Also checked: repeating the sync does not re-apply the directive,
+a single-table request pulls only that table, and an unknown slug is
+refused.
+
+### A hazard the fix itself created
+
+§61 stopped the watermark advancing when rows are rejected. That is right
+— but if a row can **never** apply, that table stalls for ever, and
+everything after it never arrives either. One broken row would hold the
+whole table hostage: worse than the bug being fixed.
+
+So: retry five times, then move past it and write a **FATAL** to the
+Error Log. Those rows are skipped — but in plain sight, not silently.
+
+```
+run 1-4 : PARTIAL, watermark held, tries 1..4
+run 5   : FORCED, watermark moved
+Error Log: FATAL sync/pull/menu_items - 12 of 12 rejected, given up after 5 attempts
+```
+
+One more bug of mine caught on the way: the attempt counter was being
+written into `watermark`, a DATETIME column, so it never incremented and
+the table stayed PARTIAL for ever — the very stall this guard exists to
+prevent. The count lives in `rows_synced` now.

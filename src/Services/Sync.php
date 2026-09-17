@@ -540,6 +540,16 @@ final class Sync
         return $q->fetchColumn() ?: '1970-01-01 00:00:00.000000';
     }
 
+    /** Kisi scope ke `rows_synced` — koshishon ki ginti yahan rakhi jati hai. */
+    private static function stateRows(string $scope): int
+    {
+        try {
+            $q = DB::pdo()->prepare("SELECT rows_synced FROM sync_state WHERE scope=?");
+            $q->execute([$scope]);
+            return (int)$q->fetchColumn();
+        } catch (\Throwable $e) { return 0; }
+    }
+
     public static function setWatermark(string $scope, string $wm, string $status = 'OK', ?string $err = null, int $rows = 0): void
     {
         DB::pdo()->prepare(
@@ -1116,13 +1126,52 @@ final class Sync
                     $total   = \count($rows);
                     if ($applied >= $total) {
                         self::setWatermark("pull:$table", (string)($r['watermark'] ?? $since), 'OK', null, $applied);
+                        /* Kamyabi par koshishon ki ginti sifar. */
+                        if ((int)self::stateRows("pullfail:$table") > 0) {
+                            self::setWatermark("pullfail:$table", '1970-01-01 00:00:00', 'OK', null, 0);
+                        }
                     } else {
-                        $miss = $total - $applied;
-                        self::setWatermark("pull:$table", $since, 'PARTIAL',
-                            $miss . ' of ' . $total . ' row(s) could not be applied - will retry', $applied);
-                        self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table,
-                            'error' => $miss . ' of ' . $total . ' row(s) rejected locally'
-                                     . (self::$lastRowErrors[$table] ?? '' ? ': ' . self::$lastRowErrors[$table] : '')];
+                        /* Kuch rows nahi lagin. Watermark rok kar rakho taake
+                           agli dafa dobara aayen.
+
+                           MAGAR hamesha ke liye nahi: agar koi row KABHI na
+                           lag sake (misaal: aisa data jo is node ki table
+                           mein samata hi nahi), to yeh table yahin atak kar
+                           reh jayegi aur uske BAAD ka saara data bhi kabhi
+                           nahi aayega. Ek tootı hui row poori table ko
+                           bandhak bana le, yeh us masle se bhi bura hai jo
+                           theek karne chale the.
+
+                           Is liye: paanch dafa koshish, phir aage barh jao
+                           aur is nakami ko FATAL likh do — taake wo rows
+                           chhooten to nazar ke saamne chhooten, chupke se
+                           nahi. */
+                        $miss  = $total - $applied;
+                        $tries = (int)self::stateRows("pullfail:$table") + 1;   /* 1..5 */
+                        $why   = ($miss . ' of ' . $total . ' row(s) rejected locally'
+                                 . (($self = self::$lastRowErrors[$table] ?? '') ? ': ' . $self : ''));
+
+                        if ($tries >= 5) {
+                            self::setWatermark("pull:$table", (string)($r['watermark'] ?? $since),
+                                'FORCED', 'moved past ' . $miss . ' row(s) after 5 attempts', $applied);
+                            self::setWatermark("pullfail:$table", '1970-01-01 00:00:00', 'OK', null, 0);
+                            self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table,
+                                'error' => $why . ' - skipped after 5 attempts'];
+                            try { ErrorLog::op('sync/pull/' . $table,
+                                $why . '. Given up after 5 attempts; those rows are NOT on this branch.',
+                                'FATAL'); } catch (\Throwable $e) { }
+                        } else {
+                            self::setWatermark("pull:$table", $since, 'PARTIAL',
+                                $why . ' - will retry (attempt ' . $tries . ' of 5)', $applied);
+                            /* Ginti `rows_synced` mein rakhi jati hai (wo har dafa
+                               jama hota hai). Watermark ek DATETIME column hai —
+                               pehle maine yahan ginti likh di thi, jo us column
+                               mein samati hi nahi, aur counter kabhi barha hi
+                               nahi. Nateeja: table hamesha PARTIAL par atki
+                               rehti, yani wahi masla jis se bachna tha. */
+                            self::setWatermark("pullfail:$table", \date('Y-m-d H:i:s.u'), 'RETRY', $why, 1);
+                            self::$tableErrors[] = ['dir' => 'PULL', 'table' => $table, 'error' => $why];
+                        }
                     }
                 }
                 $summary[$table] = \count($rows);
@@ -1291,6 +1340,53 @@ final class Sync
      * Iske baghair Super Admin ka "FBR band karo" wala faisla offline
      * node tak pohanchta hi nahi tha — package dobara banwana parta.
      */
+    /**
+     * Cloud se aaya hua hukm lagao.
+     *
+     * Abhi ek hi kism hai: REPULL — "sab kuch dobara bhejo". Node apne
+     * pull watermarks peeche kar deta hai, aur isi run ki pull poora
+     * catalog dobara le aati hai.
+     *
+     * Kuch MITTA nahi. Node ke apne bills, shifts aur cash ko haath tak
+     * nahi lagta — sirf cloud se kaha jata hai ke jo tumhare paas hai wo
+     * phir se bhejo. (`resync` command is se alag hai: wahan tables
+     * waqai mitai jati hain.)
+     *
+     * Har hukm ek hi dafa lagta hai: `issued_at` sambhal kar rakha jata
+     * hai, warna har sync par watermark peeche jata rehta aur node
+     * hamesha poora catalog kheenchta rehta.
+     */
+    private static function applyDirective(array $d): void
+    {
+        try {
+            $kind = \strtoupper((string)($d['kind'] ?? ''));
+            $at   = (string)($d['issued_at'] ?? '');
+            if ($kind !== 'REPULL' || $at === '') return;
+
+            $seen = self::watermark('directive:REPULL');
+            if ($seen !== '' && $seen >= $at) return;      /* pehle hi lag chuka */
+
+            $tables = $d['tables'] ?? [];
+            if (!$tables) $tables = (array)(self::cfg()['pull_tables'] ?? []);
+
+            $n = 0;
+            foreach ($tables as $t) {
+                $t = \preg_replace('/[^a-z0-9_]/i', '', (string)$t);
+                if ($t === '') continue;
+                self::setWatermark("pull:$t", '1970-01-01 00:00:00', 'RESET',
+                                   'rewound by Super Admin', 0);
+                $n++;
+            }
+            self::setWatermark('directive:REPULL', $at, 'OK', null, $n);
+            self::touchState('directive', 'OK', 'Re-pull requested by Super Admin — ' . $n . ' table(s) rewound');
+
+            try { ErrorLog::op('sync/directive', 'Super Admin asked for a full re-pull; '
+                               . $n . ' table(s) rewound', 'WARN'); } catch (\Throwable $e) { }
+        } catch (\Throwable $e) {
+            /* Hukm na lag sake to sync na ruke. */
+        }
+    }
+
     public static function pullFeatures(): void
     {
         try {
@@ -1300,6 +1396,9 @@ final class Sync
             $json = \is_array($feat) ? \json_encode(\array_values($feat)) : null;
             DB::pdo()->prepare("UPDATE tenants SET features_json=? WHERE id=?")
                      ->execute([$json, tenant_id()]);
+
+            /* Super Admin ka hukm — agar naya ho to isi run mein lagao. */
+            if (!empty($r['directive'])) self::applyDirective((array)$r['directive']);
             self::touchState('features', 'OK',
                 $feat === null ? 'Sab modules allowed' : (\count($feat) . ' modules allowed'));
         } catch (\Throwable $e) {

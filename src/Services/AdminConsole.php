@@ -114,6 +114,8 @@ final class AdminConsole
                                       (string)($flags['before'] ?? ''), (string)$flags['confirm'], $actor);
                 case 'suspend':   return self::cmdStatus($args[0] ?? '', 'SUSPENDED', $actor);
                 case 'activate':  return self::cmdStatus($args[0] ?? '', 'ACTIVE', $actor);
+                case 'repull':
+                case 'resend':   return self::cmdRepull($args[0] ?? '', strtolower($args[1] ?? 'all'), $actor);
                 case 'resync':    return self::cmdResync($args[0] ?? '', strtolower($args[1] ?? 'transactions'), (string)$flags['confirm']);
                 case 'tombstones':
                 case 'deletes':   return self::cmdTombstones($args[0] ?? '');
@@ -168,6 +170,7 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'tables                            tenant-scoped tables'],
             ['t' => 'k',  'v' => 'query SELECT ...                  read-only, max 100 rows'],
             ['t' => 'h',  'v' => 'CONSOLE'],
+            ['t' => 'k', 'v' => 'repull <slug> [all|table]   ask the branch to pull everything again (nothing is deleted)'],
             ['t' => 'k',  'v' => 'resync <slug> [transactions|all] --confirm "<name>"'],
             ['t' => 'd',  'v' => '   brings the branch computer in line with the cloud (cloud data stays safe)'],
             ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
@@ -535,6 +538,65 @@ final class AdminConsole
      * likhta hai; agli sync par node apni wahi tables khud saaf kar ke
      * cloud se dobara bharta hai.
      */
+    /**
+     * repull <slug> [all|table]  — "sab kuch dobara bhej do"
+     *
+     * Yeh `resync` se BILKUL alag hai, aur farq ahem hai:
+     *
+     *   resync  — node par tables MITAI jati hain (tombstone), phir
+     *             dobara aati hain. Bhaari, aur confirm maangta hai.
+     *   repull  — kuch nahi mitta. Sirf node ke pull watermarks peeche
+     *             kiye jate hain, taake cloud se poora catalog dobara
+     *             aa jaye.
+     *
+     * Rozana ka masla yehi hota hai: kuch rows kisi wajah se node par
+     * nahi lagin, watermark aage nikal gaya, aur cloud ab unhein "naya"
+     * nahi samajhta. `repull` wahi cheez theek karta hai.
+     *
+     * Hukm cloud par likha jata hai; node apni AGLI sync par khud utha
+     * leta hai. Node ka abhi online hona zaroori nahi — jab bhi aayega,
+     * lag jayega.
+     */
+    private static function cmdRepull(string $slug, string $what, string $actor): array
+    {
+        if ($slug === '') return self::err('Usage:  repull <slug> [all|menu_items]');
+        $t = self::tenant($slug);
+
+        $tables = '';
+        if ($what !== '' && $what !== 'all') {
+            $tables = \preg_replace('/[^a-z0-9_,]/i', '', $what);
+            if ($tables === '') return self::err('That table name does not look right.');
+        }
+
+        $pdo = DB::pdo();
+        try {
+            $pdo->prepare(
+                "INSERT INTO sync_directives (id, tenant_id, kind, tables_csv, issued_by, issued_at, note)
+                 VALUES (?,?,'REPULL',?,?,NOW(6),?)
+                 ON DUPLICATE KEY UPDATE tables_csv=VALUES(tables_csv), issued_by=VALUES(issued_by),
+                                         issued_at=NOW(6), note=VALUES(note)"
+            )->execute([\uuid(), (string)$t['id'], $tables ?: null, $actor,
+                        'Requested from the console']);
+        } catch (\Throwable $e) {
+            return self::err('Could not save the request: ' . $e->getMessage()
+                           . '  — run `php scripts/migrate_sync_directives.php` on the cloud first.');
+        }
+
+        AdminData::audit('console', (string)$t['id'], 'REPULL', $tables ?: 'all tables');
+
+        $scope = $tables ? ('the table(s): ' . $tables) : 'every catalogue table';
+        return self::out([
+            ['t' => 'h', 'v' => 'Re-pull requested for ' . $t['name']],
+            ['t' => 'k', 'v' => 'Scope: ' . $scope],
+            ['t' => 'k', 'v' => 'Nothing is deleted. The branch keeps its own bills, shifts and cash.'],
+            ['t' => 'k', 'v' => 'The branch computer picks this up on its next sync (within ~2 minutes'],
+            ['t' => 'k', 'v' => 'of being online) and asks the cloud to send everything again.'],
+            ['t' => 'k', 'v' => ''],
+            ['t' => 'k', 'v' => 'If the branch is switched off, it will apply this whenever it next starts.'],
+            ['t' => 'k', 'v' => 'Check it worked:  sync ' . $t['slug']],
+        ]);
+    }
+
     private static function cmdResync(string $slug, string $what, string $confirm): array
     {
         $t = self::tenant($slug);

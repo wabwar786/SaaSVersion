@@ -3,26 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Offline &amp; Sync · Retail OS</title>
+<title>Offline & Sync · Urban Spoon</title>
 <link rel="stylesheet" href="shared.css">
 <style>
-.dl-hero{background:linear-gradient(135deg,var(--brand-ink),var(--brand));color:#fff;border-radius:var(--r-lg);
-  padding:22px;box-shadow:var(--sh);margin-bottom:14px;position:relative;overflow:hidden}
-.dl-hero:after{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.09)}
-.dl-hero h2{font-size:24px;margin:6px 0 0}
-.dl-hero p{margin:9px 0 0;color:#d3ede2;font-size:12.5px;line-height:1.6;max-width:620px}
-.dl-hero .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bfe8d8;font-weight:600}
-.dl-hero .btn{margin-top:16px;height:46px;padding:0 20px;font-size:14px;font-weight:800;background:#fff;color:var(--brand-ink);border-color:#fff}
-.dl-hero .btn:hover{background:#eefaf5}
-.dl-hero .btn[disabled]{opacity:.55;cursor:not-allowed}
-.steps{counter-reset:s}
-.step{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
-.step:last-child{border-bottom:0}
-.step .n{width:26px;height:26px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);
-  display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
-.step b{font-size:13px}
-.step p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
-.modtable td:first-child{font-weight:600}
+.sync-hero{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:var(--r);background:linear-gradient(135deg,#0f7a45,#15804a);color:#fff;box-shadow:var(--sh)}
+.sync-hero .dot{width:12px;height:12px;border-radius:50%;background:#8effc0;box-shadow:0 0 0 6px rgba(142,255,192,.25)}
+.sync-hero h2{margin:0;font-family:var(--display);font-size:20px}
+.sync-hero p{margin:3px 0 0;font-size:13px;color:rgba(255,255,255,.85)}
+.q-item{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.q-item:last-child{border-bottom:0}
+.q-ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);font-size:15px}
+.q-item b{font-size:13px}.q-item small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -31,141 +22,107 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Offline &amp; Sync</h1><p>The counter never stops — internet or not</p></div>
+      <div class="header-title"><h1>Offline & Sync</h1><p>Local-first data with automatic cloud sync</p></div>
       <div class="header-spacer"></div>
-      <span class="live-pill" id="modePill">Checking…</span>
+      <button class="btn primary" id="syncBtn">Sync now</button>
     </header>
-
     <div class="content">
-
-      <!-- ============ DOWNLOAD ============ -->
-      <div class="dl-hero" id="dlHero">
-        <div class="eyebrow">Offline version</div>
-        <h2>Offline software for the counter PC</h2>
-        <p>
-          This package runs on your store's PC. Billing, stock, credit accounts and receipts
-          all work without the internet. When the connection returns, everything is sent
-          to the cloud automatically. Your business name, branch and sync token are
-          already sealed inside the package — there is nothing to configure.
-        </p>
-        <button class="btn" id="btnDownload">⤓ Download offline version</button>
-        <div id="dlNote" style="margin-top:10px;font-size:12px;color:#d3ede2"></div>
+      <div class="sync-hero">
+        <span class="dot"></span>
+        <div><h2>All data synced</h2><p id="syncMsg">Last sync just now · working online</p></div>
       </div>
-
-      <div class="split">
+      <div class="kpis" style="margin-top:14px">
+        <div class="kpi ok"><div class="lab">Connection</div><div class="val" style="font-size:20px">Online</div><div class="sub">Auto-sync active</div></div>
+        <div class="kpi"><div class="lab">Pending changes</div><div class="val" id="pending">0</div><div class="sub">Queued to upload</div></div>
+        <div class="kpi info"><div class="lab">Local records</div><div class="val">3,412</div><div class="sub">Cached on this device</div></div>
+        <div class="kpi warn"><div class="lab">Last full backup</div><div class="val" style="font-size:20px">Today</div><div class="sub">02:00 AM</div></div>
+      </div>
+      <div class="split" style="margin-top:14px">
         <section class="panel">
-          <div class="panel-head"><div><h2>How to install</h2><p>On the counter PC, once</p></div></div>
-          <div class="panel-body"><div class="steps">
-            <div class="step"><div class="n">1</div><div><b>Download the ZIP and extract it</b>
-              <p>Into any folder on the counter PC — for example <code>C:\RetailOS</code>. Do not use a network drive.</p></div></div>
-            <div class="step"><div class="n">2</div><div><b>START_RESTAURANT.bat — double-click it</b>
-              <p>The first run installs and prepares PHP, MariaDB and the database itself. It takes a few minutes and needs no command-line knowledge.</p></div></div>
-            <div class="step"><div class="n">3</div><div><b>The browser opens by itself</b>
-              <p>The same email and password you were given online.</p></div></div>
-            <div class="step"><div class="n">4</div><div><b>Connect the hardware</b>
-              <p>Barcode scanner (keyboard-wedge, no driver needed), receipt printer, cash drawer and label printer.
-                 Set them up in <b>Printers &amp; Devices</b> .</p></div></div>
-            <div class="step"><div class="n">5</div><div><b>Sync runs on its own</b>
-              <p>As soon as the internet is back, bills go up and the head-office catalogue comes down. Nothing to press.</p></div></div>
-          </div></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head"><div><h2>Sync status</h2><p>Status of this node</p></div></div>
+          <div class="panel-head"><div><h2>Sync activity</h2><p>Recent uploads to cloud</p></div></div>
           <div class="panel-body">
-            <div class="mix" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
-                <span style="color:var(--muted);font-size:11px">Mode</span>
-                <b id="sMode" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
-              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
-                <span style="color:var(--muted);font-size:11px">Business</span>
-                <b id="sBiz" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
-              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
-                <span style="color:var(--muted);font-size:11px">Branch</span>
-                <b id="sBranch" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
-              <div class="cell" style="padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
-                <span style="color:var(--muted);font-size:11px">Region</span>
-                <b id="sRegion" style="display:block;margin-top:3px;font-family:var(--display);font-size:16px">—</b></div>
-            </div>
-            <div class="note" style="margin-top:12px">
-              <b>Billing never stops.</b> With no internet the bill is written to the local database and the receipt prints.
-              As soon as the connection returns, that bill goes to the cloud. Bills travel
-              <b>upward only</b> — they never come back down, otherwise two branches would
-              erase one another bills.
-            </div>
+            <div class="q-item"><div class="q-ico">🧾</div><div style="flex:1"><b>Sales & invoices</b><small>184 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">📦</div><div style="flex:1"><b>Inventory movements</b><small>62 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">👥</div><div style="flex:1"><b>Customers & loyalty</b><small>28 records · synced</small></div><span class="tag ok">Done</span></div>
+            <div class="q-item"><div class="q-ico">⚙️</div><div style="flex:1"><b>Settings & menu</b><small>synced</small></div><span class="tag ok">Done</span></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><div><h2>How offline works</h2></div></div>
+          <div class="panel-body">
+            <p style="font-size:13px;line-height:1.65;color:var(--ink-2);margin:0 0 10px">The POS keeps running even when the internet drops. Every sale, order and stock change is written to this device first, then pushed to the cloud automatically the moment the connection returns — nothing is lost.</p>
+            <div class="note">Tip: keep at least one device online at each branch so head-office reports stay live.</div>
           </div>
         </section>
       </div>
-
-      <!-- ============ OFFLINE-ONLY MODULES ============ -->
-      <section class="panel" style="margin-top:14px">
-        <div class="panel-head"><div><h2>Which modules run only offline</h2>
-          <p>Some things are tied to the counter's hardware — the cloud simply cannot reach them</p></div></div>
-        <div class="panel-body flush"><div class="table-wrap"><table class="table modtable">
-          <thead><tr><th>Module</th><th>Where it runs</th><th>Reason</th></tr></thead>
-          <tbody>
-            <tr><td>Tax / Digital Invoice (FBR, PRA, KPRA)</td>
-                <td><span class="tag warn">Offline only</span></td>
-                <td>The FBR fiscal service runs on the same PC as the POS (localhost). The cloud cannot reach it.</td></tr>
-            <tr><td>Receipt printer &amp; cash drawer</td>
-                <td><span class="tag warn">Offline only</span></td>
-                <td>The printer is attached to the counter PC by USB or serial. The drawer opens from that printer's kick command.</td></tr>
-            <tr><td>Barcode &amp; shelf label printing</td>
-                <td><span class="tag warn">Offline only</span></td>
-                <td>A TSPL/ZPL label printer is a local device.</td></tr>
-            <tr><td>Weighing scale (live read)</td>
-                <td><span class="tag warn">Offline only</span></td>
-                <td>The scale is attached by serial or USB. <b>A label printed by the scale</b> scans on the cloud too — the weight is inside the barcode.</td></tr>
-            <tr><td>POS, stock, khata, GRN, reports</td>
-                <td><span class="tag ok">Both</span></td>
-                <td>On the node and in the cloud — the data stays in sync.</td></tr>
-            <tr><td>Offline version download</td>
-                <td><span class="tag info">Online only</span></td>
-                <td>The package is built in the cloud because your sync token is sealed into it.</td></tr>
-          </tbody>
-        </table></div></div>
-      </section>
     </div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
-
-<script src="region.js"></script>
-<script src="store.js"></script>
-<script src="retail_api.js"></script>
+<div class="toast" id="toast"></div>
+<script src="shared_store.js"></script>
+<script src="live_store.js"></script>
+<script src="access_store.js"></script>
 <script src="shell.js" data-active="offline"></script>
 <script>
 (function(){
-  var $=function(i){return document.getElementById(i)};
-  var S=window.RetailStore, isCloud=(window.APP_ROLE==='cloud');
+  var hasDB=(location.protocol!=='file:' && typeof window.DBApi!=='undefined');
+  function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast'},1700)}
+  function fmt(ts){if(!ts)return 'never';var d=new Date(ts.replace(' ','T'));return isNaN(d)?ts:d.toLocaleString()}
 
-  $('modePill').textContent = isCloud ? 'Online (cloud)' : 'Offline node';
-  $('sMode').textContent    = isCloud ? 'Cloud' : 'Local (offline-first)';
-
-  if(S && S.boot){
-    $('sBiz').textContent=S.boot.business.name;
-    $('sBranch').textContent=S.boot.branch;
-    $('sRegion').textContent=(S.boot.region&&S.boot.region.label)||S.boot.business.region;
+  function paint(s){
+    if(!s)return;
+    document.getElementById('pending').textContent=s.pending||0;
+    var msg=document.getElementById('syncMsg');
+    var head=document.querySelector('.content h2');
+    if(!s.cloud_configured){
+      if(head)head.textContent='Running local-first (offline mode)';
+      msg.textContent='Cloud sync is not set up \u00b7 your data is saved on this device. Contact support to connect it.';
+    }else{
+      var e=s.engine||{};var st=(e.last_status||'IDLE');
+      if(head)head.textContent = st==='OK' ? 'All data synced' : (st==='SYNCING'?'Syncing…':(st==='ERROR'?'Sync problem':'Ready to sync'));
+      msg.textContent='Last sync: '+fmt(e.last_run_at)+' · '+(st==='ERROR'?('error: '+(e.last_error||'')):('status: '+st));
+    }
+    // per-table activity
+    if(s.tables && s.tables.length){
+      var box=document.querySelectorAll('.panel-body')[0];
+      if(box){
+        box.innerHTML=s.tables.filter(function(t){return t.synced>0||t.pending>0}).slice(0,12).map(function(t){
+          var tone=t.pending>0?'warn':'ok';var lbl=t.pending>0?(t.pending+' queued'):'synced';
+          return '<div class="q-item"><div class="q-ico">🧾</div><div style="flex:1"><b>'+t.table+'</b><small>'+(t.synced||0)+' uploaded · '+lbl+'</small></div><span class="tag '+tone+'">'+(t.pending>0?'Queued':'Done')+'</span></div>';
+        }).join('')||'<p style="color:var(--ink-2);font-size:13px">No sync activity yet.</p>';
+      }
+    }
   }
+  function refresh(){ if(!hasDB)return; try{var r=window.DBApi.req('sync-status');if(r&&r.ok)paint(r.status);}catch(e){} }
 
-  /* Package SIRF cloud par banta hai — us mein tenant ka sync token seal
-     hota hai, jo offline node ke paas pehle se hai hi. */
-  if(!isCloud){
-    $('btnDownload').disabled=true;
-    $('btnDownload').textContent='You are already on the offline version';
-    $('dlNote').textContent='Download online portal se hota hai. Yeh PC first se offline node hai.';
-  }else{
-    $('dlNote').textContent='The ZIP takes a few seconds to build. Only an Admin or Manager can download it.';
-  }
-
-  $('btnDownload').onclick=function(){
-    if(this.disabled)return;
-    this.textContent='Building the package…';
-    var b=this;
-    setTimeout(function(){ b.textContent='⤓ Download offline version'; },6000);
-    window.location.href='/api.php?action=offline-package';
+  document.getElementById('syncBtn').onclick=function(){
+    var b=this;b.disabled=true;b.textContent='Syncing…';
+    if(!hasDB){setTimeout(function(){b.disabled=false;b.textContent='Sync now';toast('Local-only mode');},500);return;}
+    setTimeout(function(){
+      var r=window.DBApi.req('sync-run');
+      b.disabled=false;b.textContent='Sync now';
+      if(r&&r.ok){
+        var pushed=(r.push&&r.push.rows)||r.pushed||0, pulled=(r.pull&&r.pull.rows)||r.pulled||0;
+        /* V62 — delete channel ki khabar bhi user ko milni is required:
+           agar cloud par kuch mit gaya hai to yahan nazar aata hai. */
+        var gone=r.deleted_rows||0;
+        toast(r.skipped?'Nothing to sync right now'
+              :('Sync complete - pushed '+pushed+', pulled '+pulled+(gone?(', removed '+gone):'')));
+      } else {
+        /* PEHLE YAHAN DO `else` THE — JS syntax error, is liye is page ka
+           POORA script kabhi chala hi nahi (button dead tha, status kabhi
+           refresh nahi hota tha). */
+        toast((r&&r.message)?r.message:'Sync failed');
+      }
+      refresh();
+    },50);
   };
+  refresh();
+  setInterval(refresh,15000);
 })();
 </script>
 </body>
 </html>
+
+<!-- build: V62 build 2026-08-26 -->
