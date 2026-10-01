@@ -15,6 +15,78 @@
    ============================================================ */
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 
+/* ============================================================
+   V141 — "Modules for this business" (features) ka safha.
+
+   Pehle yeh dialog `.fgrid` / `.fitem` istemal karta tha — aur un
+   dono ka CSS kahin likha hi nahi tha, na yahan na shared.css mein.
+   Nateeja: 39 checkbox ek nangi qatar mein, bila heading, bila
+   tarteeb. Customer ne theek isi par kaha ke "design acha nahi hai".
+
+   Ab dhancha wohi hai jo customer ke left menu ka hai: heading ka
+   card, us ke andar sub-items, heading ka apna switch aur "5 / 7"
+   ki ginti. `.modal-box label{display:block}` ko yahan jaan kar
+   override kiya gaya hai, warna har row toot kar do lines mein
+   girti hai.
+   ============================================================ */
+.mf-bar{margin:12px 0 10px;gap:6px}
+.mf-find{flex:1 1 180px;min-width:150px;padding:7px 11px;border:1px solid var(--line);
+  border-radius:9px;font:inherit;font-size:12.5px;background:var(--surface-2)}
+.mf-find:focus{outline:none;border-color:var(--brand-line);background:#fff}
+.mf-total{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+.mf-wrap{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto;
+  padding:2px;margin:0 -2px}
+.mf-grp{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.mf-grp.none{border-color:var(--line-strong);background:var(--surface-2)}
+
+.mf-head{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:pointer;
+  background:var(--surface-2);border-bottom:1px solid var(--line);user-select:none}
+.mf-grp.shut .mf-head{border-bottom-color:transparent}
+.mf-head b{font-family:var(--display);font-size:12.5px;letter-spacing:.02em;
+  text-transform:uppercase;color:var(--ink)}
+.mf-head:hover{background:var(--brand-soft)}
+.mf-count{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted);
+  background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+.mf-grp.none .mf-count{color:var(--danger);border-color:var(--danger-line);background:var(--danger-soft)}
+.mf-chev{border:0;background:none;cursor:pointer;color:var(--faint);font-size:11px;
+  padding:0;width:14px;line-height:1;transition:transform .15s}
+.mf-grp.shut .mf-chev{transform:rotate(-90deg)}
+.mf-lock{color:var(--ok);font-size:9px}
+
+.mf-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(222px,1fr));gap:2px;padding:6px}
+.mf-grp.shut .mf-rows{display:none}
+
+.modal-box .mf-item{display:flex;align-items:center;gap:9px;margin:0;padding:7px 9px;
+  border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink-2);
+  text-transform:none;letter-spacing:0}
+.modal-box .mf-item:hover{background:var(--surface-2)}
+.modal-box .mf-item.locked{cursor:default;opacity:.72}
+.modal-box .mf-item input{position:absolute;opacity:0;pointer-events:none}
+.mf-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Switch — tick se behtar, kyunke "on / off" ek nazar mein. */
+.mf-sw{flex:none;width:30px;height:17px;border-radius:20px;background:var(--line-strong);
+  position:relative;transition:background .15s}
+.mf-sw::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;
+  border-radius:50%;background:#fff;box-shadow:var(--sh-sm);transition:transform .15s}
+.mf-item input:checked ~ .mf-sw{background:var(--ok)}
+.mf-item input:checked ~ .mf-sw::after{transform:translateX(13px)}
+.mf-item input:disabled ~ .mf-sw{background:var(--ok-line)}
+.mf-item input:not(:checked) ~ .mf-name{color:var(--faint);text-decoration:line-through}
+
+.mf-tag{flex:none;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 6px;border-radius:5px;border:1px solid}
+.mf-tag.ok{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-line)}
+.mf-tag.warn{color:var(--warn);background:var(--warn-soft);border-color:var(--warn-line)}
+.mf-tag.bad{color:var(--danger);background:var(--danger-soft);border-color:var(--danger-line)}
+.mf-tag.dim{color:var(--faint);background:var(--surface-2);border-color:var(--line)}
+
+@media(max-width:620px){
+  .mf-rows{grid-template-columns:1fr}
+  .mf-total{margin-left:0;flex:1 0 100%}
+}
+
 /* Error Log ki filter patti */
 .err-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:12px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
@@ -1218,55 +1290,150 @@ async function bizFbr(id){
 }
 
 async function bizFeatures(id){
+  /* ============================================================
+     V141 — "Modules for this business" ka naya safha.
+
+     PEHLE KYA GHALAT THA:
+       - 39 checkbox ki ek lambi flat qatar, bila kisi heading ke. Woh
+         customer ke left menu (OPERATIONS / INVENTORY & MENU / ...) se
+         bilkul mail nahi khati thi, is liye yeh dekhna hi mushkil tha
+         ke kis heading ke neeche se kya hide ho raha hai.
+       - `.fgrid` aur `.fitem` ka CSS kahin likha hi nahi tha, is liye
+         checkbox nangi qatar mein girte the.
+       - Har business ko RESTAURANT ke modules dikhte the — supermarket
+         ko bhi KDS aur Recipe.
+
+     AB: server (`ModuleGroups`) wahi headings aur wahi tarteeb bhejta
+     hai jo us business ke sidebar mein hai. Har heading khulti/band
+     hoti hai, heading ka apna tick poore group ko on/off karta hai,
+     aur andar se koi bhi ek sub-item alag se hide kiya ja sakta hai.
+     ============================================================ */
   const r=await api('sa-features-get&tenant_id='+id);
   if(!r.ok){toast(r.message||'Failed');return}
-  const sel=r.selected;   // null = all allowed
-  /* V69 — har module ke saamne uski ASLI halat.
-     Left menu ka audit (docs/MODULE_STATUS.md) batata hai ke kai modules
-     abhi sirf khoobsurat screens hain — data `ui_records` mein para
-     rehta hai, POS/stock/reports se juda nahi. Customer ko aisa module
-     dena us ke etimad ke liye theek nahi.
-     Ab yahan har module par uska tag hai, aur ek click mein sirf wo
-     modules chunay ja sakte hain jo waqai kaam karte hain. */
-  const READY={dashboard:1,pos:1,tablet:1,menu:1,tables:1,customers:1,suppliers:1,
-               expenses:1,wastage:1,printers:1,users:1,settings:1,reports:1,offline:1,
-               kds:1,shift:1,orders:1,void:1,
-               /* V71 */ promotions:1,reservations:1,riders:1,staff:1,branches:1,
-               loyalty:1,transfer:1,count:1,accounting:1,online:1,whatsapp:1,delivery:1};
-  const PARTIAL={inventory:1,purchasing:1,recipe:1,customer_web:1};
-  const DEMO={customer_app:1};
-  function stTag(k){
-    if(READY[k])   return '<span class="tag green">working</span>';
-    if(PARTIAL[k]) return '<span class="tag amber">partial</span>';
-    if(DEMO[k])    return '<span class="tag red">demo data</span>';
-    return '<span class="tag">screen only</span>';
+  if(!r.groups){toast('Please refresh this page (Ctrl+Shift+R) — Super Admin is running an old copy.');return}
+
+  const sel=r.selected;            // null = sab allowed
+  const groups=r.groups||[];
+  const working=r.working||[];
+  const TAG={working:['ok','working'],partial:['warn','partial'],
+             demo:['bad','demo data'],screen:['dim','screen only']};
+
+  function grpHtml(g,gi){
+    const locked=g.items.every(function(it){return it.locked});
+    const rows=g.items.map(function(it){
+      const on=locked||(sel===null)||sel.indexOf(it.key)>=0;
+      const t=TAG[it.status]||TAG.screen;
+      return '<label class="mf-item'+(it.locked?' locked':'')+'" data-key="'+it.key+'">'
+        +'<input type="checkbox" value="'+it.key+'"'+(on?' checked':'')+(it.locked?' disabled':'')+'>'
+        +'<span class="mf-sw"></span>'
+        +'<span class="mf-name">'+esc(it.title)+'</span>'
+        +'<span class="mf-tag '+t[0]+'">'+t[1]+'</span></label>';
+    }).join('');
+    return '<section class="mf-grp'+(locked?' locked':'')+'" data-g="'+gi+'">'
+      +'<header class="mf-head">'
+      +'<button type="button" class="mf-chev" aria-label="Collapse">▾</button>'
+      +(locked
+          ? '<span class="mf-lock" title="This module can never be hidden">●</span>'
+          : '<input type="checkbox" class="mf-all" title="Turn this whole heading on or off">')
+      +'<b>'+esc(g.title)+'</b>'
+      +'<span class="mf-count"></span></header>'
+      +'<div class="mf-rows">'+rows+'</div></section>';
   }
+
   const ov=sModal('<h3>Modules for this business</h3>'
-    +'<p class="muted">Only the ticked modules appear in this customer\'s left menu. '
-    +'Tick nothing and everything is allowed.</p>'
-    +'<div class="row" style="margin:12px 0;gap:6px;flex-wrap:wrap">'
+    +'<p class="muted">'+esc(r.business||'')+' · '+esc(r.industry||'')
+    +' — only the modules switched on here appear in this customer’s left menu, '
+    +'under exactly these headings. Switch everything on and no limit is stored.</p>'
+    +'<div class="row mf-bar">'
+    +'<input class="mf-find" id="fFind" placeholder="Find a module…">'
     +'<button class="btn ghost sm" id="fReady">Working only</button>'
-    +'<button class="btn ghost sm" id="fAll">Select all</button>'
-    +'<button class="btn ghost sm" id="fNone">Clear all</button></div>'
-    +'<div class="fgrid" id="fList">'+(r.modules||[]).map(function(m){
-      const on=(sel===null)||sel.indexOf(m.module_key)>=0;
-      return '<label class="fitem"><input type="checkbox" value="'+m.module_key+'"'+(on?' checked':'')+'> '
-        +(m.title||m.module_key)+' '+stTag(m.module_key)+'</label>';
-    }).join('')+'</div>'
-    +'<div class="row" style="margin-top:16px"><button class="btn ghost" data-x>Cancel</button><button class="btn" id="fSave">Save Features</button></div>');
-  ov.querySelector('#fReady').onclick=function(){
-    ov.querySelectorAll('#fList input').forEach(function(c){ c.checked=!!READY[c.value] });
+    +'<button class="btn ghost sm" id="fAll">All on</button>'
+    +'<button class="btn ghost sm" id="fNone">All off</button>'
+    +'<button class="btn ghost sm" id="fFold">Collapse all</button>'
+    +'<span class="mf-total" id="fTotal"></span></div>'
+    +'<div class="mf-wrap" id="fList">'+groups.map(grpHtml).join('')+'</div>'
+    +'<div class="row end" style="margin-top:16px">'
+    +'<button class="btn ghost" data-x>Cancel</button>'
+    +'<button class="btn" id="fSave">Save Modules</button></div>', true);
+
+  const boxes=function(){return [].slice.call(ov.querySelectorAll('.mf-item input:not(:disabled)'))};
+
+  /* Heading ka tick aur har heading ka "5 / 7" ginti — hamesha asli
+     halat se, kabhi apni yaad se. */
+  function paint(){
+    let on=0,tot=0;
+    [].forEach.call(ov.querySelectorAll('.mf-grp'),function(g){
+      const cs=[].slice.call(g.querySelectorAll('.mf-item input:not(:disabled)'));
+      const n=cs.filter(function(c){return c.checked}).length;
+      const c=g.querySelector('.mf-count');
+      if(cs.length){ c.textContent=n+' / '+cs.length; on+=n; tot+=cs.length; }
+      else { c.textContent='always'; }
+      g.classList.toggle('none',cs.length>0&&n===0);
+      const all=g.querySelector('.mf-all');
+      if(all){ all.checked=n>0&&n===cs.length; all.indeterminate=n>0&&n<cs.length; }
+    });
+    ov.querySelector('#fTotal').textContent=on+' of '+tot+' switched on';
+  }
+
+  ov.querySelector('#fList').addEventListener('change',function(e){
+    const g=e.target.closest('.mf-grp'); if(!g)return;
+    if(e.target.classList.contains('mf-all')){
+      const v=e.target.checked;
+      g.querySelectorAll('.mf-item input:not(:disabled)').forEach(function(c){c.checked=v});
+    }
+    paint();
+  });
+
+  /* Heading par click = khulna/band hona. Checkbox par click isay na
+     chhere, warna group toggle karte hi band ho jata. */
+  ov.querySelector('#fList').addEventListener('click',function(e){
+    if(e.target.tagName==='INPUT')return;
+    const h=e.target.closest('.mf-head'); if(!h)return;
+    h.parentNode.classList.toggle('shut');
+  });
+
+  function setAll(fn){ boxes().forEach(function(c){c.checked=fn(c.value)}); paint(); }
+  ov.querySelector('#fReady').onclick=function(){setAll(function(k){return working.indexOf(k)>=0})};
+  ov.querySelector('#fAll').onclick  =function(){setAll(function(){return true})};
+  ov.querySelector('#fNone').onclick =function(){setAll(function(){return false})};
+  ov.querySelector('#fFold').onclick=function(){
+    const grps=[].slice.call(ov.querySelectorAll('.mf-grp'));
+    const shut=grps.filter(function(g){return g.classList.contains('shut')}).length<grps.length;
+    grps.forEach(function(g){g.classList.toggle('shut',shut)});
+    this.textContent=shut?'Expand all':'Collapse all';
   };
-  ov.querySelector('#fAll').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=true})};
-  ov.querySelector('#fNone').onclick=function(){ov.querySelectorAll('#fList input').forEach(function(c){c.checked=false})};
+
+  /* Talash — module dhoondne ke liye. Jo heading khali ho jaye wo chhup
+     jati hai, taake 39 rows mein se ek module foran mil jaye. */
+  ov.querySelector('#fFind').oninput=function(){
+    const q=this.value.trim().toLowerCase();
+    [].forEach.call(ov.querySelectorAll('.mf-grp'),function(g){
+      let hit=0;
+      [].forEach.call(g.querySelectorAll('.mf-item'),function(it){
+        const m=!q||it.querySelector('.mf-name').textContent.toLowerCase().indexOf(q)>=0
+                 ||it.getAttribute('data-key').indexOf(q)>=0;
+        it.style.display=m?'':'none'; if(m)hit++;
+      });
+      g.style.display=hit?'':'none';
+      if(q)g.classList.remove('shut');
+    });
+  };
+
   ov.querySelector('#fSave').onclick=async function(){
-    const f=[...ov.querySelectorAll('#fList input:checked')].map(function(c){return c.value});
+    const f=boxes().filter(function(c){return c.checked}).map(function(c){return c.value});
+    const tot=boxes().length;
+    /* Sab band kar dena = business ke paas kuch bhi na bache. Yeh aksar
+       ghalti hoti hai, is liye ek dafa poocho. */
+    if(!f.length&&!confirm('Nothing is switched on. This customer will see only the Dashboard. Save anyway?'))return;
     this.disabled=true;this.textContent='Saving…';
-    const rr=await api('sa-features-save',{tenant_id:id,features:f});
-    this.disabled=false;this.textContent='Save Features';
-    toast(rr.ok?(f.length+' modules enabled for this business'):(rr.message||'Could not save modules'));
-    if(rr.ok)ov.remove();
+    const rr=await api('sa-features-save',{tenant_id:id,features:(f.length===tot?[]:f)});
+    this.disabled=false;this.textContent='Save Modules';
+    if(!rr.ok){toast(rr.message||'Could not save modules');return}
+    toast(rr.all?'All modules allowed for this business':(rr.count+' modules enabled — the customer’s menu updates on their next page load'));
+    ov.remove();
   };
+
+  paint();
 }
 
 async function bizWa(id){

@@ -87,20 +87,11 @@ final class Auth {
         $u['modules'] = [];
         if (session_status() === PHP_SESSION_ACTIVE) @session_regenerate_id(true);
         $_SESSION['user'] = $u;
-        try {
-            if (!empty($u['is_tenant_admin'])) {
-                $u['modules'] = array_column($pdo->query(
-                    "SELECT module_key FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll(), 'module_key');
-            } else {
-                $q = $pdo->prepare(
-                    "SELECT DISTINCT pm.module_key FROM user_roles ur
-                       JOIN role_modules rm ON rm.role_id=ur.role_id AND rm.is_allowed=1
-                       JOIN platform_modules pm ON pm.id=rm.module_id
-                      WHERE ur.user_id=?");
-                $q->execute([$u['id']]);
-                $u['modules'] = array_column($q->fetchAll(), 'module_key');
-            }
-        } catch (\Throwable $e) {}
+        /* V141 — device pairing wala raasta bhi wahi ek gate se.
+           Pehle yahan admin ke liye `platform_modules` ki poori fehrist
+           thi — na industry ka farq, na features_json ka pehra. */
+        self::forgetModuleCache();
+        try { $u['modules'] = self::moduleKeys($u['id']); } catch (\Throwable $e) {}
         $_SESSION['user'] = $u;
         if (!empty($u['tenant_id'])) $_SESSION['login_tenant_id'] = $u['tenant_id'];
     }
@@ -144,26 +135,15 @@ final class Auth {
         }
         $_SESSION['user'] = $u;
 
-        if (!empty($u['is_tenant_admin'])) {
-            try {
-                $mq = $pdo->prepare(
-                    "SELECT module_key
-                       FROM platform_modules
-                      WHERE is_active=1
-                        AND industry_code IN (?, 'COMMON')
-                      ORDER BY sort_order, name"
-                );
-                $mq->execute([self::tenantIndustry()]);
-                $u['modules'] = array_column($mq->fetchAll(), 'module_key');
-            } catch (\Throwable $e) {
-                $u['modules'] = [];
-            }
-        } else {
-            try {
-                $u['modules'] = self::moduleKeys($u['id']);
-            } catch (\Throwable $e) {
-                $u['modules'] = [];
-            }
+        /* V141 — admin ke liye bhi wahi ek raasta (`moduleKeys`) jis par
+           features_json ka pehra hai. Pehle yahan apni alag inline query
+           thi jo features ko dekhti hi nahi thi; isi liye owner/admin ko
+           hamesha SAB modules dikhte the. */
+        self::forgetModuleCache();
+        try {
+            $u['modules'] = self::moduleKeys($u['id']);
+        } catch (\Throwable $e) {
+            $u['modules'] = [];
         }
 
         $_SESSION['user'] = $u;
@@ -193,6 +173,7 @@ final class Auth {
         $slug = (string)($_SESSION['login_tenant_slug'] ?? '');
         $_SESSION = [];
         self::forgetTenantContext();
+        self::forgetModuleCache();
         if (session_status() === PHP_SESSION_ACTIVE) {
             @session_regenerate_id(true);   // session id nayi, cookie zinda
         }
@@ -267,6 +248,10 @@ final class Auth {
     {
         unset($_SESSION['tenant_ctx'], $_SESSION['tenant_industry'], $_SESSION['region_profile']);
         self::$moduleIndustryMap = null;
+        /* Tenant badla to us ke features bhi doosre business ke hain —
+           purani cache saath le jana doosre business ka gate lagana hai. */
+        self::$featCache = false;
+        self::$modCache = null; self::$modCacheUser = null;
     }
 
     /** Tenant ka region profile (PK / UK / US) — currency aur tax isi se. */
@@ -274,6 +259,41 @@ final class Auth {
     {
         self::tenantIndustry();                 // wahi tenant-keyed cache bhar deta hai
         return (string)($_SESSION['tenant_ctx']['region'] ?? 'PK');
+    }
+
+    /* ============================================================
+       V141 — FEATURE GATE JAHAN SE LEFT MENU BANTA HAI.
+
+       MASLA JO ASAL CUSTOMER NE PAKRA:
+       Super Admin se ek property ke features un-tick kiye, Save bhi
+       hua (`tenants.features_json` mein list chali gayi), magar us
+       business ke left menu mein wahi modules jyun ke tyun nazar aate
+       rahe.
+
+       WAJAH: do raaste the aur sirf EK par pehra tha.
+         (1) `canModule()`  -> yeh features_json dekhta tha. Theek.
+         (2) `moduleKeys()` -> yeh NAHI dekhta tha. Aur sidebar
+             (`shell.js`) isi (2) ki list par chalta hai, kyunke
+             `current-user` wahi `modules` lauta ta hai.
+       Tenant admin ke liye haalat is se bhi khuli thi: upar wali
+       branch seedha `platform_modules` ki poori fehrist de deti thi,
+       is liye owner/admin ko hamesha SAB kuch dikhta tha.
+
+       Ab gate ek hi jagah hai: jo bhi list yahan se nikalti hai, woh
+       pehle business ke features se chhan kar jati hai. Is se sidebar,
+       `pos-boot` ka `can.modules`, aur Users & Access — teeno ek hi
+       sach dekhte hain.
+       ============================================================ */
+
+    /** User ki modules list, business ke features se chhani hui. */
+    private static function gateByFeatures(array $keys): array
+    {
+        $feat = self::tenantFeatures();
+        if ($feat === null) return $keys;            // null = sab allowed
+        $allow = \array_flip($feat);
+        $out = [];
+        foreach ($keys as $k) if (isset($allow[$k])) $out[] = $k;
+        return $out;
     }
 
     public static function moduleKeys(string $userId): array {
@@ -288,7 +308,7 @@ final class Auth {
                   ORDER BY sort_order, name"
             );
             $aq->execute([self::tenantIndustry()]);
-            return array_column($aq->fetchAll(), 'module_key');
+            return self::gateByFeatures(array_column($aq->fetchAll(), 'module_key'));
         }
 
         $pdo = DB::pdo();
@@ -315,21 +335,69 @@ final class Auth {
 
         $q = $pdo->prepare($sql);
         $q->execute([$userId, site_id(), $userId, site_id(), self::tenantIndustry()]);
-        return array_column($q->fetchAll(), 'module_key');
+        return self::gateByFeatures(array_column($q->fetchAll(), 'module_key'));
     }
+
+    /* ------------------------------------------------------------
+       V141 — modules list ab LIVE hai, session mein jami hui nahi.
+
+       Pehle yeh list sirf LOGIN ke waqt `$_SESSION['user']['modules']`
+       mein likhi jati thi. Us ka seedha nateeja yeh tha ke Super Admin
+       se features badalne ke baad bhi customer ko purani hi fehrist
+       dikhti rehti thi — jab tak woh logout/login na kare. Customer ne
+       theek yahi report kiya.
+
+       Ab har request mein ek dafa (memoized) dobara banti hai aur
+       session ki copy bhi taza kar di jati hai, taake wo purani jagahen
+       bhi jo `Auth::user()['modules']` parhti hain (pos-boot, my-modules,
+       current-user) khud ba khud sahi list dekhen.
+       ------------------------------------------------------------ */
+    private static ?array $modCache = null;
+    private static ?string $modCacheUser = null;
+
+    public static function forgetModuleCache(): void
+    {
+        self::$modCache = null; self::$modCacheUser = null;
+        self::$featCache = false;            // features bhi dobara parho
+    }
+
+    /** Jo list browser ko bheji jati hai (sidebar isi par chalta hai). */
+    public static function effectiveModules(): array
+    {
+        $u = self::user();
+        if (!$u) return [];
+        $uid = (string)($u['id'] ?? '');
+        if (self::$modCache !== null && self::$modCacheUser === $uid) return self::$modCache;
+
+        try {
+            $keys = self::moduleKeys($uid);
+        } catch (\Throwable $e) {
+            // Permission metadata ka masla login ya page ko na maare.
+            $keys = \is_array($u['modules'] ?? null) ? \array_values($u['modules']) : [];
+        }
+
+        self::$modCache = $keys; self::$modCacheUser = $uid;
+        if (isset($_SESSION['user'])) $_SESSION['user']['modules'] = $keys;
+        return $keys;
+    }
+
+    /* V141 — yeh cache pehle method ke andar `static` thi, is liye bahar
+       se saaf hi nahi ho sakti thi. Jab ek hi process mein features badlen
+       (Super Admin ka save, ya login ke foran baad) to purani halat chipki
+       reh jati thi. Ab class par hai aur `forgetModuleCache()` se girti hai. */
+    private static $featCache = false;      // false = abhi parhi nahi
 
     /** Business ko super-admin se assign kiye gaye features (null = sab allowed). */
     public static function tenantFeatures(): ?array {
-        static $cache = false;
-        if ($cache !== false) return $cache;
-        $cache = null;
+        if (self::$featCache !== false) return self::$featCache;
+        self::$featCache = null;
         try {
             $q = DB::pdo()->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
             $q->execute([tenant_id()]);
             $j = $q->fetchColumn();
-            if ($j) { $a = json_decode((string)$j, true); if (is_array($a) && $a) $cache = $a; }
+            if ($j) { $a = json_decode((string)$j, true); if (is_array($a) && $a) self::$featCache = $a; }
         } catch (\Throwable $e) {}
-        return $cache;
+        return self::$featCache;
     }
 
     /** module_key -> industry_code (ek dafa load, phir cache). */
@@ -364,7 +432,8 @@ final class Auth {
         if ($feat !== null && !in_array($key, $feat, true)) return false;
         // 2) User-level permission
         if (self::isAdmin()) return true;
-        return in_array($key, self::user()['modules'] ?? [], true);
+        // V141 — session ki jami hui copy nahi, taza list.
+        return in_array($key, self::effectiveModules(), true);
     }
 
     /** Cashier = tenant admin nahi. Price change jaise kaam sirf admin/manager. */

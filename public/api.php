@@ -316,7 +316,7 @@ case 'current-user':
         'name'=>$u['full_name'],
         'email'=>$u['email'],
         'role'=>$role,
-        'modules'=>$u['modules']??[],
+        'modules'=>Auth::effectiveModules(),   // V141 — live list (features gate)
         'isAdmin'=>(bool)($u['is_tenant_admin']??false)
     ]]);
 
@@ -354,7 +354,7 @@ case 'login':
         'id'=>$u['id'],
         'name'=>$u['full_name'],
         'email'=>$u['email'],
-        'modules'=>$u['modules']??[],
+        'modules'=>Auth::effectiveModules(),   // V141 — live list (features gate)
         'isAdmin'=>(bool)($u['is_tenant_admin']??false)
     ]]);
 
@@ -660,7 +660,7 @@ case 'pos-start':needLogin();Auth::requireModule('pos');
  $out['boot']['can']=['manage'=>Auth::isManager(),
                       'reports'=>Auth::canModule('reports'),
                       'offline_download'=>(cfg('app.role')==='cloud'),
-                      'modules'=>(Auth::user()['modules']??[])];
+                      'modules'=>Auth::effectiveModules()];
  $out['boot']['cashier']=['name'=>$bu['full_name']??'Cashier',
                           'role'=>Auth::isManager()?(!empty($bu['is_tenant_admin'])?'Admin':'Manager'):'Cashier'];
  try{
@@ -1785,13 +1785,13 @@ case 'device-list':needLogin();if(!Auth::isManager())fail('Admins and Managers o
 case 'device-revoke':needLogin();if(!Auth::isManager())fail('Admins and Managers only',403);
  $d=body();DB::pdo()->prepare("UPDATE paired_devices SET status='REVOKED' WHERE id=? AND site_id=?")->execute([(string)($d['id']??''),site_id()]);ok();
 
-case 'my-modules':needLogin();$u=Auth::user();ok(['modules'=>($u['modules']??[]),'admin'=>!empty($u['is_tenant_admin']),'manager'=>Auth::isManager(),'name'=>$u['full_name']??'']);
+case 'my-modules':needLogin();$u=Auth::user();ok(['modules'=>Auth::effectiveModules(),'admin'=>!empty($u['is_tenant_admin']),'manager'=>Auth::isManager(),'name'=>$u['full_name']??'']);
 case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];$sg=$p2=DB::pdo()->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$sg->execute([tenant_id(),site_id()]);$sj=$sg->fetchColumn();$sd=$sj?(json_decode($sj,true)?:[]):[];$bb['settings']=['tax_cash'=>isset($sd['tax_cash'])?(float)$sd['tax_cash']:16.0,'tax_card'=>isset($sd['tax_card'])?(float)$sd['tax_card']:8.0,'service_charge'=>isset($sd['service_charge'])?(float)$sd['service_charge']:0.0,/* POS ka SET isi payload se banta hai — `settings-get` se nahi.    Yehi wajah thi ke Settings mein EXCLUSIVE chunne ka POS par koi    asar nahi hota tha: mode wahan pohanchta hi nahi tha. */'tax_mode'=>\Aio\Services\TaxMode::current()];
 /* POS ko FBR ki halat bhi chahiye — warna QR khamoshi se gayab rehta hai
    aur cashier ko wajah ka pata hi nahi chalta. */
 $bb['fiscal']=['enabled'=>FiscalService::availableHere(),'tenant_on'=>FiscalService::enabledForTenant(),'provider'=>(string)(FiscalService::settings()['provider']??'NONE')];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
 $bb['brand']=['name'=>($br['display_name']?:($br['name']??'Restaurant')),'logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'','accent'=>$br['brand_accent']??''];
-$bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports'),'offline_download'=>(cfg('app.role')==='cloud'),'modules'=>(Auth::user()['modules']??[])];
+$bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports'),'offline_download'=>(cfg('app.role')==='cloud'),'modules'=>Auth::effectiveModules()];
 $bb['cashier']=['name'=>$bu['full_name']??'Cashier','role'=>Auth::isManager()?(!empty($bu['is_tenant_admin'])?'Admin':'Manager'):'Cashier'];ok(['boot'=>$bb]);
 case 'shift-current':needLogin();
  /* Har cashier ki apni shift: sirf isi user ki open shift return hoti hai. */
@@ -2603,8 +2603,60 @@ case 'sa-fbr-status':needSuper();
  $f=$fj?(json_decode((string)$fj,true)?:null):null;
  ok(['enabled'=>($f===null)?true:in_array('fbr',$f,true),'unrestricted'=>($f===null)]);
 
-case 'sa-features-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT features_json FROM tenants WHERE id=?");$q->execute([$tid]);$j=$q->fetchColumn();$sel=$j?(json_decode((string)$j,true)?:[]):null;$all=$p->query("SELECT module_key,name title FROM platform_modules WHERE is_active=1 ORDER BY sort_order,name")->fetchAll();ok(['modules'=>$all,'selected'=>$sel]);
-case 'sa-features-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$f=is_array($d['features']??null)?array_values(array_unique(array_map('strval',$d['features']))):[];DB::pdo()->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")->execute([$f?json_encode($f):null,$tid]);ok(['count'=>count($f)]);
+case 'sa-features-get':
+ /* ============================================================
+    V141 — features ab GROUPS ki shakal mein jate hain.
+
+    Pehle yahan se `platform_modules` ki poori 39-row fehrist jati thi,
+    bila industry ka farq. Do kharabiyan is se nikalti thin:
+      - Supermarket ke features safhe par KDS / Tables / Recipe jaise
+        restaurant ke modules nazar aate the (jo us business mein chal
+        hi nahi sakte).
+      - Fehrist bey-tarteeb thi: customer ke left menu ki headings
+        (OPERATIONS, INVENTORY & MENU...) se koi rishta nahi tha, is
+        liye "kis heading ke neeche se kya hide hua" dekhna mushkil.
+
+    Ab tenant ka industry dekh kar `ModuleGroups` wahi tarteeb aur wahi
+    headings lauta ta hai jo us business ke sidebar mein hain.
+    ============================================================ */
+ needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ $p=DB::pdo();$q=$p->prepare("SELECT features_json,industry_code,COALESCE(display_name,name) nm FROM tenants WHERE id=? LIMIT 1");$q->execute([$tid]);
+ $row=$q->fetch();if(!$row)fail('Business not found');
+ $sel=$row['features_json']?(json_decode((string)$row['features_json'],true)?:[]):null;
+ $ind=strtoupper((string)($row['industry_code']?:'RESTAURANT'));
+ $groups=\Aio\Services\ModuleGroups::forIndustry($ind);
+ /* Purani saved list mein doosri industry ki keys reh sakti hain (jab
+    yeh safha sab modules dikhata tha). Woh nuqsan nahi karti — gate
+    pehle industry par lagta hai — magar count sahi dikhane ke liye
+    sirf wahi keys ginte hain jo is industry mein waqai maujood hain. */
+ $valid=\Aio\Services\ModuleGroups::keysFor($ind);
+ ok(['groups'=>$groups,'selected'=>$sel,'industry'=>$ind,'business'=>(string)$row['nm'],
+     'always_on'=>\Aio\Services\ModuleGroups::ALWAYS_ON,
+     'working'=>\Aio\Services\ModuleGroups::workingKeys($ind),
+     'valid'=>$valid,
+     /* Purana client (cached super_admin.html) `modules` parhta hai —
+        us ko bhi flat list mil jaye, warna wo khali safha dikhayega. */
+     'modules'=>array_map(function($k)use($ind){return ['module_key'=>$k,'title'=>$k];},$valid)]);
+
+case 'sa-features-save':
+ needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ $q=DB::pdo()->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");$q->execute([$tid]);
+ $ind=strtoupper((string)($q->fetchColumn()?:'RESTAURANT'));
+ $f=is_array($d['features']??null)?array_values(array_unique(array_map('strval',$d['features']))):[];
+ /* Sirf is industry ki asli keys mehfooz hon — client se aayi koi
+    ajnabi key chup chaap store na ho jaye. */
+ $valid=\Aio\Services\ModuleGroups::keysFor($ind);
+ $f=array_values(array_intersect($f,$valid));
+ /* Dashboard hamesha shamil — warna customer login ke baad kisi safhe
+    par nahi utarta aur sidebar ka ghar ka link toot jata hai. */
+ if($f)foreach(\Aio\Services\ModuleGroups::ALWAYS_ON as $k)if(!in_array($k,$f,true))$f[]=$k;
+ DB::pdo()->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")->execute([$f?json_encode($f):null,$tid]);
+ /* Offline node ko kuch bhejna nahi parta: har sync run ke handshake
+    (`sync-schema`) mein `features` aati hain aur `Sync::pullFeatures()`
+    wahan `tenants.features_json` likh deta hai. Yani agli sync par node
+    ka left menu bhi khud ba khud theek ho jata hai. */
+ ok(['count'=>count($f),'all'=>!$f]);
+
 case 'sa-wa-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$q=DB::pdo()->prepare("SELECT wa_api_url,wa_api_key,wa_events_json FROM tenants WHERE id=?");$q->execute([$tid]);$r=$q->fetch()?:[];ok(['wa'=>['url'=>$r['wa_api_url']??'','key'=>$r['wa_api_key']??'','events'=>$r['wa_events_json']?(json_decode((string)$r['wa_events_json'],true)?:[]):[]]]);
 case 'sa-wa-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$ev=is_array($d['events']??null)?array_values(array_map('strval',$d['events'])):[];DB::pdo()->prepare("UPDATE tenants SET wa_api_url=?,wa_api_key=?,wa_events_json=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['url']??''))?:null,trim((string)($d['key']??''))?:null,json_encode($ev),$tid]);ok(['events'=>count($ev)]);
 case 'sa-wa-test':needSuper();$d=body();$url=rtrim(trim((string)($d['url']??'')),'/');$key=trim((string)($d['key']??''));if($url===''||$key==='')fail('URL and API key required');$ctx=stream_context_create(['http'=>['method'=>'GET','timeout'=>8,'header'=>"x-api-key: $key\r\nContent-Type: application/json\r\n",'ignore_errors'=>true]]);$raw=@file_get_contents($url.'/api/status',false,$ctx);if($raw===false)fail('Could not connect - please check the URL');ok(['status'=>json_decode($raw,true)?:$raw]);
@@ -2982,7 +3034,7 @@ case 'retail-boot':
     'region'=>RegionProfile::forClient((string)$t['region_profile']),
     'user'=>['id'=>Auth::user()['id']??'','name'=>Auth::user()['full_name']??'',
              'is_admin'=>(bool)(Auth::user()['is_tenant_admin']??false),
-             'modules'=>Auth::user()['modules']??[]],
+             'modules'=>Auth::effectiveModules()],
     'counters'=>RetailCatalog::listOf('counters'),
   ]);
 

@@ -174,13 +174,13 @@ final class AdminConsole
             ['t' => 'k',  'v' => 'resync <slug> [transactions|all] --confirm "<name>"'],
             ['t' => 'd',  'v' => '   brings the branch computer in line with the cloud (cloud data stays safe)'],
             ['t' => 'k',  'v' => 'tombstones [slug]   — pending delete signals'],
-            ['t' => 'k',  'v' => 'permissions <slug>  — modules per user and where they come from'],
+            ['t' => 'k',  'v' => 'permissions <slug>  — the business feature gate, then modules per user'],
             ['t' => 'k',  'v' => 'clear · version · help'],
             ['t' => 'i',  'v' => ''],
             ['t' => 'd',  'v' => 'purge groups: transactions|orders|shifts|stock|qr|expenses|logs|sync|all-logs'],
             ['t' => 'd',  'v' => 'a backup within the last hour is required before reset/purge (except logs/sync).'],
             ['t' => 'd',  'v' => '--confirm needs the business FULL NAME, not the slug. Do not type the < > brackets.'],
-            ['t' => 'd',  'v' => 'Poori tafseel: docs/CONSOLE_COMMANDS.md'],
+            ['t' => 'd',  'v' => 'Full details: docs/CONSOLE_COMMANDS.md'],
             ['t' => 'k',  'v' => 'selftest [slug]                   run this if any command fails'],
             ['t' => 'd',  'v' => 'Tip: Up/Down arrows walk through earlier commands.'],
         ]);
@@ -693,6 +693,39 @@ final class AdminConsole
         $lines[] = ['t' => 'd', 'v' => 'The node must match. If it differs, permissions have no effect.'];
         $lines[] = ['t' => 'i', 'v' => ''];
 
+        /* ============================================================
+           V141 — BUSINESS-LEVEL FEATURE GATE, right here.
+
+           This is the gate that is applied BEFORE any user permission,
+           and it applies to the owner/admin too. When someone asks "I
+           gave this user the module but they still cannot see it", or
+           the opposite, this is the first line to read — previously it
+           was invisible from the console and had to be guessed.
+           ============================================================ */
+        $ind = \strtoupper((string)($t['industry_code'] ?? 'RESTAURANT'));
+        $featJson = null;
+        try {
+            $fq = $p->prepare("SELECT features_json FROM tenants WHERE id=? LIMIT 1");
+            $fq->execute([$t['id']]);
+            $featJson = $fq->fetchColumn();
+        } catch (\Throwable $e) {}
+        $feat = $featJson ? (\json_decode((string)$featJson, true) ?: null) : null;
+        $all  = \Aio\Services\ModuleGroups::keysFor($ind);
+
+        $lines[] = ['t' => 'k', 'v' => 'Industry: ' . $ind];
+        if ($feat === null) {
+            $lines[] = ['t' => 'g', 'v' => 'Feature gate: OPEN — all ' . \count($all) . ' modules allowed for this business'];
+        } else {
+            $on  = \array_values(\array_intersect($all, $feat));
+            $off = \array_values(\array_diff($all, $feat));
+            $lines[] = ['t' => 'k', 'v' => 'Feature gate: ' . \count($on) . ' of ' . \count($all) . ' modules allowed'];
+            $lines[] = ['t' => 'e', 'v' => 'HIDDEN for everyone (including the owner): '
+                        . ($off ? \implode(', ', $off) : '(none)')];
+            $lines[] = ['t' => 'd', 'v' => 'Change this in Super Admin -> the business -> Features.'];
+            $lines[] = ['t' => 'd', 'v' => 'A module listed above cannot be reached even by direct URL.'];
+        }
+        $lines[] = ['t' => 'i', 'v' => ''];
+
         $q = $p->prepare(
             "SELECT u.id, u.full_name, u.email, u.is_tenant_admin,
                     COALESCE(r.name,'-') role_name,
@@ -727,7 +760,7 @@ final class AdminConsole
         }
         if ($blank > 0) {
             $lines[] = ['t' => 'i', 'v' => ''];
-            $lines[] = ['t' => 'e', 'v' => $blank . ' user ke paas ek bhi module nahi hai.'];
+            $lines[] = ['t' => 'e', 'v' => $blank . ' user(s) have no module at all.'];
             $lines[] = ['t' => 'd', 'v' => 'If these users appear with modules on the node, then both sides'];
             $lines[] = ['t' => 'd', 'v' => '`php scripts/migrate_module_ids.php` then run Sync now on the node.'];
         }

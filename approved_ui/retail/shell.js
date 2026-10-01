@@ -79,8 +79,24 @@
   var badges = {};
   try { badges = JSON.parse((script && script.getAttribute('data-badges')) || '{}'); } catch (e) { }
 
+  /* ============================================================
+     V141 — RETAIL SIDEBAR PAR PEHRA (pehle bilkul NAHI tha).
+
+     Yahan ek hard-coded demo user para tha — `user.modules` kabhi
+     set hi nahi hota tha, is liye `allowed` hamesha `null` rehta
+     aur SAB modules dikhte. Super Admin se features hide karne ka
+     supermarket ke left menu par zero asar tha.
+
+     Ab wohi list jo server ne bheji (`window.APP_MODULES`, router
+     inject karta hai) — user ki permissions AUR business ke features
+     dono chhan kar. Naam/role bhi asli user ka, demo ka nahi.
+     ============================================================ */
   var user = { name: 'Ali Raza', role: 'Store Manager', email: 'ali@retailos.local' };
-  var allowed = user.modules || null;   // null = demo mein all dikhao
+  if (window.APP_USER && window.APP_USER.name) user = window.APP_USER;
+
+  var allowed = null;                   // null = demo mein all dikhao
+  if (Object.prototype.toString.call(window.APP_MODULES) === '[object Array]') allowed = window.APP_MODULES;
+  else if (user.modules && user.modules.length) allowed = user.modules;
 
   function initials(n) { return (n || 'U').split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase(); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

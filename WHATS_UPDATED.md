@@ -1,3 +1,123 @@
+# WHATS UPDATED — V141 (Super Admin feature hiding now actually works)
+
+## 1. Modules hidden from Super Admin are now really hidden
+
+Reported: "I hid the features of one property from Super Admin, it saved, but
+those features still show in that property."
+
+There were two separate causes, both fixed.
+
+**(a) Two code paths, only ONE of them guarded.**
+`Auth::canModule()` did check `tenants.features_json`, but `Auth::moduleKeys()`
+— the list the LEFT MENU is built from — did not. For a tenant admin it was
+even more open: at login a separate inline query wrote the complete
+`platform_modules` list straight into the session. So an owner/admin always saw
+everything, no matter what the features said. Every path now goes through one
+gate (`gateByFeatures()`).
+
+**(b) The list was frozen at login.**
+`$_SESSION['user']['modules']` was written only when the user logged in. So
+after changing features in Super Admin the customer kept seeing the old list
+until they logged out and back in. `Auth::effectiveModules()` now rebuilds it
+once per request (memoized) and refreshes the session copy too, so the menu is
+correct on the customer's very next page load — no logout needed.
+
+Also fixed: the `tenantFeatures()` cache was a method-local `static`, so nothing
+could clear it. It is now a class property and is dropped when the tenant
+changes.
+
+## 2. The retail (supermarket) sidebar was never gated at all
+
+`approved_ui/retail/shell.js` contained a **hard-coded demo user**
+(`Ali Raza / Store Manager`) and `user.modules` was never set. Hiding features
+therefore had **zero** effect on a supermarket's left menu — all 39 modules
+always showed. It now uses the same server-side list, and the name at the
+bottom of the sidebar is the real signed-in user instead of the demo name.
+
+## 3. One source of truth: `window.APP_MODULES`
+
+The router now sends the exact list that `Auth::canModule()` honours along with
+every page (`window.APP_MODULES`), plus `APP_INDUSTRY` and `APP_USER`. Both
+verticals' sidebars read it — one truth, two verticals.
+
+**Speed gain:** the restaurant sidebar previously called
+`RestaurantAccess.current()` on every page, which is a **synchronous** XHR that
+blocks rendering — just to print a name at the bottom. That is now only a
+fallback, so every screen makes one less blocking request.
+
+## 4. The FBR / Digital Invoice menu item that was never listed
+
+The `fbr` module has been in the catalog since day one and
+`approved_ui/fbr.html` exists — it even declares `data-active="fbr"` itself —
+but it was never added to the sidebar GROUPS list. As a result that screen could
+not be opened from any menu, and its tick in Super Admin changed nothing. It now
+sits under Finance & Reports (and the Super Admin FBR toggle drives the same
+key).
+
+## 5. "Modules for this business" — redesigned
+
+Before: one long flat column of 39 checkboxes with no headings — and the
+`.fgrid` / `.fitem` CSS **was never written anywhere**, so the checkboxes fell
+into a bare list. On top of that every business was shown the RESTAURANT
+modules, so a supermarket was offered KDS and Recipe.
+
+Now:
+
+- The same headings as that business's left menu — restaurant gets
+  OPERATIONS / INVENTORY & MENU / CUSTOMERS & DELIVERY / FINANCE & REPORTS /
+  SYSTEM; retail gets SALE COUNTER / CATALOG & PRICING / STOCK & PURCHASING /
+  CUSTOMERS & MARKETING / FINANCE & REPORTS / SYSTEM.
+- Every heading has its own switch: turn a whole heading on or off in one click.
+- Click a heading to collapse or expand it; there is a "Collapse all" too.
+- Each heading shows a live "5 / 7" count, and a heading turned fully off is
+  marked in red.
+- Any single sub-item under any heading can be hidden on its own.
+- A search box, so one module is found instantly among 39 rows.
+- Dashboard sits in an "Always on" row and is locked — otherwise a customer
+  lands nowhere after signing in.
+- Switch everything on and save = no limit is stored (`features_json` = NULL).
+- Saving keeps only module keys that really exist for that industry.
+
+## 6. The three lists now check themselves
+
+The left menu (`shell.js`, two copies), the module catalog
+(`seed_industry_modules.php`) and the Super Admin screen (`ModuleGroups.php`)
+must all agree. If they drift, hiding stops working. New script:
+
+    php scripts/check_module_groups.php
+
+It parses both `shell.js` files and compares them with the PHP layout (heading
+names, heading order, and the keys inside each heading) and with the catalog. It
+also runs at boot (`docker-entrypoint.sh`), so drift can no longer pass
+unnoticed.
+
+## 7. What was tested for this update
+
+Against a real MariaDB, the real schema (93 tables) and two real businesses
+created through the normal provisioning path (one RESTAURANT, one RETAIL), with
+pages executed as the real server serves them:
+
+- **79 menu pages** (restaurant 40 + retail 39) — **all HTTP 200, zero JS
+  errors**, with real data, scripts actually executed.
+- Hiding a whole heading: those items disappear from the menu (40 to 7, 39 to 5).
+- Hiding **one** sub-item: only that one disappears, and its direct URL is
+  blocked too (302 redirect) — hiding the link is not enough, the door is shut
+  as well.
+- For a cashier (non-admin) both guards apply together: feature off = blocked,
+  and feature on but no user permission = still blocked.
+- The new Super Admin dialog was executed in jsdom: headings, group switch,
+  collapse, search, "Working only", "All on" and the save payload — all correct,
+  zero JS errors.
+
+## 8. Cache
+
+Cache-bust for `shell.js`, `module.js`, `module_config.js` and
+`access_store.js` moves `v15` to **`v16`**, and retail assets move `r1` to
+**`r2`**. This bump matters — without it the browser keeps running the old
+sidebar.
+
+---
+
 # WHATS UPDATED — V15 (DB-First Restaurant Core)
 
 ## Sab se bara change: data direction palat gayi

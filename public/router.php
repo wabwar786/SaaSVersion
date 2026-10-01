@@ -187,7 +187,7 @@ if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r1"', $html);
+                     '$1="/retail/$2?b=r2"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -204,8 +204,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"'],
- ['href="/shared.css?b=v15"','src="/shared_store.js?b=v15"','src="/live_store.js?b=v15"','src="/access_store.js?b=v15"',
-  'src="/shell.js?b=v15"','src="/module.js?b=v15"','src="/module_config.js?b=v15"'],
+ ['href="/shared.css?b=v16"','src="/shared_store.js?b=v16"','src="/live_store.js?b=v16"','src="/access_store.js?b=v16"',
+  'src="/shell.js?b=v16"','src="/module.js?b=v16"','src="/module_config.js?b=v16"'],
  $html
 );
 }
@@ -242,7 +242,30 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script>window.APP_CSRF='.json_encode(Csrf::token()).';window.APP_BRAND='.json_encode($brand).';window.APP_ROLE='.json_encode((string)($GLOBALS['config']['app']['role']??'local'))
      /* Business ka slug — customer app ka link isi se banta hai, taake
         har dukan ka apna QR aur apna raasta ho. */
-     .';window.APP_TENANT_SLUG='.json_encode((string)($tenantSlug ?? '')).';</script>'
+     .';window.APP_TENANT_SLUG='.json_encode((string)($tenantSlug ?? ''))
+     /* ============================================================
+        V141 — LEFT MENU KA SACH SERVER SE.
+
+        Sidebar (`shell.js`) pehle `current-user` ki `modules` par chalta
+        tha, aur retail ka sidebar to kisi par bhi nahi — us mein ek
+        hard-coded demo user tha, is liye wahan koi pehra hi na tha.
+        Nateeja: Super Admin se hide kiye gaye modules phir bhi nazar
+        aate the.
+
+        Ab wohi list jo `Auth::canModule()` maanta hai, yahin page ke
+        saath chali jati hai. Ek source, dono verticals, aur ek extra
+        round trip bhi nahi. `null` ka matlab "koi pehra nahi" (login se
+        pehle ke safhe). */
+     .';window.APP_MODULES='.json_encode(Auth::user() ? Auth::effectiveModules() : null)
+     .';window.APP_INDUSTRY='.json_encode(Auth::user() ? Auth::tenantIndustry() : '')
+     /* Sidebar ke neeche asli naam — retail ki screens par wahan ab tak
+        "Ali Raza / Store Manager" (demo) likha aata tha. */
+     .';window.APP_USER='.json_encode(Auth::user()
+            ? ['name'=>(string)(Auth::user()['full_name'] ?? 'User'),
+               'role'=>(Auth::isAdmin() ? 'Owner / Admin' : (Auth::isManager() ? 'Manager' : 'User')),
+               'admin'=>Auth::isAdmin()]
+            : null)
+     .';</script>'
      .'<script src="/db_api.js?b=v14"></script>'
      /* V62 — delete confirm har page par available hona is required (POS samet),
         warna har screen apna alag adhoora delete likhti hai. */

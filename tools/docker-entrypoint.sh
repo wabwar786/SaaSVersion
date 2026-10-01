@@ -73,6 +73,10 @@ php scripts/demo_reset.php || echo "[boot] demo reset skipped"
 php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
 php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
 php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
+# V141 — left menu, module catalog aur Super Admin ka features safha: teeno
+# ki fehrist ek honi chahiye. Farq aa jaye to Super Admin se hide karna kaam
+# nahi karta. Yeh check boot ko rokti nahi, sirf log mein awaaz deti hai.
+php scripts/check_module_groups.php || echo "[boot] !! module groups drifted — see lines above"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 # --- Platform (super admin) login: bina shell ke reset karne ka rasta ---

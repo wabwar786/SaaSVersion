@@ -45,7 +45,14 @@
       ['closing','Shift Closing History','closing_history.html','\u25F7'],
       ['reports','Reports','reports.html','▥'],
       ['activity','User Activity Log','activity_log.html','\u2637'],
-         ]},
+      /* V141 \u2014 `fbr` module catalog mein pehle din se tha aur
+         `fbr.html` bhi maujood hai (woh khud `data-active="fbr"`
+         likhta hai), magar sidebar ki list mein kabhi daala nahi gaya.
+         Nateeja: FBR / Digital Invoice ki screen kisi menu se khulti
+         hi nahi thi, aur Super Admin mein us ka tick kisi cheez par
+         asar nahi karta tha. */
+      ['fbr','FBR / Digital Invoice','fbr.html','\u2713']
+    ]},
     {title:'System',items:[
       ['printers','Printers / Devices','printer_devices.html','⎙'],
       ['branches','Multi-Branch','multi_branch.html','⌗'],
@@ -61,11 +68,34 @@
   var active=(script&&script.getAttribute('data-active'))||'';
   var badges={}; try{badges=JSON.parse((script&&script.getAttribute('data-badges'))||'{}')}catch(e){}
 
-  // Current user (falls back to a demo user if the access store isn't present)
+  /* Current user. `window.APP_USER` router page ke saath bhejta hai, is
+     liye pehle wohi.
+
+     SPEED: `RestaurantAccess.current()` ek SYNCHRONOUS XHR hai
+     (`current-user`). Woh HAR safhe par chalti thi aur page ka render
+     rokti thi — sirf sidebar ke neeche naam likhne ke liye. Ab woh sirf
+     fallback hai (demo / file:// par), yani har screen se ek blocking
+     request kam. */
   var user=null;
-  try{ if(window.RestaurantAccess) user=RestaurantAccess.current(); }catch(e){}
+  if(window.APP_USER&&window.APP_USER.name) user=window.APP_USER;
+  if(!user){ try{ if(window.RestaurantAccess) user=RestaurantAccess.current(); }catch(e){} }
   if(!user) user={name:'Ali Raza',role:'Demo User',email:'ali@urbanspoon.local'};
-  var allowed=user.modules||null; // null = show everything (demo)
+
+  /* ============================================================
+     V141 — kaun se modules dikhein, iska faisla SERVER ka hai.
+
+     `window.APP_MODULES` router inject karta hai aur wo bilkul wahi
+     list hai jisey `Auth::canModule()` maanta hai — yani user ki
+     permissions AUR business ke features (Super Admin ka faisla),
+     dono chhan kar. Pehle yahan sirf `user.modules` tha, jis par
+     features ka pehra nahi tha, is liye Super Admin se hide kiya
+     hua module bhi menu mein nazar aata raha.
+
+     Fallback purana raasta hai (demo / file:// par menu khula rahe). */
+  var allowed=null;
+  if(Object.prototype.toString.call(window.APP_MODULES)==='[object Array]') allowed=window.APP_MODULES;
+  else if(user.modules&&user.modules.length) allowed=user.modules;
+  // null = show everything (demo)
 
   function initials(n){return (n||'U').split(/\s+/).map(function(w){return w[0]}).slice(0,2).join('').toUpperCase();}
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
