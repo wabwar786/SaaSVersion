@@ -11,6 +11,23 @@ $ProgressPreference    = 'SilentlyContinue'   # hide noisy progress bars
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# ============================================================
+# V142 - Invoke-Native / Invoke-NativeScript.
+#
+# Every `& something.exe ... 2>&1` below used to be a trap: with
+# $ErrorActionPreference = 'Stop' above, ANY stderr line from the native
+# command became a TERMINATING error in Windows PowerShell 5.1, and the
+# script died on the capture line.
+#
+# That is exactly how setup failed on a customer PC: php.exe reported the
+# old VCRUNTIME140.dll, this script died at the capture, and the VCRUNTIME
+# repair plus the ASLR fallback written below it never ran at all. The
+# customer only saw PowerShell's RemoteException dump.
+#
+# native_helper.ps1 captures output as plain text and cannot throw.
+# ============================================================
+. (Join-Path $PSScriptRoot 'native_helper.ps1')
+
 function Line { Write-Host ("=" * 60) -ForegroundColor DarkGray }
 function Step($n, $m) { Write-Host "[$n/5] $m" -ForegroundColor Cyan }
 function Info($m) { Write-Host "      $m" -ForegroundColor Gray }
@@ -93,23 +110,34 @@ if ($fw -eq 'FAILED') {
 
 # ---------- 2) PHP runtime ----------
 Step 2 'Preparing PHP runtime...'
-$phpOut = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
+$phpOut = Invoke-NativeScript -ScriptPath "$root\tools\resolve_php.ps1"
 
 # V64.1 — VCRUNTIME ka masla yahan pakra jata hai.
 # Purani Visual C++ runtime wale PC par php.exe chalta hi nahi, aur pehle
 # yahan sirf PowerShell ka RemoteException ka dhair chhapta tha jis se
 # customer ko kuch samajh nahi aata tha. Ab: saaf wajah + khud theek karne
 # ki koshish + ek dobara koshish.
-$phpText = ($phpOut | Out-String)
+$phpText = $phpOut
 if ($phpText -match 'VCRUNTIME140|not compatible with this PHP build') {
   Bad 'This computer has an old Visual C++ runtime (PHP needs a newer one).'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\fix_vcruntime.ps1"
-  if ($LASTEXITCODE -ne 0) {
+  # Output stays on screen on purpose - fix_vcruntime.ps1 prints what the
+  # customer has to do. Only the throwing is suppressed, not the text.
+  $vcExit = 1
+  try {
+    $ErrorActionPreference = 'Continue'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\fix_vcruntime.ps1"
+    $vcExit = $LASTEXITCODE
+  } catch {
+    Bad ("Visual C++ repair could not run: " + $_.Exception.Message)
+    $vcExit = 1
+  } finally { $ErrorActionPreference = 'Stop' }
+
+  if ($vcExit -ne 0) {
     Bad 'Setup stopped. Please follow the instructions above.'
     exit 1
   }
-  $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
-  $phpText = ($phpOut | Out-String)
+  $phpOut  = Invoke-NativeScript -ScriptPath "$root\tools\resolve_php.ps1"
+  $phpText = $phpOut
 }
 
 # ---------------------------------------------------------------
@@ -130,8 +158,8 @@ if ($phpText -match 'Opcode handlers are unusable|due to ASLR') {
       $t = [regex]::Replace($t, '(?m)^(zend_extension=opcache|opcache\.[^\r\n]*)', ';$1')
       Set-Content -Path $_.FullName -Value $t -Encoding ASCII
     }
-  $phpOut  = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_php.ps1" 2>&1
-  $phpText = ($phpOut | Out-String)
+  $phpOut  = Invoke-NativeScript -ScriptPath "$root\tools\resolve_php.ps1"
+  $phpText = $phpOut
 }
 
 # V75 — kamyabi ka faisla NATIJE se, stderr ke shor se nahi.
@@ -142,13 +170,13 @@ $phpReady = $false
 $phpProbe = Get-ChildItem -Path (Join-Path $root 'runtime\php') -Filter 'php.exe' -Recurse -ErrorAction SilentlyContinue |
             Select-Object -First 1
 if ($phpProbe) {
-  $v = & $phpProbe.FullName -v 2>&1 | Out-String
+  $v = Invoke-Native -Exe $phpProbe.FullName -Arguments @('-v')
   if ($v -match 'PHP\s+8') { $phpReady = $true }
 }
 
 if (-not $phpReady) {
   Bad 'PHP runtime could not be prepared.'
-  $phpOut | Select-Object -Last 8 | ForEach-Object { Bad "$_" }
+  ($phpOut -split "`r?`n") | Where-Object { $_ -ne '' } | Select-Object -Last 8 | ForEach-Object { Bad "$_" }
   exit 1
 }
 Good 'PHP runtime ready.'
@@ -156,7 +184,7 @@ Good 'PHP runtime ready.'
 # Use ONLY the private PHP inside this package. Any PHP installed on the PC
 # (XAMPP / WAMP / Laragon / Workbench bundles) is deliberately ignored.
 $phpExe = $null
-foreach ($l in ($phpOut | ForEach-Object { "$_" })) {
+foreach ($l in ($phpOut -split "`r?`n")) {
   $t = "$l".Trim()
   if ($t.ToLower().EndsWith('php.exe') -and (Test-Path $t)) { $phpExe = $t }
 }
@@ -174,8 +202,16 @@ $phpIni = Join-Path (Split-Path $phpExe) 'php.ini'
 
 # ---------- 3) portable database ----------
 Step 3 'Preparing portable database...'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1"
-if ($LASTEXITCODE -ne 0) { Bad 'Portable database could not be prepared.'; exit 1 }
+$dbExit = 1
+try {
+  $ErrorActionPreference = 'Continue'
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1"
+  $dbExit = $LASTEXITCODE
+} catch {
+  Bad ("Database step could not run: " + $_.Exception.Message)
+  $dbExit = 1
+} finally { $ErrorActionPreference = 'Stop' }
+if ($dbExit -ne 0) { Bad 'Portable database could not be prepared.'; exit 1 }
 
 # ---------- 4) schema + business setup ----------
 Step 4 'Creating database schema and business setup...'
@@ -188,11 +224,11 @@ $scripts = @(
 $failed = 0
 foreach ($s in $scripts) {
   $code = "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); SealedApp::run('scripts/$s.php');"
-  $out = & "$phpExe" -c "$phpIni" -r $code 2>&1
-  if ($LASTEXITCODE -ne 0) {
+  $out = Invoke-Native -Exe $phpExe -Arguments @('-c', $phpIni, '-r', $code)
+  if ($global:NativeExitCode -ne 0) {
     $failed++
     Bad "Step failed: $s"
-    $out | Select-Object -First 3 | ForEach-Object { Bad "  $_" }
+    ($out -split "`r?`n") | Where-Object { $_ -ne '' } | Select-Object -First 3 | ForEach-Object { Bad "  $_" }
   }
 }
 if ($failed -gt 0) { Bad "$failed setup step(s) failed. Setup cannot continue."; exit 1 }

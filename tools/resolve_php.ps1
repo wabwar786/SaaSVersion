@@ -14,6 +14,13 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'download_helper.ps1')
 
+# V142 - see native_helper.ps1. Every `& php.exe ... 2>&1` in this file was
+# a terminating error waiting to happen: with 'Stop' set above, one stderr
+# line from php.exe killed this script in Windows PowerShell 5.1. That is
+# how the old VCRUNTIME140.dll took down the whole setup - this script died
+# first, then install_offline.ps1 died capturing it.
+. (Join-Path $PSScriptRoot 'native_helper.ps1')
+
 $PrivateRoot = Join-Path $Root 'runtime\php'
 $IniPath     = Join-Path $PrivateRoot 'php.ini'
 $VendorZip   = Join-Path $Root 'vendor\php.zip'
@@ -154,7 +161,7 @@ if ($IniPath -ne (Join-Path $phpDir 'php.ini')) {
 # opcache ke theek chalta hai, bas thora sust. Is liye yahan test karte
 # hain, aur nakami par opcache nikal kar aage barhte hain.
 function Test-Php($iniPath) {
-  $out = & $php -c "$iniPath" -r "echo 'PHP_OK';" 2>&1
+  $out = Invoke-Native -Exe $php -Arguments @('-c', "$iniPath", '-r', "echo 'PHP_OK';")
   return ("$out" -match 'PHP_OK')
 }
 
@@ -179,7 +186,7 @@ if (-not (Test-Php $IniPath)) {
 
 # ---------- 3) verify required extensions ----------
 $need = @('openssl','mbstring','pdo_mysql','zlib')
-$loaded = & $php -c "$IniPath" -r "echo implode(',', get_loaded_extensions());" 2>&1
+$loaded = Invoke-Native -Exe $php -Arguments @('-c', "$IniPath", '-r', "echo implode(',', get_loaded_extensions());")
 $missing = @()
 foreach ($n in $need) { if ("$loaded" -notmatch "(?i)\b$n\b") { $missing += $n } }
 if ($missing.Count -gt 0) {
@@ -188,7 +195,7 @@ if ($missing.Count -gt 0) {
   exit 1
 }
 
-$ver = & $php -c "$IniPath" -r "echo PHP_VERSION;" 2>&1
+$ver = (Invoke-Native -Exe $php -Arguments @('-c', "$IniPath", '-r', 'echo PHP_VERSION;')).Trim()
 Say "PHP $ver ready (private to this package)." 'Green'
 Write-Output $php
 exit 0

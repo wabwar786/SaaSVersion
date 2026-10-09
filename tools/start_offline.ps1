@@ -12,6 +12,14 @@ $ProgressPreference    = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# V142 - see native_helper.ps1. The application pre-flight below runs
+# php.exe and reads its output. With 'Stop' set above, any single stderr
+# line from PHP turned the capture into a TERMINATING error on Windows
+# PowerShell 5.1 - so instead of the friendly "The application could not
+# start:" message, the customer got a PowerShell exception dump and the
+# launcher quit. Now the text always comes back as text.
+. (Join-Path $PSScriptRoot 'native_helper.ps1')
+
 function Line { Write-Host ("=" * 60) -ForegroundColor DarkGray }
 function Say($m,$c='Gray'){ Write-Host $m -ForegroundColor $c }
 function Bad($m){ Write-Host $m -ForegroundColor Red }
@@ -87,7 +95,8 @@ $errLog = Join-Path $logDir 'server.err.log'
 # ---------- 3) pre-flight: can the application start at all? ----------
 Say 'Checking application...' 'Cyan'
 $rootFwd = $root -replace '\\','/'
-$check = & "$phpExe" -c "$phpIni" -r "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); echo 'APP_OK';" 2>&1
+$check = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni", '-r',
+  "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); echo 'APP_OK';")
 if ("$check" -notmatch 'APP_OK') {
   Bad 'The application could not start:'
   "$check".Split("`n") | Select-Object -First 6 | ForEach-Object { Bad "  $_" }

@@ -27,7 +27,10 @@
 param([string]$PhpExe = '')
 
 $ErrorActionPreference = 'Continue'
+$ProgressPreference    = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'native_helper.ps1')
+. (Join-Path $PSScriptRoot 'download_helper.ps1')
 function Say($m, $c = 'Gray') { Write-Host $m -ForegroundColor $c }
 
 if (-not $PhpExe -or -not (Test-Path $PhpExe)) {
@@ -41,15 +44,15 @@ $phpDir = Split-Path -Parent $PhpExe
 $needed = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
 
 # ---------- 1) kya waqai masla hai? ----------
-$out = & $PhpExe -v 2>&1 | Out-String
+$out = Invoke-Native -Exe $PhpExe -Arguments @('-v')
 if ($out -notmatch 'VCRUNTIME140|not compatible with this PHP build') {
   Say 'The Visual C++ runtime is fine.' 'Green'
   exit 0
 }
 
 Say ''
-Say 'This computer has an old Visual C++ runtime.' 'Yellow'
-Say 'PHP ko new chahiye. Theek karne ki koshish...' 'Yellow'
+Say 'This computer has an old Visual C++ runtime; PHP needs a newer one.' 'Yellow'
+Say 'Trying to fix it automatically...' 'Yellow'
 
 function Get-DllVersion($path) {
   try { return [System.Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion } catch { return '' }
@@ -68,7 +71,7 @@ if (Test-Path $bundle) {
     $src = Join-Path $bundle $n
     if (Test-Path $src) { Copy-Item $src (Join-Path $phpDir $n) -Force -ErrorAction SilentlyContinue; $copied++ }
   }
-  if ($copied -gt 0) { Say "  Package ke apne runtime files use kiye ($copied)." 'Gray' }
+  if ($copied -gt 0) { Say "  Used the runtime files bundled with this package ($copied)." 'Gray' }
 }
 
 # ---------- 3) PC par kahin nayi copy ----------
@@ -86,7 +89,7 @@ if ($copied -eq 0) {
              Where-Object { Is-NewEnough $_.FullName } | Select-Object -First 1
       if ($hit) {
         Copy-Item $hit.FullName (Join-Path $phpDir $n) -Force -ErrorAction SilentlyContinue
-        Say ("  Mila: {0}  ({1})" -f $n, (Get-DllVersion $hit.FullName)) 'Gray'
+        Say ("  Found: {0}  ({1})" -f $n, (Get-DllVersion $hit.FullName)) 'Gray'
         $copied++
         break
       }
@@ -96,12 +99,81 @@ if ($copied -eq 0) {
 
 # ---------- 4) dobara check ----------
 if ($copied -gt 0) {
-  $out2 = & $PhpExe -v 2>&1 | Out-String
+  $out2 = Invoke-Native -Exe $PhpExe -Arguments @('-v')
   if ($out2 -notmatch 'VCRUNTIME140|not compatible with this PHP build') {
     Say 'Fixed — PHP now runs.' 'Green'
     exit 0
   }
-  Say '  The problem remains even after copying.' 'DarkYellow'
+  Say '  The problem remains even after copying the files.' 'DarkYellow'
+}
+
+# ---------- 4b) Microsoft ka redistributable khud download + install ----------
+# V142 - pehle yahan rasta khatam ho jata tha: na DLL mili to customer ko
+# ek URL de kar chhor diya jata tha. Internet ho to yeh kaam hum khud kar
+# sakte hain - ek choti Microsoft file, khamoshi se install, phir dobara
+# test. Customer ko kuch type nahi karna parta.
+#
+# Haan, yeh Windows par ek cheez install karta hai - magar is PC par PHP
+# chalne ka koi doosra rasta nahi hai jab tak teen DLL package mein na
+# rakhi hon (dekhen vendor\vcruntime\README.txt). Is liye yeh aakhri
+# koshish hai, pehli nahi.
+function Test-Online {
+  try {
+    $r = [Net.HttpWebRequest]::Create('https://aka.ms/vs/17/release/vc_redist.x64.exe')
+    $r.Method = 'HEAD'; $r.Timeout = 8000; $r.UserAgent = 'SmartPOS-Setup'
+    $resp = $r.GetResponse(); $resp.Close(); return $true
+  } catch { return $false }
+}
+
+if (Test-Online) {
+  Say ''
+  Say '  Internet found. Installing the Microsoft Visual C++ runtime automatically...' 'Cyan'
+  $tmp = Join-Path $env:TEMP 'vc_redist.x64.exe'
+  $gotIt = $false
+  try {
+    Get-FileWithProgress -Url 'https://aka.ms/vs/17/release/vc_redist.x64.exe' `
+                         -Destination $tmp -Label 'Visual C++ runtime'
+    $gotIt = (Test-Path $tmp) -and ((Get-Item $tmp).Length -gt 1MB)
+  } catch {
+    Say ('  Download could not finish: ' + $_.Exception.Message) 'DarkYellow'
+  }
+
+  if ($gotIt) {
+    Say '  Installing (about a minute, no questions asked)...' 'Gray'
+    $rc = -1
+    try {
+      $pr = Start-Process -FilePath $tmp -ArgumentList '/install','/quiet','/norestart' `
+                          -Wait -PassThru
+      $rc = $pr.ExitCode
+    } catch {
+      Say ('  Installer could not run: ' + $_.Exception.Message) 'DarkYellow'
+    }
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+
+    # 0 = ho gaya, 3010 = ho gaya magar restart chahiye, 1638 = pehle se naya maujood
+    if ($rc -eq 0 -or $rc -eq 3010 -or $rc -eq 1638) {
+      $out3 = Invoke-Native -Exe $PhpExe -Arguments @('-v')
+      if ($out3 -notmatch 'VCRUNTIME140|not compatible with this PHP build') {
+        Say '  Fixed - PHP now runs.' 'Green'
+        exit 0
+      }
+      if ($rc -eq 3010) {
+        Say ''
+        Say '  Installed, but this computer needs to be RESTARTED once.' 'Yellow'
+        Say '  After the restart, run INSTALL_OFFLINE.bat again.' 'Yellow'
+        exit 1
+      }
+      Say '  Installed, but PHP still reports the same problem.' 'DarkYellow'
+    } elseif ($rc -eq 1602 -or $rc -eq 1603) {
+      Say '  The installer needs Administrator permission.' 'DarkYellow'
+      Say '  Right-click INSTALL_OFFLINE.bat -> "Run as administrator".' 'Yellow'
+    } elseif ($rc -ne -1) {
+      Say ("  Installer exit code: $rc") 'DarkYellow'
+    }
+  }
+} else {
+  Say ''
+  Say '  No internet on this computer, so it cannot be installed automatically.' 'DarkYellow'
 }
 
 # ---------- 5) user ko saaf hidayat ----------

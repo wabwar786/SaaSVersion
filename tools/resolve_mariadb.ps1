@@ -20,6 +20,12 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'download_helper.ps1')
 
+# V142 - see native_helper.ps1. mariadb-install-db.exe and mysql.exe both
+# write normal progress to stderr. With 'Stop' set above, capturing that
+# with `2>&1` made it a TERMINATING error in Windows PowerShell 5.1, so a
+# perfectly healthy first-time database init could kill this script.
+. (Join-Path $PSScriptRoot 'native_helper.ps1')
+
 $RuntimeDir = Join-Path $Root 'runtime\mariadb'
 $DataDir    = Join-Path $Root 'data\mysql'
 $VendorZip  = Join-Path $Root 'vendor\mariadb.zip'
@@ -249,8 +255,8 @@ if (-not (Test-Path (Join-Path $DataDir 'mysql'))) {
   New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
   $install = Join-Path $BinDir 'mariadb-install-db.exe'
   if (-not (Test-Path $install)) { $install = Join-Path $BinDir 'mysql_install_db.exe' }
-  if (Test-Path $install) { & $install "--datadir=$DataDir" 2>&1 | Out-Null }
-  else { & $mysqld "--initialize-insecure" "--datadir=$DataDir" 2>&1 | Out-Null }
+  if (Test-Path $install) { Invoke-Native -Exe $install -Arguments @("--datadir=$DataDir") | Out-Null }
+  else { Invoke-Native -Exe $mysqld -Arguments @('--initialize-insecure', "--datadir=$DataDir") | Out-Null }
   if (-not (Test-Path (Join-Path $DataDir 'mysql'))) { Say 'Database could not be initialized.' 'Red'; exit 1 }
 }
 
@@ -293,8 +299,10 @@ $Port | Set-Content $PortFile -Encoding ASCII
 # ---------- 5) APP DATABASE ----------
 $mysqlExe = Join-Path $BinDir 'mysql.exe'
 if (-not (Test-Path $mysqlExe)) { $mysqlExe = Join-Path $BinDir 'mariadb.exe' }
-& $mysqlExe --protocol=tcp --host=127.0.0.1 --port=$Port -u root `
-   -e "CREATE DATABASE IF NOT EXISTS aio_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>&1 | Out-Null
+Invoke-Native -Exe $mysqlExe -Arguments @(
+  '--protocol=tcp', '--host=127.0.0.1', "--port=$Port", '-u', 'root',
+  '-e', 'CREATE DATABASE IF NOT EXISTS aio_local CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+) | Out-Null
 
 Say "Local database ready (127.0.0.1:$Port)." 'Green'
 exit 0

@@ -1,3 +1,127 @@
+# WHATS UPDATED — V142 (offline setup: the VCRUNTIME failure)
+
+## What you saw
+
+```
+[2/5] Preparing PHP runtime...
+powershell.exe : php.exe : PHP Warning:  'C:\Windows\SYSTEM32\VCRUNTIME140.dll'
+14.0 is not compatible with this PHP build linked with
+At D:\MOB\tools\install_offline.ps1:96 char:11
+    + FullyQualifiedErrorId : NativeCommandError
+Setup did not complete. Please read the message above.
+```
+
+Two separate things went wrong, and the second one is the real bug.
+
+## 1. The machine genuinely has an old Visual C++ runtime
+
+`C:\Windows\System32\VCRUNTIME140.dll` on that PC is version **14.0**
+(VC++ 2015). The PHP 8.2 build in the package is linked against **14.29**
+(VS2019/2022). PHP cannot start at all until a newer runtime is reachable.
+
+That part was already known, and a repair script for it has shipped since
+V64.1 (`tools/fix_vcruntime.ps1`).
+
+## 2. The repair script was unreachable — it never ran once
+
+`install_offline.ps1` sets `$ErrorActionPreference = 'Stop'` at the top, and
+line 96 captured the PHP step like this:
+
+```powershell
+$phpOut = & powershell.exe ... -File resolve_php.ps1 2>&1
+```
+
+In **Windows PowerShell 5.1** — which is what `powershell.exe` is on every
+customer machine — the moment a native command writes anything to **stderr**
+and the output is captured with `2>&1`, that `'Stop'` turns it into a
+**terminating** error (`NativeCommandError`). The script dies on the capture
+line itself.
+
+So: php.exe printed the VCRUNTIME warning to stderr, the script died at line
+96, and everything written directly below that line — the VCRUNTIME
+auto-repair **and** the ASLR/OPcache fallback — never executed. The handling
+was not wrong; it could not be reached. All the customer got was a
+PowerShell exception dump and "Setup did not complete".
+
+That is exactly what `FullyQualifiedErrorId : NativeCommandError` in the
+output means, and why the error points at line 96 rather than at PHP.
+
+### The fix
+
+New `tools/native_helper.ps1` provides `Invoke-Native` /
+`Invoke-NativeScript`, which run a native command and return **all** of its
+output as plain text and cannot throw:
+
+- `$ErrorActionPreference = 'Continue'` inside the call — PowerShell 5.1
+  cannot raise a terminating `NativeCommandError`.
+- `$PSNativeCommandUseErrorActionPreference = $false` when present —
+  PowerShell 7.3+ cannot turn a non-zero exit code into a throw.
+- `ErrorRecord` objects are flattened to strings, so `-match 'VCRUNTIME140'`
+  actually matches.
+- `try/catch` around everything, so nothing escapes.
+
+Both preference assignments are local to the function; the caller's own
+settings are untouched.
+
+### Every other place the same trap was waiting
+
+This was not one line. Four scripts set `'Stop'` and captured native stderr,
+so each was one stray stderr line away from the same death:
+
+| Script | What used to kill it |
+|---|---|
+| `install_offline.ps1` | PHP step, `php -v`, every migration step |
+| `resolve_php.ps1` | the OPcache/ASLR probe, extension check, version check |
+| `resolve_mariadb.ps1` | first-time DB init — `mariadb-install-db.exe` writes normal progress to stderr |
+| `start_offline.ps1` | the daily app pre-flight: any PHP warning at boot killed the launcher instead of printing "The application could not start:" |
+
+All of them now go through `Invoke-Native`. `resolve_mariadb.ps1` and
+`fix_vcruntime.ps1` keep their output **live on screen** (they print things
+the customer must read) — only the throwing is suppressed, not the text.
+
+## 3. The repair now finishes the job by itself
+
+Before, if the three DLLs were not bundled and none were found on the PC, the
+script printed a URL and stopped — the customer had to go and do it manually.
+
+`fix_vcruntime.ps1` now tries, in this order:
+
+1. **The package's own bundled DLLs** (`vendor\vcruntime\`) copied next to
+   `php.exe`. Windows looks in the exe's own folder before System32, so the
+   old copy stops mattering — and **nothing is installed on Windows**. This
+   is still the best outcome; see `vendor\vcruntime\README.txt`.
+2. **A newer copy already on the PC** (System32, Visual Studio folders).
+3. **Download and install Microsoft's own `vc_redist.x64.exe` silently**, then
+   re-test PHP. Exit codes are handled properly: 0 and 1638 = done,
+   3010 = done but the PC needs one restart (it says so), 1602/1603 = needs
+   "Run as administrator" (it says so).
+4. Only if all of that fails: the manual instructions, as before.
+
+## 4. Tested
+
+PowerShell 7.4.6, with `$PSNativeCommandUseErrorActionPreference = $true` to
+reproduce 5.1's strictness, against a stub `php.exe` that prints the
+customer's exact VCRUNTIME error on stderr and exits 1:
+
+- **Old pattern reproduced the failure** — died on the capture line,
+  handler never reached, exit 1. Same shape as the customer's output.
+- **New pattern** — handler reached, repair ran, setup continued, and the
+  caller's `$ErrorActionPreference` was still `Stop` afterwards.
+- `fix_vcruntime.ps1` run for real, four cases: runtime already fine (exit 0);
+  bundled DLLs fix it (exit 0, nothing installed); bundled DLLs do not help
+  (exit 1 with instructions); no DLLs and no internet (exit 1 with
+  instructions). All correct.
+- Line-splitting and the `php.exe` path extraction re-checked, because
+  `$phpOut` is now text rather than a collection of objects.
+- All 14 `tools/*.ps1` files pass the PowerShell parser.
+
+## 5. Nothing else changed
+
+No PHP, no UI, no database changes in V142 — this release is only the Windows
+offline installer and launcher scripts. Everything from V141 is included.
+
+---
+
 # WHATS UPDATED — V141 (Super Admin feature hiding now actually works)
 
 ## 1. Modules hidden from Super Admin are now really hidden
