@@ -296,7 +296,7 @@ if ($lanIp) {
 if (Test-Path (Join-Path $root 'updates\ready.txt')) {
   Write-Host ''
   Say '  A NEW UPDATE IS DOWNLOADED AND READY' 'Cyan'
-  Say '  Close this window and run INSTALL_UPDATE.bat to apply it.' 'White'
+  Say '  Close this window and run UPDATE.bat to apply it.' 'White'
   Write-Host ''
 } elseif (Test-Path (Join-Path $root 'updates\available.txt')) {
   # Naya build hai magar utara nahi gaya - faisla user ka.
@@ -304,7 +304,7 @@ if (Test-Path (Join-Path $root 'updates\ready.txt')) {
          Select-Object -First 1)
   Write-Host ''
   Say ("  A NEW UPDATE IS AVAILABLE: " + $av) 'Cyan'
-  Say '  It has NOT been downloaded. To get it, run GET_UPDATE.bat' 'White'
+  Say '  It has NOT been downloaded. Run UPDATE.bat to get and apply it.' 'White'
   Say '  (or ignore this - your software keeps working as it is).' 'DarkGray'
   Write-Host ''
 } else {

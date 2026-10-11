@@ -1306,7 +1306,7 @@ if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/a
 if(is_file($root.'/VERSION'))$zip->addFile($root.'/VERSION','VERSION');
 $zip->addEmptyDir('updates');
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','UPDATE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
 /* ============================================================

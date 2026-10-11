@@ -88,6 +88,6 @@ if ($n < 50000 || substr((string)@file_get_contents($tmp, false, null, 0, 2), 0,
 }
 @file_put_contents($dir.'/ready.txt', basename($tmp));
 echo "UPDATE_DOWNLOADED ".basename($tmp)." (".round($n/1048576,1)." MB)\n";
-echo "Close the software and run INSTALL_UPDATE.bat to apply it.\n";
+echo "Close the software and run UPDATE.bat to apply it.\n";
 
 // build: V75 build 2026-08-28

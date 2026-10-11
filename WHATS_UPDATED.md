@@ -1,3 +1,120 @@
+# WHATS UPDATED — V145 (one-click update; no more re-downloading the offline version)
+
+## What you asked for
+
+> "GET_UPDATE.bat se complete update jo bhee file ho download ho jay; mujy
+> again download na krna pary offline version."
+
+Done. And a separate small patch pack for customers who are already on an
+old build.
+
+## What was actually missing
+
+The download side was already fine after V143 — `GET_UPDATE.bat` pulls the
+same complete `offline-package` the portal builds, so new files do arrive.
+Two things were broken underneath it.
+
+### 1. The database step was running 5 migrations out of 33
+
+`INSTALL_UPDATE.bat` had this hard-coded:
+
+```
+for %%m in (migrate_sync_columns migrate_delete_support
+            migrate_print_rule_default migrate_fiscal migrate_module_ids)
+```
+
+The cloud runs **33**. So any new table or column reached the customer as
+**code without schema** — the software updated itself into a broken state,
+and the reason was nowhere on screen.
+
+This is the third time the same shape of bug has appeared: one list written
+by hand in two places (the `tools\*.ps1` list in V142, the module list in
+V141). So it is fixed the same way — one list, read by both sides:
+
+- **`scripts/migration_order.php`** — the 33 steps, in the order that is
+  proven on the cloud, with `optional`, `cloud_only` and `stage` flags.
+- **`scripts/run_migrations.php`** — runs them. The cloud entrypoint and the
+  offline updater both call it. Adding a migration is now **one line in one
+  file** and it runs in both places.
+- It also **warns if a `migrate_*.php` exists on disk but is not in the
+  list**, so the next one cannot be forgotten silently.
+
+`migrate_collation`, `migrate_site_defaults` and `migrate_ui_menu` are marked
+`stage: background` — the cloud still runs those *after* Apache starts, so
+Railway's healthcheck cannot time out into a 502. Offline runs everything in
+one pass, where that constraint does not exist.
+
+### 2. `INSTALL_UPDATE.bat` overwrote itself while running
+
+It is inside the update zip, and the extract loop replaced it mid-run.
+cmd.exe reads a batch file line by line as it executes, so a batch file
+replacing itself can corrupt its own execution.
+
+All the logic now lives in **`tools/update.ps1`**. PowerShell reads a script
+fully into memory before running it, so replacing it mid-run is safe. The
+three `.bat` files are now 3-line stubs that will never need to change again.
+
+## One click
+
+```
+UPDATE.bat          check -> download -> backup -> apply -> migrate
+GET_UPDATE.bat      download only      (-Mode download)
+INSTALL_UPDATE.bat  apply what was downloaded   (-Mode install)
+```
+
+All three call the same `tools/update.ps1`. The launcher's "a new update is
+available" message now points at `UPDATE.bat`.
+
+## The patch pack — for customers already on an old build
+
+`UPDATE_PATCH_V145.zip`, **9.2 KB**, six files:
+
+```
+UPDATE.bat  GET_UPDATE.bat  INSTALL_UPDATE.bat
+tools\update.ps1  tools\native_helper.ps1  READ_ME_FIRST.txt
+```
+
+The customer copies those into their existing folder and runs `UPDATE.bat`
+once. After that every future update arrives through `UPDATE.bat` on its own
+— the offline version never has to be downloaded again.
+
+It deliberately contains **only files that live on disk** on a node. `src/`,
+`scripts/` and `approved_ui/` are inside `runtime\app.sealed`, so shipping
+them loose would do nothing; they arrive with the seal. `update.ps1` detects
+an older seal that has no migration runner and falls back to a wider built-in
+list, so the first update still completes.
+
+`tools/build_update_patch.php` builds it, and refuses to build if a `.bat`
+has grown logic again or does not call `update.ps1`.
+
+## Tested
+
+A simulated old install (`V100`, old-style `.bat` files with logic inside, no
+`tools\update.ps1`), a stand-in node PHP, and a package containing a brand-new
+tool file and a brand-new migration:
+
+- **Patch pack acceptance**: copy 6 files -> double-click `UPDATE.bat` ->
+  `V100 -> V145`, the new tool and new migration both arrived, **31 steps
+  applied, 2 skipped**, and `config/local.php` and `data/customer.db` were
+  left untouched.
+- **Two-step path** (`GET_UPDATE` then `INSTALL_UPDATE`) — same result.
+- **Already up to date** — stops immediately, nothing touched.
+- **Portal unreachable** — says so plainly, and says it does *not* mean you
+  have the latest build.
+- **A migration fails** — stops, names the step, points at
+  `backup\before-<date>`, exits 1. Good path exits 0.
+- **Old seal without the runner** — falls back to the wider list and still
+  completes.
+- Migration runner on the real database: `stage=boot` 30 ok, `stage=background`
+  3 ok, `--node --stage=all` 31 ok with 2 cloud-only skipped — 33 in total,
+  zero failures. With the database down it correctly reported 26 failures and
+  exited non-zero rather than passing silently.
+- Drift guard proven: an unlisted `migrate_*.php` is reported immediately.
+- Feature gating, Super Admin groups and both sidebars re-checked after the
+  `api.php` change — unchanged.
+
+---
+
 # WHATS UPDATED — V144 (module fingerprint: MD5 error + a silent cloud/node mismatch)
 
 V143 deployed correctly — `MODULE_GROUPS_OK` and `OFFLINE_TOOLS_OK` both

@@ -39,48 +39,20 @@ for($i=0;$i<30;$i++){
 exit(1);' || echo "[boot] WARNING: DB not reachable; migrations skipped this boot"
 
 # --- FAST migrations (schema/columns) — inke baghair app chal hi nahi sakta ---
-php scripts/install_schema.php   || echo "[boot] schema step skipped"
-php scripts/migrate_platform.php || echo "[boot] platform migrate skipped"
-php scripts/migrate_sync.php     || echo "[boot] sync migrate skipped"
-php scripts/migrate_bridge.php   || echo "[boot] bridge migrate skipped"
-php scripts/migrate_menu_image.php || echo "[boot] menu image migrate skipped"
-php scripts/migrate_branding.php  || echo "[boot] branding migrate skipped"
-php scripts/migrate_qr_orders.php || echo "[boot] qr orders migrate skipped"
-php scripts/migrate_devices.php   || echo "[boot] devices migrate skipped"
-php scripts/migrate_shifts.php    || echo "[boot] shifts migrate skipped"
-php scripts/migrate_error_log.php || echo "[boot] error log migrate skipped"
-php scripts/migrate_sync_directives.php || echo "[boot] sync directives migrate skipped"
-php scripts/migrate_sync_columns.php || echo "[boot] sync columns migrate skipped"
-php scripts/migrate_sync_log.php    || echo "[boot] sync log migrate skipped"
-php scripts/migrate_delete_support.php || echo "[boot] delete support migrate skipped"
-php scripts/migrate_print_rule_default.php || echo "[boot] print_rule migrate skipped"
-php scripts/migrate_fiscal.php || echo "[boot] fiscal migrate skipped"
-php scripts/migrate_security.php || echo "[boot] security migrate skipped"
-php scripts/migrate_modules.php || echo "[boot] modules migrate skipped"
-php scripts/migrate_selfservice.php || echo "[boot] selfservice migrate skipped"
-php scripts/migrate_licence_key.php || echo "[boot] licence key migrate skipped"
-# RETAIL vertical. Yeh FAST section mein hain (Apache start se pehle) kyunke
-# `tenants.region_profile` ke baghair koi bhi business create nahi hota —
-# na retail, na restaurant. Dono idempotent hain.
-php scripts/migrate_retail.php || echo "[boot] retail migrate skipped"
-php scripts/seed_industry_modules.php || echo "[boot] industry modules seed skipped"
-# V85 — roles har boot par tasdeeq. V79 se provisionBusiness khud roles
-# banati hai, magar JO businesses us se PEHLE bane the un ke paas roles
-# ho hi nahi sakte (script sirf haath se chalti thi). Yeh idempotent hai.
-php scripts/seed_roles.php || echo "[boot] seed roles skipped"
-php scripts/migrate_role_scope.php || echo "[boot] role scope migrate skipped"
-php scripts/demo_reset.php || echo "[boot] demo reset skipped"
-php scripts/migrate_platform_admin.php || echo "[boot] platform admin migrate skipped"
-php scripts/seed_platform_modules.php || echo "[boot] modules seed skipped"
-php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
-# V141 — left menu, module catalog aur Super Admin ka features safha: teeno
-# ki fehrist ek honi chahiye. Farq aa jaye to Super Admin se hide karna kaam
-# nahi karta. Yeh check boot ko rokti nahi, sirf log mein awaaz deti hai.
-php scripts/check_module_groups.php || echo "[boot] !! module groups drifted — see lines above"
-# V143 — offline package ki tools\ dependencies. V142 mein ek nayi .ps1 file
-# packager ki hard-coded list mein daalna reh gaya tha aur customer ka POS
-# khulna band ho gaya. Yeh check wohi soorat pakarti hai.
-php scripts/check_offline_tools.php || echo "[boot] !! offline tools dependency problem — see lines above"
+# ============================================================
+# V145 — migrations ab EK fehrist se chalti hain.
+#
+# Pehle yahan 30+ lines hath se likhi hui thin, aur offline ka
+# `INSTALL_UPDATE.bat` sirf PAANCH chalata tha. Yani nayi table ya column
+# cloud par to ban jati thi magar customer ke offline PC par nahi — code
+# naya, schema purana, aur software toot jata.
+#
+# Ab dono taraf `scripts/run_migrations.php` chalti hai aur wo
+# `scripts/migration_order.php` parhti hai. Nayi migration = EK line, EK
+# file; cloud aur offline dono par khud chal jayegi.
+# ============================================================
+php scripts/run_migrations.php --stage=boot || echo "[boot] !! a required migration failed - see lines above"
+# (check_module_groups / check_offline_tools ab migration_order.php mein hain)
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 # --- Platform (super admin) login: bina shell ke reset karne ka rasta ---
@@ -110,9 +82,7 @@ APACHE_PID=$!
 # --- HEAVY / one-time migrations background mein, app ko block kiye baghair ---
 (
   sleep 2
-  php scripts/migrate_collation.php     || echo "[boot] collation migrate skipped"
-  php scripts/migrate_site_defaults.php || echo "[boot] site defaults skipped"
-  php scripts/migrate_ui_menu.php       || echo "[boot] ui menu backfill skipped"
+  php scripts/run_migrations.php --stage=background || echo "[boot] background migrate had a problem"
   echo "[boot] background migrations done"
 ) >/proc/1/fd/1 2>&1 &
 
