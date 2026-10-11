@@ -1310,9 +1310,32 @@ $zip->addEmptyDir('updates');
 foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
-foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1','install_offline.ps1','start_offline.ps1','diagnose.ps1','fix_vcruntime.ps1'] as $ps){
-  if(is_file($root.'/tools/'.$ps))$zip->addFile($root.'/tools/'.$ps,'tools/'.$ps);
+/* ============================================================
+   V143 — tools\*.ps1 ab POORA folder jata hai, hard-coded list nahi.
+
+   MASLA JO CUSTOMER NE PAKRA:
+   Yahan saat file ke naam hath se likhe hue the. V142 mein ek NAYI file
+   bani — `tools\native_helper.ps1` — aur usay is list mein daalna reh
+   gaya. Nateeja: package mein nayi `start_offline.ps1` to chali gayi
+   (jo us helper ko dot-source karti hai) magar helper khud nahi gaya.
+   Customer ke PC par software khulna hi band ho gaya:
+
+       The term 'D:\MOB\tools\native_helper.ps1' is not recognized...
+       At D:\MOB\tools\start_offline.ps1:21 char:3
+
+   Yani ek nayi file add karne ka matlab tha ke yahan bhi yaad se naam
+   likhna parta — aur bhool jana sirf waqt ki baat thi. Ab glob se poora
+   folder jata hai, to aage koi bhi nayi .ps1 khud ba khud shamil hogi.
+   (Scripts chhoti hain; sab mila kar chand KB.)
+   ============================================================ */
+$psCount=0;
+foreach(glob($root.'/tools/*.ps1') as $ps){
+  $zip->addFile($ps,'tools/'.basename($ps)); $psCount++;
 }
+/* Agar koi bhi .ps1 na mile to package be-kaar hai — setup chal hi nahi
+   sakta. Khamoshi se aisa zip dena customer ko ek toota hua folder dena
+   hai, is liye yahin rok do. */
+if($psCount===0){ $zip->close(); @unlink($tmp); fail('Offline package could not be built: tools scripts are missing on the server.',500); }
 $zip->addEmptyDir('data');$zip->addEmptyDir('runtime/mariadb');$zip->addEmptyDir('storage/logs');
 /* Agar server par vendor/php.zip ya vendor/mariadb.zip mojood hain to unhe
    package mein bhej do - phir customer ke PC par kuch download NahI hoga. */

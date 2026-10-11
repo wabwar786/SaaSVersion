@@ -1,3 +1,108 @@
+# WHATS UPDATED — V143 (the missing native_helper.ps1)
+
+## What you saw
+
+```
+. : The term 'D:\MOB\tools\native_helper.ps1' is not recognized as the name
+of a cmdlet, function, script file, or operable program.
+At D:\MOB\tools\start_offline.ps1:21 char:3
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+The software could not start. Please read the message above.
+```
+
+This one is my mistake in V142, and it is a bad one — the POS would not open
+at all.
+
+## What went wrong
+
+V142 added a new file, `tools\native_helper.ps1`, and five scripts
+dot-source it on their first lines.
+
+But the offline package is assembled in `public/api.php` from a **hand-written
+list of file names**:
+
+```php
+foreach(['download_helper.ps1','resolve_php.ps1','resolve_mariadb.ps1',
+         'install_offline.ps1','start_offline.ps1','diagnose.ps1',
+         'fix_vcruntime.ps1'] as $ps){ ... }
+```
+
+`native_helper.ps1` was never added to that list. So the package carried the
+**new** `start_offline.ps1` — which needs the helper — but not the helper
+itself. Every offline machine that took the V142 update stopped opening.
+
+Checking that list turned up more: it was silently dropping **seven** files,
+not one. `windows_bootstrap.ps1`, `system_check.ps1`, `reset_admin_login.ps1`,
+`reset_demo_ui.ps1`, `repair_demo_data.ps1` and `prepare_runtime.ps1` were
+never being packaged either.
+
+## The three fixes
+
+**1. The packager now ships the whole folder, not a list.**
+`glob($root.'/tools/*.ps1')` replaces the hand-written names, so any new
+script is included automatically from now on. All 14 files, about 90 KB. If
+the glob ever comes back empty the build now fails loudly instead of handing
+you a broken folder.
+
+**2. The scripts no longer depend on that file existing.**
+All five now load the helper if it is there, and define the same functions
+inline if it is not:
+
+```powershell
+$__nh = Join-Path $PSScriptRoot 'native_helper.ps1'
+if (Test-Path $__nh) { . $__nh }
+if (-not (Get-Command Invoke-Native -ErrorAction SilentlyContinue)) {
+  function Invoke-Native { ... }      # identical behaviour
+  function Invoke-NativeScript { ... }
+}
+```
+
+One missing file should never stop a POS from opening. Even a half-applied
+update now starts.
+
+**3. A check that catches this class of mistake before it ships.**
+
+```
+php scripts/check_offline_tools.php
+```
+
+It reads every `.ps1` and `.bat`, works out which script calls which, and
+confirms each one both exists on disk **and** would actually be included in
+the offline package. It runs at boot (`docker-entrypoint.sh`).
+
+Run against the V142 code it reports exactly the failure you hit:
+
+```
+packaging mode : hard-coded list
+  start_offline.ps1    -> native_helper.ps1   !! EXISTS BUT IS NOT PACKAGED
+  install_offline.ps1  -> native_helper.ps1   !! EXISTS BUT IS NOT PACKAGED
+  ... 11 problems
+```
+
+## Tested
+
+PowerShell 7.4.6 against a package folder built to match a V142 machine —
+new scripts present, `native_helper.ps1` deleted:
+
+- All five scripts run past the line that used to fail. `start_offline.ps1`
+  now reaches the SmartPOS banner instead of `CommandNotFoundException`.
+- With the helper file restored, the shared copy is used and the inline block
+  is skipped — both paths give the same result.
+- The V142 behaviour it was all for still holds: under PowerShell-5.1-style
+  strictness, a stderr line from `php.exe` is captured as text, the VCRUNTIME
+  handler is reached, and the caller's `$ErrorActionPreference` is untouched.
+- `check_offline_tools.php` reports OK now, and 11 problems when the V142
+  hard-coded list is put back — so it is genuinely checking, not just passing.
+- All 14 `tools\*.ps1` pass the PowerShell parser.
+
+## Nothing else changed
+
+No PHP application code, no UI, no database changes beyond the packager line
+in `public/api.php`. Everything from V141 and V142 is included.
+
+---
+
 # WHATS UPDATED — V142 (offline setup: the VCRUNTIME failure)
 
 ## What you saw

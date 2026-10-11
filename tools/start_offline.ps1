@@ -18,7 +18,51 @@ Set-Location $root
 # PowerShell 5.1 - so instead of the friendly "The application could not
 # start:" message, the customer got a PowerShell exception dump and the
 # launcher quit. Now the text always comes back as text.
-. (Join-Path $PSScriptRoot 'native_helper.ps1')
+# ------------------------------------------------------------
+# V143 - helper ko load karo, aur agar woh file maujood na ho to khud
+# bana lo. Yeh guard is liye hai ke V142 ke package mein `start_offline.ps1`
+# to nayi chali gayi magar `native_helper.ps1` reh gayi (packager ki list
+# mein naam daalna bhool gaya tha), aur software khulna hi band ho gaya:
+#
+#     The term 'D:\MOB\tools\native_helper.ps1' is not recognized...
+#
+# Ek missing file se poora POS band ho jana qabil-e-qubool nahi. Ab adhoora
+# update bhi aa jaye to yeh script apne paanv par khari rehti hai.
+# ------------------------------------------------------------
+$__nh = Join-Path $PSScriptRoot 'native_helper.ps1'
+if (Test-Path $__nh) { . $__nh }
+if (-not (Get-Command Invoke-Native -ErrorAction SilentlyContinue)) {
+  function Invoke-Native {
+    param([Parameter(Mandatory = $true)][string] $Exe, [string[]] $Arguments = @())
+    $ErrorActionPreference = 'Continue'
+    if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+      $PSNativeCommandUseErrorActionPreference = $false
+    }
+    $global:NativeExitCode = 0
+    $text = ''
+    try {
+      $raw = & $Exe @Arguments 2>&1
+      $global:NativeExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+      $lines = @()
+      foreach ($item in $raw) {
+        if ($null -eq $item) { continue }
+        if ($item -is [System.Management.Automation.ErrorRecord]) { $lines += $item.ToString() }
+        else { $lines += [string]$item }
+      }
+      $text = ($lines -join "`r`n")
+    } catch { $global:NativeExitCode = 1; $text = ($_ | Out-String) }
+    return $text
+  }
+  function Invoke-NativeScript {
+    param([Parameter(Mandatory = $true)][string] $ScriptPath, [string[]] $Arguments = @())
+    $exe = 'powershell.exe'
+    if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
+      $exe = (Get-Process -Id $PID).Path
+      if (-not $exe) { $exe = 'pwsh' }
+    }
+    return (Invoke-Native -Exe $exe -Arguments (@('-NoProfile','-ExecutionPolicy','Bypass','-File',$ScriptPath) + $Arguments))
+  }
+}
 
 function Line { Write-Host ("=" * 60) -ForegroundColor DarkGray }
 function Say($m,$c='Gray'){ Write-Host $m -ForegroundColor $c }

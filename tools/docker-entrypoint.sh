@@ -77,6 +77,10 @@ php scripts/migrate_module_ids.php || echo "[boot] module ids migrate skipped"
 # ki fehrist ek honi chahiye. Farq aa jaye to Super Admin se hide karna kaam
 # nahi karta. Yeh check boot ko rokti nahi, sirf log mein awaaz deti hai.
 php scripts/check_module_groups.php || echo "[boot] !! module groups drifted — see lines above"
+# V143 — offline package ki tools\ dependencies. V142 mein ek nayi .ps1 file
+# packager ki hard-coded list mein daalna reh gaya tha aur customer ka POS
+# khulna band ho gaya. Yeh check wohi soorat pakarti hai.
+php scripts/check_offline_tools.php || echo "[boot] !! offline tools dependency problem — see lines above"
 php -r 'require "src/bootstrap.php"; \Aio\Services\Platform::ensureSuperUser(); echo "[boot] super admin ready\n";' || true
 
 # --- Platform (super admin) login: bina shell ke reset karne ka rasta ---
