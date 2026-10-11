@@ -349,11 +349,44 @@ final class Sync
      */
     public static function moduleFingerprint(): string
     {
+        /* ============================================================
+           V144 — fingerprint ab PHP mein banta hai, SQL mein nahi.
+
+           Pehle yeh ek hi SQL line thi:
+               MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY ...))
+           Us mein DO kharabiyan thin, aur dono ne cloud/node ko alag
+           jawab diya — yani theek wahi cheez jo yeh fingerprint rokne
+           ke liye bana tha:
+
+           1) GROUP_CONCAT khamoshi se KAAT deta hai.
+              Poori string 39 modules par ~2.3 KB hoti hai, magar MySQL 8
+              ka default `group_concat_max_len` sirf 1024 hai (MariaDB ka
+              1048576). Yani Railway (MySQL 8) 1024 bytes par kaat kar
+              fingerprint banata tha aur offline node (MariaDB) poori
+              string par — bilkul ek jaise data se DO ALAG fingerprint.
+              Na error, na warning. Diagnostics hamesha "MISMATCH"
+              dikhati rahi.
+
+           2) SQL ka MD5 har server par uplabdh maana gaya tha.
+              Railway ke log par:
+                 SQLSTATE[42000]: 1305 FUNCTION railway.MD5 does not exist
+              aur `migrate_module_ids.php` wahin mar gayi.
+
+           PHP mein ginne se dono masle khatam: na koi limit, na kisi DB
+           function par bharosa. Har MySQL/MariaDB version par bilkul
+           wahi natija.
+           ============================================================ */
         try {
-            $q = DB::pdo()->query(
-                "SELECT MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY module_key SEPARATOR '|')) AS fp
-                   FROM platform_modules WHERE is_active=1");
-            return (string)($q->fetchColumn() ?: '');
+            $rows = DB::pdo()->query(
+                "SELECT module_key, id
+                   FROM platform_modules
+                  WHERE is_active=1
+                  ORDER BY module_key"
+            )->fetchAll(\PDO::FETCH_ASSOC);
+            if (!$rows) return '';
+            $parts = [];
+            foreach ($rows as $r) $parts[] = (string)$r['module_key'] . ':' . (string)$r['id'];
+            return \md5(\implode('|', $parts));
         } catch (\Throwable $e) { return ''; }
     }
 

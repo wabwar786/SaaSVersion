@@ -113,8 +113,15 @@ try {
 
 /* Fingerprint — cloud aur node par yeh HAMESHA barabar hona chahiye.
    Sync handshake isi ko compare karta hai. */
-$fp = $pdo->query("SELECT MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY module_key SEPARATOR '|')) AS fp
-                     FROM platform_modules WHERE is_active=1")->fetchColumn();
+/* V144 — yeh line boot par poori migration ko mar deti thi:
+       SQLSTATE[42000]: 1305 FUNCTION railway.MD5 does not exist
+   Fingerprint ab PHP mein banta hai (Sync::moduleFingerprint), is liye
+   na kisi DB function ki zaroorat hai na GROUP_CONCAT ki 1024-byte
+   had ki. Phir bhi agar kuch galat ho to migration ka kaam ho chuka
+   hota hai — sirf yeh akhri echo hai, is liye ise rukawat na banne do. */
+$fp = '';
+try { $fp = \Aio\Services\Sync::moduleFingerprint(); }
+catch (\Throwable $e) { $fp = '(could not be calculated: ' . substr($e->getMessage(), 0, 60) . ')'; }
 
 echo "MODULE_IDS_READY moved=$moved merged=$merged already_ok=$already failed=$failed\n";
 echo "MODULE_FINGERPRINT $fp\n";

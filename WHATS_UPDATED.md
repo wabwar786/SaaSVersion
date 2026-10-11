@@ -1,3 +1,105 @@
+# WHATS UPDATED — V144 (module fingerprint: MD5 error + a silent cloud/node mismatch)
+
+V143 deployed correctly — `MODULE_GROUPS_OK` and `OFFLINE_TOOLS_OK` both
+green. But one line in the deploy log was a real failure:
+
+```
+PLATFORM_MODULES_READY total=39 added=0
+SQLSTATE[42000]: Syntax error or access violation: 1305 FUNCTION railway.MD5 does not exist
+[boot] module ids migrate skipped
+```
+
+Chasing it turned up a second, worse problem that had been there all along.
+
+## The line that failed
+
+`scripts/migrate_module_ids.php` ended with a fingerprint query:
+
+```sql
+SELECT MD5(GROUP_CONCAT(CONCAT(module_key,':',id) ORDER BY module_key SEPARATOR '|'))
+  FROM platform_modules WHERE is_active=1
+```
+
+On Railway's server `MD5` could not be resolved, the exception was not
+caught, and the whole migration exited non-zero — so `MODULE_IDS_READY` and
+`MODULE_FINGERPRINT` never printed. (The migration's actual work was already
+done: all 39 ids were canonical, so nothing was broken by it. Only the final
+line died.)
+
+## The bigger problem underneath it
+
+That same query also lives in `Sync::moduleFingerprint()` — the value the
+sync handshake compares between the cloud and each offline computer to prove
+their module ids match.
+
+`GROUP_CONCAT` **truncates silently** at `group_concat_max_len`. With 39
+modules the string is about **2.3 KB**, but:
+
+| Server | `group_concat_max_len` | Fingerprint from the SAME data |
+|---|---|---|
+| MySQL 8 (Railway, cloud) | **1024** — truncates | `329439ad…` |
+| MariaDB (offline node) | 1048576 — full string | `faacbf0f…` |
+
+So the cloud and every branch computer computed **different fingerprints from
+identical module ids**, with no error and no warning. The handshake check has
+been reporting a mismatch that was never real:
+
+```
+MISMATCH — permissions will not sync (every user shows "0 Modules" online)
+```
+
+It is a diagnostic only — it does not block sync — so nothing was broken by
+it either. But it means that check has been useless, and it would have hidden
+a genuine mismatch if one ever occurred.
+
+## The fix
+
+The fingerprint is now computed **in PHP**, in one place
+(`Sync::moduleFingerprint()`), and the other two copies call it:
+
+```php
+$rows = ... "SELECT module_key, id FROM platform_modules
+             WHERE is_active=1 ORDER BY module_key";
+foreach ($rows as $r) $parts[] = $r['module_key'] . ':' . $r['id'];
+return md5(implode('|', $parts));
+```
+
+No DB function, so the 1305 error cannot come back. No `GROUP_CONCAT`, so
+there is no length limit to truncate at. Identical on every MySQL and MariaDB
+version, which is the entire point of a fingerprint.
+
+`migrate_module_ids.php` also no longer treats that last line as fatal — the
+migration's work is finished by then, so a problem there reports itself
+instead of killing the step.
+
+## Tested
+
+Against a real database with 53 active modules (2374-byte concat string):
+
+| | `group_concat_max_len` = 1024 | = 1048576 |
+|---|---|---|
+| old SQL fingerprint | `329439ad…` | `faacbf0f…` |
+| **new PHP fingerprint** | **`faacbf0f…`** | **`faacbf0f…`** |
+
+- Old: two different answers from the same rows — the bug, reproduced.
+- New: the same answer either way.
+- `migrate_module_ids.php` run with the limit forced to 1024 (the Railway
+  case) now finishes `exit=0` and prints
+  `MODULE_IDS_READY ... failed=0` and `MODULE_FINGERPRINT faacbf0f…`.
+
+## The other deploy-log lines are normal
+
+- `SCHEMA_INSTALLED ... failed=3` with *Duplicate foreign key constraint* and
+  *Duplicate entry 'V1'* — an idempotent re-run on an existing database. The
+  objects already exist; nothing is wrong.
+- `AH00558: Could not reliably determine the server's fully qualified domain
+  name` — a standard Apache notice.
+- `SKIPPED: this reset was already applied` — still worth removing the
+  `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` variables in Railway, so a
+  deploy can never reset the super-admin password.
+
+---
+
 # WHATS UPDATED — V143 (the missing native_helper.ps1)
 
 ## What you saw
