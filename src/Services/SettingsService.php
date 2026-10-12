@@ -20,17 +20,45 @@ use PDO;
  *   Branch          -> sites.name
  *   Phone / Address -> sites.phone / sites.address_text
  *   NTN / STRN      -> organizations.tax_no
- *   Taxes           -> ui_records / pos_settings  (WAHI jo POS use karta hai)
+ *   Taxes           -> site_settings, group 'tax'  (V148 se — neeche wajah)
  *   Baqi sab        -> site_settings (tenant+site scoped, pehle se maujood table)
  *
- * Tax ko jaan-boojh kar `pos_settings` par rakha hai, alag copy nahi
- * banayi. Do jagah rakhne ka matlab hota: Settings kuch aur dikhaye,
- * POS kuch aur charge kare — aur farq mahinon tak nazar na aaye.
+ * ============================================================
+ * V148 — TAX SAVE HOTA THA, MAGAR WAPAS PURANA DIKHTA THA.
+ *
+ * Tax rates pehle `ui_records` / `module_key='pos_settings'` par thin.
+ * Us table par koi unique key nahi hai, is liye EK SITE KI DO ROW ban
+ * sakti thin — aur banti thin: branch computer apni `ui_records` cloud
+ * par push karta hai, us row ka `id` alag hota hai, to cloud par doosri
+ * copy ban jati thi.
+ *
+ * Phir yeh hota tha:
+ *     PADHNE  wala code:  ORDER BY created_at DESC LIMIT 1   -> NAYI row
+ *     LIKHNE  wala code:  LIMIT 1 (koi order nahi)           -> PURANI row
+ *
+ * Yani save PURANI row par lagta aur screen NAYI row dikhati. Toast
+ * "Settings saved" aata, `ok=true` wapas aata, aur value kabhi nahi
+ * badalti. Koi error kahin nazar nahi aata tha.
+ *
+ * Ab tax `site_settings` par hai, jahan UNIQUE (site_id, group, key)
+ * laga hua hai — do row ban hi nahi sakti. Purani `pos_settings` row
+ * pehli dafa parhte waqt khud utha li jati hai (dekho adoptLegacyTaxes)
+ * aur `deleted=1` kar di jati hai, taake wo dobara wapas na aaye.
+ * ============================================================
  */
 final class SettingsService
 {
     /** site_settings mein sab kuch isi group ke neeche. */
     private const GROUP = 'app';
+
+    /** Tax ka alag group — isi mein `mode` bhi hai (TaxMode.php). */
+    public const TAX_GROUP = 'tax';
+
+    private const TAX_DEFAULTS = [
+        'cash'           => 16.0,
+        'card'           => 8.0,
+        'service_charge' => 0.0,
+    ];
 
     /** Jo keys site_settings mein rakhi jati hain (baqi asli tables mein). */
     private const KEYS = [
@@ -117,6 +145,10 @@ final class SettingsService
         $out['tax_cash']       = $tax['tax_cash'];
         $out['tax_card']       = $tax['tax_card'];
         $out['service_charge'] = $tax['service_charge'];
+        /* Price mode bhi isi payload mein — Settings ka ek hi Save button
+           ise bhi bhejta hai, aur jawab mein wapas isi se paint hota hai. */
+        $out['tax_mode']       = TaxMode::current();
+        $out['tax_mode_info']  = TaxMode::describe($out['tax_mode']);
 
         /* --- FBR / fiscal (site_settings group 'fiscal') --- */
         $f = FiscalService::settings();
@@ -128,22 +160,111 @@ final class SettingsService
         return $out;
     }
 
-    /** pos_settings se tax rates — POS ka bilkul wahi record. */
+    /**
+     * Tax rates — EK hi jagah se, jahan do row ban hi nahi sakti.
+     * POS, Settings, bill aur FBR sab isi function se rates lete hain.
+     */
     public static function taxes(): array
     {
-        $d = [];
+        $v = self::readTaxGroup();
+        if ($v === null) $v = self::adoptLegacyTaxes();
+        return [
+            'tax_cash'       => (float)$v['cash'],
+            'tax_card'       => (float)$v['card'],
+            'service_charge' => (float)$v['service_charge'],
+        ];
+    }
+
+    /** site_settings group 'tax' — null agar ek bhi rate wahan na ho. */
+    private static function readTaxGroup(): ?array
+    {
+        $out = self::TAX_DEFAULTS;
+        $found = false;
+        try {
+            $q = DB::pdo()->prepare("SELECT setting_key AS k, value_json AS v
+                                       FROM site_settings
+                                      WHERE site_id=? AND setting_group=?");
+            $q->execute([site_id(), self::TAX_GROUP]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $k = (string)$r['k'];
+                if (!array_key_exists($k, $out)) continue;   // 'mode' yahan nahi chahiye
+                $out[$k] = (float)json_decode((string)$r['v'], true);
+                $found = true;
+            }
+        } catch (\Throwable $e) { return null; }
+        return $found ? $out : null;
+    }
+
+    /**
+     * Purani `pos_settings` row ko utha kar site_settings par le aana —
+     * EK DAFA, khud ba khud. Deploy ki migration bulk mein yahi karti
+     * hai; yeh function un sites ke liye hai jo migration ke baad bani
+     * hon ya jin par purana offline node abhi tak push kar raha ho.
+     */
+    private static function adoptLegacyTaxes(): array
+    {
+        $legacy = null;
         try {
             $q = DB::pdo()->prepare("SELECT data_json FROM ui_records
                                       WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0
                                       ORDER BY created_at DESC LIMIT 1");
             $q->execute([tenant_id(), site_id()]);
             $j = $q->fetchColumn();
-            $d = $j ? (json_decode((string)$j, true) ?: []) : [];
+            if ($j) $legacy = json_decode((string)$j, true);
         } catch (\Throwable $e) {}
+
+        if (!is_array($legacy)) return self::TAX_DEFAULTS;
+
+        $v = [
+            'cash'           => isset($legacy['tax_cash'])       ? max(0.0, (float)$legacy['tax_cash'])       : self::TAX_DEFAULTS['cash'],
+            'card'           => isset($legacy['tax_card'])       ? max(0.0, (float)$legacy['tax_card'])       : self::TAX_DEFAULTS['card'],
+            'service_charge' => isset($legacy['service_charge']) ? max(0.0, (float)$legacy['service_charge']) : self::TAX_DEFAULTS['service_charge'],
+        ];
+        try { self::writeTaxGroup($v); self::retireLegacyTaxRows(); } catch (\Throwable $e) {}
+        return $v;
+    }
+
+    private static function writeTaxGroup(array $v): void
+    {
+        $p = DB::pdo();
+        foreach (['cash', 'card', 'service_charge'] as $k) {
+            self::putRaw($p, $k, (float)$v[$k], self::TAX_GROUP);
+        }
+    }
+
+    /** Purani rows band — warna wo phir "nayi" ban kar wapas aa jati hain. */
+    private static function retireLegacyTaxRows(): void
+    {
+        try {
+            DB::pdo()->prepare("UPDATE ui_records SET deleted=1, row_version=row_version+1, updated_at=NOW(6)
+                                 WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0")
+                     ->execute([tenant_id(), site_id()]);
+        } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Tax rates likhna — Settings page aur POS ka chhota settings modal
+     * DONO yahin se guzarte hain. Pehle dono ki apni apni SQL thi.
+     *
+     * @param array $d  'tax_cash' / 'tax_card' / 'service_charge' (jo mojood ho)
+     */
+    public static function saveTaxes(array $d): array
+    {
+        $cur = self::taxes();
+        $v = [
+            'cash'           => array_key_exists('tax_cash', $d)       ? max(0.0, (float)$d['tax_cash'])       : (float)$cur['tax_cash'],
+            'card'           => array_key_exists('tax_card', $d)       ? max(0.0, (float)$d['tax_card'])       : (float)$cur['tax_card'],
+            'service_charge' => array_key_exists('service_charge', $d) ? max(0.0, (float)$d['service_charge']) : (float)$cur['service_charge'],
+        ];
+        foreach (['cash' => 'Cash tax', 'card' => 'Card tax', 'service_charge' => 'Service charge'] as $k => $label) {
+            if ($v[$k] > 100) throw new \RuntimeException($label.' cannot be more than 100%.');
+        }
+        self::writeTaxGroup($v);
+        self::retireLegacyTaxRows();
         return [
-            'tax_cash'       => isset($d['tax_cash'])       ? (float)$d['tax_cash']       : 16.0,
-            'tax_card'       => isset($d['tax_card'])       ? (float)$d['tax_card']       : 8.0,
-            'service_charge' => isset($d['service_charge']) ? (float)$d['service_charge'] : 0.0,
+            'tax_cash'       => $v['cash'],
+            'tax_card'       => $v['card'],
+            'service_charge' => $v['service_charge'],
         ];
     }
 
@@ -202,34 +323,25 @@ final class SettingsService
             } catch (\Throwable $e) {}
         }
 
-        /* --- taxes: seedha pos_settings par, alag copy NahI --- */
+        /* --- taxes: ek hi row, ek hi raasta (saveTaxes) --- */
         if (array_key_exists('tax_cash', $d) || array_key_exists('tax_card', $d)
             || array_key_exists('service_charge', $d)) {
-            $cur = self::taxes();
-            $val = [
-                'tax_cash'       => array_key_exists('tax_cash', $d)       ? max(0, (float)$d['tax_cash'])       : $cur['tax_cash'],
-                'tax_card'       => array_key_exists('tax_card', $d)       ? max(0, (float)$d['tax_card'])       : $cur['tax_card'],
-                'service_charge' => array_key_exists('service_charge', $d) ? max(0, (float)$d['service_charge']) : $cur['service_charge'],
-            ];
-            foreach ($val as $k => $v) {
-                if ($v > 100) throw new \RuntimeException(str_replace('_', ' ', $k).' cannot be more than 100%.');
-            }
-            $json = json_encode($val, JSON_UNESCAPED_UNICODE);
+            self::saveTaxes($d);
+            $changed[] = 'taxes';
+        }
+
+        /* --- price mode (inclusive / exclusive) ---
+           V148: pehle is ke liye US SCREEN PAR ALAG "Save price mode"
+           button tha. Log "Save changes" dabate the, toast "Settings
+           saved" aata tha, aur price mode wahi purana reh jata tha —
+           phir bill par "(incl.)" chhapta tha jab ke screen par "Tax
+           added at the till" likha hota. Ab ek hi button. */
+        if (array_key_exists('tax_mode', $d) && trim((string)$d['tax_mode']) !== '') {
             try {
-                $q = $p->prepare("SELECT id FROM ui_records
-                                   WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");
-                $q->execute([tenant_id(), site_id()]);
-                if ($id = $q->fetchColumn()) {
-                    $p->prepare("UPDATE ui_records SET data_json=?, row_version=row_version+1, updated_at=NOW(6) WHERE id=?")
-                      ->execute([$json, $id]);
-                } else {
-                    $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at)
-                                 VALUES(?,?,?,'pos_settings',?,0,NOW(6))")
-                      ->execute([uuid(), tenant_id(), site_id(), $json]);
-                }
-                $changed[] = 'taxes';
+                TaxMode::set((string)$d['tax_mode']);
+                $changed[] = 'tax_mode';
             } catch (\Throwable $e) {
-                throw new \RuntimeException('Tax settings could not be saved: '.substr($e->getMessage(), 0, 120));
+                throw new \RuntimeException($e->getMessage());
             }
         }
 
@@ -257,19 +369,20 @@ final class SettingsService
 
     private static function put(PDO $p, string $key, string $value, string $group = self::GROUP): void
     {
-        $json = json_encode($value, JSON_UNESCAPED_UNICODE);
+        self::putRaw($p, $key, $value, $group);
+    }
+
+    /**
+     * Ek setting likhna. Number number rehta hai, string string.
+     *
+     * `id` ab `setting_uuid()` se banta hai — har node par wahi. Iske
+     * baghair branch ki row ka id alag hota tha aur sync us ko unique-key
+     * conflict ke taur par REJECT kar deta tha (dekho helpers.php).
+     */
+    private static function putRaw(PDO $p, string $key, mixed $value, string $group = self::GROUP): void
+    {
         try {
-            $q = $p->prepare("SELECT id FROM site_settings
-                               WHERE site_id=? AND setting_group=? AND setting_key=? LIMIT 1");
-            $q->execute([site_id(), $group, $key]);
-            if ($id = $q->fetchColumn()) {
-                $p->prepare("UPDATE site_settings SET value_json=?, updated_at=NOW(6) WHERE id=?")
-                  ->execute([$json, $id]);
-            } else {
-                $p->prepare("INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json,is_secret)
-                             VALUES(?,?,?,?,?,?,0)")
-                  ->execute([uuid(), tenant_id(), site_id(), $group, $key, $json]);
-            }
+            SiteSetting::put($group, $key, $value);
         } catch (\Throwable $e) {
             /* Khamosh nahi. Ek setting bhi na bache to user ko pata chale. */
             throw new \RuntimeException("Setting '$key' could not be saved: ".substr($e->getMessage(), 0, 120));
@@ -277,4 +390,4 @@ final class SettingsService
     }
 }
 
-// build: V63 build 2026-08-26
+// build: V148 build 2026-10-12

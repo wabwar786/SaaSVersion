@@ -1,3 +1,84 @@
+# WHATS UPDATED — V148 (tax settings)
+
+Two questions, one bug behind both.
+
+## 1. "Tax added at the till" — yes, tax goes on top of the price
+
+| Price mode | A 100 item at 16% | Customer pays |
+|---|---|---|
+| Tax included in the price | 86.21 net + 13.79 tax | **100** |
+| Tax added at the till | 100 net + 16 tax | **116** |
+
+Your screen showed *Tax added at the till* while the bill printed
+`PKR 730 (8% Card, incl.)` with Grand Total = Subtotal. That is because the
+price mode had its **own separate save button** — see §3.
+
+## 2. Tax 0 would not save — and neither would 16
+
+Reproduced on a real database:
+
+```
+save tax_cash = 0   ->   ok = true,  response says 16     (no error anywhere)
+reload              ->   16, 8
+```
+
+Tax rates lived in `ui_records` / `module_key='pos_settings'`. That table has no
+unique key, so one site could have **two rows** — and did: a branch computer
+pushes its own `ui_records` up, with its own `id`, so the cloud ends up with a
+second copy. Then:
+
+```
+reader:  ... ORDER BY created_at DESC LIMIT 1   -> the NEW row
+writer:  ... LIMIT 1  (no ORDER BY)             -> the OLD row
+```
+
+The save landed on one row, the screen read the other. Silent, and permanent.
+
+**Fix.** Tax now lives in `site_settings`, which carries
+`UNIQUE (site_id, setting_group, setting_key)` — a second row cannot exist. The
+old `pos_settings` row is adopted on first read and then closed
+(`deleted=1`), so it cannot come back. `scripts/migrate_tax_settings.php` does
+the same in bulk on deploy.
+
+## 3. One "Save changes" button
+
+The Price mode dropdown had a separate **Save price mode** button. People
+pressed the main *Save changes*, got "Settings saved", and the price mode never
+moved — which is exactly how a receipt ends up saying `(incl.)` while the screen
+says *added at the till*. That second button is gone; the dropdown is part of
+the normal save now.
+
+## 4. Settings never reached the branch computer
+
+`site_settings` was in **neither** `push_tables` nor `pull_tables`, and
+`ui_records` was push-only. So tax rates, price mode, currency, rounding and the
+receipt header/footer set on the portal never arrived at the till.
+
+It is now in `Sync::cfg()`'s forced list rather than in a config file, so **every
+already-installed node** picks it up by running `UPDATE.bat` — no re-downloading
+the offline package. Secret rows (the FBR access key) are held back by a single
+condition in `Sync::changedRows()`, which covers both directions.
+
+## 5. One writer for `site_settings`
+
+Five files were running their own SELECT-then-INSERT against that table
+(`SettingsService`, `TaxMode`, `Licence`, `BackupService`, `WhatsApp`). That is
+the same shape that caused V141 (module list), V142 (`tools/*.ps1` list) and
+V145 (migrations list). All five now go through `SiteSetting::put()`, whose ids
+are derived from site+group+key so a branch and the cloud generate the *same*
+id — without that, sync rejects the row as a unique-key conflict.
+
+`scripts/check_settings_single_row.php` fails the deploy if anyone adds a sixth
+writer or brings back the `pos_settings` path.
+
+## Tested
+
+96 screens (54 restaurant + 42 retail) opened in a real browser: all HTTP 200,
+no JavaScript errors. Tax 0 / 16 / over-100 through save, reload and POS boot.
+The two-row situation recreated deliberately — the value now holds. The drift
+checker broken on purpose to confirm it catches the regression.
+
+---
 # WHATS UPDATED — V147 (daily inventory flow)
 
 Four things, all from what you reported.

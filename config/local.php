@@ -60,7 +60,16 @@ return [
         
             /* Branch computer ke errors bhi upar aayen — warna wahan jo
                tootta hai wo kabhi nazar hi nahi aata. */
-            'app_errors',],
+            'app_errors',
+
+            /* V148 — SETTINGS. Tax rates, price mode (inclusive /
+               exclusive), currency, rounding, receipt header/footer:
+               sab `site_settings` par hain aur yeh table dono fehriston
+               mein THI HI NAHI. Portal par badlo to branch tak kabhi na
+               pohanche, branch par badlo to portal ko pata na chale.
+               FBR ka access key nahi jata (is_secret rows ruk jati hain
+               — Sync::changedRows). */
+            'site_settings',],
         // Cloud -> Local PULL: sirf master/reference data neeche aati hai
         // (head-office se edit hone wali). ui_records per-branch hai -> pull nahi.
         'pull_tables' => [
@@ -76,8 +85,11 @@ return [
             'rtl_departments', 'rtl_categories', 'rtl_brands', 'rtl_products',
             'rtl_product_barcodes', 'rtl_product_uom', 'units',
             'sync_tombstones',
+            /* Head office par tax/currency/receipt badlein to branch par
+               khud aa jaye — V148 se pehle yeh sirf haath se hota tha. */
+            'site_settings',
         ],
     ],
 ];
 
-// build: V17.1 build 2026-08-25
+// build: V148 build 2026-10-12

@@ -43,6 +43,32 @@ function module_uuid(string $key): string {
     return substr($h,0,8).'-'.substr($h,8,4).'-'.substr($h,12,4).'-'.substr($h,16,4).'-'.substr($h,20,12);
 }
 
+/**
+ * setting_uuid() — HAR NODE PAR WAHI ID (site + group + key se).
+ *
+ * `site_settings` par UNIQUE (site_id, setting_group, setting_key) laga
+ * hua hai, magar `id` ab tak `uuid()` se banti thi — yani cloud par
+ * `tax/mode` ki row ka id kuch aur, branch computer par kuch aur.
+ *
+ * Sync upsert JAAN-BOOJH KAR id ke hisaab se chalta hai (V-pehle ka
+ * bug: doosri unique key takraane par purani row overwrite ho jati thi,
+ * do bills mil kar ek ban jate the). Is liye alag id wali row sync par
+ * CONFLICT ban kar REJECT hoti hai — settings kabhi neeche aati hi
+ * nahi.
+ *
+ * Ab id derive hoti hai, is liye dono taraf bilkul wahi nikalti hai aur
+ * upsert sahi row par lagta hai.
+ */
+function setting_uuid(string $siteId, string $group, string $key): string {
+    $h = md5('aio-site-setting:' . strtolower(trim($siteId)) . '|' .
+             strtolower(trim($group)) . '|' . strtolower(trim($key)));
+    $b = str_split($h, 2);
+    $b[6] = dechex((hexdec($b[6]) & 0x0f) | 0x50);
+    $b[8] = dechex((hexdec($b[8]) & 0x3f) | 0x80);
+    $h = implode('', array_map(fn($x) => str_pad($x, 2, '0', STR_PAD_LEFT), $b));
+    return substr($h,0,8).'-'.substr($h,8,4).'-'.substr($h,12,4).'-'.substr($h,16,4).'-'.substr($h,20,12);
+}
+
 function tenant_id(): string {
     // Cloud (multi-tenant): logged-in user's tenant, or the tenant resolved
     // from the business slug during login. Local (offline): fixed config tenant.
@@ -115,3 +141,5 @@ function cli_arg(string $name, string $default = ''): string
     $a = cli_args();
     return (string)($a[strtolower($name)] ?? $default);
 }
+
+// build: V148 build 2026-10-12

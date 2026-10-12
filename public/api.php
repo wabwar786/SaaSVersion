@@ -219,6 +219,13 @@ function syncTableAllowed(string $table): bool {
     'expenses','expense_categories','reservations','riders','delivery_orders',
     'promotions','printers','floors','dining_tables','payment_methods',
     'paired_devices','notification_queue','devices','ui_records',
+    /* V148: `site_settings` is fehrist mein THI HI NAHI, aur node ki
+       push/pull list mein bhi nahi thi. Nateeja: portal par set kiya
+       hua tax rate, price mode (inclusive/exclusive), currency,
+       rounding aur receipt ki header/footer branch computer tak kabhi
+       pohanchte hi nahi the — till purana hisaab chalata rehta tha.
+       `is_secret` rows (FBR key) Sync::changedRows() khud rok deta hai. */
+    'site_settings',
     /* V62: DELETE CHANNEL — is table ke baghair cloud par delete kiya hua
        data node par hamesha zinda rehta tha. */
     'sync_tombstones',
@@ -992,8 +999,18 @@ case 'settings-save':needLogin();$d=body();
  try{$r=SettingsService::save($d);}catch(Throwable $e){fail($e->getMessage());}
  ok($r+['settings'=>SettingsService::get()]);
 
-case 'pos-settings':needLogin();$p=DB::pdo();$q=$p->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$q->execute([tenant_id(),site_id()]);$j=$q->fetchColumn();$d=$j?(json_decode($j,true)?:[]):[];ok(['settings'=>['tax_cash'=>isset($d['tax_cash'])?(float)$d['tax_cash']:16.0,'tax_card'=>isset($d['tax_card'])?(float)$d['tax_card']:8.0,'service_charge'=>isset($d['service_charge'])?(float)$d['service_charge']:0.0,'tax_mode'=>\Aio\Services\TaxMode::current()]]);
-case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change settings',403);$d=body();$val=['tax_cash'=>max(0,(float)($d['tax_cash']??16)),'tax_card'=>max(0,(float)($d['tax_card']??8)),'service_charge'=>max(0,(float)($d['service_charge']??0))];$p=DB::pdo();$q=$p->prepare("SELECT id FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 LIMIT 1");$q->execute([tenant_id(),site_id()]);$id=$q->fetchColumn();$json=json_encode($val,JSON_UNESCAPED_UNICODE);if($id)$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([$json,$id]);else $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,deleted,created_at) VALUES(?,?,?,'pos_settings',?,0,NOW(6))")->execute([uuid(),tenant_id(),site_id(),$json]);ok(['settings'=>$val]);
+/* V148 — tax ki SQL yahan se hata di gayi.
+   Pehle teen jagah apni apni query thi (yeh do endpoints aur
+   SettingsService). Padhne wali `ORDER BY created_at DESC` lagati thi,
+   likhne wali nahi — aur `pos_settings` ki do row ban sakti thin. Save
+   purani row par lagta, screen nayi dikhati, value kabhi na badalti.
+   Ab sirf SettingsService — aur wo site_settings par likhta hai jahan
+   UNIQUE (site,group,key) ki wajah se doosri row ban hi nahi sakti. */
+case 'pos-settings':needLogin();
+ ok(['settings'=>SettingsService::taxes()+['tax_mode'=>\Aio\Services\TaxMode::current()]]);
+case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change settings',403);$d=body();
+ try{$val=SettingsService::saveTaxes($d);}catch(Throwable $e){fail($e->getMessage());}
+ ok(['settings'=>$val+['tax_mode'=>\Aio\Services\TaxMode::current()]]);
 case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change pictures',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('A valid image URL or uploaded image is required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);
 case 'pos-verify-manager':needLogin();$d=body();$pw=(string)($d['password']??'');if($pw==='')fail('Password required',422);$p=DB::pdo();$q=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");$q->execute([tenant_id()]);foreach($q->fetchAll() as $u){if($u['password_hash']&&password_verify($pw,$u['password_hash']))ok(['manager'=>$u['full_name'],'manager_id'=>$u['id']]);}fail('Incorrect manager password',401);
 case 'bill-pdf':needLogin();
@@ -1808,7 +1825,12 @@ case 'device-revoke':needLogin();if(!Auth::isManager())fail('Admins and Managers
  $d=body();DB::pdo()->prepare("UPDATE paired_devices SET status='REVOKED' WHERE id=? AND site_id=?")->execute([(string)($d['id']??''),site_id()]);ok();
 
 case 'my-modules':needLogin();$u=Auth::user();ok(['modules'=>Auth::effectiveModules(),'admin'=>!empty($u['is_tenant_admin']),'manager'=>Auth::isManager(),'name'=>$u['full_name']??'']);
-case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];$sg=$p2=DB::pdo()->prepare("SELECT data_json FROM ui_records WHERE tenant_id=? AND site_id=? AND module_key='pos_settings' AND deleted=0 ORDER BY created_at DESC LIMIT 1");$sg->execute([tenant_id(),site_id()]);$sj=$sg->fetchColumn();$sd=$sj?(json_decode($sj,true)?:[]):[];$bb['settings']=['tax_cash'=>isset($sd['tax_cash'])?(float)$sd['tax_cash']:16.0,'tax_card'=>isset($sd['tax_card'])?(float)$sd['tax_card']:8.0,'service_charge'=>isset($sd['service_charge'])?(float)$sd['service_charge']:0.0,/* POS ka SET isi payload se banta hai — `settings-get` se nahi.    Yehi wajah thi ke Settings mein EXCLUSIVE chunne ka POS par koi    asar nahi hota tha: mode wahan pohanchta hi nahi tha. */'tax_mode'=>\Aio\Services\TaxMode::current()];
+case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$bu=Auth::user();$bb=PageData::posBoot();$sq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);$bb['site']=['name'=>(string)($sq->fetchColumn()?:'Main Branch')];/* POS ka SET isi payload se banta hai — `settings-get` se nahi.
+    Yehi wajah thi ke Settings mein EXCLUSIVE chunne ka POS par koi
+    asar nahi hota tha: mode wahan pohanchta hi nahi tha.
+    V148: rates ki SQL bhi hata di — SettingsService::taxes() hi
+    ek jagah hai, warna padhne/likhne ki tarteeb alag ho jati thi. */
+ $bb['settings']=SettingsService::taxes()+['tax_mode'=>\Aio\Services\TaxMode::current()];
 /* POS ko FBR ki halat bhi chahiye — warna QR khamoshi se gayab rehta hai
    aur cashier ko wajah ka pata hi nahi chalta. */
 $bb['fiscal']=['enabled'=>FiscalService::availableHere(),'tenant_on'=>FiscalService::enabledForTenant(),'provider'=>(string)(FiscalService::settings()['provider']??'NONE')];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
@@ -3232,4 +3254,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V62 build 2026-08-26
+// build: V148 build 2026-10-12

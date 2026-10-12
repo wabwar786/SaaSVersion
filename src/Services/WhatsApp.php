@@ -41,7 +41,6 @@ final class WhatsApp
     public static function saveSettings(array $d): void
     {
         Scope::requireManagement('changing WhatsApp settings');
-        $p = DB::pdo();
         foreach (self::settings() as $k => $_) {
             if (!array_key_exists('wa_'.$k, $d)) continue;
             $v = trim((string)$d['wa_'.$k]);
@@ -49,17 +48,9 @@ final class WhatsApp
                 $v = preg_replace('/[^0-9+]/', '', $v);
                 if (strlen($v) < 10) throw new \RuntimeException('That WhatsApp number does not look complete.');
             }
-            $json = json_encode($v, JSON_UNESCAPED_UNICODE);
-            $q = $p->prepare("SELECT id FROM site_settings
-                               WHERE site_id=? AND setting_group='whatsapp' AND setting_key=? LIMIT 1");
-            $q->execute([site_id(), $k]);
-            if ($id = $q->fetchColumn()) {
-                $p->prepare("UPDATE site_settings SET value_json=?, updated_at=NOW(6) WHERE id=?")->execute([$json, $id]);
-            } else {
-                $p->prepare("INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json,is_secret)
-                             VALUES(?,?,?,'whatsapp',?,?,?)")
-                  ->execute([uuid(), tenant_id(), site_id(), $k, $json, $k === 'api_token' ? 1 : 0]);
-            }
+            /* V148: SiteSetting hi ek jagah hai. `api_token` secret rehta
+               hai — secret rows sync par nahi jatin (Sync::changedRows). */
+            SiteSetting::put('whatsapp', $k, $v, $k === 'api_token');
         }
         Audit::log('SETTINGS_CHANGE', 'whatsapp', ['desc' => 'WhatsApp closing settings updated']);
     }
@@ -223,4 +214,4 @@ final class WhatsApp
     }
 }
 
-// build: V77 build 2026-08-28
+// build: V148 build 2026-10-12

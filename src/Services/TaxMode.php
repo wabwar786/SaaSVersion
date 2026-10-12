@@ -51,15 +51,8 @@ final class TaxMode
     public static function saved(): ?string
     {
         try {
-            $q = DB::pdo()->prepare(
-                "SELECT value_json FROM site_settings
-                  WHERE tenant_id=? AND site_id=? AND setting_group='tax' AND setting_key='mode'
-                  LIMIT 1");
-            $q->execute([tenant_id(), site_id()]);
-            $v = $q->fetchColumn();
-            if ($v === false || $v === null) return null;
-            $d = \json_decode((string)$v, true);
-            $d = \is_string($d) ? \strtoupper($d) : '';
+            $v = SiteSetting::one('tax', 'mode');
+            $d = \is_string($v) ? \strtoupper($v) : '';
             return \in_array($d, [self::INCLUSIVE, self::EXCLUSIVE], true) ? $d : null;
         } catch (\Throwable $e) { return null; }
     }
@@ -86,15 +79,13 @@ final class TaxMode
         if (!\in_array($mode, [self::INCLUSIVE, self::EXCLUSIVE], true)) {
             throw new \RuntimeException('Tax mode must be INCLUSIVE or EXCLUSIVE');
         }
-        $pdo = DB::pdo();
-        $pdo->prepare(
-            "DELETE FROM site_settings
-              WHERE tenant_id=? AND site_id=? AND setting_group='tax' AND setting_key='mode'")
-            ->execute([tenant_id(), site_id()]);
-        $pdo->prepare(
-            "INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json)
-             VALUES(?,?,?,'tax','mode',?)")
-            ->execute([\uuid(), tenant_id(), site_id(), \json_encode($mode)]);
+        /* V148 — pehle yahan DELETE + INSERT tha aur id `uuid()` se banti
+           thi. Har save par row ka id badal jata, aur branch par bana id
+           cloud ke id se kabhi match na karta. Sync upsert id dekhta hai,
+           is liye settings ki row CONFLICT ban kar REJECT hoti thi —
+           price mode branch tak pohanchta hi nahi tha. Ab SiteSetting
+           se, jahan id site+group+key se derive hoti hai. */
+        SiteSetting::put('tax', 'mode', $mode);
         return $mode;
     }
 
@@ -143,3 +134,5 @@ final class TaxMode
         ];
     }
 }
+
+// build: V148 build 2026-10-12

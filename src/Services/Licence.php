@@ -83,19 +83,10 @@ final class Licence
                  'tenant_status' => (string)($lic['tenant_status'] ?? ''),
                  'business' => (string)($lic['business'] ?? '')];
         foreach ($keep as $k => $v) {
-            try {
-                $p = DB::pdo();
-                $q = $p->prepare("SELECT id FROM site_settings WHERE site_id=? AND setting_group='licence' AND setting_key=? LIMIT 1");
-                $q->execute([site_id(), $k]);
-                $json = json_encode($v, JSON_UNESCAPED_UNICODE);
-                if ($id = $q->fetchColumn()) {
-                    $p->prepare("UPDATE site_settings SET value_json=?, updated_at=NOW(6) WHERE id=?")->execute([$json, $id]);
-                } else {
-                    $p->prepare("INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json,is_secret)
-                                 VALUES(?,?,?,'licence',?,?,0)")
-                      ->execute([uuid(), tenant_id(), site_id(), $k, $json]);
-                }
-            } catch (\Throwable $e) { /* licence cache best-effort */ }
+            /* V148: apni SQL hata di — SiteSetting hi ek jagah hai
+               (derive kiya hua id, warna sync row reject kar deta hai). */
+            try { SiteSetting::put('licence', $k, $v); }
+            catch (\Throwable $e) { /* licence cache best-effort */ }
         }
     }
 
@@ -139,4 +130,4 @@ final class Licence
     }
 }
 
-// build: V65 build 2026-08-27
+// build: V148 build 2026-10-12

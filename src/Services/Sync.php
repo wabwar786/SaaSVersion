@@ -248,10 +248,25 @@ final class Sync
         /* V90 — `licence_keys_used` sync mein KABHI na jaye: wo us
            computer ki apni yaad-dasht hai. Warna node reset kar ke wahi
            key dobara lagai ja sakti. */
+        /* V148 — `site_settings` ka bhi bilkul wahi qissa tha. Tax rates,
+           price mode (inclusive/exclusive), currency, rounding aur
+           receipt ki header/footer sab usi table par hain, aur wo table
+           na node ki push list mein thi na pull mein. Portal par tax
+           badal do — till purana hi charge karta rehta tha, aur kahin
+           koi error nahi.
+
+           Yahan (force mein) daalne ki wajah: PEHLE SE LAGE HUE nodes ki
+           config un ki disk par likhi hui hai. Us list mein daalne se
+           sirf nayi download hui packages theek hoti; yahan daalne se
+           har purana node bhi sirf UPDATE.bat chala kar theek ho jata
+           hai — aur customer ko offline version dobara download nahi
+           karna parta. `is_secret` rows (FBR access key) phir bhi nahi
+           jatin — wo shart changedRows() mein hai. */
         $force = [
             'sync_tombstones',
             'users', 'user_roles', 'roles', 'role_modules',
             'user_module_access', 'user_form_permissions',
+            'site_settings',
         ];
         foreach (['push_tables', 'pull_tables'] as $k) {
             $list = (array)($c[$k] ?? []);
@@ -417,6 +432,15 @@ final class Sync
                aisi saari rows kabhi neeche NahI aati thin. */
             $where .= " AND (site_id = ? OR site_id IS NULL)";
             $args[] = $site;
+        }
+        /* V148 — `site_settings` sync mein aaya (tax rates, price mode,
+           currency, receipt lines — yeh portal par badalte the aur branch
+           tak kabhi pohanchte hi nahi the). Magar `is_secret` rows NahI
+           jatin: FBR ka access key / POS id us computer ki cheez hai aur
+           usay network par bhejne ki koi wajah nahi. Yeh shart yahan ek
+           dafa likhi hai, is liye PUSH aur PULL dono par lagti hai. */
+        if (in_array('is_secret', $cols, true)) {
+            $where .= " AND is_secret = 0";
         }
         $sql = "SELECT * FROM `$table` WHERE $where ORDER BY `$ts` ASC LIMIT $limit";
         $q = DB::pdo()->prepare($sql);
@@ -1645,4 +1669,4 @@ final class Sync
     }
 }
 
-// build: V62 build 2026-08-26
+// build: V148 build 2026-10-12

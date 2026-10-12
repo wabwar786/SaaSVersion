@@ -81,8 +81,13 @@ return [
     ['script' => 'migrate_collation',     'optional' => true, 'stage' => 'background'],
     ['script' => 'migrate_site_defaults', 'optional' => true, 'stage' => 'background'],
     ['script' => 'migrate_ui_menu',       'optional' => true, 'stage' => 'background'],
+    /* V148 — tax rates `ui_records/pos_settings` se `site_settings` par.
+       Background mein hai kyunke yeh sirf data move karti hai; koi
+       screen is par nahi ruki hui. */
+    ['script' => 'migrate_tax_settings',  'optional' => true, 'stage' => 'background'],
 
     /* ---------- consistency checks (schema nahi badalte) ---------- */
     ['script' => 'check_module_groups',   'optional' => true, 'check' => true],
+    ['script' => 'check_settings_single_row', 'optional' => true, 'check' => true],
     ['script' => 'check_offline_tools',   'optional' => true, 'check' => true, 'cloud_only' => true],
 ];

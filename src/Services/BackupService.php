@@ -60,16 +60,9 @@ final class BackupService
     public static function saveSetting(string $key, string $val): void
     {
         Scope::requireManagement('changing backup settings');
-        $p = DB::pdo();
-        $q = $p->prepare("SELECT id FROM site_settings WHERE site_id=? AND setting_group='backup' AND setting_key=? LIMIT 1");
-        $q->execute([site_id(), $key]);
-        $json = json_encode($val, JSON_UNESCAPED_UNICODE);
-        if ($id = $q->fetchColumn()) {
-            $p->prepare("UPDATE site_settings SET value_json=?, updated_at=NOW(6) WHERE id=?")->execute([$json, $id]);
-        } else {
-            $p->prepare("INSERT INTO site_settings(id,tenant_id,site_id,setting_group,setting_key,value_json,is_secret)
-                         VALUES(?,?,?,'backup',?,?,0)")->execute([uuid(), tenant_id(), site_id(), $key, $json]);
-        }
+        /* V148: SiteSetting hi ek jagah hai jahan se yeh table likhi jati
+           hai (derive kiya hua id — warna sync row reject kar deta hai). */
+        SiteSetting::put('backup', $key, $val);
         Audit::log('BACKUP_SETTING', 'backup', ['new' => $key . '=' . $val]);
     }
 
@@ -298,4 +291,4 @@ final class BackupService
     }
 }
 
-// build: V88 build 2026-09-01
+// build: V148 build 2026-10-12
