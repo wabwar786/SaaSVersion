@@ -156,7 +156,34 @@
   scrim.onclick = close;
   var lo = document.getElementById('shellLogout');
   if (lo) lo.onclick = function () { location.href = 'login.html'; };
+
+  /* ---------- Licence banner — V150 ----------
+     Restaurant ke sidebar par yeh V65 se tha, retail par THA HI NAHI.
+     Yani supermarket wale customer ko expiry se pehle koi khabar nahi
+     milti thi — ek din aata aur darwaza band. Ab dono taraf wahi:
+     3 din pehle peela, expire hone par laal, aur Renew ka seedha link. */
+  (function () {
+    if (!window.DBApi) return;
+    var r; try { r = DBApi.req('licence-status'); } catch (e) { return; }
+    if (!r || !r.ok || !r.licence) return;
+    var L = r.licence;
+    if (!L.expired && !L.warn) return;
+    var v = L.vendor || {}, tel = (v.phone || '').replace(/\s/g, '');
+    var bar = document.createElement('div');
+    bar.id = 'licBar';
+    bar.style.cssText = 'position:sticky;top:0;z-index:60;padding:10px 14px;font-size:12.5px;' +
+      'display:flex;gap:10px;align-items:center;flex-wrap:wrap;' +
+      (L.expired ? 'background:#fdecee;color:#a3222d;border-bottom:1px solid #f3c3c7'
+                 : 'background:#fff6e5;color:#8a5a00;border-bottom:1px solid #f0d9a8');
+    bar.innerHTML = '<b>' + esc(L.message || '') + '</b>' +
+      (L.expired ? ('<span>Contact ' + esc(v.company || '') + '</span>' +
+        '<a class="btn sm" href="tel:' + esc(tel) + '">Call ' + esc(v.phone || '') + '</a>') : '') +
+      '<a class="btn sm primary" href="/activate.html" style="margin-left:auto">' +
+      (L.expired ? 'Activate now' : 'Renew') + '</a>';
+    var main = document.querySelector('.main') || document.body;
+    main.insertBefore(bar, main.firstChild);
+  })();
   window.addEventListener('resize', function () { if (innerWidth > 1000) close(); });
 })();
 
-/* build: V149 build 2026-10-12 */
+/* build: V150 build 2026-10-12 */

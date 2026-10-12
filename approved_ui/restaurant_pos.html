@@ -1802,68 +1802,21 @@ function slipHtml(kind,lines,info){
   }).join('');
   /* Pehle QR fail hone is missing the `this.remove()` tha - QR khamoshi se gayab.
      FBR ke bill par yeh na-qabil-e-qabool hai; ab wajah likhi aati hai. */
-  /* ---------- Connect a tablet (V68) ----------
-     Waiter ke tablet ko jorne ka poora tareeqa ek screen par: is PC ka
-     LAN address, QR, aur 15 minute ka code. QR isi computer par banta
-     hai (Qr.php) — internet ki zaroorat nahi. */
-  var tb=document.getElementById('tabletBtn');
-  if(tb) tb.onclick=function(){
-    var r=DBApi.req('tablet-connect',{role:'WAITER'});
-    if(!r||!r.ok){ toast((r&&r.message)||'Could not start tablet pairing',true); return; }
-    var ov=document.createElement('div');
-    ov.setAttribute('style','position:fixed;inset:0;background:rgba(21,34,27,.55);z-index:9999;'
-      +'display:grid;place-items:center;padding:20px');
-    ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:430px;width:100%;'
-      +'padding:26px 24px;text-align:center;box-shadow:0 20px 60px rgba(21,34,27,.25)">'
-      +'<h2 style="margin:0 0 4px;font-size:18px">Connect a tablet</h2>'
-      +'<p style="margin:0 0 16px;font-size:12.5px;color:#5f6f66">'
-        +'On the tablet, connect to the same WiFi and scan this code.</p>'
-      +'<img src="/api.php?action=qr&scale=6&data='+encodeURIComponent(r.pair_url)+'" '
-        +'style="width:220px;height:220px;border:1px solid #e1e9e4;border-radius:12px" alt="" onerror="qrFail(this)">'
-      +'<p style="margin:14px 0 4px;font-size:12px;color:#5f6f66">Or open this address on the tablet</p>'
-      +'<div style="font-size:15px;font-weight:800;letter-spacing:.02em">'+esc(r.url)+'</div>'
-      +'<p style="margin:12px 0 0;font-size:11.5px;color:#8b9a92">'
-        +'This code works for '+esc(String(r.expires_minutes))+' minutes. '
-        +'The tablet stops working when this POS computer is switched off.</p>'
-      +'<button class="tb" id="tabClose" style="margin-top:16px;width:100%">Done</button>'
-      +'</div>';
-    document.body.appendChild(ov);
-    ov.addEventListener('click',function(e){
-      if(e.target===ov||e.target.id==='tabClose') ov.remove();
-    });
-  };
+  /* V150 — YEH TEEN CHEEZEIN YAHAN SE HATA DI GAYI HAIN.
 
-  /* ---------- Licence banner (V65) ----------
-     POS shell.js use nahi karta, is liye yahan alag se. Cashier ko
-     3 din pehle pata chalna is required, aur expire hone par Wabwar ka
-     number saamne ho taake seedha call kar ke renew karwa le. */
-  (function(){
-    try{
-      var r=DBApi.req('licence-status');
-      if(!r||!r.ok||!r.licence)return;
-      var L=r.licence, bar=document.getElementById('licBar');
-      if(!bar||(!L.expired&&!L.warn))return;
-      var v=L.vendor||{}, tel=(v.phone||'').replace(/\s/g,'');
-      bar.setAttribute('style','padding:9px 14px;font-size:13px;display:flex;gap:10px;'
-        +'align-items:center;flex-wrap:wrap;'
-        +(L.expired?'background:#fdecee;color:#a3222d;border-bottom:1px solid #f3c3c7'
-                   :'background:#fff6e5;color:#8a5a00;border-bottom:1px solid #f0d9a8'));
-      bar.innerHTML='<b>'+esc(L.message||'')+'</b>'
-        /* Cashier ko sirf number dena kaafi nahi — malik khud renew kar
-           sake, is liye seedha activation screen ka link. */
-        /* Renew malik/manager ka kaam hai — cashier ko link dikha kar
-           permission denied par bhejna be-maani hai. Usay sirf number. */
-        +((CAN&&CAN.manage)?('<a class="tb" href="/activate.html">'+(L.expired?'Activate now':'Renew')+'</a>'):'')
-        +(L.expired?('<a class="tb" href="tel:'+esc(tel)+'">Call '+esc(v.phone||'')+'</a>'):'');
-    }catch(e){}
-  })();
+     Tablet pairing ka handler, licence ka banner aur `qrFail` —
+     teeno ghalti se `slipHtml()` ke ANDAR chipak gaye thay. `slipHtml`
+     sirf bill/KOT ka HTML banata hai aur tab chalta hai jab kuch
+     chhapta hai. Nateeja:
 
-  window.qrFail=function(img){
-    img.style.display='none';
-    var d=document.createElement('div');
-    d.style.fontSize='9px'; d.textContent='QR could not be generated';
-    if(img.parentNode)img.parentNode.insertBefore(d,img.nextSibling);
-  };
+       - POS khulte hi licence ka banner KABHI nahi aata tha. Yani jis
+         screen par cashier poora din baitha hai, wahan expiry ki
+         warning kabhi nazar hi nahi aayi (V65 se ab tak).
+       - `tabletBtn` ka handler pehla bill chhapne ke BAAD lagta tha.
+       - `window.qrFail` bhi pehle print ke baad hi wujood mein aata.
+
+     Ab teeno script ke aakhir mein, top level par (dekho LICENCE +
+     TABLET). */
   /* ============================================================
      FBR PORTION — sirf us property par jahan FBR CHALU hai.
 
@@ -3032,7 +2985,85 @@ document.addEventListener('keydown',function(e){
   }
 });
 boot();
+
+/* ============================================================
+   LICENCE + TABLET — V150 mein `slipHtml()` ke andar se yahan laaye gaye.
+
+   Yeh teeno TOP LEVEL par hone chahiyen, aur `boot()` ke BAAD:
+     - licence ka banner `CAN.manage` dekhta hai (renew ka link sirf
+       malik/manager ko), aur `CAN` boot() mein set hota hai;
+     - tablet ka button page par mojood hona chahiye;
+     - `qrFail` bill ke QR se pukara jata hai.
+
+   Pehle yeh poora hissa bill banane wale function ke andar tha, is liye
+   banner sirf us waqt banta jab koi bill chhapta — yani POS par expiry
+   ki warning kabhi nazar hi nahi aati thi.
+   ============================================================ */
+  /* ---------- Connect a tablet (V68) ----------
+     Waiter ke tablet ko jorne ka poora tareeqa ek screen par: is PC ka
+     LAN address, QR, aur 15 minute ka code. QR isi computer par banta
+     hai (Qr.php) — internet ki zaroorat nahi. */
+  var tb=document.getElementById('tabletBtn');
+  if(tb) tb.onclick=function(){
+    var r=DBApi.req('tablet-connect',{role:'WAITER'});
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not start tablet pairing',true); return; }
+    var ov=document.createElement('div');
+    ov.setAttribute('style','position:fixed;inset:0;background:rgba(21,34,27,.55);z-index:9999;'
+      +'display:grid;place-items:center;padding:20px');
+    ov.innerHTML='<div style="background:#fff;border-radius:18px;max-width:430px;width:100%;'
+      +'padding:26px 24px;text-align:center;box-shadow:0 20px 60px rgba(21,34,27,.25)">'
+      +'<h2 style="margin:0 0 4px;font-size:18px">Connect a tablet</h2>'
+      +'<p style="margin:0 0 16px;font-size:12.5px;color:#5f6f66">'
+        +'On the tablet, connect to the same WiFi and scan this code.</p>'
+      +'<img src="/api.php?action=qr&scale=6&data='+encodeURIComponent(r.pair_url)+'" '
+        +'style="width:220px;height:220px;border:1px solid #e1e9e4;border-radius:12px" alt="" onerror="qrFail(this)">'
+      +'<p style="margin:14px 0 4px;font-size:12px;color:#5f6f66">Or open this address on the tablet</p>'
+      +'<div style="font-size:15px;font-weight:800;letter-spacing:.02em">'+esc(r.url)+'</div>'
+      +'<p style="margin:12px 0 0;font-size:11.5px;color:#8b9a92">'
+        +'This code works for '+esc(String(r.expires_minutes))+' minutes. '
+        +'The tablet stops working when this POS computer is switched off.</p>'
+      +'<button class="tb" id="tabClose" style="margin-top:16px;width:100%">Done</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){
+      if(e.target===ov||e.target.id==='tabClose') ov.remove();
+    });
+  };
+
+  /* ---------- Licence banner (V65) ----------
+     POS shell.js use nahi karta, is liye yahan alag se. Cashier ko
+     3 din pehle pata chalna is required, aur expire hone par Wabwar ka
+     number saamne ho taake seedha call kar ke renew karwa le. */
+  (function(){
+    try{
+      var r=DBApi.req('licence-status');
+      if(!r||!r.ok||!r.licence)return;
+      var L=r.licence, bar=document.getElementById('licBar');
+      if(!bar||(!L.expired&&!L.warn))return;
+      var v=L.vendor||{}, tel=(v.phone||'').replace(/\s/g,'');
+      bar.setAttribute('style','padding:9px 14px;font-size:13px;display:flex;gap:10px;'
+        +'align-items:center;flex-wrap:wrap;'
+        +(L.expired?'background:#fdecee;color:#a3222d;border-bottom:1px solid #f3c3c7'
+                   :'background:#fff6e5;color:#8a5a00;border-bottom:1px solid #f0d9a8'));
+      bar.innerHTML='<b>'+esc(L.message||'')+'</b>'
+        /* Cashier ko sirf number dena kaafi nahi — malik khud renew kar
+           sake, is liye seedha activation screen ka link. */
+        /* Renew malik/manager ka kaam hai — cashier ko link dikha kar
+           permission denied par bhejna be-maani hai. Usay sirf number. */
+        +((CAN&&CAN.manage)?('<a class="tb" href="/activate.html">'+(L.expired?'Activate now':'Renew')+'</a>'):'')
+        +(L.expired?('<a class="tb" href="tel:'+esc(tel)+'">Call '+esc(v.phone||'')+'</a>'):'');
+    }catch(e){}
+  })();
+
+  window.qrFail=function(img){
+    img.style.display='none';
+    var d=document.createElement('div');
+    d.style.fontSize='9px'; d.textContent='QR could not be generated';
+    if(img.parentNode)img.parentNode.insertBefore(d,img.nextSibling);
+  };
 </script>
-<script src="/item_dialog.js?b=v18"></script>
+<script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
+
+<!-- build: V150 build 2026-10-12 -->

@@ -1,3 +1,65 @@
+# WHATS UPDATED — V150 (renewal system)
+
+The renewal *chain* already worked: the Activate screen asks for the transaction
+ID, months, amount, method and date; Super Admin → Activations → Approve extends
+the licence. Verified end to end. The failures were around it.
+
+## 1. The POS never showed the expiry warning
+
+The licence banner, the tablet-pairing handler and `qrFail` had all been pasted
+**inside `slipHtml()`** — the function that builds a receipt. So they only ran
+when something was printed. The screen a cashier sits at all day has shown no
+expiry warning since V65. Confirmed in a browser: `licBar` empty,
+`window.qrFail` undefined.
+
+All three now sit at the end of the script, after `boot()`.
+
+## 2. Retail had no licence banner at all
+
+Not in the sidebar, not on the POS. A supermarket customer got no warning before
+the door shut. Both now carry the same banner: amber at 3 days, red once
+expired, with a direct Renew link.
+
+## 3. Licence control dialog, rebuilt
+
+Before: one narrow column; "Extend by" and "exact date" fighting each other with
+no indication of which wins; **no field for the transaction ID** even though
+`subscription_payments.reference` has always existed; and the key generator
+buried below the fold.
+
+Now: a Status / Expiry / Days-left strip; month chips (+1, +3, +6, +1 year) that
+clear the date field and vice versa; a live `New expiry: 2027-04-12` preview that
+turns red for a past date; a payment block with amount, method, **transaction ID**
+and payer; and the offline key in its own panel.
+
+The preview derives "today" from the server (`expiry_date` − `days_left`) rather
+than the browser clock — a browser on UTC against a server on Asia/Karachi was
+showing a date one day off from what would be saved.
+
+## 4. Activations
+
+- Opening the page now loads it. The `if(sec==='activations')loadActivations()`
+  line was simply missing, so the page sat empty until someone pressed Refresh.
+- The pending count badge refreshes on every page, not only on that one.
+- Reference / Method / Paid on / Contact / Expires now render as a grid —
+  `.fgrid` had no CSS at all, so they stacked into one tall column.
+
+## 5. Two things the audit turned up
+
+- `restaurant_pos.html` had `item_dialog.js?b=v18` hard-coded, so the V149 item
+  dialog fix never reached POS users. Now `v19`.
+- The router was emitting `APP_ROLE` twice (a duplicate added in V149).
+
+## Tested
+
+Full cycle in a real browser: 3 days left → warning on dashboard **and** POS;
+4 days → nothing; Renew → Activate screen → request `JC-2200113` / 3 months →
+Super Admin badge 1 → Approve → expiry 2026-10-14 → 2027-01-14 → badge clears →
+customer's banner gone. Payment record saved as PKR 18,000 / BANK /
+TXN-5551212 / Mubeen. 96 screens across both verticals: HTTP 200, no JavaScript
+errors.
+
+---
 # WHATS UPDATED — V149 (menu→stock, branch name, settings switch, expiry)
 
 ## 1. Menu items no longer have to be built twice

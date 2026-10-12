@@ -284,7 +284,8 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
 
         Ab yahan se ek dafa jata hai — modules aur user ki tarah — aur
         chaaron jagah wahi parhti hain. Ek extra request bhi nahi. */
-     .';window.APP_ROLE='.json_encode((string)cfg('app.role'))
+     /* APP_ROLE upar pehle se ja raha hai (line ~249) — V149 mein yahan
+        doosri dafa likh diya gaya tha. Ek hi kaafi hai. */
      .';window.APP_SITE='.json_encode(Auth::user() ? (function(){
             try{
                 $q=\Aio\DB::pdo()->prepare("SELECT s.name, COALESCE(NULLIF(t.display_name,''),t.name) AS biz
@@ -343,4 +344,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V149 build 2026-10-12
+// build: V150 build 2026-10-12
