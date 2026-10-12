@@ -377,6 +377,9 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
       <button class="side-link" data-nav="create"><span class="i">＋</span> Create Business</button>
       <!-- V86 — customer khud register karta hai aur khud payment ki
            ittila bhejta hai. Yahan wo darkhwastein aati hain. -->
+      <!-- V151 — har mahine ka parcha. -->
+      <button class="side-link" data-nav="invoices"><span class="i">&#8277;</span> Invoices
+        <b id="invBadge" class="tag" style="margin-left:auto;display:none">0</b></button>
       <button class="side-link" data-nav="activations"><span class="i">&#9873;</span> Activations
         <b id="actBadge" class="tag" style="margin-left:auto;display:none">0</b></button>
     </div>
@@ -463,6 +466,31 @@ pre.out{background:var(--surface-2);border:1px solid var(--line);border-radius:v
            Customer khud register karta hai, khud payment karta hai, aur
            yahan uski transaction reference aati hai. Ek click par
            licence barh jata hai — yehi 12 ghante ka waada hai. -->
+      <!-- ============================================================
+           V151 — INVOICES.
+           Pehle `subscription_payments` ki ek line hoti thi: "itne
+           rupay aaye". Us se kabhi pata nahi chalta tha ke kis mahine
+           ke hain, parcha bheja bhi gaya ya nahi, aur abhi kis kis ke
+           zimme kitna baqi hai. Ab har parche ki apni halat hai.
+           ============================================================ -->
+      <section class="sec" data-sec="invoices">
+        <div class="pagehead"><div><h2>Invoices</h2>
+          <p class="lead">Har business ka mahana parcha &mdash; bhejna, wasool karna, aur hisaab</p></div>
+          <div class="row" style="gap:8px">
+            <select id="invFilter" style="height:36px">
+              <option value="UNPAID">Unpaid</option>
+              <option value="PAID">Paid</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="ALL">All</option>
+            </select>
+            <button class="btn ghost" id="invRefresh">Refresh</button>
+            <button class="btn" id="invNew">New invoice</button>
+          </div>
+        </div>
+        <div id="invStats" class="kpis" style="margin-bottom:14px"></div>
+        <div id="invList" class="muted" style="padding:14px">Loading...</div>
+      </section>
+
       <section class="sec" data-sec="activations">
         <div class="pagehead"><div><h2>Activations</h2>
           <p class="lead">Customers who have paid and are waiting to be activated</p></div>
@@ -781,6 +809,7 @@ var TITLES={
   sync:['Sync Monitor','Branch computers and data transfers'],
   biz:['All Businesses','Every tenant on the platform'],
   create:['Create Business','New tenant setup'],
+  invoices:['Invoices','Har business ka mahana parcha'],
   activations:['Activations','Customers who have paid and are waiting'],
   backup:['Backup & Reset','Download data, then wipe safely'],
   import:['Import Data','Load master data from a backup file'],
@@ -863,6 +892,7 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(b)
      KHALI rehta tha, jab tak banda "Refresh" na dabaye. Jis screen ka
      poora maqsad hi intezar karti hui darkhwastein dikhana hai. */
   if(sec==='activations')loadActivations();
+  if(sec==='invoices')loadInvoices();
   if(sec==='backup'||sec==='import')fillBizSelects();
   document.querySelector('.sidebar').classList.remove('open');
 }
@@ -1664,6 +1694,28 @@ async function bizRenew(id){
       +'</div>'
     +'</div>'
 
+    /* ---- V151: har business ka apna rate ----
+       Pehle mahana raqam kahin likhi hi nahi jati thi: `subscription_
+       plans` kabhi istemal nahi hoti thi, `monthly_price` ek global
+       number tha jo sirf customer ki screen par LIKHA jata, aur
+       `tenant_subscriptions.amount` sirf tab bharta jab renew karte
+       waqt raqam type ho. Ab rate yahan hai, aur invoice isi se banta. */
+    +'<div class="lc-sec"><h4>Billing rate <i>invoice isi se banta hai</i></h4>'
+      +'<div class="grid">'
+        +'<div><label>Amount (PKR)</label><input id="brAmt" type="number" min="0" step="1"></div>'
+        +'<div><label>Cycle</label><select id="brCycle">'
+          +'<option value="MONTHLY">Per month</option>'
+          +'<option value="YEARLY">Per year</option></select></div>'
+        +'<div><label>WhatsApp number <span class="hint">&middot; invoice yahan jayega</span></label>'
+          +'<input id="brPhone" placeholder="0300 1234567"></div>'
+        +'<div><label>Note</label><input id="brNote" placeholder="e.g. 2 counters"></div>'
+      +'</div>'
+      +'<div class="row" style="gap:8px;margin-top:11px;flex-wrap:wrap">'
+        +'<button class="btn ghost" id="brSave">Save rate</button>'
+        +'<button class="btn ghost" id="brInv">Create invoice</button>'
+        +'<span class="muted" id="brMsg" style="font-size:12px"></span></div>'
+    +'</div>'
+
     /* ---- offline key ---- */
     +'<div class="lc-key"><h4 style="margin:0 0 6px;font-size:12px;letter-spacing:.05em;'
       +'text-transform:uppercase;color:var(--ink)">No internet at the branch?</h4>'
@@ -1775,6 +1827,38 @@ async function bizRenew(id){
     if(cp)cp.onclick=function(){copyText(kr.key)};
   };
   ov.querySelector('#lcStatus').value=(L.tenant_status==='SUSPENDED')?'SUSPENDED':'ACTIVE';
+
+  /* ---- billing rate ---- */
+  (async function(){
+    var g=await api('sa-billing-rate-get&tenant_id='+encodeURIComponent(id));
+    if(!g||!g.ok)return;
+    var R=g.rate||{};
+    ov.querySelector('#brAmt').value   = R.amount||'';
+    ov.querySelector('#brCycle').value = (R.cycle==='YEARLY')?'YEARLY':'MONTHLY';
+    ov.querySelector('#brPhone').value = R.phone||'';
+    ov.querySelector('#brNote').value  = R.note||'';
+  })();
+  ov.querySelector('#brSave').onclick=async function(){
+    this.disabled=true;
+    var r=await api('sa-billing-rate-save',{tenant_id:id,
+      amount:Number(ov.querySelector('#brAmt').value||0),
+      cycle:ov.querySelector('#brCycle').value,
+      phone:ov.querySelector('#brPhone').value.trim(),
+      note:ov.querySelector('#brNote').value.trim()});
+    this.disabled=false;
+    ov.querySelector('#brMsg').textContent=r.ok?(r.message||'Saved'):(r.message||'Failed');
+    if(r.ok)toast(r.message||'Rate saved');
+  };
+  ov.querySelector('#brInv').onclick=async function(){
+    this.disabled=true;this.textContent='Banaya ja raha hai…';
+    var r=await api('sa-invoice-create',{tenant_id:id});
+    this.disabled=false;this.textContent='Create invoice';
+    if(!r.ok){toast(r.message||'Could not create the invoice');return}
+    toast(r.invoice.invoice_no+' ban gaya — PKR '+Number(r.invoice.total).toLocaleString());
+    ov.querySelector('#brMsg').innerHTML='<a href="'+esc(r.link)+'" target="_blank">'
+      +esc(r.invoice.invoice_no)+'</a> &middot; <a href="'+esc(r.wa)+'" target="_blank">WhatsApp</a>';
+    refreshActBadge();
+  };
   ov.querySelector('#lcSave').onclick=async()=>{
     const body={tenant_id:id,status:ov.querySelector('#lcStatus').value,
                 amount:Number(ov.querySelector('#lcAmt').value||0),
@@ -1805,7 +1889,7 @@ async function bizToggle(id,reopen){
 }
 
 function bizTag(b){
-  if(String(b.status).toUpperCase()==='SUSPENDED')return '<span class="tag bad">Suspended</span>';
+  if(String(b.status).toUpperCase()==='SUSPENDED')return '<span class="tag danger">Suspended</span>';
   if(b.expired)return '<span class="tag warn">Expired</span>';
   return '<span class="tag ok">Active</span>';
 }
@@ -2067,6 +2151,157 @@ document.addEventListener('click',async function(e){
   loadBiz&&loadBiz();
 });
 
+/* ============================================================
+   V151 — INVOICES ka safha.
+   ============================================================ */
+var INV_ROWS=[];
+
+function invMoney(n){ return 'PKR '+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0}) }
+
+async function loadInvoices(){
+  var st=($('invFilter')&&$('invFilter').value)||'UNPAID';
+  var box=$('invList');
+  var r=await api('sa-invoices&status='+encodeURIComponent(st));
+  if(!r.ok){box.textContent=r.message||'Could not load';return}
+  INV_ROWS=r.rows||[];
+  var T=r.totals||{};
+
+  $('invStats').innerHTML=[
+    ['Unpaid',(T.unpaid_count||0)+' &middot; '+invMoney(T.unpaid_total),'warn'],
+    ['Overdue',(T.overdue_count||0),(T.overdue_count?'bad':'')],
+    ['Collected this month',invMoney(T.paid_month),'ok']
+  ].map(function(c){
+    return '<div class="kpi '+(c[2]||'')+'"><div class="lab">'+c[0]+'</div>'
+          +'<div class="val">'+c[1]+'</div></div>'}).join('');
+
+  var badge=$('invBadge');
+  if(badge){ var n=T.unpaid_count||0; badge.textContent=n;
+             badge.style.display=n?'':'none'; badge.className='tag '+(T.overdue_count?'danger':'warn'); }
+
+  if(!INV_ROWS.length){box.innerHTML='<div class="muted" style="padding:20px">Koi parcha nahi.</div>';return}
+
+  box.innerHTML='<div class="panel"><div class="panel-body flush"><div class="table-wrap">'
+    +'<table class="table"><thead><tr>'
+    +'<th>Invoice</th><th>Business</th><th>Period</th><th class="num">Amount</th>'
+    +'<th>Status</th><th></th></tr></thead><tbody>'
+    +INV_ROWS.map(function(x){
+      var st=String(x.status).toUpperCase();
+      var tag= st==='PAID' ? '<span class="tag ok">Paid</span>'
+             : st==='CANCELLED' ? '<span class="tag">Cancelled</span>'
+             : (x.overdue ? '<span class="tag danger">Overdue</span>' : '<span class="tag warn">Unpaid</span>');
+      return '<tr>'
+        +'<td><b>'+esc(x.invoice_no)+'</b><div class="muted" style="font-size:11.5px">'
+          +'issued '+esc(x.issued_on||'—')+(x.sent_at?' &middot; sent':'')+'</div></td>'
+        +'<td>'+esc(x.business_name)+'</td>'
+        +'<td class="muted" style="font-size:12.5px">'+esc(x.period_from||'—')+'<br>'+esc(x.period_to||'')+'</td>'
+        +'<td class="num"><b>'+invMoney(x.total)+'</b>'
+          +(Number(x.tax_pct)>0?('<div class="muted" style="font-size:11px">incl. tax</div>'):'')+'</td>'
+        +'<td>'+tag+'</td>'
+        +'<td class="num" style="white-space:nowrap">'
+          +'<button class="btn sm ghost" data-inv-view="'+esc(x.id)+'">View</button> '
+          +'<button class="btn sm ghost" data-inv-wa="'+esc(x.id)+'">WhatsApp</button> '
+          +(st==='UNPAID'
+             ? ('<button class="btn sm" data-inv-paid="'+esc(x.id)+'">Mark paid</button> '
+               +'<button class="btn sm ghost" data-inv-edit="'+esc(x.id)+'">Amount</button> '
+               +'<button class="btn sm ghost" data-inv-cancel="'+esc(x.id)+'">Cancel</button>')
+             : '')
+        +'</td></tr>';
+    }).join('')+'</tbody></table></div></div></div>';
+}
+
+function invById(id){ for(var i=0;i<INV_ROWS.length;i++) if(INV_ROWS[i].id===id) return INV_ROWS[i]; return null }
+
+document.addEventListener('click',async function(e){
+  var v=e.target.closest('[data-inv-view]');
+  if(v){ var x=invById(v.getAttribute('data-inv-view'));
+         if(x)window.open('/invoice.html?t='+x.public_token,'_blank'); return }
+
+  var w=e.target.closest('[data-inv-wa]');
+  if(w){
+    var id=w.getAttribute('data-inv-wa');
+    w.disabled=true;
+    var r=await api('sa-invoice-send',{id:id});
+    w.disabled=false;
+    if(!r.ok){toast(r.message||'Could not send');return}
+    /* API lagi ho to khud chala gaya; warna WhatsApp khol do. */
+    if(r.sent){ toast('WhatsApp par bhej diya ('+r.phone+')'); }
+    else{ window.open(r.wa,'_blank'); toast('WhatsApp khul raha hai — bas Send dabayein'); }
+    loadInvoices(); return;
+  }
+
+  var pd=e.target.closest('[data-inv-paid]');
+  if(pd){
+    var x=invById(pd.getAttribute('data-inv-paid')); if(!x)return;
+    var ref=prompt('Payment mil gayi?\n\n'+x.invoice_no+' — '+invMoney(x.total)
+      +'\n\nTransaction ID / reference (khali bhi chhor sakte hain):','');
+    if(ref===null)return;
+    pd.disabled=true;pd.textContent='…';
+    var r=await api('sa-invoice-paid',{id:x.id,reference:ref,method:'BANK',extend:1});
+    pd.disabled=false;pd.textContent='Mark paid';
+    if(!r.ok){toast(r.message||'Failed');return}
+    toast(r.message||'Paid');
+    /* PAID wala parcha dobara bhejna — customer ki raseed. */
+    if(confirm('Paid invoice customer ko WhatsApp kar dein?')) window.open(r.wa,'_blank');
+    loadInvoices(); return;
+  }
+
+  var ed=e.target.closest('[data-inv-edit]');
+  if(ed){
+    var x=invById(ed.getAttribute('data-inv-edit')); if(!x)return;
+    var a=prompt('Nayi raqam (tax se pehle) — '+x.invoice_no+':',String(x.amount));
+    if(a===null)return;
+    var r=await api('sa-invoice-reprice',{id:x.id,amount:Number(a||0)});
+    toast(r.ok?('Ab '+invMoney(r.invoice.total)):(r.message||'Failed'));
+    if(r.ok)loadInvoices(); return;
+  }
+
+  var cn=e.target.closest('[data-inv-cancel]');
+  if(cn){
+    var x=invById(cn.getAttribute('data-inv-cancel')); if(!x)return;
+    if(!confirm('Yeh parcha cancel kar dein?\n\n'+x.invoice_no))return;
+    var r=await api('sa-invoice-cancel',{id:x.id});
+    toast(r.ok?'Cancelled':(r.message||'Failed'));
+    if(r.ok)loadInvoices(); return;
+  }
+});
+
+$('invRefresh') && ($('invRefresh').onclick=loadInvoices);
+$('invFilter')  && ($('invFilter').onchange=loadInvoices);
+$('invNew') && ($('invNew').onclick=async function(){
+  var r=await api('sa-business-list');
+  if(!r.ok){toast('Could not load the business list');return}
+  var ov=sModal('<h3 style="margin:0 0 4px">New invoice</h3>'
+    +'<p class="lead" style="margin:0 0 14px">Rate business ke apne hisaab se lagta hai</p>'
+    +'<div class="grid">'
+      +'<div class="full"><label>Business</label><select id="niBiz">'
+      +(r.businesses||[]).map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.name)+'</option>'}).join('')
+      +'</select></div>'
+      +'<div><label>Months</label><select id="niM">'
+      +[1,3,6,12].map(function(m){return '<option value="'+m+'">'+m+' month'+(m>1?'s':'')+'</option>'}).join('')
+      +'</select></div>'
+      +'<div><label>Amount <span class="hint">&middot; khali = rate se</span></label>'
+        +'<input id="niAmt" type="number" min="0" placeholder="auto"></div>'
+      +'<div class="full"><label>Note</label><input id="niNote" placeholder="optional"></div>'
+    +'</div>'
+    +'<div class="row end" style="margin-top:16px">'
+      +'<button class="btn ghost" data-x>Cancel</button>'
+      +'<button class="btn primary" id="niGo">Create</button></div>');
+  ov.querySelector('#niGo').onclick=async function(){
+    this.disabled=true;this.textContent='Creating…';
+    var body={tenant_id:ov.querySelector('#niBiz').value,
+              months:Number(ov.querySelector('#niM').value||1),
+              note:ov.querySelector('#niNote').value.trim()};
+    var a=ov.querySelector('#niAmt').value.trim();
+    if(a!=='')body.amount=Number(a);
+    var res=await api('sa-invoice-create',body);
+    this.disabled=false;this.textContent='Create';
+    if(!res.ok){toast(res.message||'Could not create');return}
+    ov.remove();
+    toast(res.invoice.invoice_no+' ban gaya');
+    nav('invoices');
+  };
+});
+
 /* Pending ki ginti — sidebar par. Sasta call hai (sirf PENDING). */
 async function refreshActBadge(){
   var badge=document.getElementById('actBadge'); if(!badge)return;
@@ -2155,20 +2390,32 @@ $('actFilter') && ($('actFilter').onchange=loadActivations);
 $('billBtn') && ($('billBtn').onclick=async function(){
   var r=await api('sa-billing-get');
   var p=(r&&r.payment)||{};
+  var B=(r&&r.billing)||p;
+  function fieldsHtml(list){
+    return '<div class="grid">'+list.map(function(f){
+      var k=f.split('|')[0],l=f.split('|')[1];
+      return '<div><label>'+l+'</label><input id="bs_'+k+'" value="'+esc(B[k]||p[k]||'')+'"></div>'}).join('')+'</div>';
+  }
   var ov=sModal('<h3 style="margin:0 0 4px">Payment details</h3>'
-    +'<p class="lead" style="margin:0 0 14px">Customers see these on their activation screen</p>'
-    +['bank_name|Bank name','account_title|Account title','account_number|Account number',
-      'iban|IBAN','easypaisa|Easypaisa number','jazzcash|JazzCash number',
-      'monthly_price|Monthly price (PKR)','yearly_price|Yearly price (PKR)']
-      .map(function(f){var k=f.split('|')[0],l=f.split('|')[1];
-        return '<label class="field"><span>'+l+'</span><input id="bs_'+k+'" value="'+esc(p[k]||'')+'"></label>'}).join('')
-    +'<div class="row" style="gap:8px;justify-content:flex-end;margin-top:14px">'
+    +'<p class="lead" style="margin:0 0 14px">Yeh customer ki activation screen aur har invoice par chhapta hai</p>'
+    +'<div class="lc-sec"><h4>Paisay kahan aayen</h4>'
+    + fieldsHtml(['bank_name|Bank name','account_title|Account title','account_number|Account number',
+      'iban|IBAN','easypaisa|Easypaisa number','jazzcash|JazzCash number'])+'</div>'
+    /* V151 — invoice par jo chhapna hai. Tax 0 ho to line chhapti hi nahi. */
+    +'<div class="lc-sec"><h4>Invoice <i>tax 0 ho to line chhapti hi nahi</i></h4>'
+    + fieldsHtml(['tax_pct|Tax %','ntn|NTN','monthly_price|Default monthly price (PKR)',
+                  'yearly_price|Default yearly price (PKR)','invoice_note|Note (har invoice par)'])+'</div>'
+    /* V151 — apni WhatsApp API ho to invoice khud chala jata hai. */
+    +'<div class="lc-sec"><h4>WhatsApp <i>khali chhor dein to wa.me se khud bhejein</i></h4>'
+    + fieldsHtml(['wa_api_url|API URL','wa_api_key|API key'])+'</div>'
+    +'<div class="row end" style="margin-top:14px">'
     +'<button class="btn ghost" data-x>Cancel</button>'
     +'<button class="btn primary" id="bsSave">Save</button></div>');
   ov.querySelector('#bsSave').onclick=async function(){
     var body={};
-    ['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price','yearly_price']
-      .forEach(function(k){body[k]=ov.querySelector('#bs_'+k).value});
+    ['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price',
+     'yearly_price','tax_pct','ntn','invoice_note','wa_api_url','wa_api_key']
+      .forEach(function(k){var el=ov.querySelector('#bs_'+k); if(el)body[k]=el.value});
     var s2=await api('sa-billing-save',body);
     toast(s2.ok?'Saved':(s2.message||'Failed'));
     if(s2.ok)ov.remove();
@@ -2236,4 +2483,4 @@ function showCreated(b){
 </body>
 </html>
 
-<!-- build: V150 build 2026-10-12 -->
+<!-- build: V151 build 2026-10-12 -->

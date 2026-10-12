@@ -290,7 +290,42 @@ try{$a=$_GET['action']??'';/* `app-order` yahan is liye hai ke customer ka koi s
    hai — yahan login hai hi nahi, is liye bachane ko kuch nahi. Is ki
    apni hifazat alag hai: qeematein server se aati hain (jo app bheje
    usay nahi maana jata), aur ek phone se ek minute mein 3 order. */
-if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping','sa-login','app-order'],true))csrf_json();switch($a){
+if($_SERVER['REQUEST_METHOD']==='POST' && !in_array($a,['login','signup','setup','sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping','sa-login','app-order'],true))csrf_json();
+
+/* ============================================================
+   V151 — EXPIRY KA GATE, API PAR.
+
+   Pehle expiry par LOGIN hi rok diya jata tha. Customer ka jawab theek
+   tha: "yeh na ho k expire ho jay to login he na ho" — kyunke us
+   soorat mein wo renew bhi nahi kar sakta tha, apna hisaab bhi nahi
+   dekh sakta tha, aur sirf hamein phone kar sakta tha.
+
+   Ab login khula hai. Software band hai:
+     - har screen `activate.html` par chali jati hai (router.php)
+     - aur yahan har API band hai, siwaye un ke jin se renew hota hai
+       ya jo screen chalne ke liye lazmi hain.
+
+   Yeh doosra taala is liye lazmi hai: router sirf .html rokta hai.
+   Agar API khuli rehti to POS ka khula hua tab expiry ke baad bhi
+   bill kaatta rehta — aur wo bill cloud par bhi chala jata.
+   ============================================================ */
+$licenceOpen=['csrf-token','login','logout','current-user','about','licence-status',
+              'payment-info','activation-request','my-activation','my-invoices',
+              'licence-key-apply','invoice-public','app-order','qr','brand',
+              'sync-push','sync-pull','sync-push-bulk','sync-pull-bulk','sync-schema','sync-ping'];
+if(!in_array($a,$licenceOpen,true) && strpos($a,'sa-')!==0 && Auth::user()){
+  try{
+    $lg=\Aio\Services\Licence::current();
+    if(!empty($lg['expired'])){
+      http_response_code(402);
+      echo json_encode(['ok'=>false,'licence_expired'=>true,
+        'message'=>($lg['message']?:'Your subscription has expired.').' Renew karne ke liye Activate screen kholein.'],
+        JSON_UNESCAPED_UNICODE);
+      exit;
+    }
+  }catch(Throwable $e){ /* shak ho to kaam na roko */ }
+}
+switch($a){
 case 'csrf-token':
  /* Client isay tab bulata hai jab token expire ho jaye (misal container
     restart ke baad purana tab khula reh gaya ho). GET hai, is liye khud
@@ -390,20 +425,161 @@ case 'activation-request':needLogin();$d=body();
  try{ok(SelfService::requestActivation($d));}catch(Throwable $e){fail($e->getMessage());}
 
 case 'sa-billing-get':needSuper();
- ok(['payment'=>SelfService::paymentInfo()]);
+ /* V151 — `billing` ka poora group bhi, kyunke invoice wale khane
+    (tax_pct, ntn, invoice_note) `paymentInfo()` mein nahi aate. */
+ $wa=\Aio\Services\PlatformSetting::all('wa');
+ ok(['payment'=>SelfService::paymentInfo(),
+     'billing'=>\Aio\Services\PlatformSetting::all('billing')
+                + ['wa_api_url'=>(string)($wa['api_url']??''),
+                   'wa_api_key'=>(string)($wa['api_key']??'')]]);
 
 case 'sa-billing-save':needSuper();$d=body();
  /* Bank / easypaisa ki tafseel — customer ki activation screen par yehi
     dikhti hai. Yeh khali chhor dein to customer ko sirf phone number
-    milega aur wo call karega. */
- $p=DB::pdo();$n=0;
- foreach(['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price','yearly_price'] as $k){
+    milega aur wo call karega.
+    V151: `tax_pct`, `ntn` aur `invoice_note` bhi — invoice par yehi
+    chhapte hain. Aur likhai ab PlatformSetting se (ek hi darwaza). */
+ $n=0;
+ foreach(['bank_name','account_title','account_number','iban','easypaisa','jazzcash',
+          'monthly_price','yearly_price','tax_pct','ntn','invoice_note','wa_api_url','wa_api_key'] as $k){
    if(!array_key_exists($k,$d))continue;
-   $p->prepare("INSERT INTO platform_settings(id,setting_group,setting_key,value_json)
-                VALUES(?,'billing',?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json)")
-     ->execute([uuid(),$k,json_encode(trim((string)$d[$k]))]);$n++;
+   if($k==='wa_api_url'||$k==='wa_api_key'){
+     \Aio\Services\PlatformSetting::put('wa',substr($k,3),trim((string)$d[$k]));
+   }else{
+     \Aio\Services\PlatformSetting::put('billing',$k,trim((string)$d[$k]));
+   }
+   $n++;
  }
- ok(['saved'=>$n,'payment'=>SelfService::paymentInfo()]);
+ ok(['saved'=>$n,'payment'=>SelfService::paymentInfo(),
+     'billing'=>\Aio\Services\PlatformSetting::all('billing'),
+     'wa'=>['api_url'=>\Aio\Services\PlatformSetting::one('wa','api_url'),
+            'api_key'=>\Aio\Services\PlatformSetting::one('wa','api_key')?'(set)':'']]);
+
+/* ============================================================
+   V151 — BILLING RATE + INVOICES.
+
+   Pehle har business ki mahana raqam kahin likhi hi nahi jati thi
+   (dekho scripts/migrate_billing.php), aur invoice ka koi wujood nahi
+   tha. Ab rate `tenants` par hai aur har mahine ka apna parcha.
+   ============================================================ */
+case 'sa-billing-rate-get':needSuper();
+ $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ $q=DB::pdo()->prepare("SELECT billing_amount,billing_cycle,billing_note,contact_phone,name
+                          FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)fail('Business not found',404);
+ ok(['rate'=>['amount'=>(float)$r['billing_amount'],'cycle'=>(string)$r['billing_cycle'],
+              'note'=>(string)($r['billing_note']??''),'phone'=>(string)($r['contact_phone']??''),
+              'business'=>(string)$r['name']],
+     'tax_pct'=>\Aio\Services\InvoiceService::taxPct()]);
+
+case 'sa-billing-rate-save':needSuper();$d=body();
+ $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
+ $amt=max(0.0,(float)($d['amount']??0));
+ $cyc=strtoupper(trim((string)($d['cycle']??'MONTHLY')));
+ if(!in_array($cyc,['MONTHLY','YEARLY'],true))$cyc='MONTHLY';
+ $p=DB::pdo();
+ $q=$p->prepare("SELECT billing_amount,billing_cycle,name FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]);$old=$q->fetch(PDO::FETCH_ASSOC);if(!$old)fail('Business not found',404);
+ $p->prepare("UPDATE tenants SET billing_amount=?,billing_cycle=?,billing_note=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([$amt,$cyc,trim((string)($d['note']??''))?:null,$tid]);
+ if(array_key_exists('phone',$d)){
+   try{$p->prepare("UPDATE tenants SET contact_phone=? WHERE id=?")
+         ->execute([preg_replace('/[^0-9+]/','',(string)$d['phone']),$tid]);}catch(Throwable $e){}
+ }
+ /* Paisay ka maamla hai — kis ne, kab, kitne se kitna kiya, yaad rahe. */
+ try{
+   $p->prepare("INSERT INTO billing_rate_log(id,tenant_id,old_amount,new_amount,old_cycle,new_cycle,reason,changed_by)
+                VALUES(?,?,?,?,?,?,?,?)")
+     ->execute([uuid(),$tid,(float)$old['billing_amount'],$amt,(string)$old['billing_cycle'],$cyc,
+                trim((string)($d['note']??''))?:null,Platform::superUser()['id']]);
+ }catch(Throwable $e){}
+ \Aio\Services\AdminData::audit('console',$tid,'BILLING_RATE',
+   $old['billing_amount'].' -> '.$amt.' / '.$cyc);
+ ok(['message'=>$old['name'].': rate PKR '.number_format($amt,0).' / '.strtolower($cyc)]);
+
+case 'sa-invoices':needSuper();
+ ok(['rows'=>\Aio\Services\InvoiceService::listAll((string)($_GET['status']??'UNPAID'),
+                                                    (string)($_GET['tenant_id']??'')),
+     'totals'=>\Aio\Services\InvoiceService::totals()]);
+
+case 'sa-invoice-create':needSuper();$d=body();
+ try{$inv=\Aio\Services\InvoiceService::create($d,Platform::superUser()['id']);}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok(['invoice'=>$inv,'link'=>\Aio\Services\InvoiceService::link($inv),
+     'wa'=>\Aio\Services\InvoiceService::waLink($inv,\Aio\Services\InvoiceService::contactPhone($inv['tenant_id']))]);
+
+case 'sa-invoice-paid':needSuper();$d=body();
+ try{$inv=\Aio\Services\InvoiceService::markPaid((string)($d['id']??''),$d,Platform::superUser()['id']);}
+ catch(Throwable $e){fail($e->getMessage());}
+ /* Paid hote hi licence bhi barha do — yehi to maqsad hai. */
+ $ext=null;
+ if(!empty($d['extend'])){
+   try{
+     $p=DB::pdo();
+     $q=$p->prepare("SELECT id,expiry_date FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+     $q->execute([$inv['tenant_id']]);$sub=$q->fetch(PDO::FETCH_ASSOC);
+     $base=($sub&&$sub['expiry_date']>=date('Y-m-d'))?substr((string)$sub['expiry_date'],0,10):date('Y-m-d');
+     $ext=date('Y-m-d',strtotime($base.' +'.max(1,(int)$inv['months']).' month'));
+     if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")
+                ->execute([$ext,$sub['id']]);}
+     else{$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by)
+                       VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")
+            ->execute([uuid(),$inv['tenant_id'],$inv['total'],$ext,Platform::superUser()['id']]);}
+     $p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$inv['tenant_id']]);
+   }catch(Throwable $e){$ext=null;}
+ }
+ $ph=\Aio\Services\InvoiceService::contactPhone($inv['tenant_id']);
+ ok(['invoice'=>$inv,'expiry'=>$ext,
+     'wa'=>\Aio\Services\InvoiceService::waLink($inv,$ph,true),
+     'message'=>$inv['invoice_no'].' PAID'.($ext?(' — licence '.$ext.' tak'):'')]);
+
+case 'sa-invoice-cancel':needSuper();$d=body();
+ try{$inv=\Aio\Services\InvoiceService::cancel((string)($d['id']??''),(string)($d['why']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok(['invoice'=>$inv]);
+
+case 'sa-invoice-reprice':needSuper();$d=body();
+ try{$inv=\Aio\Services\InvoiceService::reprice((string)($d['id']??''),(float)($d['amount']??0),
+                                                 (string)($d['note']??''));}
+ catch(Throwable $e){fail($e->getMessage());}
+ ok(['invoice'=>$inv]);
+
+case 'sa-invoice-send':needSuper();$d=body();
+ $inv=\Aio\Services\InvoiceService::get((string)($d['id']??''));
+ if(!$inv)fail('Invoice not found',404);
+ $paid=($inv['status']==='PAID');
+ $ph=trim((string)($d['phone']??''))?:\Aio\Services\InvoiceService::contactPhone($inv['tenant_id']);
+ if($ph==='')fail('Is business ka WhatsApp number nahi hai — Licence control mein daal dein');
+ /* Pehle apni API se koshish; na lagi ho to wa.me ka link wapas. */
+ $auto=\Aio\Services\InvoiceService::sendWhatsApp($inv,$ph,$paid);
+ if(!$auto)\Aio\Services\InvoiceService::markSent($inv['id'],'WHATSAPP_MANUAL');
+ ok(['sent'=>$auto,'phone'=>$ph,
+     'wa'=>\Aio\Services\InvoiceService::waLink($inv,$ph,$paid),
+     'link'=>\Aio\Services\InvoiceService::link($inv),
+     'message'=>$auto?'WhatsApp par bhej diya':'WhatsApp khol kar bhejein']);
+
+case 'sa-invoice-auto':needSuper();
+ ok(\Aio\Services\InvoiceService::runAutoInvoicing());
+
+/* ---------- invoice ka public safha ----------
+   LOGIN NAHI maangta — jaan boojh kar. Invoice WhatsApp par jata hai,
+   aur aksar tab jab customer ka software expire ho chuka ho; wahan
+   login karwana poore maqsad ko khatam kar deta hai. Hifazat token se
+   hai: 32 harf, har invoice ka apna. */
+case 'invoice-public':
+ $inv=\Aio\Services\InvoiceService::byToken((string)($_GET['t']??''));
+ if(!$inv)fail('This invoice link is not valid.',404);
+ $b=\Aio\Services\PlatformSetting::all('billing');
+ ok(['invoice'=>$inv,'vendor'=>\Aio\Services\Licence::VENDOR,'billing'=>$b]);
+
+/* Customer apne invoices khud dekh sake — Activate screen par. */
+case 'my-invoices':needLogin();
+ $rows=\Aio\Services\InvoiceService::forTenant(tenant_id(),24);
+ $out=[];
+ foreach($rows as $r)$out[]=['invoice_no'=>$r['invoice_no'],'period_from'=>$r['period_from'],
+   'period_to'=>$r['period_to'],'total'=>$r['total'],'status'=>$r['status'],'overdue'=>$r['overdue'],
+   'due_on'=>$r['due_on'],'link'=>\Aio\Services\InvoiceService::link($r)];
+ ok(['rows'=>$out]);
 
 case 'sa-activations':needSuper();
  ok(['rows'=>SelfService::pendingActivations((string)($_GET['status']??'PENDING'))]);
@@ -2813,7 +2989,11 @@ case 'sa-features-save':
 case 'sa-wa-get':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$q=DB::pdo()->prepare("SELECT wa_api_url,wa_api_key,wa_events_json FROM tenants WHERE id=?");$q->execute([$tid]);$r=$q->fetch()?:[];ok(['wa'=>['url'=>$r['wa_api_url']??'','key'=>$r['wa_api_key']??'','events'=>$r['wa_events_json']?(json_decode((string)$r['wa_events_json'],true)?:[]):[]]]);
 case 'sa-wa-save':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$ev=is_array($d['events']??null)?array_values(array_map('strval',$d['events'])):[];DB::pdo()->prepare("UPDATE tenants SET wa_api_url=?,wa_api_key=?,wa_events_json=?,updated_at=NOW(6) WHERE id=?")->execute([trim((string)($d['url']??''))?:null,trim((string)($d['key']??''))?:null,json_encode($ev),$tid]);ok(['events'=>count($ev)]);
 case 'sa-wa-test':needSuper();$d=body();$url=rtrim(trim((string)($d['url']??'')),'/');$key=trim((string)($d['key']??''));if($url===''||$key==='')fail('URL and API key required');$ctx=stream_context_create(['http'=>['method'=>'GET','timeout'=>8,'header'=>"x-api-key: $key\r\nContent-Type: application/json\r\n",'ignore_errors'=>true]]);$raw=@file_get_contents($url.'/api/status',false,$ctx);if($raw===false)fail('Could not connect - please check the URL');ok(['status'=>json_decode($raw,true)?:$raw]);
-case 'sa-dashboard':needSuper();$p=DB::pdo();$n=function($sql,$a=[])use($p){$q=$p->prepare($sql);$q->execute($a);return (int)$q->fetchColumn();};
+case 'sa-dashboard':needSuper();$p=DB::pdo();
+ /* V151 — jin ki expiry 3 din mein hai un ka parcha yahin ban jata hai.
+    Alag cron ki zaroorat nahi: console khulte hi ho jata hai, aur
+    `scripts/run_invoicing.php` se bhi chalaya ja sakta hai. */
+ try{\Aio\Services\InvoiceService::runAutoInvoicing();}catch(Throwable $e){}$n=function($sql,$a=[])use($p){$q=$p->prepare($sql);$q->execute($a);return (int)$q->fetchColumn();};
 $out=['businesses'=>$n("SELECT COUNT(*) FROM tenants WHERE slug IS NOT NULL AND deleted_at IS NULL"),
  'active'=>$n("SELECT COUNT(*) FROM tenants WHERE slug IS NOT NULL AND status='ACTIVE' AND deleted_at IS NULL"),
  'suspended'=>$n("SELECT COUNT(*) FROM tenants WHERE status='SUSPENDED' AND deleted_at IS NULL"),
@@ -3285,4 +3465,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V149 build 2026-10-12
+// build: V151 build 2026-10-12

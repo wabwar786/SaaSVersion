@@ -43,6 +43,27 @@
     +'<span style="color:var(--muted)">'+k+'</span><b style="text-align:right;word-break:break-all">'
     +v+'</b></div>') : ''; }
 
+  function invoicesHtml(){
+    var r; try{ r=DBApi.req('my-invoices'); }catch(e){ return '' }
+    if(!r||!r.ok||!(r.rows||[]).length) return '';
+    return '<section class="panel"><div class="panel-head"><div><h2>Your invoices</h2>'
+      +'<p>Kholein, print karein, ya WhatsApp par bhej dein</p></div></div>'
+      +'<div class="panel-body flush"><div class="table-wrap"><table class="table">'
+      +'<thead><tr><th>Invoice</th><th>Period</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>'
+      + r.rows.map(function(x){
+          var st=String(x.status).toUpperCase();
+          var tag = st==='PAID' ? '<span class="tag ok">Paid</span>'
+                  : st==='CANCELLED' ? '<span class="tag">Cancelled</span>'
+                  : (x.overdue ? '<span class="tag bad">Overdue</span>' : '<span class="tag warn">Unpaid</span>');
+          return '<tr><td><b>'+esc(x.invoice_no)+'</b></td>'
+            +'<td class="hint">'+esc(x.period_from||'')+' &rarr; '+esc(x.period_to||'')+'</td>'
+            +'<td class="num"><b>PKR '+Number(x.total).toLocaleString()+'</b></td>'
+            +'<td>'+tag+'</td>'
+            +'<td class="num"><a class="btn sm" href="'+esc(x.link)+'" target="_blank">Open</a></td></tr>';
+        }).join('')
+      +'</tbody></table></div></div></section>';
+  }
+
   function draw(){
     if(!window.DBApi){$('#actBody').textContent='No server connection.';return}
     var r=DBApi.req('payment-info');
@@ -81,7 +102,10 @@
         +'<p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">'
         +'In a hurry? Call '+esc(pay.company||'')+' at '
         +'<a href="tel:'+esc(tel)+'">'+esc(pay.phone||'')+'</a>.</p>'
-        +'</div></section></div>';
+        +'</div></section>'
+        /* Intezar ke dinon mein bhi apne parche nazar aane chahiyen. */
+        + invoicesHtml()
+        +'</div>';
       return;
     }
 
@@ -147,7 +171,13 @@
       +'<button class="btn primary" id="aSend" style="margin-top:12px">Send payment details</button>'
       +'<p style="font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.6">'
       +'We check the payment before activating, so please send the exact reference from your receipt.</p>'
-      +'</div></section></div></div>';
+      +'</div></section>'
+
+      /* ---- V151: customer ke apne invoices ----
+         Parcha WhatsApp par jata hai, magar wo kho bhi sakta hai. Yahan
+         har parcha apne link ke saath mojood rehta hai. */
+      + invoicesHtml()
+      +'</div></div>';
 
     var d=$('#aDate'); if(d)d.value=new Date().toISOString().slice(0,10);
 
@@ -191,4 +221,4 @@
 </body>
 </html>
 
-<!-- build: V149 build 2026-10-12 -->
+<!-- build: V151 build 2026-10-12 -->

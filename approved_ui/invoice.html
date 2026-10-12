@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* ============================================================
+   V151 — INVOICE ka safha.
+
+   Yeh wo parcha hai jo WhatsApp par jata hai. Do baatein ahem thin:
+
+   1. LOGIN NA MAANGE. Invoice aksar us waqt bhejta hai jab customer ka
+      software expire ho chuka ho — us haalat mein login karwana poore
+      maqsad ko khatam kar deta hai. Link par 32-harf ka token hai.
+
+   2. CHHAP SAKE. "PDF banao" ka alag nizam banane ke bajaye safha khud
+      A4 par theek chhapta hai: @media print mein sirf parcha rehta
+      hai, baqi sab gayab. Customer ke phone par bhi "Save as PDF"
+      wahi karta hai.
+   ============================================================ */
+body{background:#f1efec;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b1917}
+.wrap{max-width:860px;margin:0 auto;padding:22px 16px 60px}
+.tools{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.tools .sp{flex:1}
+.btn2{padding:10px 18px;border-radius:10px;border:1px solid #d8d2ca;background:#fff;
+  font:inherit;font-size:13.5px;font-weight:650;cursor:pointer;color:#413c38;text-decoration:none;
+  display:inline-flex;align-items:center;gap:7px}
+.btn2:hover{background:#faf8f6}
+.btn2.p{background:#c0281a;border-color:#c0281a;color:#fff}
+.btn2.p:hover{background:#a81c0c}
+.btn2.wa{background:#1faf4b;border-color:#1faf4b;color:#fff}
+.btn2.wa:hover{background:#188f3d}
+
+.paper{background:#fff;border:1px solid #e3ded7;border-radius:16px;padding:40px 44px;
+  box-shadow:0 10px 40px rgba(27,25,23,.07);position:relative;overflow:hidden}
+.hd{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;
+  border-bottom:2px solid #1b1917;padding-bottom:20px}
+.hd .me h1{margin:0 0 3px;font-size:21px;letter-spacing:-.01em}
+.hd .me p{margin:0;font-size:12.5px;color:#78716b;line-height:1.7}
+.hd .num{text-align:right}
+.hd .num .lbl{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a8a29c}
+.hd .num .no{font-size:23px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+.stamp{display:inline-block;margin-top:9px;padding:5px 14px;border-radius:999px;
+  font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;border:2px solid}
+.stamp.unpaid{color:#b4541a;border-color:#f0c9a8;background:#fff6ec}
+.stamp.paid{color:#157a42;border-color:#aedcc0;background:#eaf7ef}
+.stamp.cancelled{color:#78716b;border-color:#ddd8d1;background:#f4f2ef}
+.stamp.overdue{color:#b3261e;border-color:#f3c3c7;background:#fdecee}
+
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin:24px 0 6px}
+.meta h4{margin:0 0 7px;font-size:10.5px;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:#a8a29c}
+.meta b{font-size:15px}
+.meta p{margin:3px 0 0;font-size:12.5px;color:#78716b;line-height:1.7}
+
+table.items{width:100%;border-collapse:collapse;margin:26px 0 0;font-size:13.5px}
+table.items th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:#a8a29c;padding:0 0 9px;border-bottom:1px solid #e3ded7}
+table.items td{padding:15px 0;border-bottom:1px solid #f0ece7;vertical-align:top}
+table.items .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.items .sub{display:block;font-size:12px;color:#78716b;margin-top:3px}
+
+.sums{margin-top:18px;margin-left:auto;width:min(320px,100%)}
+.sums div{display:flex;justify-content:space-between;gap:20px;padding:7px 0;font-size:13.5px}
+.sums div.tot{border-top:2px solid #1b1917;margin-top:7px;padding-top:12px;font-size:18px;font-weight:800}
+.sums span.r{font-variant-numeric:tabular-nums}
+
+.pay{margin-top:30px;background:#faf8f6;border:1px solid #eae5df;border-radius:12px;padding:18px 20px}
+.pay h4{margin:0 0 11px;font-size:10.5px;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:#a8a29c}
+.pay .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px}
+.pay .g > div{min-width:0}
+.pay .g span{display:block;font-size:11px;color:#a8a29c;margin-bottom:2px}
+.pay .g b{font-size:13.5px;word-break:break-all}
+.foot{margin-top:26px;padding-top:16px;border-top:1px solid #f0ece7;
+  font-size:12px;color:#78716b;line-height:1.8}
+.err{background:#fff;border:1px solid #f3c3c7;border-radius:14px;padding:30px;text-align:center;
+  color:#b3261e;font-weight:650}
+@media(max-width:620px){
+  .paper{padding:26px 20px}
+  .meta{grid-template-columns:1fr;gap:16px}
+  .hd .num{text-align:left}
+}
+@media print{
+  body{background:#fff}
+  .tools{display:none}
+  .wrap{max-width:none;padding:0}
+  .paper{border:0;border-radius:0;box-shadow:none;padding:0}
+  @page{margin:16mm}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tools" id="tools" style="display:none">
+    <button class="btn2 p" id="btnPrint">Print / Save as PDF</button>
+    <a class="btn2" id="btnCopy" href="#">Copy link</a>
+    <span class="sp"></span>
+    <span id="toolNote" style="font-size:12.5px;color:#78716b"></span>
+  </div>
+  <div id="body"><div class="paper"><p style="margin:0;color:#78716b">Loading…</p></div></div>
+</div>
+
+<script>
+(function(){
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function money(n,cur){return (cur||'PKR')+' '+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}
+  function token(){var m=/[?&]t=([0-9a-f]{32})/i.exec(location.search);return m?m[1]:''}
+
+  function req(action){
+    var x=new XMLHttpRequest();
+    x.open('GET','/api.php?action='+action,false);
+    x.setRequestHeader('Accept','application/json');
+    try{x.send()}catch(e){return {ok:false,message:'Network error'}}
+    try{return JSON.parse(x.responseText||'{}')}catch(e){return {ok:false,message:'Bad response'}}
+  }
+
+  var t=token();
+  if(!t){ document.getElementById('body').innerHTML=
+    '<div class="err">Yeh link mukammal nahi hai. Jo link WhatsApp par aaya tha, wahi kholein.</div>'; return }
+
+  var r=req('invoice-public&t='+t);
+  if(!r||!r.ok){ document.getElementById('body').innerHTML=
+    '<div class="err">'+esc((r&&r.message)||'This invoice could not be opened.')+'</div>'; return }
+
+  var I=r.invoice, V=r.vendor||{}, B=r.billing||{};
+  document.title='Invoice '+I.invoice_no;
+
+  var st=String(I.status).toUpperCase();
+  var stamp = st==='PAID' ? '<span class="stamp paid">Paid</span>'
+            : st==='CANCELLED' ? '<span class="stamp cancelled">Cancelled</span>'
+            : (I.overdue ? '<span class="stamp overdue">Overdue</span>'
+                         : '<span class="stamp unpaid">Unpaid</span>');
+
+  function payRow(label,val){ return val ? ('<div><span>'+esc(label)+'</span><b>'+esc(val)+'</b></div>') : '' }
+  var payCells = payRow('Bank',B.bank_name)+payRow('Account title',B.account_title)
+               + payRow('Account number',B.account_number)+payRow('IBAN',B.iban)
+               + payRow('Easypaisa',B.easypaisa)+payRow('JazzCash',B.jazzcash);
+
+  var period = (I.period_from && I.period_to)
+      ? (esc(I.period_from)+' &nbsp;&rarr;&nbsp; '+esc(I.period_to))
+      : '&mdash;';
+
+  document.getElementById('body').innerHTML=
+    '<div class="paper">'
+    + '<div class="hd">'
+      + '<div class="me"><h1>'+esc(V.company||'')+'</h1>'
+        + '<p>'+esc(V.phone||'')+(V.email?(' &middot; '+esc(V.email)):'')+'<br>'
+        + esc(V.website||'')+(B.ntn?('<br>NTN '+esc(B.ntn)):'')+'</p></div>'
+      + '<div class="num"><div class="lbl">Invoice</div>'
+        + '<div class="no">'+esc(I.invoice_no)+'</div>'+stamp+'</div>'
+    + '</div>'
+
+    + '<div class="meta">'
+      + '<div><h4>Billed to</h4><b>'+esc(I.business_name)+'</b>'
+        + '<p>Software subscription</p></div>'
+      + '<div><h4>Dates</h4>'
+        + '<p><b style="font-size:13px">Issued</b> &nbsp;'+esc(I.issued_on||'—')+'<br>'
+        + '<b style="font-size:13px">Due</b> &nbsp;'+esc(I.due_on||'—')
+        + (st==='PAID'&&I.paid_at?('<br><b style="font-size:13px">Paid</b> &nbsp;'+esc(String(I.paid_at).slice(0,10))):'')
+        + '</p></div>'
+    + '</div>'
+
+    + '<table class="items"><thead><tr>'
+      + '<th>Description</th><th class="r">Months</th><th class="r">Amount</th>'
+      + '</tr></thead><tbody><tr>'
+      + '<td><b>Software subscription</b><span class="sub">'+period+'</span></td>'
+      + '<td class="r">'+esc(I.months)+'</td>'
+      + '<td class="r">'+money(I.amount,I.currency)+'</td>'
+      + '</tr></tbody></table>'
+
+    + '<div class="sums">'
+      + '<div><span>Subtotal</span><span class="r">'+money(I.amount,I.currency)+'</span></div>'
+      + (Number(I.tax_pct)>0
+          ? ('<div><span>Tax '+esc(I.tax_pct)+'%</span><span class="r">'+money(I.tax_amount,I.currency)+'</span></div>')
+          : '')
+      + '<div class="tot"><span>Total</span><span class="r">'+money(I.total,I.currency)+'</span></div>'
+    + '</div>'
+
+    + (payCells && st!=='PAID'
+        ? ('<div class="pay"><h4>How to pay</h4><div class="g">'+payCells+'</div>'
+           + '<p style="margin:12px 0 0;font-size:12px;color:#78716b">Payment ke baad apne software mein '
+           + '<b>Activate / Renew</b> kholein aur transaction ID bhej dein — ya yeh parcha '
+           + esc(V.phone||'')+' par WhatsApp kar dein.</p></div>')
+        : '')
+
+    + '<div class="foot">'
+      + (I.note?(esc(I.note)+'<br>'):'')
+      + (B.invoice_note?(esc(B.invoice_note)+'<br>'):'')
+      + (st==='PAID'
+          ? ('Shukriya. Yeh parcha adaigi ki raseed hai.'
+             +(I.paid_reference?(' Reference: '+esc(I.paid_reference)+'.'):''))
+          : 'Yeh computer se bana hua parcha hai; dastkhat ki zaroorat nahi.')
+    + '</div>'
+    + '</div>';
+
+  var tools=document.getElementById('tools');
+  tools.style.display='';
+  document.getElementById('btnPrint').onclick=function(){window.print()};
+  var cp=document.getElementById('btnCopy');
+  cp.onclick=function(e){
+    e.preventDefault();
+    var u=location.href;
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(u)}
+      else{var i=document.createElement('input');i.value=u;document.body.appendChild(i);
+           i.select();document.execCommand('copy');i.remove()}
+      this.textContent='Link copied';
+      var b=this;setTimeout(function(){b.textContent='Copy link'},1500);
+    }catch(err){}
+  };
+  document.getElementById('toolNote').textContent =
+    st==='PAID' ? 'Paid — yeh aap ki raseed hai'
+    : (I.overdue ? 'Due date guzar chuki hai' : 'Adaigi ke baad transaction ID bhej dein');
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V151 build 2026-10-12 -->
+
+<!-- build: V151 build 2026-10-12 -->

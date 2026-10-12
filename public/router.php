@@ -67,7 +67,11 @@ $publicPages=['login.html','signup.html','signup_pending.html','setup.html','sup
   /* Customer ka ordering app aur uska share page — yeh dukan ke GAHAK ke
      liye hain, staff ke liye nahi. Login maangna yahan poore maqsad ko
      khatam kar deta: customer ke paas account hai hi nahi. */
-  'app.html','app-download.html'];
+  'app.html','app-download.html',
+  /* V151 — invoice ka safha. Token wale link se khulta hai aur login
+     nahi maangta: parcha WhatsApp par jata hai, aur aksar us waqt jab
+     customer ka software expire ho chuka ho. */
+  'invoice.html'];
 /* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
    `approved_ui/` se aate hain, chahe tenant retail ho. */
 $sharedPages=['activate.html','backup_restore.html'];
@@ -344,4 +348,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V150 build 2026-10-12
+// build: V151 build 2026-10-12

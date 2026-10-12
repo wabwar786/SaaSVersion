@@ -1,3 +1,77 @@
+# WHATS UPDATED — V151 (billing, invoices, and the expiry door)
+
+## Where the monthly amount was set: nowhere, really
+
+Three disconnected places, none of them a per-business rate:
+`subscription_plans` (a price list that was never used — `plan_id` was NULL
+everywhere), `platform_settings.billing.monthly_price` (one global number, only
+ever *printed* on the customer's activation screen), and
+`tenant_subscriptions.amount` (filled only when you typed a figure during a
+renewal, so a payment record rather than a rate).
+
+Now: `tenants.billing_amount` + `billing_cycle`, edited from Licence control,
+with every change logged (who, when, from what to what). Changing the rate does
+**not** touch invoices already issued — an invoice is a frozen copy of the rate
+at the time it was raised.
+
+## Invoices
+
+A new `invoices` table and a Super Admin screen. Unpaid total, overdue count and
+collected-this-month across the top; per row **View · WhatsApp · Mark paid ·
+Amount · Cancel**; a sidebar badge for what's outstanding.
+
+The invoice itself is a link — `/invoice.html?t=<32-hex token>` — rendering a
+full branded page with the vendor header, NTN, period, amount, tax line (hidden
+when tax is 0), bank details, a large UNPAID / PAID / OVERDUE stamp and a
+**Print / Save as PDF** button. It deliberately does **not** require a login:
+invoices usually arrive exactly when the customer's software has expired, and
+asking them to sign in there defeats the point. The token is the security.
+
+## WhatsApp, two ways
+
+Without any setup, the WhatsApp button opens the customer's chat with the
+message already written (business, period, amount, due date, link) — one tap to
+send. With a platform WhatsApp API configured (Payment details → WhatsApp), it
+sends by itself.
+
+Invoices are raised automatically three days before expiry, from the Super Admin
+console or `scripts/run_invoicing.php` on a daily cron. **One outstanding invoice
+at a time** — without that rule a forgotten business would collect a fresh
+invoice every single day, since an expired licence makes "today" the period
+start.
+
+## Mark paid does the whole job
+
+Marks the invoice PAID, records the payment with its reference, extends the
+licence by the invoice's months, and offers to WhatsApp the PAID copy back as a
+receipt.
+
+## Expiry no longer locks the customer out of login
+
+*"yeh na ho k expire ho jay to login he na ho."* Quite right — the old behaviour
+blocked sign-in, which also blocked the only route to renewing.
+
+The split is now explicit: **login stays open** (only a SUSPENDED business is
+barred, and that is our own decision rather than an accident of the calendar),
+while **the software is closed** — every screen redirects to Activate, and every
+API call returns 402 except the handful needed to renew (`payment-info`,
+`activation-request`, `my-invoices`, `licence-key-apply`, `licence-status`).
+
+That API gate had to be separate: the router only guards `.html`. With the API
+left open, a POS tab already on screen would have kept closing bills past
+expiry — and syncing them to the cloud.
+
+## Tested
+
+Rate PKR 12,000/month → invoice raised from it; link opened in a clean browser
+with no session; a wrong token refused. Mark paid → expiry 2026-10-10 →
+2026-11-12, invoice PAID with reference, payment recorded. Auto-invoicing run
+three times → 2 created, then 0. Expired: login succeeded, landed on Activate,
+`menu-items` returned 402 while `payment-info` and `my-invoices` kept working;
+after payment the customer was back in. 98 screens across both verticals: HTTP
+200, no redirects, no JavaScript errors.
+
+---
 # WHATS UPDATED — V150 (renewal system)
 
 The renewal *chain* already worked: the Activate screen asks for the transaction

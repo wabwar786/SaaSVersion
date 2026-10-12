@@ -85,6 +85,8 @@ return [
        Background mein hai kyunke yeh sirf data move karti hai; koi
        screen is par nahi ruki hui. */
     ['script' => 'migrate_tax_settings',  'optional' => true, 'stage' => 'background'],
+    /* V151 — billing rate (tenants par) aur invoices ka khata. */
+    ['script' => 'migrate_billing',       'optional' => true, 'stage' => 'background'],
     /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
        bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
        chalti thi — yani grace period khatam hone par kabhi kuch hota hi
@@ -97,3 +99,5 @@ return [
     ['script' => 'check_settings_single_row', 'optional' => true, 'check' => true],
     ['script' => 'check_offline_tools',   'optional' => true, 'check' => true, 'cloud_only' => true],
 ];
+
+// build: V151 build 2026-10-12

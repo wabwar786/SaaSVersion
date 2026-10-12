@@ -30,8 +30,24 @@ final class Auth {
     }
 
     /**
-     * Subscription enforcement (cloud): EXPIRED ya SUSPENDED business ka
-     * login block hota hai — clear message ke saath.
+     * Subscription enforcement.
+     *
+     * V151 — EXPIRY PAR AB LOGIN NAHI RUKTA.
+     *
+     * Customer ne theek kaha: "yeh na ho k expire ho jay to login he na
+     * ho". Pehle expiry par darwaza hi band tha — yani wo renew bhi
+     * nahi kar sakta tha, apna hisaab bhi nahi dekh sakta tha, aur
+     * sirf phone kar sakta tha.
+     *
+     * Ab taqseem saaf hai:
+     *   LOGIN      -> khula (sirf SUSPENDED par band, jo humara apna
+     *                 faisla hota hai, expiry ka hadsa nahi)
+     *   SOFTWARE   -> band: har screen `activate.html` par (router.php)
+     *                 aur har API band (api.php ka licence gate)
+     *
+     * Yani andar aa kar bande ko sirf ek hi cheez milti hai — renew
+     * karne ka raasta.
+     *
      * Return: null = OK, warna block message.
      */
     public static function subscriptionBlock(string $tenantId): ?string {
@@ -48,13 +64,10 @@ final class Auth {
                deta hai, jahan key daal kar kaam wahin se chalu ho jata
                hai.
                ============================================================ */
-            try {
-                $lic = \Aio\Services\Licence::cached();
-                if (!empty($lic['expired'])) {
-                    return 'Licence expired on ' . ($lic['expiry_date'] ?? '') .
-                           '. Enter your activation key to continue.';
-                }
-            } catch (\Throwable $e) { /* shak ho to login mat roko */ }
+            /* V151 — yahan bhi login nahi rokte. Node par router har
+               screen ko `activate.html` par bhej deta hai, jahan key
+               daal kar kaam wahin se chalu ho jata hai. Login rok dene
+               se wo screen bhi haath se nikal jati thi. */
             return null;
         }
         $pdo = DB::pdo();
@@ -68,9 +81,8 @@ final class Auth {
             $s = $q->fetch();
             if ($s) {
                 if ($s['status'] === 'SUSPENDED') return 'This business is suspended. Please contact your provider.';
-                if (!empty($s['expiry_date']) && $s['expiry_date'] < date('Y-m-d')) {
-                    return 'Subscription expired on '.$s['expiry_date'].'. Please renew to continue.';
-                }
+                /* Expiry par login NAHI rokte — dekho upar wali tafseel.
+                   Software band karna router aur API ka kaam hai. */
             }
         } catch (\Throwable $e) { /* enforcement best-effort; login kabhi crash na ho */ }
         return null;
@@ -494,4 +506,4 @@ final class Auth {
     }
 }
 
-// build: V149 build 2026-10-12
+// build: V151 build 2026-10-12
