@@ -3,6 +3,44 @@ namespace Aio\Services;
 use Aio\DB;
 use PDO;
 final class InventoryService {
+    /* ============================================================
+       V146 — DEFAULT STOCK LOCATION, ek hi qanoon.
+
+       MASLA JO TEST MEIN PAKRA GAYA:
+       Char jagah se location chuni jati thi aur TEEN alag tareeqe thay —
+         PosService      -> FIELD(location_type,'KITCHEN','STORE',...)
+         StockDayService -> FIELD(location_type,'STORE','KITCHEN',...)
+         MenuItemService -> ORDER BY name
+         ModuleBridge    -> ORDER BY name
+       Jahan do location hon (Kitchen aur Main Store — demo mein dono
+       bante hain), wahan opening stock ek jagah jata, sale doosri jagah
+       se katti, aur Stock In teesri jagah barhata. Har raasta apne
+       hisaab se theek, magar mila kar stock DO khaton mein bat jata aur
+       avg cost dono taraf alag chalta. Kisi screen par error nahi aata —
+       bas number kabhi sahi nahi hota.
+
+       Test mein saaf nazar aaya: Stock In ne "+24 -> on hand 24" kaha,
+       jabke usi item ke 47 pehle se doosri location par pade thay.
+
+       Ab sab yahi bulate hain. Tarteeb POS wali rakhi gayi hai (KITCHEN
+       pehle), kyunke bikri ka purana data pehle se usi par hai — warna
+       history do hisson mein bat jati.
+       ============================================================ */
+    public static function defaultLocationId(?PDO $pdo = null): string
+    {
+        $pdo = $pdo ?: DB::pdo();
+        $q = $pdo->prepare(
+            "SELECT id FROM stock_locations
+              WHERE site_id=? AND is_active=1
+              ORDER BY FIELD(location_type,'KITCHEN','STORE','COLD_ROOM','BAR'), name
+              LIMIT 1"
+        );
+        $q->execute([site_id()]);
+        $id = $q->fetchColumn();
+        if (!$id) throw new \RuntimeException('No stock location configured');
+        return (string)$id;
+    }
+
     public static function createCategory(string $name): string {
         $id=uuid(); DB::pdo()->prepare('INSERT INTO inventory_categories(id,tenant_id,site_id,name) VALUES(?,?,?,?)')->execute([$id,tenant_id(),site_id(),$name]); return $id;
     }

@@ -805,7 +805,9 @@ final class ModuleBridge
 
             $loc = $item['default_storage_location_id'];
             if (!$loc) {
-                $q = $p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY name LIMIT 1");
+                /* V146 — ek hi qanoon (InventoryService::defaultLocationId). */
+                $q = $p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1
+                                   ORDER BY FIELD(location_type,'KITCHEN','STORE','COLD_ROOM','BAR'), name LIMIT 1");
                 $q->execute([site_id()]);
                 $loc = $q->fetchColumn();
             }

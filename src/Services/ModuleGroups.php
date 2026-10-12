@@ -34,7 +34,7 @@ final class ModuleGroups
     private const LAYOUT = [
         'RESTAURANT' => [
             ['Operations',            ['shift','pos','tablet','kds','tables','orders','online']],
-            ['Inventory & Menu',      ['inventory','purchasing','po','recipe','menu','wastage','transfer','count','suppliers']],
+            ['Inventory & Menu',      ['inventory','purchasing','po','recipe','menu','wastage','transfer','count','dayclose','suppliers']],
             ['Customers & Delivery',  ['customers','customer_app','customer_web','delivery','riders','reservations','loyalty','whatsapp']],
             ['Finance & Reports',     ['expenses','accounting','promotions','staff','void','closing','reports','activity','fbr']],
             ['System',                ['printers','branches','offline','users','settings']],
@@ -42,7 +42,7 @@ final class ModuleGroups
         'RETAIL' => [
             ['Sale Counter',          ['shift','rpos','counters','sales','void','khata']],
             ['Catalog & Pricing',     ['products','departments','brands','uom','pricing','scale','labels']],
-            ['Stock & Purchasing',    ['inventory','batches','purchasing','po','grn','preturn','suppliers','transfer','count','wastage']],
+            ['Stock & Purchasing',    ['inventory','batches','purchasing','po','grn','preturn','suppliers','transfer','count','dayclose','wastage']],
             ['Customers & Marketing', ['customers','loyalty','promotions','whatsapp']],
             ['Finance & Reports',     ['expenses','accounting','closing','reports','fbr']],
             ['System',                ['staff','users','printers','branches','offline','activity','settings']],
@@ -135,7 +135,7 @@ final class ModuleGroups
         'expenses','wastage','printers','users','settings','reports','offline','kds','shift','orders',
         'void','promotions','reservations','riders','staff','branches','loyalty','transfer','count',
         'accounting','online','whatsapp','delivery','closing','activity','fbr','sales','counters',
-        'khata','products','departments','brands','uom','pricing','labels','batches','grn','po'];
+        'khata','products','departments','brands','uom','pricing','labels','batches','grn','po','dayclose'];
     private const PARTIAL = ['inventory','purchasing','recipe','customer_web','scale','preturn'];
     private const DEMO    = ['customer_app'];
 

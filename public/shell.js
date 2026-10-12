@@ -24,6 +24,7 @@
       ['wastage','Wastage / Adjustment','wastage_adjustment.html','⊘'],
       ['transfer','Stock Transfer','stock_transfer.html','⇄'],
       ['count','Physical Stock Count','stock_count.html','▤'],
+      ['dayclose','Day Closing (Stock)','stock_day_close.html','\u25d1'],
       ['suppliers','Suppliers','suppliers.html','⌂']
     ]},
     {title:'Customers & Delivery',items:[

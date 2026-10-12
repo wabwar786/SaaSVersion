@@ -41,6 +41,7 @@
         ['suppliers', 'Suppliers', 'suppliers.html', '⌂'],
         ['transfer', 'Stock Transfer', 'stock_transfer.html', '⇄'],
         ['count', 'Physical Stock Count', 'stock_count.html', '☑'],
+        ['dayclose', 'Day Closing (Stock)', 'stock_day_close.html', '◑'],
         ['wastage', 'Damage / Expiry Write-off', 'wastage.html', '⊘']
       ]
     },

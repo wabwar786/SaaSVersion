@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day Closing (Stock)</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* ============================================================
+   V146 — din ka stock band karna.
+
+   Closing sirf CASH ka tha (shift-close). Stock ka din-ka-hisaab kahin
+   nahi tha: subah kitna, kitna aaya, kitna bika, kitna zaya, raat ko
+   kitna bachna chahiye — aur ginti mein kitna NIKLA. Is farq ko dekhe
+   baghair chori ya zaya pakra hi nahi ja sakta.
+
+       opening + received - sold - wastage = expected
+       counted - expected = difference
+   ============================================================ */
+.dc-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.dc-bar input[type=date],.dc-find{padding:9px 12px;border:1px solid var(--line);border-radius:10px;
+  font:inherit;font-size:13.5px;background:var(--surface)}
+.dc-find{flex:1 1 200px;min-width:160px}
+.dc-find:focus,.dc-bar input[type=date]:focus{outline:none;border-color:var(--brand-line)}
+.dc-count{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+.dc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px;margin-bottom:15px}
+.dc-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.dc-kpi span{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dc-kpi b{display:block;font-family:var(--display);font-size:20px;margin-top:3px}
+
+.dc-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:auto}
+.dc-tbl{width:100%;border-collapse:collapse;font-size:13.2px;min-width:820px}
+.dc-tbl th,.dc-tbl td{padding:9px 11px;border-top:1px solid var(--line);text-align:right;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.dc-tbl th{background:var(--surface-2);font-size:10.3px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);border-top:0}
+.dc-tbl th:first-child,.dc-tbl td:first-child{text-align:left;white-space:normal;min-width:170px}
+.dc-tbl tbody tr:hover{background:var(--surface-2)}
+.dc-tbl tfoot td{background:var(--surface-2);font-weight:800;border-top:2px solid var(--line-strong)}
+.dc-unit{font-size:11px;color:var(--faint)}
+.dc-in{width:84px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;
+  font-size:13px;text-align:right;background:var(--bg)}
+.dc-in:focus{outline:none;border-color:var(--brand-line);background:#fff}
+.dc-diff{font-weight:800}
+.dc-diff.pos{color:var(--ok)} .dc-diff.neg{color:var(--danger)} .dc-diff.zero{color:var(--faint)}
+.dc-empty{padding:46px 20px;text-align:center;color:var(--muted)}
+.dc-empty .ic{font-size:30px;opacity:.4;display:block;margin-bottom:8px}
+.dc-note{margin-top:13px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.dc-note input{flex:1 1 230px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="header-title"><h1>Day Closing (Stock)</h1>
+        <p>Opening + received − sold − wastage = what should be left</p></div>
+      <div class="header-spacer"></div>
+      <button class="btn" id="dcIn">+ Stock In</button>
+      <button class="btn primary" id="dcClose">Close the day</button>
+    </header>
+    <div class="content">
+      <div class="dc-kpis" id="dcKpis"></div>
+      <div class="dc-bar">
+        <input type="date" id="dcDate">
+        <input class="dc-find" id="dcQ" placeholder="Search item…">
+        <span class="dc-count" id="dcCount"></span>
+      </div>
+      <div class="dc-wrap">
+        <table class="dc-tbl">
+          <thead><tr>
+            <th>Item</th><th>Opening</th><th>Received</th><th>Sold</th>
+            <th>Wastage</th><th>Other</th><th>Should be</th><th>Counted</th><th>Difference</th>
+          </tr></thead>
+          <tbody id="dcRows"></tbody>
+          <tfoot id="dcFoot"></tfoot>
+        </table>
+        <div class="dc-empty" id="dcEmpty" style="display:none">
+          <span class="ic">◑</span>Nothing moved on this date.
+        </div>
+      </div>
+      <div class="dc-note">
+        <input id="dcNote" placeholder="Note for this closing (optional)">
+        <span style="font-size:12px;color:var(--muted)">
+          Only the items you type a count for are adjusted. Leave a box empty to leave that item alone.</span>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="dayclose"></script>
+<script>
+(function(){
+  var DATA={rows:[],totals:{}}, COUNTS={};
+
+  function req(a,p){ return (window.DBApi&&DBApi.req)?DBApi.req(a,p):{ok:false,message:'Offline'}; }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
+  function n3(v){ var n=Number(v||0); return (Math.round(n*1000)/1000).toLocaleString(undefined,{maximumFractionDigits:3}); }
+  function money(n){
+    var cur=(window.APP_BRAND&&APP_BRAND.currency)||'PKR';
+    return cur+' '+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  }
+  function toast(m){
+    var t=document.createElement('div'); t.textContent=m;
+    t.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1b1917;'+
+      'color:#fff;padding:10px 17px;border-radius:10px;font-size:13.5px;z-index:9500;box-shadow:0 8px 26px rgba(0,0,0,.26)';
+    document.body.appendChild(t); setTimeout(function(){t.remove()},2800);
+  }
+
+  function today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  function load(){
+    var d=document.getElementById('dcDate').value||today();
+    var r=req('stock-day&date='+encodeURIComponent(d));
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not load the day'); DATA={rows:[],totals:{}}; }
+    else DATA=r;
+    COUNTS={};
+    paint();
+  }
+
+  function paint(){
+    var q=(document.getElementById('dcQ').value||'').trim().toLowerCase();
+    var list=DATA.rows.filter(function(x){ return !q||x.name.toLowerCase().indexOf(q)>=0; });
+    var t=DATA.totals||{};
+
+    document.getElementById('dcKpis').innerHTML=
+      kpi('Items moved',t.items||0)+
+      kpi('Received',n3(t.received))+
+      kpi('Sold',n3(t.sold))+
+      kpi('Wastage',n3(t.wastage))+
+      kpi('Closing value',money(t.value));
+
+    document.getElementById('dcCount').textContent=list.length+' shown';
+    document.getElementById('dcEmpty').style.display=DATA.rows.length?'none':'';
+
+    document.getElementById('dcRows').innerHTML=list.map(function(x){
+      var c=COUNTS[x.id];
+      var has=(c!==undefined&&c!=='');
+      var diff=has?(Number(c)-x.expected):0;
+      var cls=!has?'zero':(Math.abs(diff)<0.000001?'zero':(diff>0?'pos':'neg'));
+      return '<tr data-id="'+esc(x.id)+'">'+
+        '<td><b>'+esc(x.name)+'</b>'+(x.unit?' <span class="dc-unit">'+esc(x.unit)+'</span>':'')+'</td>'+
+        '<td>'+n3(x.opening)+'</td>'+
+        '<td>'+(x.received?('<b style="color:var(--ok)">+'+n3(x.received)+'</b>'):'—')+'</td>'+
+        '<td>'+(x.sold?('<b style="color:var(--danger)">−'+n3(x.sold)+'</b>'):'—')+'</td>'+
+        '<td>'+(x.wastage?('−'+n3(x.wastage)):'—')+'</td>'+
+        '<td>'+(x.other?n3(x.other):'—')+'</td>'+
+        '<td><b>'+n3(x.expected)+'</b></td>'+
+        '<td><input class="dc-in" data-c="'+esc(x.id)+'" type="number" step="0.001" '+
+            'value="'+(has?esc(c):'')+'" placeholder="—"></td>'+
+        '<td class="dc-diff '+cls+'">'+(has?((diff>0?'+':'')+n3(diff)):'—')+'</td>'+
+      '</tr>';
+    }).join('');
+
+    document.getElementById('dcFoot').innerHTML=list.length?
+      ('<tr><td>Total</td><td>'+n3(t.opening)+'</td><td>'+n3(t.received)+'</td><td>'+n3(t.sold)+
+       '</td><td>'+n3(t.wastage)+'</td><td></td><td>'+n3(t.expected)+'</td><td></td><td></td></tr>'):'';
+  }
+  function kpi(l,v){return '<div class="dc-kpi"><span>'+esc(l)+'</span><b>'+esc(v)+'</b></div>'}
+
+  /* Counted — har keystroke par sirf us row ka difference badlo, poori
+     table dobara mat banao, warna typing ke beech focus udh jata hai. */
+  document.getElementById('dcRows').addEventListener('input',function(e){
+    var el=e.target.closest('[data-c]'); if(!el)return;
+    var id=el.getAttribute('data-c');
+    COUNTS[id]=el.value;
+    var row=DATA.rows.filter(function(x){return x.id===id})[0]; if(!row)return;
+    var cell=el.closest('tr').querySelector('.dc-diff');
+    if(el.value===''){ cell.textContent='—'; cell.className='dc-diff zero'; return; }
+    var diff=Number(el.value)-row.expected;
+    cell.textContent=(diff>0?'+':'')+n3(diff);
+    cell.className='dc-diff '+(Math.abs(diff)<0.000001?'zero':(diff>0?'pos':'neg'));
+  });
+
+  document.getElementById('dcQ').addEventListener('input',paint);
+  document.getElementById('dcDate').addEventListener('change',load);
+
+  /* ---------- Stock In ---------- */
+  document.getElementById('dcIn').onclick=function(){
+    var f=req('menu-item-form');
+    if(!f||!f.ok){toast((f&&f.message)||'Could not load items');return}
+    var inv=f.inventory||[];
+    if(!inv.length){toast('No inventory items yet — create one from Menu & Categories');return}
+
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(20,17,15,.58);z-index:9000;display:flex;'+
+      'align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;width:min(430px,96vw);'+
+      'box-shadow:0 22px 60px rgba(20,17,15,.3);font:14px/1.5 Inter,system-ui,sans-serif">'+
+      '<div style="padding:17px 20px 13px;border-bottom:1px solid #e7e3dd">'+
+        '<h3 style="margin:0;font-size:17px">Stock In</h3>'+
+        '<p style="margin:3px 0 0;color:#78716b;font-size:12.5px">Goods received today</p></div>'+
+      '<div style="padding:16px 20px">'+
+        '<label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Item</label>'+
+        '<select id="siItem" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit;margin-bottom:11px">'+
+          inv.map(function(i){return '<option value="'+esc(i.id)+'" data-c="'+Number(i.cost||0)+'">'+esc(i.name)+'</option>'}).join('')+
+        '</select>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+
+          '<div><label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Quantity</label>'+
+          '<input id="siQty" type="number" step="0.001" min="0.001" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit"></div>'+
+          '<div><label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Rate per unit</label>'+
+          '<input id="siRate" type="number" step="0.01" min="0" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit"></div>'+
+        '</div>'+
+        '<p style="margin:9px 0 0;font-size:11.6px;color:#78716b">Leave the rate blank to keep the current average cost.</p>'+
+      '</div>'+
+      '<div style="padding:13px 20px 17px;border-top:1px solid #e7e3dd;display:flex;gap:9px;justify-content:flex-end">'+
+        '<button class="btn" data-x style="padding:9px 17px;border-radius:9px;border:1px solid #d8d2ca;background:#fff;font:inherit;font-weight:650;cursor:pointer">Cancel</button>'+
+        '<button id="siGo" style="padding:9px 17px;border-radius:9px;border:1px solid #c0281a;background:#c0281a;color:#fff;font:inherit;font-weight:650;cursor:pointer">Add to stock</button>'+
+      '</div></div>';
+    document.body.appendChild(ov);
+    function close(){ov.remove()}
+    ov.onclick=function(e){if(e.target===ov)close()};
+    ov.querySelector('[data-x]').onclick=close;
+
+    var sel=ov.querySelector('#siItem'), rate=ov.querySelector('#siRate');
+    function fillRate(){ var o=sel.options[sel.selectedIndex]; rate.placeholder=o?Number(o.getAttribute('data-c')||0).toFixed(2):'0.00'; }
+    sel.onchange=fillRate; fillRate();
+    setTimeout(function(){ov.querySelector('#siQty').focus()},30);
+
+    ov.querySelector('#siGo').onclick=function(){
+      var qty=Number(ov.querySelector('#siQty').value||0);
+      if(!(qty>0)){toast('Enter a quantity');return}
+      this.disabled=true;this.textContent='Adding…';
+      var r=req('stock-in',{item_id:sel.value,qty:qty,rate:Number(rate.value||0)});
+      if(!r||!r.ok){this.disabled=false;this.textContent='Add to stock';toast((r&&r.message)||'Could not add stock');return}
+      close();
+      toast(n3(r.qty)+' × '+r.name+' added — now '+n3(r.on_hand)+' in stock');
+      load();
+    };
+  };
+
+  /* ---------- Close the day ---------- */
+  document.getElementById('dcClose').onclick=function(){
+    var counts=[];
+    Object.keys(COUNTS).forEach(function(id){
+      if(COUNTS[id]!=='' && COUNTS[id]!==undefined) counts.push({id:id,counted:Number(COUNTS[id])});
+    });
+    if(!counts.length){toast('Type a counted quantity for at least one item first');return}
+
+    var changed=counts.filter(function(c){
+      var r=DATA.rows.filter(function(x){return x.id===c.id})[0];
+      return r && Math.abs(c.counted-r.expected)>0.000001;
+    }).length;
+
+    if(!confirm(counts.length+' item(s) counted, '+changed+' with a difference.\n\n'+
+                'Closing will adjust stock so it matches your count. Continue?'))return;
+
+    this.disabled=true;this.textContent='Closing…';
+    var r=req('stock-day-close',{date:document.getElementById('dcDate').value,
+                                 counts:counts,note:document.getElementById('dcNote').value||''});
+    this.disabled=false;this.textContent='Close the day';
+    if(!r||!r.ok){toast((r&&r.message)||'Could not close the day');return}
+    toast(r.adjusted?(r.adjusted+' item(s) adjusted'):'Everything matched — nothing to adjust');
+    document.getElementById('dcNote').value='';
+    load();
+  };
+
+  document.getElementById('dcDate').value=today();
+  load();
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V146 build 2026-10-11 -->

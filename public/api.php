@@ -2096,6 +2096,81 @@ case 'item-debug':needLogin();
      'pos_item_count'=>(int)$pc->fetchColumn(),
      'matches'=>$out]);
 
+/* ============================================================
+   V146 — MENU ITEMS: ek hi raasta, do screens.
+
+   Pehle POS ka popup `pos-quick-item` se ASLI `menu_items` mein likhta
+   tha, aur left menu ka "Menu & Categories" `module.js` ke generic CRUD
+   se `ui_records` mein — yani menu_items ko chhoota hi nahi tha. Do
+   alag menu, ek he restaurant ke. Ab dono `MenuItemService` par hain.
+   ============================================================ */
+/* ============================================================
+   V146 — STOCK IN aur DAY CLOSING.
+
+   Stock sirf do tarah barh sakta tha: item banate waqt opening stock,
+   ya poora purchase order + GRN. "Aaj 20 Coke aa gaye" ke liye dono
+   bohot lambe thay, is liye log stock daalte hi nahi thay aur
+   inventory ka number kabhi sahi na hota.
+
+   Aur din ka closing sirf CASH ka tha. Stock ka din-ka-hisaab — subah
+   kitna, kitna aaya, kitna bika, kitna zaya, raat ko kitna bachna
+   chahiye aur ginti mein kitna nikla — kahin tha hi nahi.
+   ============================================================ */
+case 'stock-in':needLogin();
+ if(!Auth::canModule('inventory')&&!Auth::canModule('purchasing'))fail('Permission denied',403);
+ if(!Auth::isManager())fail('Only an Admin or Manager can add stock',403);
+ $d=body();
+ try{ $r=\Aio\Services\StockDayService::stockIn($d); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ Audit::log('STOCK_IN','inventory',['label'=>$r['name'],'qty'=>$r['qty']]);
+ ok($r);
+
+case 'stock-day':needLogin();Auth::requireModule('dayclose');
+ ok(\Aio\Services\StockDayService::day((string)($_GET['date']??date('Y-m-d'))));
+
+case 'stock-day-close':needLogin();Auth::requireModule('dayclose');
+ if(!Auth::isManager())fail('Only an Admin or Manager can close the day',403);
+ $d=body();
+ try{ $r=\Aio\Services\StockDayService::close((string)($d['date']??''),
+          is_array($d['counts']??null)?$d['counts']:[], (string)($d['note']??'')); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ ok($r);
+
+case 'menu-items':needLogin();Auth::requireModule('menu');
+ ok(['items'=>\Aio\Services\MenuItemService::listItems()]);
+
+case 'menu-item-get':needLogin();Auth::requireModule('menu');
+ $it=\Aio\Services\MenuItemService::getItem((string)($_GET['id']??''));
+ if(!$it)fail('Item not found',404);
+ ok(['item'=>$it]);
+
+case 'menu-item-save':needLogin();
+ /* Rate aur item banana/badalna hamesha management ka kaam hai — wahi
+    shart jo POS ke popup par lagti hai, yahan bhi. */
+ if(!Auth::canModule('menu')&&!Auth::canModule('pos'))fail('Permission denied',403);
+ try{Scope::requireManagement('changing the menu');}catch(Throwable $e){fail($e->getMessage(),403);}
+ if(!Auth::isManager())fail('Only an Admin or Manager can change the menu',403);
+ $d=body();
+ Audit::log(($d['id']??'')?'ITEM_EDIT':'ITEM_CREATE','menu',['label'=>(string)($d['name']??'')]);
+ try{ $r=\Aio\Services\MenuItemService::save($d); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ ok($r);
+
+/* Dialog ko ek hi call mein sab kuch chahiye: categories, inventory
+   items, aur units. Teen alag requests POS ko sust karti thin. */
+case 'menu-item-form':needLogin();
+ if(!Auth::canModule('menu')&&!Auth::canModule('pos'))fail('Permission denied',403);
+ $p=DB::pdo();
+ $cq=$p->prepare("SELECT id,name FROM menu_categories WHERE site_id=? AND deleted_at IS NULL ORDER BY sort_order,name");
+ $cq->execute([site_id()]);
+ $iq=$p->prepare("SELECT id,name,avg_cost_per_stock_unit cost FROM inventory_items
+                   WHERE site_id=? AND deleted_at IS NULL AND is_active=1 ORDER BY name");
+ $iq->execute([site_id()]);
+ $uq=$p->query("SELECT code,name FROM units ORDER BY code");
+ ok(['categories'=>$cq->fetchAll(PDO::FETCH_ASSOC),
+     'inventory'=>$iq->fetchAll(PDO::FETCH_ASSOC),
+     'units'=>$uq->fetchAll(PDO::FETCH_ASSOC)]);
+
 case 'menu-categories':needLogin();
  /* Menu page aur POS dono ek hi fehrist par chalen — yehi wo jagah hai
     jahan se dono lete hain. */
@@ -2155,14 +2230,31 @@ case 'menu-item-rate':needLogin();
  try{Scope::requireManagement('changing prices');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can change rates',403);$d=body();$rate=(float)($d['price']??0);if($rate<=0)fail('Valid rate required');$p=DB::pdo();$mid=(string)($d['menu_item_id']??'');$row=null;if($mid!==''&&preg_match('/^[0-9a-f-]{36}$/i',$mid)){$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);$row=$q->fetchColumn();}if(!$row&&!empty($d['name'])){$q=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),(string)$d['name']]);$row=$q->fetchColumn();}if(!$row)fail('Menu item not found in database');$p->prepare("UPDATE menu_items SET base_price=?,updated_at=NOW(6) WHERE id=?")->execute([$rate,$row]);ok(['id'=>$row,'price'=>$rate]);
 case 'pos-table-create':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tables'))fail('Permission denied',403);$d=body();$nm=trim((string)($d['name']??''));if($nm==='')fail('Table name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$nm]);if($q->fetchColumn())fail('Table already exists');$f=$p->prepare("SELECT id FROM floors WHERE site_id=? AND is_active=1 ORDER BY sort_order LIMIT 1");$f->execute([site_id()]);$fid=$f->fetchColumn();if(!$fid){$fid=uuid();$p->prepare("INSERT INTO floors(id,tenant_id,site_id,name,sort_order,is_active) VALUES(?,?,?,'Main Floor',1,1)")->execute([$fid,tenant_id(),site_id()]);}$tid=uuid();$code=strtoupper(substr(preg_replace('/[^A-Za-z0-9]/','',$nm),0,10))?:('T'.substr(str_replace('-','',$tid),0,4));$p->prepare("INSERT INTO dining_tables(id,tenant_id,site_id,floor_id,table_code,display_name,seats,shape,status,is_active) VALUES(?,?,?,?,?,?,?,'SQUARE','AVAILABLE',1)")->execute([$tid,tenant_id(),site_id(),$fid,$code,$nm,(int)($d['seats']??4)]);ok(['id'=>$tid,'name'=>$nm]);
 case 'pos-quick-item':needLogin();
+ /* ============================================================
+    V146 — ab yeh sirf ek patla khol hai.
+
+    Is ke andar menu item banane ki poori logic apni alag likhi hui thi
+    (category, inventory link, variants). Wahi kaam Menu screen ko bhi
+    karna tha, aur do jagah do copies rakhne ka anjaam hum pehle hi dekh
+    chuke hain. Ab dono `MenuItemService::save()` par hain — ek jagah
+    theek karo, dono jagah theek.
+
+    Purana jawab ka shakal waisi hi rakhi gayi hai (`id`, `category_id`,
+    `inventory_item_id`, `variants`) taake POS ka purana build bhi chalta
+    rahe. */
  Audit::log('ITEM_CREATE','menu',['label'=>(string)(body()['name']??'')]);
- try{Scope::requireManagement('creating items');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);$d=body();$name=trim((string)($d['name']??''));$price=(float)($d['price']??0);if($name===''||$price<=0)fail('Item name and valid price required');$p=DB::pdo();$dupe=$p->prepare("SELECT id FROM menu_items WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$dupe->execute([site_id(),$name]);if($dupe->fetchColumn())fail('A menu item with this name already exists');$catName=trim((string)($d['category']??''))?:'General';$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$cq->execute([site_id(),$catName]);$cid=$cq->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?, '•',99,1)")->execute([$cid,tenant_id(),site_id(),$catName]);}
-$itemType=($d['type']??'standard')==='weighted'?'WEIGHTED':'STANDARD';$consumption='NONE';$directId=null;$directQty=null;
-$inv=is_array($d['inventory']??null)?$d['inventory']:[];$mode=(string)($inv['mode']??'none');
-if($mode==='existing'&&!empty($inv['item_id'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$iq->execute([(string)$inv['item_id'],site_id()]);$directId=$iq->fetchColumn()?:null;if(!$directId)fail('Selected inventory item not found');$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
-elseif($mode==='new'){$invName=trim((string)($inv['name']??$name));$unitCode=strtoupper(trim((string)($inv['unit']??'PCS')))?:'PCS';$uq=$p->prepare("SELECT id FROM units WHERE code=? LIMIT 1");$uq->execute([$unitCode]);$unitId=$uq->fetchColumn();if(!$unitId){$uq=$p->prepare("SELECT id FROM units ORDER BY code LIMIT 1");$uq->execute();$unitId=$uq->fetchColumn();}if(!$unitId)fail('No units configured');$lq=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY name LIMIT 1");$lq->execute([site_id()]);$loc=$lq->fetchColumn();$directId=\Aio\Services\InventoryService::createItem(['category_id'=>null,'sku'=>null,'barcode'=>null,'name'=>$invName,'usage_mode'=>'DIRECT_SALE','stock_unit_id'=>$unitId,'purchase_unit_name'=>$unitCode,'purchase_factor'=>1,'avg_cost'=>(float)($inv['cost']??0),'reorder_level'=>(float)($inv['reorder']??0),'track_batch'=>0,'track_expiry'=>0,'location_id'=>$loc?:null,'opening_qty'=>(float)($inv['opening_qty']??0)]);$consumption='DIRECT_INVENTORY';$directQty=max(0.000001,(float)($inv['qty']??1));}
-$mid=uuid();$vn=0;DB::tx(function($p)use($d,$mid,$cid,$name,$itemType,$consumption,$directId,$directQty,$price,&$vn){$p->prepare("INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,description,item_type,consumption_type,direct_inventory_item_id,direct_inventory_qty,base_price,is_active,is_online,is_pos) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,1,1)")->execute([$mid,tenant_id(),site_id(),$cid,$name,(string)($d['desc']??''),$itemType,$consumption,$directId,$directQty,$price]);$opts=is_array($d['variants']??null)?$d['variants']:[];foreach($opts as $o){$vname=trim((string)($o['name']??''));$vprice=(float)($o['price']??0);if($vname===''||$vprice<=0)continue;$vn++;$p->prepare("INSERT INTO menu_item_variants(id,tenant_id,site_id,menu_item_id,name,price,sort_order,is_active) VALUES(?,?,?,?,?,?,?,1)")->execute([uuid(),tenant_id(),site_id(),$mid,$vname,$vprice,$vn]);}});
-ok(['id'=>$mid,'category_id'=>$cid,'inventory_item_id'=>$directId,'variants'=>$vn]);
+ try{Scope::requireManagement('creating items');}catch(Throwable $e){fail($e->getMessage(),403);}
+ if(!Auth::isManager())fail('Only an Admin or Manager can create items',403);
+ $d=body(); unset($d['id']);                 // yeh raasta sirf banata hai
+ try{ $r=\Aio\Services\MenuItemService::save($d); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ $vq=DB::pdo()->prepare("SELECT COUNT(*) FROM menu_item_variants WHERE menu_item_id=? AND is_active=1");
+ $vq->execute([$r['id']]);
+ $cq=DB::pdo()->prepare("SELECT category_id FROM menu_items WHERE id=?");
+ $cq->execute([$r['id']]);
+ ok(['id'=>$r['id'],'category_id'=>$cq->fetchColumn(),
+     'inventory_item_id'=>$r['inventory_item_id'],'variants'=>(int)$vq->fetchColumn()]);
+
 case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
  /* V77 — SHIFT KA GATE SERVER PAR.
     Pehle yeh sirf screen par tha; koi seedha API par bill bana sakta

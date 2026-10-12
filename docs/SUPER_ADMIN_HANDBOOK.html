@@ -1,0 +1,280 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Super Admin Handbook</title>
+<style>
+:root{--bg:#fbfaf8;--surface:#fff;--ink:#1b1917;--ink2:#413c38;--muted:#78716b;--faint:#a8a29c;
+ --line:#e7e3dd;--brand:#c0281a;--brand-soft:#fdece9;--ok:#15804a;--ok-soft:#e7f5ec;
+ --warn:#b26a06;--warn-soft:#fdf1de;--danger:#c02617;--danger-soft:#fcebe8;--code:#f4f2ef;}
+@media print{:root{--bg:#fff}.side{display:none}.wrap{grid-template-columns:1fr}body{font-size:11pt}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Inter",system-ui,-apple-system,Segoe UI,sans-serif}
+.wrap{display:grid;grid-template-columns:238px 1fr;gap:34px;max-width:1180px;margin:0 auto;padding:30px 22px 70px}
+.side{position:sticky;top:30px;align-self:start;max-height:92vh;overflow:auto}
+.side h4{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:16px 0 7px}
+.side a{display:block;padding:5px 9px;border-radius:7px;color:var(--ink2);text-decoration:none;font-size:13.3px}
+.side a:hover{background:var(--surface);color:var(--brand)}
+h1{font-size:27px;margin:0 0 4px;letter-spacing:-.02em}
+.lead{color:var(--muted);margin:0 0 6px;font-size:14px}
+.stamp{color:var(--faint);font-size:12px;margin-bottom:26px}
+h2{font-size:18px;margin:34px 0 10px;padding-top:16px;border-top:2px solid var(--line);letter-spacing:-.01em}
+h2:first-of-type{border-top:0;padding-top:0}
+h3{font-size:14.5px;margin:20px 0 7px}
+p{margin:0 0 11px}
+code{font-family:"Cascadia Mono",Consolas,monospace;background:var(--code);padding:1.5px 6px;border-radius:5px;font-size:.88em}
+pre{background:#1b1917;color:#e9e5e0;padding:13px 15px;border-radius:10px;overflow:auto;
+ font-family:"Cascadia Mono",Consolas,monospace;font-size:12.6px;line-height:1.55;margin:9px 0}
+pre .c{color:#8a837c}
+table{width:100%;border-collapse:collapse;margin:10px 0 16px;background:var(--surface);
+ border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.6px}
+th,td{padding:8px 12px;text-align:left;border-top:1px solid var(--line);vertical-align:top}
+th{background:#f6f4f1;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);border-top:0}
+td.k{font-family:"Cascadia Mono",Consolas,monospace;white-space:nowrap;font-size:12.6px}
+.note{border-left:3px solid var(--brand);background:var(--surface);padding:10px 14px;border-radius:0 9px 9px 0;margin:12px 0;font-size:13.8px}
+.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.danger{border-left-color:var(--danger);background:var(--danger-soft)}
+.ok{border-left-color:var(--ok);background:var(--ok-soft)}
+.pill{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+ padding:2px 7px;border-radius:5px;background:var(--code);color:var(--muted)}
+.pill.d{background:var(--danger-soft);color:var(--danger)}
+.pill.w{background:var(--warn-soft);color:var(--warn)}
+.pill.g{background:var(--ok-soft);color:var(--ok)}
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--faint);font-size:12.3px}
+ol,ul{margin:0 0 12px;padding-left:20px}li{margin:3px 0}
+</style></head><body><div class="wrap">
+
+<nav class="side">
+  <h4>Start</h4>
+  <a href="#login">Login</a><a href="#screens">Screens</a>
+  <h4>Per business</h4>
+  <a href="#rowbtn">Row buttons</a><a href="#features">Modules / features</a>
+  <a href="#fbr">FBR</a><a href="#licence">Licence &amp; renewal</a>
+  <h4>Console</h4>
+  <a href="#console">All commands</a><a href="#purge">Deleting data</a>
+  <a href="#sync">Sync &amp; offline</a><a href="#diag">Diagnose</a>
+  <h4>Recipes</h4>
+  <a href="#tasks">Common tasks</a><a href="#stock">Stock &amp; menu (V146)</a><a href="#safety">Safety rules</a>
+</nav>
+
+<main>
+<h1>Super Admin Handbook</h1>
+<p class="lead">Everything that can be done from the Platform Console — SmartPOS / SaaSVersion.</p>
+<p class="stamp">Wabwar Software House &middot; V146 &middot; 2026-10-11</p>
+
+<h2 id="login">1. Logging in</h2>
+<p>Open <code>https://&lt;your-app&gt;.up.railway.app/super_admin.html</code> in a browser. This is a
+separate login from any business — it uses the <code>platform_users</code> table, not <code>users</code>.</p>
+<div class="note warn"><b>Railway variables:</b> if <code>SUPER_ADMIN_EMAIL</code> and
+<code>SUPER_ADMIN_PASSWORD</code> are still set in the Railway service, remove them. While they exist a
+deploy can reset the super-admin password.</div>
+<p>Password change: <b>Account</b> screen. Lost access and no shell? Set those two Railway variables once,
+redeploy, then remove them again.</p>
+
+<h2 id="screens">2. The 13 screens</h2>
+<table>
+<tr><th style="width:170px">Screen</th><th>What it is for</th></tr>
+<tr><td class="k">Dashboard</td><td>Platform overview — business count, activity, quick health.</td></tr>
+<tr><td class="k">All Businesses</td><td>Every tenant. One row per business with the action buttons in &sect;3.</td></tr>
+<tr><td class="k">Create Business</td><td>New tenant: name, owner email, industry (Restaurant / Retail), region (PK / UK / US), expiry.</td></tr>
+<tr><td class="k">Activations</td><td>Customers who paid and are waiting — approve or reject.</td></tr>
+<tr><td class="k">Usage Analytics</td><td>Who actually uses the software and how much, per business, daily.</td></tr>
+<tr><td class="k">Error Log</td><td>Every error from every business, grouped so one fault is one row. Mark resolved.</td></tr>
+<tr><td class="k">Sync Monitor</td><td>Branch computers, last seen, what synced, what failed.</td></tr>
+<tr><td class="k">Backup &amp; Reset</td><td>Download a backup, then wipe safely.</td></tr>
+<tr><td class="k">Import Data</td><td>Load master data from a backup file.</td></tr>
+<tr><td class="k">Command Console</td><td>Everything in &sect;4. The most powerful screen.</td></tr>
+<tr><td class="k">Command Guide</td><td>The same commands with a worked example for each.</td></tr>
+<tr><td class="k">Audit Log</td><td>Every super-admin action, with who and when.</td></tr>
+<tr><td class="k">Platform Health</td><td>Database diagnostics.</td></tr>
+<tr><td class="k">Account</td><td>Super-admin password.</td></tr>
+</table>
+
+<h2 id="rowbtn">3. Per-business buttons (All Businesses)</h2>
+<table>
+<tr><th style="width:150px">Button</th><th>What it does</th></tr>
+<tr><td class="k">Detail</td><td>Full record: counts, subscription, sites, users.</td></tr>
+<tr><td class="k">Features</td><td>Which modules this business sees in its left menu. See &sect;3.1.</td></tr>
+<tr><td class="k">Suspend / Activate</td><td>Blocks or restores sign-in for the whole business. Data is untouched.</td></tr>
+<tr><td class="k">Renew</td><td>Subscription expiry and licence key. See &sect;3.3.</td></tr>
+<tr><td class="k">Reset Admin</td><td>New password for that business's own admin. The old one stops working.</td></tr>
+<tr><td class="k">FBR</td><td>Turn the digital-invoice / QR on or off for this business only. See &sect;3.2.</td></tr>
+<tr><td class="k">Branding</td><td>Display name, logo, brand colour and accent.</td></tr>
+<tr><td class="k">WhatsApp</td><td>API URL, key, and which events send a message. Has a Test button.</td></tr>
+</table>
+
+<h3 id="features">3.1 Modules / features</h3>
+<p>Shown under the same headings the customer sees — OPERATIONS, INVENTORY &amp; MENU, CUSTOMERS &amp;
+DELIVERY, FINANCE &amp; REPORTS, SYSTEM (retail gets its own set). Each heading has one switch for the whole
+group; any single item under it can be switched off on its own.</p>
+<ul>
+<li>Switch everything on and save = no limit stored.</li>
+<li>Dashboard sits in <b>Always on</b> and cannot be switched off.</li>
+<li>A module switched off disappears from the menu <b>and</b> its direct URL is blocked.</li>
+<li><b>Day Closing (Stock)</b> is a module like any other — switch it off for a business that does not count stock.</li>
+<li>The customer sees the change on their next page load — no logout needed.</li>
+</ul>
+<p>To see what is switched off for a business, from the console: <code>permissions &lt;slug&gt;</code>.</p>
+
+<h3 id="fbr">3.2 FBR / digital invoice</h3>
+<p>Per business. When on, the POS invoice carries the FBR number and QR. When off, neither appears. It is
+stored as the <code>fbr</code> module in the same feature list, so it also shows or hides the
+FBR screen in the menu.</p>
+
+<h3 id="licence">3.3 Licence, renewal and expiry</h3>
+<ul>
+<li><b>Online business</b> — Renew just extends the expiry date. No key needed.</li>
+<li><b>Offline business</b> — generate a key here and give it to the customer; they enter it on the
+activation screen.</li>
+<li>After expiry, sign-in is blocked and every page redirects to the activation screen.</li>
+<li>30 days after expiry with no renewal, the data is removed.</li>
+</ul>
+
+<h2 id="console">4. Command Console — every command</h2>
+<p>Super Admin &rarr; <b>Command Console</b>. Up/Down arrows walk through earlier commands.</p>
+
+<h3>Businesses</h3>
+<pre>list                              <span class="c">all businesses</span>
+info &lt;slug&gt;                       <span class="c">details, counts, subscription</span>
+users &lt;slug&gt;                      <span class="c">staff accounts</span>
+footprint &lt;slug&gt;                  <span class="c">where this business has data</span>
+suspend &lt;slug&gt;   |  activate &lt;slug&gt;   <span class="c">block or restore access</span></pre>
+
+<h3>Create / delete</h3>
+<pre>create "&lt;Name&gt;" --email=owner@x.pk [--owner="Full Name"] [--expiry=YYYY-MM-DD]
+demo   "&lt;Name&gt;" [--email=..] [--expiry=YYYY-MM-DD]   <span class="c">sample data, clears every 5 days</span>
+delete &lt;slug&gt; --confirm "&lt;name&gt;"  <span class="c">removes the business completely</span></pre>
+
+<h3>Data</h3>
+<pre>backup &lt;slug&gt; [full|master]       <span class="c">download a backup file</span>
+reset  &lt;slug&gt; [txn|full] --confirm "&lt;name&gt;"
+                                  <span class="c">txn  = transactions only</span>
+                                  <span class="c">full = everything, only admin login stays</span></pre>
+
+<h3 id="purge">Purge — selective delete</h3>
+<pre>purge &lt;slug&gt; &lt;what&gt; --confirm "&lt;name&gt;"
+purge &lt;slug&gt; orders --before 2026-01-01 --confirm "&lt;name&gt;"</pre>
+<table>
+<tr><th style="width:130px">what</th><th>Tables cleared</th></tr>
+<tr><td class="k">orders</td><td>orders, order_items, payments, order_payments, order_item_voids, order_status_history, online_order_details, refunds, kitchen_tickets, kitchen_ticket_items, delivery_orders, fiscal_invoices</td></tr>
+<tr><td class="k">shifts</td><td>cashier_shifts, shift_cash_movements, shift_handovers</td></tr>
+<tr><td class="k">stock</td><td>stock_transactions, stock_transaction_lines, stock_balances, stock_adjustments, stock_movements, stock_batches, stock_count_sessions, stock_transfers, goods_receipts, goods_receipt_items, purchase_orders, purchase_order_items</td></tr>
+<tr><td class="k">qr</td><td>qr_orders, qr_sessions</td></tr>
+<tr><td class="k">expenses</td><td>expenses, supplier_payments</td></tr>
+<tr><td class="k">transactions</td><td><b>orders + shifts + stock + qr + expenses</b></td></tr>
+<tr><td class="k">logs</td><td>audit_logs, notification_queue, printer_jobs, background_jobs</td></tr>
+<tr><td class="k">sync</td><td>sync_activity, sync_runs, sync_conflicts, sync_inbox, sync_outbox, sync_cursors</td></tr>
+<tr><td class="k">all-logs</td><td>logs + sync</td></tr>
+</table>
+<div class="note danger"><b>Two hard rules.</b>
+<br>1. <code>--confirm</code> takes the business <b>full name</b>, not the slug. Do not type the <code>&lt; &gt;</code> brackets.
+<br>2. A backup taken within the last hour is required before <code>reset</code> or <code>purge</code>
+(logs and sync are exempt). Run <code>backup &lt;slug&gt; full</code> first.</div>
+
+<h3 id="sync">Sync &amp; offline computers</h3>
+<pre>nodes                             <span class="c">branch computers</span>
+sync [slug]                       <span class="c">transfer activity</span>
+repull &lt;slug&gt; [all|table]         <span class="c">branch pulls everything again; nothing is deleted</span>
+resync &lt;slug&gt; [transactions|all] --confirm "&lt;name&gt;"
+                                  <span class="c">branch is brought in line with the cloud</span>
+tombstones [slug]                 <span class="c">pending delete signals</span></pre>
+<div class="note"><b>Deleting on the cloud does not empty the branch computer.</b> After a purge, run
+<code>resync &lt;slug&gt; transactions --confirm "&lt;name&gt;"</code>. That does not touch cloud data — it tells the
+branch to clear those tables and refill from the cloud on its next sync.</div>
+
+<h3 id="diag">Checks</h3>
+<pre>permissions &lt;slug&gt;   <span class="c">feature gate first, then modules per user</span>
+audit [slug]         <span class="c">super-admin actions</span>
+tables               <span class="c">tenant-scoped tables</span>
+query SELECT ...     <span class="c">read-only, max 100 rows</span>
+selftest [slug]      <span class="c">run this if any command fails</span>
+version  ·  help  ·  clear</pre>
+
+<h2 id="tasks">5. Common tasks</h2>
+
+<h3>Delete a business's old sales</h3>
+<pre>backup mubeen-restaurant full
+purge mubeen-restaurant orders --confirm "Mubeen Restaurant"
+resync mubeen-restaurant transactions --confirm "Mubeen Restaurant"   <span class="c">offline PC ke liye</span></pre>
+<p>Only older than a date: add <code>--before 2026-01-01</code>.
+Everything transactional instead of just sales: use <code>transactions</code> in place of <code>orders</code>.</p>
+
+<h3>Reset a business's admin password</h3>
+<p>All Businesses &rarr; <b>Reset Admin</b>. The old password stops working immediately. If that business
+also runs offline, the new password reaches the branch on its next sync.</p>
+
+<h3>Hide a module from one business</h3>
+<p>All Businesses &rarr; <b>Features</b> &rarr; switch the heading or the single item off &rarr; Save Modules.
+Check with <code>permissions &lt;slug&gt;</code>.</p>
+
+<h3>Reset a business to empty but keep the login</h3>
+<pre>backup &lt;slug&gt; full
+reset &lt;slug&gt; full --confirm "&lt;Business Name&gt;"</pre>
+
+<h3>Branch computer shows old data that the cloud no longer has</h3>
+<pre>resync &lt;slug&gt; transactions --confirm "&lt;Business Name&gt;"</pre>
+
+<h3>Branch computer is missing items / categories</h3>
+<pre>repull &lt;slug&gt; all</pre>
+<p>Nothing is deleted — the branch simply pulls everything again.</p>
+
+<h3>Give a customer an offline package</h3>
+<p>Sign in as that business &rarr; <b>System</b> &rarr; Download Offline Version (or press <b>F8</b> on the
+Sale Point). For a customer who already has it installed, send only
+<code>UPDATE_PATCH.zip</code> and have them run <code>UPDATE.bat</code> — the offline version does not need
+downloading again.</p>
+
+<h2 id="stock">6. Stock &amp; menu &mdash; what changed in V146</h2>
+
+<h3>One item form, two screens</h3>
+<p>The Sale Point's <b>+ New Item</b> popup and the left menu's <b>Menu &amp; Categories</b> used to be two
+different things writing to two different places, so an item made in one never appeared in the other. They
+are now the same form and the same table. Edit an item anywhere and the Sale Point sells the change.</p>
+
+<h3>Three ways stock comes off a sale</h3>
+<table>
+<tr><th style="width:150px">Setting</th><th>What happens when the bill closes</th><th style="width:210px">Use it for</th></tr>
+<tr><td class="k">No stock</td><td>Nothing is deducted.</td><td>Service charge, delivery fee</td></tr>
+<tr><td class="k">The same item</td><td>The item that was sold is taken off stock &mdash; so many units per sale.</td>
+    <td>Coke tin, water bottle, cigarettes</td></tr>
+<tr><td class="k">By recipe</td><td>Every ingredient is taken off separately, scaled to the yield and with
+    waste&nbsp;% added on top.</td><td>Biryani &rarr; rice, chicken, masala</td></tr>
+</table>
+<div class="note ok">Both styles of restaurant are covered. A shop that sells what it stocks uses
+<b>the same item</b>; a kitchen that cooks from raw material uses <b>by recipe</b>. The same business can
+mix the two, item by item.</div>
+
+<h3>Stock In</h3>
+<p>Day Closing screen &rarr; <b>+ Stock In</b>. Item, quantity, rate. That is the whole thing &mdash; no
+purchase order needed for a crate of drinks arriving at the door. Leave the rate blank to keep the current
+average cost; enter one and the average is re-weighted.</p>
+
+<h3>Day Closing (Stock)</h3>
+<p>Left menu &rarr; <b>Day Closing (Stock)</b>. For the chosen date, per item:</p>
+<pre>opening + received - sold - wastage = should be
+counted - should be = difference</pre>
+<ul>
+<li>Type the counted quantity only for the items you actually counted. An empty box leaves that item alone.</li>
+<li>Saving posts one <code>ADJUSTMENT</code> so stock matches the count, and it is written to the Audit Log.</li>
+<li>Run it again straight after and every difference is zero &mdash; that is the check that it worked.</li>
+</ul>
+<div class="note warn">This is the <b>stock</b> closing. Cash closing is still the shift close on the Sale Point.
+They are separate on purpose: a cashier closes their own shift, stock is counted once for the whole day.</div>
+
+<h3>If an item's stock looks wrong</h3>
+<p>From the console: <code>info &lt;slug&gt;</code> for counts, then on the business itself open
+<b>Day Closing (Stock)</b> for the date in question &mdash; opening, received, sold and wastage are all on
+one line, so where the number went is visible without a single query.</p>
+
+<h2 id="safety">7. Safety rules</h2>
+<ul>
+<li><span class="pill d">never</span> <code>delete &lt;slug&gt;</code> without a fresh backup. It removes the business completely.</li>
+<li><span class="pill w">careful</span> <code>reset full</code> keeps only the admin login. Everything else goes.</li>
+<li><span class="pill g">safe</span> <code>repull</code>, <code>list</code>, <code>info</code>, <code>permissions</code>,
+<code>audit</code>, <code>query SELECT</code>, <code>footprint</code>, <code>nodes</code> — read-only or non-destructive.</li>
+<li>Every destructive action is written to the <b>Audit Log</b> with your email and the time.</li>
+<li><code>query</code> is read-only and capped at 100 rows — it cannot change anything.</li>
+<li>Suspending is reversible and touches no data. Prefer it over deleting when a customer has not paid.</li>
+</ul>
+
+<p class="foot">Wabwar Software House &middot; www.wabwar.pk &middot; 0342-5095104 &middot;
+Generated for SmartPOS / SaaSVersion V146</p>
+</main></div></body></html>

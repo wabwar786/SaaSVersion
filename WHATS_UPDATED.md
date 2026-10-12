@@ -1,3 +1,131 @@
+# WHATS UPDATED — V146 (one menu, stock in, day closing)
+
+Three things, plus the Super Admin handbook.
+
+## 1. The Sale Point popup and "Menu & Categories" are now the same thing
+
+They were two different programs writing to two different places:
+
+- The POS popup wrote to the real `menu_items` table, with the inventory link.
+- The left menu's Menu & Categories was a generic `module.js` screen writing to
+  `ui_records` — it never touched `menu_items` at all. Five fields: name,
+  category, price, cost, status. No consumption type, no inventory link.
+
+So an item created at the Sale Point never appeared in the left menu, and an
+"item" created in the left menu could never be sold, because it was not a menu
+item in the first place. The same thing had already happened with categories.
+
+Now both open `public/item_dialog.js` — one form, one table, one truth. Edit an
+item anywhere and the Sale Point sells the change. `menu_management.html` is a
+real screen now: live list, search, category and stock filters, honest counts.
+
+## 2. Both styles of restaurant are supported, and can be set from the screen
+
+The engine already knew two ways to take stock off a sale. What was missing was
+anywhere to choose between them. The new dialog asks it plainly:
+
+| Setting | What happens when the bill closes | For |
+|---|---|---|
+| **No stock** | nothing is deducted | service charge, delivery fee |
+| **The same item** | the item sold comes off stock, so many units per sale | Coke tin, water bottle |
+| **By recipe** | every ingredient comes off separately, scaled to the yield, with waste % on top | biryani → rice, chicken, masala |
+
+"The same item" can also **create the inventory item as you go** — name, unit,
+opening stock and cost — so a shop that sells what it stocks never has to visit
+the inventory screen at all. A business can mix the two, item by item.
+
+Verified against the real engine with a real bill — 3 Coke and 2 Biryani:
+
+```
+TestCoke      50.000 -> 47.000   (3 sold, 3 off)
+TestRice     100.000 ->  99.500   (2 x 0.25)
+TestChicken   40.000 ->  39.560   (2 x 0.20 x 1.10 waste)
+```
+
+## 3. Stock In
+
+Stock could only grow two ways: "opening stock" when the item was created, or a
+full purchase order plus GRN. Both are far too long for "20 Coke arrived today",
+so nobody entered stock, and the inventory number was never right.
+
+Day Closing → **+ Stock In**. Item, quantity, rate. Leave the rate blank and the
+current average cost is kept; enter one and the average is re-weighted properly
+(50 @ 80 plus 24 @ 95 gives 84.86, checked).
+
+## 4. Day Closing (Stock)
+
+Closing was only ever about cash. There was no day-end stock statement, so a
+shortage could not be seen, let alone explained.
+
+New screen, new module `dayclose`, per item for a chosen date:
+
+```
+opening + received - sold - wastage = should be
+counted - should be                = difference
+```
+
+- Only the items you type a count for are adjusted. An empty box leaves that
+  item alone — treating a blank as zero would wipe out an item's stock.
+- Saving posts one `ADJUSTMENT` and writes to the Audit Log.
+- Run it again immediately and every difference is zero. That is the proof.
+
+It is a normal module, so Super Admin can switch it off for a business that does
+not count stock. Cash closing stays where it was: a cashier closes their own
+shift, stock is counted once for the whole day.
+
+## A real bug the testing caught
+
+Four places picked the "default stock location", in **three different ways**:
+
+| | rule |
+|---|---|
+| `PosService` | `FIELD(location_type,'KITCHEN','STORE',…)` |
+| `StockDayService` | `FIELD(location_type,'STORE','KITCHEN',…)` |
+| `MenuItemService` | `ORDER BY name` |
+| `ModuleBridge` | `ORDER BY name` |
+
+With two locations — Kitchen and Main Store, which the demo creates — opening
+stock landed in one, the sale came off another, and Stock In went to a third.
+Each path was right on its own; together the stock split into two accounts and
+the average cost drifted apart on each side. No error anywhere, just a number
+that is never correct.
+
+It showed up plainly in the test: Stock In reported `+24 → on hand 24`, while 47
+of the same item sat in the other location.
+
+All four now call `InventoryService::defaultLocationId()`. One rule, and it
+keeps the POS's existing order so the sales history already recorded stays in
+one piece.
+
+## Tested
+
+Against the real database and the real server:
+
+- All three consumption modes saved, listed, read back, and switched between
+  (recipe → same item correctly closes the old recipe version).
+- A real bill deducting stock both ways, arithmetic to three decimals including
+  waste %.
+- Stock In, average-cost re-weighting, and the whole day statement.
+- Day close with a deliberate 2-unit shortage: adjusted, then a second close
+  found nothing left to adjust.
+- Every endpoint over HTTP, including the old `pos-quick-item` which now routes
+  through the same service and keeps its old response shape.
+- `menu_management.html` and `stock_day_close.html` executed in jsdom against
+  live data — no JS errors.
+- **81 menu pages** across both verticals (restaurant 41, retail 40) — all HTTP
+  200, zero JS errors — and Super Admin feature hiding still blocks both the
+  link and the direct URL.
+- Module catalog, both sidebars and the Super Admin grouping stay in step
+  (`MODULE_GROUPS_OK`, `OFFLINE_TOOLS_OK`).
+
+## Also
+
+`SUPER_ADMIN_HANDBOOK.html` — every screen, every per-business button, every
+console command, with worked examples for the common jobs. Updated for V146 and
+also kept in `docs/`.
+
+---
+
 # WHATS UPDATED — V145 (one-click update; no more re-downloading the offline version)
 
 ## What you asked for

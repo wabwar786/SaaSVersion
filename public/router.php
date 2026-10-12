@@ -55,7 +55,7 @@ $retailModule=[
   'promotions.html'=>'promotions','returns.html'=>'void','shift.html'=>'shift',
   'closing.html'=>'closing','expenses.html'=>'expenses','accounting.html'=>'accounting',
   'reports.html'=>'reports','tax.html'=>'fbr','whatsapp.html'=>'whatsapp',
-  'stock_transfer.html'=>'transfer','stock_count.html'=>'count','wastage.html'=>'wastage',
+  'stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','wastage.html'=>'wastage',
   'staff.html'=>'staff','users.html'=>'users','printers.html'=>'printers',
   'branches.html'=>'branches','offline_sync.html'=>'offline','activity.html'=>'activity',
   'settings.html'=>'settings',
@@ -107,7 +107,7 @@ if($licenceBlocked && !in_array($name,$licenceAllow,true)
   header('Location: /activate.html?expired=1');
   exit;
 }
-$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'settings','backup_restore.html'=>'settings','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
+$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'settings','backup_restore.html'=>'settings','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){
   if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
@@ -187,7 +187,7 @@ if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r2"', $html);
+                     '$1="/retail/$2?b=r3"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -203,9 +203,9 @@ if($uiDir==='approved_ui/retail'){
    ============================================================ */
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
-  'src="shell.js"','src="module.js"','src="module_config.js"'],
- ['href="/shared.css?b=v16"','src="/shared_store.js?b=v16"','src="/live_store.js?b=v16"','src="/access_store.js?b=v16"',
-  'src="/shell.js?b=v16"','src="/module.js?b=v16"','src="/module_config.js?b=v16"'],
+  'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"'],
+ ['href="/shared.css?b=v17"','src="/shared_store.js?b=v17"','src="/live_store.js?b=v17"','src="/access_store.js?b=v17"',
+  'src="/shell.js?b=v17"','src="/module.js?b=v17"','src="/module_config.js?b=v17"','src="/item_dialog.js?b=v17"'],
  $html
 );
 }

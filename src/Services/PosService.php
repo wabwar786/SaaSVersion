@@ -253,7 +253,8 @@ final class PosService {
     $q2->execute([site_id()]);
     return $q2->fetch()?:null;
  }
- private static function defaultLocation(PDO $p):string{$q=$p->prepare("SELECT id FROM stock_locations WHERE site_id=? AND is_active=1 ORDER BY FIELD(location_type,'KITCHEN','STORE','COLD_ROOM','BAR'),name LIMIT 1");$q->execute([site_id()]);$id=$q->fetchColumn();if(!$id)throw new \RuntimeException('No stock location configured');return$id;}
+ /* V146 — ab ek hi qanoon, InventoryService mein. Dekhen wahan ka note. */
+ private static function defaultLocation(PDO $p):string{return InventoryService::defaultLocationId($p);}
  private static function cost(PDO $p,string $id):float{$q=$p->prepare("SELECT avg_cost_per_stock_unit FROM inventory_items WHERE id=?");$q->execute([$id]);return(float)$q->fetchColumn();}
  private static function tableId(PDO $p,string $name):?string{if(!$name)return null;$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$name]);return$q->fetchColumn()?:null;}
  private static function modeCode(string $m):string{$m=strtoupper(str_replace(' ','_',trim($m)));return $m==='HOME_DELIVERY'?'DELIVERY':($m==='DINE_IN'?'DINE_IN':($m==='TAKEAWAY'?'TAKEAWAY':'DELIVERY'));}

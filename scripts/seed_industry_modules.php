@@ -52,6 +52,7 @@ $COMMON = [
     'branches'   => 'Multi-Branch',
     'offline'    => 'Offline / Sync',
     'activity'   => 'User Activity Log',
+    'dayclose'   => 'Day Closing (Stock)',
     'whatsapp'   => 'WhatsApp / Notifications',
     'fbr'        => 'Tax / Digital Invoice',
 ];

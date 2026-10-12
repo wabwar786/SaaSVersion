@@ -1175,7 +1175,7 @@ function renderGrid(){
       +'<p>Create your first item &mdash; it appears instantly on POS, Order Taker and the Menu page.</p>'
       +'<button class="ab" style="max-width:230px;margin:0 auto;padding:10px" id="firstItem">+ Create First Item</button>'
       +'<div style="margin-top:12px"><button class="tb" id="diagBtn2">Created items but they are not showing? Diagnostics</button></div></div>';
-    $('#firstItem').onclick=function(){openItemModal('item')};
+    $('#firstItem').onclick=function(){newOrEditItem()};
     $('#diagBtn2').onclick=showDiagnostics;
     return;
   }
@@ -2274,8 +2274,32 @@ $('#edTax').onclick=function(){
 /* ================= ITEM MANAGEMENT ================= */
 $('#newItemBtn').onclick=function(){
   if(!CAN.manage){toast('Only an Admin or Manager can change items or rates');return}
-  openItemModal('item');
+  newOrEditItem();
 };
+/* ============================================================
+   V146 — item banane ka popup ab SHARED hai.
+
+   Pehle POS ka apna form tha aur left menu ka "Menu & Categories" ka
+   apna bilkul alag — aur dono ka data bhi alag (POS asli menu_items
+   mein, Menu screen `ui_records` mein). Ek he restaurant ke do menu.
+
+   Ab dono `item_dialog.js` kholte hain. Faida: recipe wala tariqa bhi
+   yahin se mil gaya (biryani -> chawal, murghi, masala), jo pehle POS
+   se set hi nahi ho sakta tha.
+
+   `openItemModal` ka Category aur Rate wala hissa waise ka waisa hai —
+   woh POS ka apna kaam hai aur chalta rehna chahiye.
+   ============================================================ */
+function newOrEditItem(id){
+  if(window.ItemDialog&&ItemDialog.open){
+    ItemDialog.open({id:id||null,onSaved:function(r,d){
+      toast((d&&d.name?d.name:'Item')+(r&&r.created===false?' updated':' saved'));
+      try{ refreshMenu(); }catch(e){ try{ boot(); }catch(e2){} }
+    }});
+    return;
+  }
+  openItemModal('item');          /* purana raasta — agar asset na mile */
+}
 function openItemModal(startTab){
   var tab=startTab||'item', inv=[];
   var sr=api('store-state'); if(sr.ok&&sr.state)inv=sr.state.inventoryItems||[];
@@ -3009,5 +3033,6 @@ document.addEventListener('keydown',function(e){
 });
 boot();
 </script>
+<script src="/item_dialog.js?b=v17"></script>
 </body>
 </html>

@@ -3,8 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Menu & Categories · Urban Spoon</title>
+<title>Menu &amp; Categories</title>
 <link rel="stylesheet" href="shared.css">
+<style>
+/* ============================================================
+   V146 — yeh safha ab ASLI menu_items dikhata hai.
+
+   Pehle yeh `module.js` ka generic CRUD tha jo `ui_records` mein likhta
+   tha — `menu_items` ko chhoota hi nahi tha. Is liye POS par banaya item
+   yahan nazar nahi aata tha, aur yahan banaya "item" POS par kabhi bika
+   hi nahi. Ab dono ek hi table aur ek hi popup (`item_dialog.js`) par
+   hain.
+   ============================================================ */
+.mm-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.mm-find{flex:1 1 220px;min-width:170px;padding:9px 12px;border:1px solid var(--line);
+  border-radius:10px;font:inherit;font-size:13.5px;background:var(--surface)}
+.mm-find:focus{outline:none;border-color:var(--brand-line)}
+.mm-sel{padding:9px 11px;border:1px solid var(--line);border-radius:10px;font:inherit;
+  font-size:13.5px;background:var(--surface)}
+.mm-count{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+.mm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:15px}
+.mm-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.mm-kpi span{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mm-kpi b{display:block;font-family:var(--display);font-size:21px;margin-top:3px}
+
+.mm-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.mm-tbl{width:100%;border-collapse:collapse;font-size:13.4px}
+.mm-tbl th,.mm-tbl td{padding:10px 13px;text-align:left;border-top:1px solid var(--line)}
+.mm-tbl th{background:var(--surface-2);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);border-top:0;white-space:nowrap}
+.mm-tbl tbody tr:hover{background:var(--surface-2)}
+.mm-tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mm-name b{display:block}
+.mm-name span{font-size:11.5px;color:var(--muted)}
+.mm-tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 7px;border-radius:5px;border:1px solid}
+.mm-tag.none{color:var(--muted);background:var(--surface-2);border-color:var(--line)}
+.mm-tag.direct{color:var(--info);background:var(--info-soft);border-color:var(--info-line)}
+.mm-tag.recipe{color:var(--ok);background:var(--ok-soft);border-color:var(--ok-line)}
+.mm-tag.off{color:var(--danger);background:var(--danger-soft);border-color:var(--danger-line)}
+.mm-stock{font-size:11.8px;color:var(--muted)}
+.mm-empty{padding:46px 20px;text-align:center;color:var(--muted)}
+.mm-empty .ic{font-size:30px;opacity:.4;display:block;margin-bottom:8px}
+@media(max-width:760px){
+  .mm-tbl th:nth-child(3),.mm-tbl td:nth-child(3),
+  .mm-tbl th:nth-child(5),.mm-tbl td:nth-child(5){display:none}
+}
+</style>
 </head>
 <body>
 <div class="app">
@@ -12,21 +58,150 @@
   <main class="main">
     <header class="header">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Menu & Categories</h1><p>Prices, food cost and availability</p></div>
+      <div class="header-title"><h1>Menu &amp; Categories</h1>
+        <p>The same items the Sale Point sells</p></div>
       <div class="header-spacer"></div>
+      <button class="btn" id="mmCat">+ Category</button>
+      <button class="btn primary" id="mmAdd">+ Add item</button>
     </header>
-    <div class="content"></div>
+    <div class="content">
+      <div class="mm-kpis" id="mmKpis"></div>
+      <div class="mm-bar">
+        <input class="mm-find" id="mmQ" placeholder="Search item or category…">
+        <select class="mm-sel" id="mmCatF"><option value="">All categories</option></select>
+        <select class="mm-sel" id="mmModeF">
+          <option value="">Any stock setting</option>
+          <option value="none">No stock</option>
+          <option value="direct">Same item</option>
+          <option value="recipe">By recipe</option>
+        </select>
+        <span class="mm-count" id="mmCount"></span>
+      </div>
+      <div class="mm-wrap">
+        <table class="mm-tbl">
+          <thead><tr>
+            <th>Item</th><th>Stock when sold</th><th class="num">Food cost</th>
+            <th class="num">Price</th><th class="num">Margin</th><th></th>
+          </tr></thead>
+          <tbody id="mmRows"></tbody>
+        </table>
+        <div class="mm-empty" id="mmEmpty" style="display:none">
+          <span class="ic">☰</span>No items yet. Use <b>+ Add item</b> to create the first one.
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
+
 <script src="shared_store.js"></script>
 <script src="live_store.js"></script>
 <script src="access_store.js"></script>
 <script src="shell.js" data-active="menu"></script>
-<script src="module.js"></script>
-<script src="module_config.js"></script>
-<script>RestaurantModule.render(MODULE_CONFIGS['menu']);</script>
+<script src="item_dialog.js"></script>
+<script>
+(function(){
+  var ROWS=[];
+
+  function req(a,p){ return (window.DBApi&&DBApi.req)?DBApi.req(a,p):{ok:false,message:'Offline'}; }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
+  function money(n){
+    var cur=(window.APP_BRAND&&APP_BRAND.currency)||'PKR';
+    return cur+' '+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  }
+  function toast(m){
+    var t=document.createElement('div');
+    t.textContent=m;
+    t.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1b1917;'+
+      'color:#fff;padding:10px 17px;border-radius:10px;font-size:13.5px;z-index:9500;box-shadow:0 8px 26px rgba(0,0,0,.26)';
+    document.body.appendChild(t);
+    setTimeout(function(){t.remove()},2600);
+  }
+
+  function load(){
+    var r=req('menu-items');
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not load the menu'); ROWS=[]; }
+    else ROWS=r.items||[];
+    var cats={},sel=document.getElementById('mmCatF'),keep=sel.value;
+    ROWS.forEach(function(x){cats[x.category]=1});
+    sel.innerHTML='<option value="">All categories</option>'+Object.keys(cats).sort().map(function(c){
+      return '<option value="'+esc(c)+'">'+esc(c)+'</option>'}).join('');
+    sel.value=keep;
+    paint();
+  }
+
+  function paint(){
+    var q=(document.getElementById('mmQ').value||'').trim().toLowerCase();
+    var cf=document.getElementById('mmCatF').value;
+    var mf=document.getElementById('mmModeF').value;
+
+    var list=ROWS.filter(function(x){
+      if(cf&&x.category!==cf)return false;
+      if(mf&&x.mode!==mf)return false;
+      if(q&&(x.name+' '+x.category).toLowerCase().indexOf(q)<0)return false;
+      return true;
+    });
+
+    /* KPIs — asli ginti, demo ke hisaab se nahi. */
+    var tracked=ROWS.filter(function(x){return x.mode!=='none'}).length;
+    var avg=ROWS.length?ROWS.reduce(function(a,b){return a+b.price},0)/ROWS.length:0;
+    document.getElementById('mmKpis').innerHTML=
+      kpi('Menu items',ROWS.length)+
+      kpi('Stock linked',tracked+' of '+ROWS.length)+
+      kpi('Inactive',ROWS.filter(function(x){return !x.active}).length)+
+      kpi('Average price',money(avg));
+
+    document.getElementById('mmCount').textContent=list.length+' shown';
+    document.getElementById('mmEmpty').style.display=ROWS.length?'none':'';
+
+    document.getElementById('mmRows').innerHTML=list.map(function(x){
+      var m=x.price?Math.round((1-(x.cost||0)/x.price)*100):0;
+      var tag=x.mode==='direct'?'<span class="mm-tag direct">Same item</span>'
+             :x.mode==='recipe'?'<span class="mm-tag recipe">Recipe</span>'
+             :'<span class="mm-tag none">No stock</span>';
+      return '<tr>'+
+        '<td class="mm-name"><b>'+esc(x.name)+(x.active?'':' <span class="mm-tag off">Inactive</span>')+'</b>'+
+          '<span>'+esc(x.category)+(x.variants?(' · '+x.variants+' option'+(x.variants===1?'':'s')):'')+'</span></td>'+
+        '<td>'+tag+'<div class="mm-stock">'+esc(x.stock_label)+'</div></td>'+
+        '<td class="num">'+(x.cost?money(x.cost):'<span style="color:var(--faint)">—</span>')+'</td>'+
+        '<td class="num"><b>'+money(x.price)+'</b></td>'+
+        '<td class="num">'+(x.cost?('<b style="color:'+(m>=60?'var(--ok)':'var(--warn)')+'">'+m+'%</b>')
+                                  :'<span style="color:var(--faint)">—</span>')+'</td>'+
+        '<td class="num"><button class="btn sm" data-edit="'+esc(x.id)+'">Edit</button></td>'+
+      '</tr>';
+    }).join('');
+  }
+  function kpi(l,v){return '<div class="mm-kpi"><span>'+esc(l)+'</span><b>'+esc(v)+'</b></div>'}
+
+  document.getElementById('mmRows').addEventListener('click',function(e){
+    var b=e.target.closest('[data-edit]'); if(!b)return;
+    ItemDialog.open({id:b.getAttribute('data-edit'),onSaved:function(){toast('Item saved');load();}});
+  });
+  document.getElementById('mmAdd').onclick=function(){
+    ItemDialog.open({onSaved:function(r,d){toast(d.name+' created');load();}});
+  };
+
+  /* Category — wahi endpoint jo POS use karta hai, is liye dono taraf
+     ek hi fehrist rehti hai. */
+  document.getElementById('mmCat').onclick=function(){
+    var n=prompt('New category name');
+    if(n===null)return;
+    n=n.trim(); if(!n)return;
+    var r=req('menu-category-create',{name:n});
+    if(!r||!r.ok){toast((r&&r.message)||'Could not create the category');return}
+    toast('Category "'+n+'" added'); load();
+  };
+
+  ['mmQ','mmCatF','mmModeF'].forEach(function(id){
+    var el=document.getElementById(id);
+    el.addEventListener(id==='mmQ'?'input':'change',paint);
+  });
+
+  load();
+})();
+</script>
 </body>
 </html>
 
-<!-- build: V17.1 build 2026-08-25 -->
+<!-- build: V146 build 2026-10-11 -->
