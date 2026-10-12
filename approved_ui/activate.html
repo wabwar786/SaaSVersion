@@ -108,8 +108,13 @@
       /* ---- V90: offline key ----
          Branch par internet na ho to sync se licence nahi barh sakta.
          Malik phone/WhatsApp par key deta hai, customer yahan daal deta
-         hai, aur software chalu ho jata hai. */
-      +'<section class="panel"><div class="panel-head"><div><h2>Have an activation key?</h2>'
+         hai, aur software chalu ho jata hai.
+
+         V149 — yeh khana SIRF offline par. Cloud (online portal) par
+         key ka koi matlab nahi: wahan renewal Super Admin karta hai,
+         aur khali khana sirf uljhan paida karta. */
+      +(window.APP_ROLE==='cloud' ? '' :
+       '<section class="panel"><div class="panel-head"><div><h2>Have an activation key?</h2>'
       +'<p>Works without internet</p></div></div><div class="panel-body">'
       +'<p style="font-size:12.5px;color:var(--muted);line-height:1.65;margin:0 0 12px">'
       +'If ' + esc(pay.company||'your supplier') + ' gave you a key over the phone or WhatsApp, '
@@ -119,7 +124,7 @@
       +'style="font-family:ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase"></label>'
       +'<button class="btn primary" id="lkGo" style="margin-top:10px">Activate</button>'
       +'<div id="lkMsg" class="note" style="display:none;margin-top:10px"></div>'
-      +'</div></section>'
+      +'</div></section>')
 
       /* ---- reference bhejein ---- */
       +'<section class="panel"><div class="panel-head"><div><h2>2. Tell us you paid</h2>'
@@ -185,3 +190,5 @@
 </script>
 </body>
 </html>
+
+<!-- build: V149 build 2026-10-12 -->

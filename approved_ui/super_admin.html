@@ -33,11 +33,41 @@
 .mf-find{flex:1 1 180px;min-width:150px;padding:7px 11px;border:1px solid var(--line);
   border-radius:9px;font:inherit;font-size:12.5px;background:var(--surface-2)}
 .mf-find:focus{outline:none;border-color:var(--brand-line);background:#fff}
-.mf-total{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.mf-total{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;
+  padding-right:2px}
+/* Patti ke buttons ke baad ginti ke liye jagah bache — warna "40 of 40
+   switched on" modal ke kinare se kat jati thi. */
+.mf-bar .btn.sm{flex:none}
+.mf-find{max-width:240px}
 
 .mf-wrap{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto;
   padding:2px;margin:0 -2px}
-.mf-grp{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+/* ============================================================
+   V149 — yeh dialog apni hi qainchi se kat raha tha.
+
+   `.mf-wrap` flex column hai aur us par `max-height:52vh` laga hai.
+   Flex ka default `flex-shrink:1` hai, is liye jab saare groups mil
+   kar 52vh se oonche ho jate, browser har group ko DABA deta tha —
+   aur `.mf-grp{overflow:hidden}` us dabi hui oonchai se bahar nikalta
+   hua hissa kaat deta. Screen par yeh aisa dikhta tha jaise ek group
+   ki rows agle group ke heading par char rahi hon.
+
+   Scroll `.mf-wrap` ka kaam hai, groups ka nahi — is liye groups ab
+   bilkul nahi dabte. */
+.mf-grp{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden;
+  flex:0 0 auto}
+
+/* ============================================================
+   Heading ka checkbox 40px ka NEELA CHAKOR ban jata tha.
+
+   `shared.css` mein ek aam qaida hai:
+       input,select,textarea{width:100%;height:40px;...}
+   Form ke khanon ke liye theek, magar `.mf-all` ek checkbox hai aur
+   us ka apna koi CSS tha hi nahi — to yeh qaida us par chal gaya.
+   Nateeja: heading ki poori chaurai ghairta hua neela chakor, aur
+   heading ka naam dhakel kar daayein chala jata tha. */
+.mf-head .mf-all{flex:none;width:17px;height:17px;min-width:17px;min-height:17px;
+  padding:0;margin:0;border-radius:5px;accent-color:var(--ok);cursor:pointer}
 .mf-grp.none{border-color:var(--line-strong);background:var(--surface-2)}
 
 .mf-head{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:pointer;
@@ -1326,7 +1356,7 @@ async function bizFeatures(id){
       return '<label class="mf-item'+(it.locked?' locked':'')+'" data-key="'+it.key+'">'
         +'<input type="checkbox" value="'+it.key+'"'+(on?' checked':'')+(it.locked?' disabled':'')+'>'
         +'<span class="mf-sw"></span>'
-        +'<span class="mf-name">'+esc(it.title)+'</span>'
+        +'<span class="mf-name" title="'+esc(it.title)+' ('+esc(it.key)+')">'+esc(it.title)+'</span>'
         +'<span class="mf-tag '+t[0]+'">'+t[1]+'</span></label>';
     }).join('');
     return '<section class="mf-grp'+(locked?' locked':'')+'" data-g="'+gi+'">'
@@ -2024,3 +2054,5 @@ function showCreated(b){
 </div></div>
 </body>
 </html>
+
+<!-- build: V149 build 2026-10-12 -->

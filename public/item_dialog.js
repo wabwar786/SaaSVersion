@@ -125,6 +125,11 @@
     var editing = !!item;
     var iv = (item && item.inventory) || { mode: 'none', qty: 1, yield_qty: 1, ingredients: [] };
     var mode = iv.mode === 'direct' ? 'existing' : (iv.mode || 'none');
+    /* V149 — jis business ke paas koi inventory item hai hi nahi, us ko
+       khali picker dikhana be-maani tha: dropdown mein sirf "— choose —"
+       aata tha aur item save hi na hota. Ab seedha "yeh item khud stock
+       banega" wala pane khulta hai. */
+    if (mode === 'existing' && !inv.length) mode = 'new';
 
     var ov = document.createElement('div');
     ov.className = 'idlg-ov';
@@ -139,10 +144,19 @@
       return out;
     }
     function invOpts(sel) {
-      var out = '<option value="">— choose —</option>';
+      var out = '<option value="">— choose —</option>', found = false;
       inv.forEach(function (i) {
-        out += '<option value="' + esc(i.id) + '"' + (i.id === sel ? ' selected' : '') + '>' + esc(i.name) + '</option>';
+        if (i.id === sel) found = true;
+        out += '<option value="' + esc(i.id) + '"' + (i.id === sel ? ' selected' : '') + '>' +
+               esc(i.name) + (Number(i.is_active) === 0 ? ' · inactive' : '') + '</option>';
       });
+      /* V149 — link toota hua ho (inventory item mit gaya) to khamoshi
+         se "— choose —" par mat girao; saaf likho, warna banda samajhta
+         hai ke dropdown kaam hi nahi kar raha. */
+      if (sel && !found) {
+        out = '<option value="" selected>— the linked stock item no longer exists —</option>' +
+              out.replace('<option value="">— choose —</option>', '');
+      }
       return out;
     }
     function unitOpts() {
@@ -352,4 +366,4 @@
   window.ItemDialog = { open: open };
 })();
 
-/* build: V146 build 2026-10-11 */
+/* build: V149 build 2026-10-12 */

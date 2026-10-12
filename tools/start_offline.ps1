@@ -149,6 +149,22 @@ if ("$check" -notmatch 'APP_OK') {
   Read-Host 'Press Enter to close'; exit 1
 }
 
+# ---------- 3b) licence ----------
+# V149 — `licence_enforce.php` sirf `windows_bootstrap.ps1` (pehli
+# install) mein chalti thi. Yani expiry ke baad 30 din ka grace period
+# khatam hone par bhi kuch nahi hota tha: wo poora hissa likha gaya,
+# documented bhi hua, magar KABHI CHALA HI NAHI.
+#
+# Yahan is liye hai ke yeh har dafa software chalne par dekhe. Script
+# khud cloud par skip kar jati hai, aur grace ke andar kuch nahi mitati
+# — sirf batati hai ke kitne din bache hain.
+$lic = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni",
+  (Join-Path $root 'scripts\licence_enforce.php'))
+if ("$lic" -match 'LICENCE_EXPIRED|LICENCE_GRACE_OVER') {
+  "$lic".Split("`n") | Where-Object { $_ -match '\S' } | Select-Object -First 3 |
+    ForEach-Object { Say "  $_" 'Yellow' }
+}
+
 # ---------- 4) find a genuinely free port ----------
 function Test-PortFree([int]$p) {
   try {

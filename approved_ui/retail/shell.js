@@ -70,7 +70,11 @@
         ['branches', 'Multi-Branch', 'branches.html', '⌗'],
         ['offline', 'Offline / Sync', 'offline_sync.html', '⟳'],
         ['activity', 'User Activity Log', 'activity.html', '☰'],
-        ['settings', 'Settings', 'settings.html', '⚙']
+        ['settings', 'Settings', 'settings.html', '⚙'],
+        /* V149 — apni apni key, warna Settings hide karte hi renewal
+           aur backup ka raasta bhi band ho jata tha. */
+        ['activate', 'Activate / Renew', 'activate.html', '\u2691'],
+        ['backup', 'Backup & Restore', 'backup_restore.html', '\u2913']
       ]
     }
   ];
@@ -101,6 +105,13 @@
 
   function initials(n) { return (n || 'U').split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase(); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  /* Branch ka naam — router se aaya hua `APP_SITE`. Na mile to khali
+     chhor dena behtar hai bajaye kisi aur shehar ka naam dikhane ke. */
+  function siteName(){
+    var s = window.APP_SITE || {};
+    return s.branch || 'Main Branch';
+  }
   function groupOpen(g) { return g.items.some(function (it) { return it[0] === active; }); }
 
   var region = window.Region ? Region.current() : { flag: '🇵🇰', label: 'Pakistan' };
@@ -108,8 +119,10 @@
   var html = '';
   html += '<div class="brand"><div class="brand-mark">R</div><div><div class="brand-name">Retail OS</div>' +
     '<span class="brand-sub">Supermarket Operating System</span></div></div>';
+  /* V149 — branch ka naam ab DB se (router `APP_SITE` bhejta hai).
+     Pehle yahan "Islamabad — F10 Store" likha hua tha — demo ka naam. */
   html += '<div class="branch-chip"><span class="dot"></span><div><span>Current branch</span>' +
-    '<b>Islamabad — F10 Store</b></div><span style="margin-left:auto;font-size:15px" title="' +
+    '<b>' + esc(siteName()) + '</b></div><span style="margin-left:auto;font-size:15px" title="' +
     esc(region.label) + '">' + region.flag + '</span></div>';
 
   html += '<nav class="nav">';
@@ -145,3 +158,5 @@
   if (lo) lo.onclick = function () { location.href = 'login.html'; };
   window.addEventListener('resize', function () { if (innerWidth > 1000) close(); });
 })();
+
+/* build: V149 build 2026-10-12 */

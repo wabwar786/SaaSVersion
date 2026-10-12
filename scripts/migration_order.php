@@ -85,6 +85,12 @@ return [
        Background mein hai kyunke yeh sirf data move karti hai; koi
        screen is par nahi ruki hui. */
     ['script' => 'migrate_tax_settings',  'optional' => true, 'stage' => 'background'],
+    /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
+       bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
+       chalti thi — yani grace period khatam hone par kabhi kuch hota hi
+       nahi tha. Ab har update par bhi, aur har start par bhi
+       (`tools/start_offline.ps1`). Cloud par khud skip kar jati hai. */
+    ['script' => 'licence_enforce',       'optional' => true, 'stage' => 'background'],
 
     /* ---------- consistency checks (schema nahi badalte) ---------- */
     ['script' => 'check_module_groups',   'optional' => true, 'check' => true],

@@ -27,8 +27,16 @@ use Aio\DB;
 
 final class ModuleGroups
 {
-    /** Dashboard kabhi hide nahi hota — wahi ghar ka safha hai. */
-    public const ALWAYS_ON = ['dashboard'];
+    /**
+     * Yeh kabhi hide nahi hote.
+     *   dashboard — ghar ka safha.
+     *   activate  — V149: renewal ki screen. Pehle yeh `settings` ki
+     *               key par thi, to Super Admin "Settings" band karta
+     *               aur customer ka RENEW ka darwaza bhi band ho jata —
+     *               aur licence khatam hone par wo kuch bhi nahi kar
+     *               sakta tha. Ab alag, aur hamesha khula.
+     */
+    public const ALWAYS_ON = ['dashboard', 'activate'];
 
     /** industry => [ [title, [module_key,...]], ... ] */
     private const LAYOUT = [
@@ -37,7 +45,7 @@ final class ModuleGroups
             ['Inventory & Menu',      ['inventory','purchasing','po','recipe','menu','wastage','transfer','count','dayclose','suppliers']],
             ['Customers & Delivery',  ['customers','customer_app','customer_web','delivery','riders','reservations','loyalty','whatsapp']],
             ['Finance & Reports',     ['expenses','accounting','promotions','staff','void','closing','reports','activity','fbr']],
-            ['System',                ['printers','branches','offline','users','settings']],
+            ['System',                ['printers','branches','offline','users','settings','activate','backup']],
         ],
         'RETAIL' => [
             ['Sale Counter',          ['shift','rpos','counters','sales','void','khata']],
@@ -45,7 +53,7 @@ final class ModuleGroups
             ['Stock & Purchasing',    ['inventory','batches','purchasing','po','grn','preturn','suppliers','transfer','count','dayclose','wastage']],
             ['Customers & Marketing', ['customers','loyalty','promotions','whatsapp']],
             ['Finance & Reports',     ['expenses','accounting','closing','reports','fbr']],
-            ['System',                ['staff','users','printers','branches','offline','activity','settings']],
+            ['System',                ['staff','users','printers','branches','offline','activity','settings','activate','backup']],
         ],
     ];
 
@@ -110,6 +118,10 @@ final class ModuleGroups
            nazar aaye ke yeh hamesha chalta hai, magar tick na kar sake. */
         $always = [];
         foreach (self::ALWAYS_ON as $k) {
+            /* Jo pehle se kisi heading mein baith chuka hai (misal
+               `activate`, jo System ke neeche hai) wo dobara yahan na
+               aaye — warna ek hi module do jagah nazar aata hai. */
+            if (isset($placed[$k])) continue;
             if (isset($names[$k])) $always[] = ['key'=>$k,'title'=>$names[$k],'status'=>'working','locked'=>true];
         }
         if ($always) array_unshift($groups, ['title' => 'Always on', 'items' => $always]);
@@ -132,7 +144,7 @@ final class ModuleGroups
        se dono verticals ek hi sach dekhte hain.
        ------------------------------------------------------------ */
     private const READY = ['dashboard','pos','rpos','tablet','menu','tables','customers','suppliers',
-        'expenses','wastage','printers','users','settings','reports','offline','kds','shift','orders',
+        'expenses','wastage','printers','users','settings','activate','backup','reports','offline','kds','shift','orders',
         'void','promotions','reservations','riders','staff','branches','loyalty','transfer','count',
         'accounting','online','whatsapp','delivery','closing','activity','fbr','sales','counters',
         'khata','products','departments','brands','uom','pricing','labels','batches','grn','po','dayclose'];
@@ -155,3 +167,5 @@ final class ModuleGroups
         return $out;
     }
 }
+
+// build: V149 build 2026-10-12

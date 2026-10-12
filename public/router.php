@@ -83,15 +83,22 @@ $sharedPages=['activate.html','backup_restore.html'];
    wahi screen jahan key daal kar software chalu hota hai. Key lagte hi
    normal kaam wahin se chalu ho jata hai.
 
-   Cloud par yeh gate nahi lagta: wahan renewal Super Admin se hoti hai.
+   V149 — AB CLOUD PAR BHI.
+   Pehle yeh gate sirf offline node par tha, aur cloud par expiry SIRF
+   LOGIN ke waqt dekhi jati thi. Session 12 ghante ka hai (ek poori
+   shift), is liye jo cashier pehle se andar tha wo expiry ke baad bhi
+   poora din bills kaat sakta tha — aur maalik ko kuch pata na chalta.
+   Ab dono taraf har request par.
+
+   Cloud par renewal Super Admin karta hai, is liye wahan `activate.html`
+   par key wala khana chhup jata hai (dekho APP_ROLE) aur sirf payment
+   aur "humein bata dein" wala raasta rehta hai.
    ============================================================ */
 $licenceBlocked=false;
-if((string)cfg('app.role')!=='cloud'){
-  try{
-    $lic=\Aio\Services\Licence::current();
-    $licenceBlocked=!empty($lic['expired']);
-  }catch(\Throwable $e){ $licenceBlocked=false; }   /* shak ho to rasta band mat karo */
-}
+try{
+  $lic=\Aio\Services\Licence::current();
+  $licenceBlocked=!empty($lic['expired']);
+}catch(\Throwable $e){ $licenceBlocked=false; }   /* shak ho to rasta band mat karo */
 /* activate.html khud, aur uske assets, hamesha khulne chahiye. */
 $licenceAllow=['activate.html','login.html','logout.html'];
 
@@ -107,7 +114,7 @@ if($licenceBlocked && !in_array($name,$licenceAllow,true)
   header('Location: /activate.html?expired=1');
   exit;
 }
-$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'settings','backup_restore.html'=>'settings','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
+$fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'activate','backup_restore.html'=>'backup','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
 
 if(!in_array($name,$publicPages,true)){
   if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
@@ -187,7 +194,7 @@ if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r4"', $html);
+                     '$1="/retail/$2?b=r5"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -204,8 +211,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
- ['href="/shared.css?b=v18"','src="/shared_store.js?b=v18"','src="/live_store.js?b=v18"','src="/access_store.js?b=v18"',
-  'src="/shell.js?b=v18"','src="/module.js?b=v18"','src="/module_config.js?b=v18"','src="/item_dialog.js?b=v18"','src="/stock_in.js?b=v18"'],
+ ['href="/shared.css?b=v19"','src="/shared_store.js?b=v19"','src="/live_store.js?b=v19"','src="/access_store.js?b=v19"',
+  'src="/shell.js?b=v19"','src="/module.js?b=v19"','src="/module_config.js?b=v19"','src="/item_dialog.js?b=v19"','src="/stock_in.js?b=v19"'],
  $html
 );
 }
@@ -265,6 +272,29 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
                'role'=>(Auth::isAdmin() ? 'Owner / Admin' : (Auth::isManager() ? 'Manager' : 'User')),
                'admin'=>Auth::isAdmin()]
             : null)
+     /* ============================================================
+        V149 — BRANCH KA NAAM.
+
+        Sidebar ke upar "Islamabad — F10" likha aata tha — har business
+        ko, har branch par. Woh demo data tha jo chaar files mein
+        hard-coded reh gaya tha: `public/shell.js`,
+        `approved_ui/retail/shell.js`, `dashboard.html`, `index.html`.
+        Customer ka apna branch ka naam `sites.name` mein mojood tha
+        magar screen tak kabhi pohanchta hi nahi tha.
+
+        Ab yahan se ek dafa jata hai — modules aur user ki tarah — aur
+        chaaron jagah wahi parhti hain. Ek extra request bhi nahi. */
+     .';window.APP_ROLE='.json_encode((string)cfg('app.role'))
+     .';window.APP_SITE='.json_encode(Auth::user() ? (function(){
+            try{
+                $q=\Aio\DB::pdo()->prepare("SELECT s.name, COALESCE(NULLIF(t.display_name,''),t.name) AS biz
+                                              FROM sites s JOIN tenants t ON t.id=s.tenant_id
+                                             WHERE s.id=? LIMIT 1");
+                $q->execute([site_id()]);
+                $r=$q->fetch(\PDO::FETCH_ASSOC)?:[];
+                return ['branch'=>(string)($r['name']??''),'business'=>(string)($r['biz']??'')];
+            }catch(\Throwable $e){ return ['branch'=>'','business'=>'']; }
+        })() : null)
      .';</script>'
      .'<script src="/db_api.js?b=v14"></script>'
      /* V62 — delete confirm har page par available hona is required (POS samet),
@@ -313,4 +343,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V62 build 2026-08-26
+// build: V149 build 2026-10-12

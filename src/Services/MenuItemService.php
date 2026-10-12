@@ -337,6 +337,93 @@ final class MenuItemService
     }
 
     /** `mode:'new'` — bikne wali cheez ka apna inventory item bana do. */
+    /**
+     * STOCK SET UP — menu ke items ka inventory EK CLICK MEIN.   (V149)
+     *
+     * KYUN:
+     * Customer ne bilkul theek kaha — "aik hi kaam do do baar karna
+     * mushkil hai". 57 menu items wale restaurant ko har item dobara
+     * Inventory mein banana parta tha, warna "The same item" ka picker
+     * khali rehta aur stock kabhi minus hi na hota.
+     *
+     * AB: menu hi se har item ka inventory item ban jata hai, usi naam
+     * se, aur link bhi lag jata hai (DIRECT_INVENTORY, 1 unit per sale).
+     * Phir wo picker mein bhi aa jata hai.
+     *
+     * Dobara chalana mehfooz hai:
+     *   - usi naam ka inventory item pehle se ho to NAYA nahi banta,
+     *     wahi link ho jata hai;
+     *   - jis item ka stock pehle se set hai (direct ya recipe) usay
+     *     haath nahi lagaya jata — recipe kabhi nahi tooti.
+     *
+     * @param array|null $ids  khaas menu items, ya null = jin ka stock set nahi
+     * @return array{created:int,linked:int,skipped:int,items:array}
+     */
+    public static function stockSetup(?array $ids = null): array
+    {
+        $p = DB::pdo();
+
+        $sql = "SELECT id, name, consumption_type, direct_inventory_item_id
+                  FROM menu_items
+                 WHERE site_id=? AND deleted_at IS NULL";
+        $args = [site_id()];
+        if ($ids !== null) {
+            $ids = array_values(array_filter($ids, function ($x) {
+                return is_string($x) && preg_match('/^[0-9a-f-]{36}$/i', $x);
+            }));
+            if (!$ids) throw new \RuntimeException('No items selected');
+            $sql .= ' AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+            $args = array_merge($args, $ids);
+        }
+        $q = $p->prepare($sql . ' ORDER BY name');
+        $q->execute($args);
+        $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+
+        $created = 0; $linked = 0; $skipped = 0; $done = [];
+        foreach ($rows as $r) {
+            /* Pehle se set hai to chhera na jaye — khaas kar recipe wale. */
+            if ($r['consumption_type'] === 'RECIPE'
+                || ($r['consumption_type'] === 'DIRECT_INVENTORY' && $r['direct_inventory_item_id'])) {
+                $skipped++; continue;
+            }
+            $name = (string)$r['name'];
+            try {
+                $ex = $p->prepare("SELECT id FROM inventory_items
+                                    WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");
+                $ex->execute([site_id(), $name]);
+                $iid = $ex->fetchColumn();
+                if ($iid) { $linked++; }
+                else { $iid = self::createInventoryItem($p, [], $name); $created++; }
+
+                $p->prepare("UPDATE menu_items
+                                SET consumption_type='DIRECT_INVENTORY',
+                                    direct_inventory_item_id=?, direct_inventory_qty=1,
+                                    updated_at=NOW(6), row_version=row_version+1
+                              WHERE id=? AND site_id=?")
+                  ->execute([$iid, $r['id'], site_id()]);
+                $done[] = $name;
+            } catch (\Throwable $e) {
+                /* Ek item ki nakami baqi 56 ko na rokay. */
+                $skipped++;
+            }
+        }
+        return ['created' => $created, 'linked' => $linked, 'skipped' => $skipped, 'items' => $done];
+    }
+
+    /** Kitne items ka stock abhi set nahi — button par ginti dikhane ke liye. */
+    public static function stockPending(): int
+    {
+        try {
+            $q = DB::pdo()->prepare(
+                "SELECT COUNT(*) FROM menu_items
+                  WHERE site_id=? AND deleted_at IS NULL
+                    AND (consumption_type IS NULL OR consumption_type='NONE'
+                         OR (consumption_type='DIRECT_INVENTORY' AND direct_inventory_item_id IS NULL))");
+            $q->execute([site_id()]);
+            return (int)$q->fetchColumn();
+        } catch (\Throwable $e) { return 0; }
+    }
+
     private static function createInventoryItem(PDO $p, array $inv, string $fallbackName): string
     {
         $invName = trim((string)($inv['name'] ?? '')) ?: $fallbackName;
@@ -388,3 +475,5 @@ final class MenuItemService
         return $out;
     }
 }
+
+// build: V149 build 2026-10-12

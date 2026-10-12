@@ -48,6 +48,11 @@ $COMMON = [
     'staff'      => 'Staff / Roles',
     'users'      => 'Users & Access',
     'settings'   => 'Settings',
+    /* V149 — pehle yeh dono bhi `settings` ki key par thay. Settings
+       hide karte hi customer ka renewal aur backup ka raasta bhi band
+       ho jata tha. Ab apni apni key. */
+    'activate'   => 'Activate / Renew',
+    'backup'     => 'Backup & Restore',
     'printers'   => 'Printers / Devices',
     'branches'   => 'Multi-Branch',
     'offline'    => 'Offline / Sync',
@@ -131,3 +136,5 @@ echo "  restaurant tenant sees: " . (int)$pdo->query(
     "SELECT COUNT(*) FROM platform_modules WHERE is_active=1 AND industry_code IN('RESTAURANT','COMMON')")->fetchColumn() . "\n";
 echo "  retail tenant sees:     " . (int)$pdo->query(
     "SELECT COUNT(*) FROM platform_modules WHERE is_active=1 AND industry_code IN('RETAIL','COMMON')")->fetchColumn() . "\n";
+
+// build: V149 build 2026-10-12

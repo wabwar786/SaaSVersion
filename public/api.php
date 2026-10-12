@@ -2185,13 +2185,30 @@ case 'menu-item-form':needLogin();
  $p=DB::pdo();
  $cq=$p->prepare("SELECT id,name FROM menu_categories WHERE site_id=? AND deleted_at IS NULL ORDER BY sort_order,name");
  $cq->execute([site_id()]);
- $iq=$p->prepare("SELECT id,name,avg_cost_per_stock_unit cost FROM inventory_items
-                   WHERE site_id=? AND deleted_at IS NULL AND is_active=1 ORDER BY name");
+ /* V149 — band (inactive) items bhi aate hain, `inactive` ke nishan ke
+    saath. Pehle sirf `is_active=1` thi: jis business ne apne items band
+    kar rakhe thay us ka picker BILKUL KHALI dikhta tha aur bande ko
+    samajh hi nahi aata tha ke item hai kahan. */
+ $iq=$p->prepare("SELECT id,name,avg_cost_per_stock_unit cost,is_active FROM inventory_items
+                   WHERE site_id=? AND deleted_at IS NULL ORDER BY is_active DESC, name");
  $iq->execute([site_id()]);
  $uq=$p->query("SELECT code,name FROM units ORDER BY code");
  ok(['categories'=>$cq->fetchAll(PDO::FETCH_ASSOC),
      'inventory'=>$iq->fetchAll(PDO::FETCH_ASSOC),
-     'units'=>$uq->fetchAll(PDO::FETCH_ASSOC)]);
+     'units'=>$uq->fetchAll(PDO::FETCH_ASSOC),
+     'stock_pending'=>\Aio\Services\MenuItemService::stockPending()]);
+
+case 'menu-stock-setup':needLogin();
+ /* V149 — "aik hi kaam do do baar" wali shikayat ka jawab.
+    Menu ke items ka inventory ek click mein ban jata hai aur link bhi
+    ho jata hai. Dobara chalana mehfooz hai; recipe wale items ko haath
+    nahi lagta. */
+ if(!Auth::canModule('menu'))fail('Permission denied',403);
+ if(!Auth::isManager())fail('Only an Admin or Manager can set up stock',403);
+ $d=body();$ids=isset($d['ids'])&&is_array($d['ids'])?$d['ids']:null;
+ try{$r=\Aio\Services\MenuItemService::stockSetup($ids);}catch(Throwable $e){fail($e->getMessage());}
+ Audit::log('MENU_STOCK_SETUP','menu',['desc'=>'created '.$r['created'].', linked '.$r['linked']]);
+ ok($r+['pending'=>\Aio\Services\MenuItemService::stockPending()]);
 
 case 'menu-categories':needLogin();
  /* Menu page aur POS dono ek hi fehrist par chalen — yehi wo jagah hai
@@ -2947,7 +2964,18 @@ case 'sa-sync-monitor':needSuper();
 
 case 'sa-password-change':needSuper();$d=body();$cur=(string)($d['current']??'');$new=(string)($d['new']??'');if(strlen($new)<8)fail('New password must be at least 8 characters.');$p=DB::pdo();$q=$p->prepare("SELECT password_hash FROM platform_users WHERE id=? LIMIT 1");$q->execute([Platform::superUser()['id']]);$h=$q->fetchColumn();if(!$h||!password_verify($cur,$h))fail('Current password is incorrect.',401);$p->prepare("UPDATE platform_users SET password_hash=?,updated_at=NOW(6) WHERE id=?")->execute([password_hash($new,PASSWORD_DEFAULT),Platform::superUser()['id']]);ok(['message'=>'Password changed.']);
 case 'sa-business-suspend':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='SUSPENDED',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='SUSPENDED',updated_at=NOW(6) WHERE tenant_id=? AND status='ACTIVE'")->execute([$tid]);ok(['message'=>'Business suspended.']);
-case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
+case 'sa-business-activate':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();
+ /* V149 — status ACTIVE kar dena kaafi nahi tha.
+    Agar `expiry_date` guzar chuki ho to customer phir bhi block rehta
+    hai (Licence::shape expiry dekhti hai, status nahi). Super Admin ko
+    lagta "activate kar diya", aur customer udhar phansa rehta — aur
+    dono taraf koi paighaam nahi. Ab saaf mana: nayi tareekh do. */
+ $qx=$p->prepare("SELECT expiry_date FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");
+ $qx->execute([$tid]);$curExp=(string)($qx->fetchColumn()?:'');
+ $newExp=trim((string)($d['expiry_date']??''));
+ $effExp=$newExp!==''?$newExp:$curExp;
+ if($effExp!=='' && substr($effExp,0,10) < date('Y-m-d'))
+   fail('This subscription expired on '.substr($effExp,0,10).'. Give a new expiry date (or use Renew) — otherwise the customer stays blocked.');$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);$p->prepare("UPDATE tenant_subscriptions SET status='ACTIVE',updated_at=NOW(6) WHERE tenant_id=? AND status='SUSPENDED'")->execute([$tid]);$exp=trim((string)($d['expiry_date']??''));if($exp!==''){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,updated_at=NOW(6) WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1")->execute([$exp,$tid]);}ok(['message'=>'Business activated.']);
 case 'sa-demo-list':needSuper();
  /* Kaunse business types ka demo pehle se maujood hai. UI isi se
     batata hai ke kis par "Create" aur kis par "Open" dikhana hai. */
@@ -3110,7 +3138,10 @@ case 'sa-licence-get':needSuper();
  $tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  ok(['licence'=>Licence::fromDb($tid)]);
 
-case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');$exp=trim((string)($d['expiry_date']??''));if($tid===''||$exp==='')fail('tenant_id and expiry_date required');$amount=(float)($d['amount']??0);$p=DB::pdo();$q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");$q->execute([$tid]);$sub=$q->fetchColumn();if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);}else{$sub=uuid();$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);}if($amount>0){$p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Renewal',Platform::superUser()['id']]);}$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);ok(['message'=>'Renewed till '.$exp]);
+case 'sa-business-renew':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');$exp=trim((string)($d['expiry_date']??''));if($tid===''||$exp==='')fail('tenant_id and expiry_date required');
+ /* V149 — guzri hui tareekh par "Renewed till ..." kehna jhoot tha:
+    customer block hi rehta. */
+ if(substr($exp,0,10) < date('Y-m-d'))fail('That date has already passed — the customer would stay blocked. Choose a future date.');$amount=(float)($d['amount']??0);$p=DB::pdo();$q=$p->prepare("SELECT id FROM tenant_subscriptions WHERE tenant_id=? ORDER BY created_at DESC LIMIT 1");$q->execute([$tid]);$sub=$q->fetchColumn();if($sub){$p->prepare("UPDATE tenant_subscriptions SET expiry_date=?,status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$exp,$sub]);}else{$sub=uuid();$p->prepare("INSERT INTO tenant_subscriptions(id,tenant_id,status,amount,start_date,expiry_date,created_by) VALUES(?,?,'ACTIVE',?,CURDATE(),?,?)")->execute([$sub,$tid,$amount,$exp,Platform::superUser()['id']]);}if($amount>0){$p->prepare("INSERT INTO subscription_payments(id,tenant_id,subscription_id,amount,method,reference,payer_name,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)")->execute([uuid(),$tid,$sub,$amount,strtoupper((string)($d['payment_method']??'CASH')),($d['payment_reference']??null),($d['payer_name']??null),'Renewal',Platform::superUser()['id']]);}$p->prepare("UPDATE tenants SET status='ACTIVE',updated_at=NOW(6) WHERE id=?")->execute([$tid]);ok(['message'=>'Renewed till '.$exp]);
 case 'sa-business-reset-admin':needSuper();$d=body();$tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$q=$p->prepare("SELECT id,email FROM users WHERE tenant_id=? AND is_tenant_admin=1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1");$q->execute([$tid]);$u=$q->fetch();if(!$u)fail('No admin user found for this business.');$np=substr(str_shuffle('ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#%'),0,10);$p->prepare("UPDATE users SET password_hash=?,password_algo='BCRYPT',status='ACTIVE',row_version=row_version+1,updated_at=NOW(6) WHERE id=?")->execute([password_hash($np,PASSWORD_DEFAULT),$u['id']]);ok(['admin_email'=>$u['email'],'admin_password'=>$np]);
 case 'sa-business-detail':needSuper();$tid=(string)($_GET['tenant_id']??'');if($tid==='')fail('tenant_id is required');$p=DB::pdo();$t=$p->prepare("SELECT id,name,slug,industry_code,status,owner_email,sync_token,created_at FROM tenants WHERE id=?");$t->execute([$tid]);$ten=$t->fetch();if(!$ten)fail('Business not found',404);$subs=$p->prepare("SELECT s.status,s.amount,s.start_date,s.expiry_date,s.created_at,COALESCE(pl.name,'—') plan FROM tenant_subscriptions s LEFT JOIN subscription_plans pl ON pl.id=s.plan_id WHERE s.tenant_id=? ORDER BY s.created_at DESC");$subs->execute([$tid]);$pays=$p->prepare("SELECT amount,method,reference,payer_name,note,paid_at FROM subscription_payments WHERE tenant_id=? ORDER BY paid_at DESC LIMIT 50");$pays->execute([$tid]);$uq=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND deleted_at IS NULL");$uq->execute([$tid]);$sq=$p->prepare("SELECT COUNT(*) FROM sites WHERE tenant_id=? AND deleted_at IS NULL");$sq->execute([$tid]);$base=rtrim((string)cfg('app.base_url'),'/');$ten['client_link']=$base.'/login.html?b='.$ten['slug'];ok(['business'=>$ten,'subscriptions'=>$subs->fetchAll(),'payments'=>$pays->fetchAll(),'users'=>(int)$uq->fetchColumn(),'branches'=>(int)$sq->fetchColumn()]);
 case 'sa-diagnostics':needSuper();$p=DB::pdo();$need=['tenants','organizations','sites','users','platform_users','platform_modules','subscription_plans','tenant_subscriptions','subscription_payments','orders','order_items','payments','payment_methods','customers','suppliers','menu_items','menu_categories','inventory_items','stock_balances','kitchen_tickets','cashier_shifts','expenses','ui_records','sync_state'];$missing=[];foreach($need as $t){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$q->execute([$t]);if(!(int)$q->fetchColumn())$missing[]=$t;}$cols=[];foreach([['tenants','slug'],['tenants','industry_code'],['tenants','sync_token'],['tenants','owner_email'],['suppliers','city'],['suppliers','category']] as $c){$q=$p->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?");$q->execute($c);if(!(int)$q->fetchColumn())$cols[]=implode('.',$c);}ok(['db'=>cfg('db.database'),'php'=>PHP_VERSION,'role'=>cfg('app.role'),'missing_tables'=>$missing,'missing_columns'=>$cols,'healthy'=>!$missing&&!$cols]);
@@ -3254,4 +3285,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V148 build 2026-10-12
+// build: V149 build 2026-10-12

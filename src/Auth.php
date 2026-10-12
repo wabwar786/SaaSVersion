@@ -290,7 +290,13 @@ final class Auth {
     {
         $feat = self::tenantFeatures();
         if ($feat === null) return $keys;            // null = sab allowed
-        $allow = \array_flip($feat);
+        /* V149 — ALWAYS_ON kabhi gate se nahi girte.
+           Features ki list us din mehfooz hui thi jab `activate` module
+           wujood mein hi nahi tha. Us purani list par gate chalta to
+           RENEW ki screen gayab — aur licence khatam hone par customer
+           ke paas kuch karne ka raasta hi na bachta. Dashboard ke saath
+           bhi yehi khatra tha. */
+        $allow = \array_flip(\array_merge($feat, \Aio\Services\ModuleGroups::ALWAYS_ON));
         $out = [];
         foreach ($keys as $k) if (isset($allow[$k])) $out[] = $k;
         return $out;
@@ -488,4 +494,4 @@ final class Auth {
     }
 }
 
-// build: V17.1 build 2026-08-25
+// build: V149 build 2026-10-12

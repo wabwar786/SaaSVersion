@@ -66,7 +66,7 @@
 
       <section class="dash-hero">
         <div class="hero">
-          <span class="eyebrow">Islamabad — F10 · Shift <span id="heroShift">S-2048</span></span>
+          <span class="eyebrow"><span id="heroBranch">Main Branch</span> · Shift <span id="heroShift">S-2048</span></span>
           <h2 id="heroSales">PKR 0 net sales today</h2>
           <p>Everything runs locally first — POS, kitchen and printers stay online on the branch network while the cloud syncs quietly in the background.</p>
           <div class="hero-actions">
@@ -163,6 +163,10 @@ function render(){
   var s=RestaurantLive.get(), inv=RestaurantStore.getState(), acc=RestaurantAccess.get();
   var low=inv.inventoryItems.filter(function(i){return Number(i.stockQty)<=Number(i.reorderQty)}).length;
   var pending=acc.requests.length, profit=s.netSales-s.foodCost-s.expenses;
+  /* V149 — branch ka naam DB se (router ka `APP_SITE`). Pehle yahan
+     "Islamabad — F10" hard-coded tha. */
+  var hb=$('#heroBranch');
+  if(hb)hb.textContent=(window.APP_SITE&&window.APP_SITE.branch)||'Main Branch';
   $('#heroShift').textContent=s.shift; $('#heroSales').textContent=money(s.netSales)+' net sales today';
   $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
   $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
@@ -184,4 +188,4 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
 </body>
 </html>
 
-<!-- build: V17.1 build 2026-08-25 -->
+<!-- build: V149 build 2026-10-12 -->

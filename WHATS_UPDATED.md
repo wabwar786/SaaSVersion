@@ -1,3 +1,80 @@
+# WHATS UPDATED — V149 (menu→stock, branch name, settings switch, expiry)
+
+## 1. Menu items no longer have to be built twice
+
+You were right: *"aik hi kaam 2,2 bar krna mushkil hai."* Menu & Categories now
+has **Set up stock** (whole menu) and a per-row **Make stock item** for anything
+marked *No stock*. Each one creates an inventory item under the same name and
+links it (1 unit per sale), so it appears in the Edit dropdown afterwards.
+
+Re-running is safe: an existing inventory item of the same name is linked rather
+than duplicated, and items already set up — **recipes above all** — are left
+alone. Tested: 7 pending → 7 created, 18/18 linked, recipe untouched; second
+click changed nothing.
+
+## 2. The empty inventory dropdown
+
+Your business had **no inventory items at all**, so the picker held only
+`— choose —`. (Where items exist, selecting and saving a different one already
+worked — verified A → save → A, B → save → B.)
+
+Now: with an empty list the dialog opens straight on *"this item is the stock"*
+instead of a dead picker; **inactive** items are listed too, marked
+`· inactive`; and a broken link says so rather than silently showing
+`— choose —`.
+
+## 3. Branch name
+
+`Islamabad — F10` was hard-coded in four live files — both `shell.js` files,
+`dashboard.html` and `index.html`. It now comes from `sites.name`, injected once
+by the router as `APP_SITE`, read by all four.
+
+## 4. Settings is its own switch now
+
+`Settings`, `Activate / Renew` and `Backup & Restore` all sat on the one
+`settings` module key. Turning Settings off also took away the customer's
+**renewal screen** — exactly when they might need it most. Three keys now, and
+`activate` is in `ALWAYS_ON` so it can never be hidden. `Auth::gateByFeatures()`
+also unions `ALWAYS_ON` in, so a features list saved before `activate` existed
+can't hide it either.
+
+## 5. The features popup was cutting itself in half
+
+Two causes, both small:
+
+- `shared.css` has `input,select,textarea{width:100%;height:40px}`. The group
+  header checkbox had no CSS of its own, so that rule made it a 40px blue
+  square that shoved the heading across.
+- `.mf-wrap` is a flex column with `max-height:52vh`, and `.mf-grp` had no
+  `flex:0 0 auto` — so once the groups were taller than the box, flex squashed
+  each one and `overflow:hidden` clipped the rows. That was the "rows on top of
+  the next heading" effect.
+
+## 6. Expiry: four holes
+
+- **Cloud checked expiry only at login.** Sessions last 12 hours, so a cashier
+  already signed in kept billing all day past expiry. The licence gate now runs
+  on every request, cloud included.
+- **Cloud had no renewal screen** — just a refusal at login. It now lands on the
+  same Activate screen (payment + "tell us you paid"); the activation-key panel
+  is hidden there, since only offline nodes use keys.
+- **`licence_enforce.php` only ran on first install.** The 30-day grace and
+  purge were written, documented, and never executed. Now it runs at every
+  start-up (`tools/start_offline.ps1`) and on every update (migration list).
+- **Super Admin could "activate" a business whose date had passed** — status
+  went ACTIVE, the customer stayed blocked, and nothing said so. Both Activate
+  and Renew now refuse a past date and ask for a new one.
+
+## Tested
+
+96 screens across both verticals in a real browser: HTTP 200, no JavaScript
+errors. Stock setup run twice. Dialog tested with every inventory item removed.
+Branch renamed in the database and seen to change on screen. Settings hidden via
+Super Admin and checked from both the menu and a direct URL. Expiry triggered
+*after* login to confirm the open session is stopped. PowerShell scripts parsed
+with 7.4.6.
+
+---
 # WHATS UPDATED — V148 (tax settings)
 
 Two questions, one bug behind both.

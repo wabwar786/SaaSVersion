@@ -61,6 +61,7 @@
       <div class="header-title"><h1>Menu &amp; Categories</h1>
         <p>The same items the Sale Point sells</p></div>
       <div class="header-spacer"></div>
+      <button class="btn" id="mmStock">Set up stock</button>
       <button class="btn" id="mmCat">+ Category</button>
       <button class="btn primary" id="mmAdd">+ Add item</button>
     </header>
@@ -168,16 +169,49 @@
         '<td class="num"><b>'+money(x.price)+'</b></td>'+
         '<td class="num">'+(x.cost?('<b style="color:'+(m>=60?'var(--ok)':'var(--warn)')+'">'+m+'%</b>')
                                   :'<span style="color:var(--faint)">—</span>')+'</td>'+
-        '<td class="num"><button class="btn sm" data-edit="'+esc(x.id)+'">Edit</button></td>'+
+        '<td class="num">'+
+          (x.mode==='none'?('<button class="btn sm" data-stock="'+esc(x.id)+'" '+
+             'title="Isi naam ka inventory item bana kar jor do">Make stock item</button> '):'')+
+          '<button class="btn sm" data-edit="'+esc(x.id)+'">Edit</button></td>'+
       '</tr>';
     }).join('');
   }
   function kpi(l,v){return '<div class="mm-kpi"><span>'+esc(l)+'</span><b>'+esc(v)+'</b></div>'}
 
   document.getElementById('mmRows').addEventListener('click',function(e){
+    /* V149 — ek item ka stock yahin se. Customer ne theek kaha tha:
+       "aik hi kaam 2,2 bar krna mushkil hai" — pehle har menu item
+       dobara Inventory mein haath se banana parta tha. */
+    var sb=e.target.closest('[data-stock]');
+    if(sb){
+      sb.disabled=true; sb.textContent='…';
+      var rr=req('menu-stock-setup',{ids:[sb.getAttribute('data-stock')]});
+      if(!rr||!rr.ok){ sb.disabled=false; sb.textContent='Make stock item';
+                       toast((rr&&rr.message)||'Could not set up stock'); return; }
+      toast(rr.created?('Stock item ban gaya — ab picker mein bhi hai')
+                      :(rr.linked?'Pehle se mojood inventory item se jor diya'
+                                 :'Is item ka stock pehle se set tha'));
+      load(); return;
+    }
     var b=e.target.closest('[data-edit]'); if(!b)return;
     ItemDialog.open({id:b.getAttribute('data-edit'),onSaved:function(){toast('Item saved');load();}});
   });
+
+  /* Poore menu ka stock ek click mein. Dobara dabana mehfooz hai:
+     jo pehle se set hai (khaas kar recipe wale) wo chhoote nahi. */
+  document.getElementById('mmStock').onclick=function(){
+    var pend=ROWS.filter(function(x){return x.mode==='none'}).length;
+    if(!pend){ toast('Har item ka stock pehle se set hai'); return; }
+    if(!confirm(pend+' item ka inventory banaya jaye? \n\nHar item usi naam se stock '+
+                'ban jayega aur jor diya jayega (1 unit per sale). Jo pehle se set hain '+
+                'un ko haath nahi lagega.')) return;
+    var btn=this; btn.disabled=true; btn.textContent='Ban raha hai…';
+    var r=req('menu-stock-setup',{});
+    btn.disabled=false; btn.textContent='Set up stock';
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not set up stock'); return; }
+    toast(r.created+' naye bane, '+r.linked+' pehle se mojood se jore, '+r.skipped+' chhute');
+    load();
+  };
   document.getElementById('mmAdd').onclick=function(){
     ItemDialog.open({onSaved:function(r,d){toast(d.name+' created');load();}});
   };
@@ -204,4 +238,6 @@
 </body>
 </html>
 
-<!-- build: V146 build 2026-10-11 -->
+<!-- build: V149 build 2026-10-12 -->
+
+<!-- build: V149 build 2026-10-12 -->

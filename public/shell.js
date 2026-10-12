@@ -60,8 +60,11 @@
       ['offline','Offline / Sync','offline_sync.html','⟳'],
       ['users','Users & Access','users_access.html','⚿'],
       ['settings','Settings','settings.html','⚙'],
-      ['settings','Activate / Renew','activate.html','\u2691'],
-      ['settings','Backup & Restore','backup_restore.html','\u2913']
+      /* V149 — pehle teeno ki key `settings` thi. Super Admin se
+         Settings band karte hi customer ka RENEW ka darwaza bhi band
+         ho jata tha. Ab alag keys; `activate` kabhi hide nahi hota. */
+      ['activate','Activate / Renew','activate.html','\u2691'],
+      ['backup','Backup & Restore','backup_restore.html','\u2913']
     ]}
   ];
 
@@ -101,12 +104,23 @@
   function initials(n){return (n||'U').split(/\s+/).map(function(w){return w[0]}).slice(0,2).join('').toUpperCase();}
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
 
+  /* Branch ka naam — router se aaya hua `APP_SITE`. Na mile to khali
+     chhor dena behtar hai bajaye kisi aur shehar ka naam dikhane ke. */
+  function siteName(){
+    var s = window.APP_SITE || {};
+    return s.branch || 'Main Branch';
+  }
+
   function groupOpen(g){ return g.items.some(function(it){return it[0]===active;}); }
 
   var html='';
   html+='<div class="brand"><div class="brand-mark">U</div><div><div class="brand-name">Urban Spoon</div>'+
         '<span class="brand-sub">Restaurant Operating System</span></div></div>';
-  html+='<div class="branch-chip"><span class="dot"></span><div><span>Current branch</span><b>Islamabad — F10</b></div></div>';
+  /* V149 — branch ka naam ab DB se (router `APP_SITE` bhejta hai).
+     Pehle yahan "Islamabad — F10" likha hua tha — demo ka naam, har
+     business ko, har branch par. */
+  html+='<div class="branch-chip"><span class="dot"></span><div><span>Current branch</span><b>'+
+        esc(siteName())+'</b></div></div>';
   html+='<nav class="nav">';
   html+='<a href="index.html" class="nav-home'+(active==='dashboard'?' active':'')+'"><span class="ic">▦</span>Dashboard</a>';
   GROUPS.forEach(function(g){
@@ -330,3 +344,5 @@
     report('Unhandled promise: ' + (r.message || r), r.fileName, r.lineNumber, r.stack);
   });
 })();
+
+/* build: V149 build 2026-10-12 */
