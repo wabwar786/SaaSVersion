@@ -185,6 +185,32 @@ final class SelfService
             }
         } catch (\Throwable $e) {}
 
+        /* ============================================================
+           V153 — PARCHA KHUD BAN JAYE, BHALE HUM CONSOLE NA KHOLEN.
+
+           Pehle auto-invoicing sirf DO jagah chalti thi: Super Admin ka
+           dashboard khulne par, ya `scripts/run_invoicing.php` ke cron
+           par. Dono hum par thin. Agar us hafte hum console na kholte
+           aur cron na laga hota, to due date aa kar guzar jati aur
+           customer apni Activate screen par kuch bhi na paata — na
+           raqam, na parcha, na download.
+
+           Ab customer ka apna safha khulte hi uske apne business ka
+           parcha yakeeni bana diya jata hai. `ensureForExpiry()` sasta
+           aur mehfooz hai: expiry abhi door ho (3 din se zyada) to
+           seedha null, aur ek waqt mein ek hi baqaya parcha banta hai —
+           is liye roz kholne se roz naya parcha nahi banta.
+
+           SIRF CLOUD PAR. Offline node par parcha banane se invoice
+           number cloud ke number se takra jate (dono apni ginti
+           chalate), aur billing poori tarah portal ka kaam hai.
+           ============================================================ */
+        try {
+            if ((string)\cfg('app.role') === 'cloud' && (string)tenant_id() !== '') {
+                InvoiceService::ensureForExpiry((string)tenant_id());
+            }
+        } catch (\Throwable $e) { /* parcha na bane to screen phir bhi khule */ }
+
         /* Baqaya parcha — yehi asal raqam hai jo bhejni hai. */
         try {
             $q = DB::pdo()->prepare("SELECT invoice_no, total, due_on, public_token FROM invoices
@@ -361,4 +387,4 @@ final class SelfService
     }
 }
 
-// build: V152 build 2026-10-12
+// build: V153 build 2026-10-12

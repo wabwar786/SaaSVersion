@@ -98,6 +98,13 @@ return [
     ['script' => 'check_module_groups',   'optional' => true, 'check' => true],
     ['script' => 'check_settings_single_row', 'optional' => true, 'check' => true],
     ['script' => 'check_offline_tools',   'optional' => true, 'check' => true, 'cloud_only' => true],
+    /* V153 — `migrate_collation` ki chhuti hui columns ka pehra.
+       MariaDB foreign-key wale column ko convert karne se mana kar deti
+       hai; script wo skip kar ke aage barh jati hai (theek hai), magar
+       phir `tenants.id` aur `invoices.tenant_id` alag collation par reh
+       jate aur har JOIN chalte hue toot jata. Ab deploy log mein
+       `COLLATION_OK` likha hoga — ya kaun si columns peeche hain. */
+    ['script' => 'check_collation',       'optional' => true, 'check' => true],
 ];
 
-// build: V151 build 2026-10-12
+// build: V153 build 2026-10-12

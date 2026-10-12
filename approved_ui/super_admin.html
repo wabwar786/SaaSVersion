@@ -2492,10 +2492,17 @@ $('billBtn') && ($('billBtn').onclick=async function(){
     +'<div class="lc-sec"><h4>Paisay kahan aayen</h4>'
     + fieldsHtml(['bank_name|Bank name','account_title|Account title','account_number|Account number',
       'iban|IBAN','easypaisa|Easypaisa number','jazzcash|JazzCash number'])+'</div>'
-    /* V151 — invoice par jo chhapna hai. Tax 0 ho to line chhapti hi nahi. */
+    /* V151 — invoice par jo chhapna hai. Tax 0 ho to line chhapti hi nahi.
+       V153 — NTN nikal diya (invoice par ab nahi chhapta), aur logo ka
+       khana aa gaya. Logo ke do raaste: package ke andar
+       `public/assets/wabwar-logo.png` rakh dein (sab se mehfooz), ya
+       yahan poora URL daal dein. File mojood ho to wahi pehle chalti hai. */
     +'<div class="lc-sec"><h4>Invoice <i>tax 0 ho to line chhapti hi nahi</i></h4>'
-    + fieldsHtml(['tax_pct|Tax %','ntn|NTN','monthly_price|Default monthly price (PKR)',
-                  'yearly_price|Default yearly price (PKR)','invoice_note|Note (har invoice par)'])+'</div>'
+    + fieldsHtml(['tax_pct|Tax %','monthly_price|Default monthly price (PKR)',
+                  'yearly_price|Default yearly price (PKR)',
+                  'logo_url|Logo URL (agar file package mein na ho)',
+                  'vendor_address|Aap ka pata (logo ke neeche)',
+                  'invoice_note|Note (har invoice par)'])+'</div>'
     /* V151 — apni WhatsApp API ho to invoice khud chala jata hai. */
     +'<div class="lc-sec"><h4>WhatsApp <i>khali chhor dein to wa.me se khud bhejein</i></h4>'
     + fieldsHtml(['wa_api_url|API URL','wa_api_key|API key'])+'</div>'
@@ -2505,7 +2512,7 @@ $('billBtn') && ($('billBtn').onclick=async function(){
   ov.querySelector('#bsSave').onclick=async function(){
     var body={};
     ['bank_name','account_title','account_number','iban','easypaisa','jazzcash','monthly_price',
-     'yearly_price','tax_pct','ntn','invoice_note','wa_api_url','wa_api_key']
+     'yearly_price','tax_pct','invoice_note','logo_url','vendor_address','wa_api_url','wa_api_key']
       .forEach(function(k){var el=ov.querySelector('#bs_'+k); if(el)body[k]=el.value});
     var s2=await api('sa-billing-save',body);
     toast(s2.ok?'Saved':(s2.message||'Failed'));
@@ -2574,4 +2581,4 @@ function showCreated(b){
 </body>
 </html>
 
-<!-- build: V152 build 2026-10-12 -->
+<!-- build: V153 build 2026-10-12 -->

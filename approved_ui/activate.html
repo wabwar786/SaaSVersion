@@ -77,23 +77,37 @@
          + row('JazzCash', esc(pay.jazzcash||''));
   }
 
+  /* V153 — customer ke apne parche: kholna AUR download.
+     "Download" wahi link hai magar `&print=1` ke saath — safha khulte hi
+     print dialog khud khul jata hai aur wahan se "Save as PDF". Phone par
+     bhi yehi chalta hai.
+
+     `tag bad` yahan ghalat tha — shared.css mein aisi koi class hai hi
+     nahi (`.tag danger` hai). Overdue wala parcha is wajah se bilkul
+     saada nazar aata tha, halanke wahi sab se zyada tawajjo maangta hai. */
   function invoicesHtml(){
     var r; try{ r=DBApi.req('my-invoices'); }catch(e){ return '' }
     if(!r||!r.ok||!(r.rows||[]).length) return '';
     return '<section class="panel"><div class="panel-head"><div><h2>Your invoices</h2>'
-      +'<p>Kholein, print karein, ya WhatsApp par bhej dein</p></div></div>'
+      +'<p>Open, download as PDF, or send on WhatsApp</p></div></div>'
       +'<div class="panel-body flush"><div class="table-wrap"><table class="table">'
-      +'<thead><tr><th>Invoice</th><th>Period</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>'
+      +'<thead><tr><th>Invoice</th><th>Period</th><th class="num">Amount</th><th>Status</th>'
+      +'<th class="num">Download</th></tr></thead><tbody>'
       + r.rows.map(function(x){
           var st=String(x.status).toUpperCase();
           var tag = st==='PAID' ? '<span class="tag ok">Paid</span>'
-                  : st==='CANCELLED' ? '<span class="tag">Cancelled</span>'
-                  : (x.overdue ? '<span class="tag bad">Overdue</span>' : '<span class="tag warn">Unpaid</span>');
+                  : st==='CANCELLED' ? '<span class="tag neutral">Cancelled</span>'
+                  : (x.overdue ? '<span class="tag danger">Overdue</span>'
+                               : '<span class="tag warn">Unpaid</span>');
           return '<tr><td><b>'+esc(x.invoice_no)+'</b></td>'
             +'<td class="hint">'+esc(x.period_from||'')+' &rarr; '+esc(x.period_to||'')+'</td>'
-            +'<td class="num"><b>PKR '+Number(x.total).toLocaleString()+'</b></td>'
+            +'<td class="num"><b>'+esc(x.currency||'PKR')+' '
+              +Number(x.total).toLocaleString()+'</b></td>'
             +'<td>'+tag+'</td>'
-            +'<td class="num"><a class="btn sm" href="'+esc(x.link)+'" target="_blank">Open</a></td></tr>';
+            +'<td class="num" style="white-space:nowrap">'
+              +'<a class="btn sm" href="'+esc(x.link)+'" target="_blank" rel="noopener">Open</a> '
+              +'<a class="btn sm primary" href="'+esc(x.download||x.link)+'" target="_blank" '
+              +'rel="noopener">PDF</a></td></tr>';
         }).join('')
       +'</tbody></table></div></div></section>';
   }
@@ -162,8 +176,14 @@
         + '<span class="amt-lab">' + (pay.due_total > 0 ? 'Amount due' : 'Your plan') + '</span>'
         + '<div class="amt-big">PKR ' + money0(big) + '</div>'
         + '<p class="amt-sub">' + sub + '</p>'
+        /* V153 — parcha kholne ke saath seedha download bhi. Customer
+           aksar invoice apne accountant ko bhejta hai; usay pehle kholna
+           phir print dhoondna ek faltu qadam tha. */
         + (pay.due_link
-            ? ('<a class="btn" href="' + esc(pay.due_link) + '" target="_blank">Invoice kholein</a>')
+            ? ('<div style="display:flex;gap:8px;flex-wrap:wrap">'
+               + '<a class="btn" href="' + esc(pay.due_link) + '" target="_blank" rel="noopener">Open invoice</a>'
+               + '<a class="btn" href="' + esc(pay.due_link) + '&print=1" target="_blank" '
+               + 'rel="noopener">Download PDF</a></div>')
             : '')
         + '</div></section>';
     }
@@ -275,4 +295,4 @@
 </body>
 </html>
 
-<!-- build: V152 build 2026-10-12 -->
+<!-- build: V153 build 2026-10-12 -->

@@ -426,7 +426,7 @@ case 'activation-request':needLogin();$d=body();
 
 case 'sa-billing-get':needSuper();
  /* V151 — `billing` ka poora group bhi, kyunke invoice wale khane
-    (tax_pct, ntn, invoice_note) `paymentInfo()` mein nahi aate. */
+    (tax_pct, invoice_note, logo_url) `paymentInfo()` mein nahi aate. */
  $wa=\Aio\Services\PlatformSetting::all('wa');
  ok(['payment'=>SelfService::paymentInfo(),
      'billing'=>\Aio\Services\PlatformSetting::all('billing')
@@ -437,11 +437,15 @@ case 'sa-billing-save':needSuper();$d=body();
  /* Bank / easypaisa ki tafseel — customer ki activation screen par yehi
     dikhti hai. Yeh khali chhor dein to customer ko sirf phone number
     milega aur wo call karega.
-    V151: `tax_pct`, `ntn` aur `invoice_note` bhi — invoice par yehi
-    chhapte hain. Aur likhai ab PlatformSetting se (ek hi darwaza). */
+    V151: `tax_pct` aur `invoice_note` bhi — invoice par yehi chhapte
+    hain. Aur likhai ab PlatformSetting se (ek hi darwaza).
+
+    V153: `logo_url` aur `vendor_address` nayi — invoice ke header par.
+    `ntn` nikal diya: invoice par ab NTN nahi chhapta. */
  $n=0;
  foreach(['bank_name','account_title','account_number','iban','easypaisa','jazzcash',
-          'monthly_price','yearly_price','tax_pct','ntn','invoice_note','wa_api_url','wa_api_key'] as $k){
+          'monthly_price','yearly_price','tax_pct','invoice_note',
+          'logo_url','vendor_address','wa_api_url','wa_api_key'] as $k){
    if(!array_key_exists($k,$d))continue;
    if($k==='wa_api_url'||$k==='wa_api_key'){
      \Aio\Services\PlatformSetting::put('wa',substr($k,3),trim((string)$d[$k]));
@@ -574,11 +578,21 @@ case 'invoice-public':
 
 /* Customer apne invoices khud dekh sake — Activate screen par. */
 case 'my-invoices':needLogin();
+ /* V153 — `download`: wahi link magar `&print=1` ke saath. Us se safha
+    khulte hi browser ka print dialog khud khul jata hai, aur wahan se
+    "Save as PDF". Server par PDF banane ke liye poori library chahiye
+    hoti aur font missing ka masla har machine par alag hota hai —
+    browser ka apna print engine har jagah mojood hai, phone par bhi. */
  $rows=\Aio\Services\InvoiceService::forTenant(tenant_id(),24);
  $out=[];
- foreach($rows as $r)$out[]=['invoice_no'=>$r['invoice_no'],'period_from'=>$r['period_from'],
-   'period_to'=>$r['period_to'],'total'=>$r['total'],'status'=>$r['status'],'overdue'=>$r['overdue'],
-   'due_on'=>$r['due_on'],'link'=>\Aio\Services\InvoiceService::link($r)];
+ foreach($rows as $r){
+   $lnk=\Aio\Services\InvoiceService::link($r);
+   $out[]=['invoice_no'=>$r['invoice_no'],'period_from'=>$r['period_from'],
+     'period_to'=>$r['period_to'],'total'=>$r['total'],'currency'=>$r['currency'],
+     'status'=>$r['status'],'overdue'=>$r['overdue'],
+     'issued_on'=>$r['issued_on'],'due_on'=>$r['due_on'],
+     'link'=>$lnk,'download'=>$lnk.'&print=1'];
+ }
  ok(['rows'=>$out]);
 
 case 'sa-activations':needSuper();
@@ -3465,4 +3479,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V151 build 2026-10-12
+// build: V153 build 2026-10-12

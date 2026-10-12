@@ -70,7 +70,12 @@ $publicPages=['login.html','signup.html','signup_pending.html','setup.html','sup
   'app.html','app-download.html',
   /* V151 — invoice ka safha. Token wale link se khulta hai aur login
      nahi maangta: parcha WhatsApp par jata hai, aur aksar us waqt jab
-     customer ka software expire ho chuka ho. */
+     customer ka software expire ho chuka ho.
+
+     V153 — chunke yeh PUBLIC page hai, yeh HAMESHA `approved_ui/` se
+     uthta hai, chahe tenant retail ho. `approved_ui/retail/invoice.html`
+     ki copy kabhi serve hoti hi nahi thi — do copies sirf drift paida
+     karti hain, is liye wo file hata di gayi. */
   'invoice.html'];
 /* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
    `approved_ui/` se aate hain, chahe tenant retail ho. */
@@ -348,4 +353,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V151 build 2026-10-12
+// build: V153 build 2026-10-12

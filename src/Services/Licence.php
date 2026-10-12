@@ -29,6 +29,12 @@ final class Licence
         'phone'   => '+92 342 5095104',
         'email'   => 'support@wabwar.pk',
         'website' => 'www.wabwar.pk',
+        /* V153 — invoice ke header ka logo.
+           Yeh AAKHRI sahara hai. Pehle `public/assets/wabwar-logo.png`
+           dekha jata hai (package ke andar — customer ka internet band ho
+           to bhi chalta hai), phir Payment details -> Logo URL, aur phir
+           yeh. Teeno na milen to parche par harfi wordmark aa jata hai. */
+        'logo'    => 'https://wabwar.pk/imag/WABWAR%20LOGO%20final.png',
     ];
 
     /** Cloud par asli record se. */
@@ -130,4 +136,4 @@ final class Licence
     }
 }
 
-// build: V148 build 2026-10-12
+// build: V153 build 2026-10-12

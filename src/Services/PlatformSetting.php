@@ -17,8 +17,15 @@ use PDO;
  * Groups:
  *   billing -> bank_name, account_title, account_number, iban,
  *              easypaisa, jazzcash, monthly_price, yearly_price,
- *              tax_pct, ntn, invoice_note    (V151)
+ *              tax_pct, invoice_note                     (V151)
+ *              logo_url, vendor_address                  (V153)
  *   wa      -> api_url, api_key              (V151 — invoice khud bhejne ke liye)
+ *
+ * V153 — `ntn` hata diya gaya: invoice par NTN nahi chhapta, aur yeh key
+ * sirf wahin istemal hoti thi. Dukan ka apna NTN alag cheez hai aur wo
+ * `SettingsService` (site ki settings) mein rehta hai — us se koi taalluq
+ * nahi. Purani value DB mein paree rahe to koi nuqsaan nahi; koi parhta
+ * hi nahi.
  */
 final class PlatformSetting
 {
@@ -68,4 +75,4 @@ final class PlatformSetting
     }
 }
 
-// build: V151 build 2026-10-12
+// build: V153 build 2026-10-12
