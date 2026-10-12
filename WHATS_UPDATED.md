@@ -1,3 +1,56 @@
+# WHATS UPDATED — V152 (the rate never reached the customer)
+
+## The bug
+
+You set 7,000 for the restaurant; the customer's screen kept saying 3,000.
+
+The activation screen was showing the platform's **global** price
+(`platform_settings.billing.monthly_price`, sitting at 3000 from the original
+seed) — the business's own `billing_amount` never travelled there. Two numbers
+in two places, and the customer naturally paid the one on their screen.
+
+`SelfService::paymentInfo()` now returns the tenant's own rate and cycle, and
+the real total of any outstanding invoice with its link. The global price is
+used only when a business has no rate of its own.
+
+## The activation screen
+
+It was two columns with the left half empty, and the single most important fact
+— how much to pay — was the first line of a long list.
+
+Now the amount leads: **PKR 7,000** in display type, with "Har mahine · agli
+renewal 2026-12-11" under it, or the invoice number and due date when something
+is outstanding, plus a button to open the invoice. Payment methods follow, then
+the "I paid" form, then the customer's own invoices full-width.
+
+## "I don't have any edit option for business"
+
+The button was labelled **Renew**, so nothing suggested the rate lived behind
+it. It now says **Billing**, and the rate no longer hides inside a dialog:
+
+- **All Businesses** has a `Rate` column — `PKR 7,000 /mo`, or a red
+  **rate set nahi** for any business without one (those never get an invoice,
+  and nothing used to say so).
+- Expiry now shows `60 din baqi` / `5 din guzar gaye` beneath the date.
+- In the dialog, **Billing rate** moved to the top.
+
+## "all business nahi aa rhy yahan"
+
+That screen lists *invoices*, and an invoice only exists once expiry is near.
+The filter now has a **Businesses — rate aur baqaya** view: every business with
+its rate, expiry, outstanding amount and buttons for `Rate / Billing` and
+`Invoice banayein`. Sorted with the un-rated first, then by whichever expires
+soonest. Three counters on top: businesses, how many have no rate, total
+outstanding.
+
+## Tested
+
+Rate 7,000 → the customer's screen shows PKR 7,000 (`own_rate=7000`,
+`monthly=7000`, yearly blank). A zero-rate business shows the red flag.
+Businesses view lists both. Dialog order: Billing → New expiry → Payment.
+98 screens across both verticals: HTTP 200, no redirects, no JavaScript errors.
+
+---
 # WHATS UPDATED — V151 (billing, invoices, and the expiry door)
 
 ## Where the monthly amount was set: nowhere, really

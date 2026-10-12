@@ -142,25 +142,63 @@ final class SelfService
 
     /* ==================== ACTIVATION ==================== */
 
-    /** Customer ko dikhane ke liye: kis ko paisay bhejne hain. */
+    /**
+     * Customer ko dikhane ke liye: kitne paisay, aur kis ko bhejne hain.
+     *
+     * V152 — PEHLE YAHAN GHALAT RAQAM JATI THI.
+     * Yeh sirf platform ka GLOBAL `monthly_price` (3000) bhejta tha.
+     * Super Admin kisi business ka rate 7000 kar deta, aur customer ki
+     * screen par phir bhi 3000 likha rehta. Do alag number, do alag
+     * jagah — aur customer wahi bhej deta jo usay screen par dikhta.
+     *
+     * Ab pehle US BUSINESS ka apna rate (`tenants.billing_amount`), aur
+     * uske baqaya parche ki asal raqam. Global qeemat sirf tab jab
+     * business ka apna rate set hi na ho.
+     */
     public static function paymentInfo(): array
     {
         $v = Licence::VENDOR;
         $out = ['company' => $v['company'], 'phone' => $v['phone'], 'email' => $v['email'],
                 'website' => $v['website'], 'bank_name' => '', 'account_title' => '',
                 'account_number' => '', 'iban' => '', 'easypaisa' => '', 'jazzcash' => '',
-                'monthly_price' => '', 'yearly_price' => ''];
+                'monthly_price' => '', 'yearly_price' => '',
+                /* V152 — is business ka apna hisaab */
+                'own_rate' => 0.0, 'own_cycle' => '', 'currency' => 'PKR',
+                'due_total' => 0.0, 'due_invoice' => '', 'due_link' => '', 'due_on' => ''];
+        foreach (PlatformSetting::all('billing') as $k => $val) {
+            if (array_key_exists($k, $out) && (string)$val !== '') $out[$k] = (string)$val;
+        }
+
         try {
-            $q = DB::pdo()->prepare("SELECT setting_key AS k, value_json AS v FROM platform_settings
-                                      WHERE setting_group='billing'");
-            $q->execute();
-            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $k = (string)$r['k'];
-                if (!array_key_exists($k, $out)) continue;
-                $d = json_decode((string)$r['v'], true);
-                if (is_scalar($d) && (string)$d !== '') $out[$k] = (string)$d;
+            $q = DB::pdo()->prepare("SELECT billing_amount, billing_cycle FROM tenants WHERE id=? LIMIT 1");
+            $q->execute([tenant_id()]);
+            if ($t = $q->fetch(PDO::FETCH_ASSOC)) {
+                $rate = (float)$t['billing_amount'];
+                if ($rate > 0) {
+                    $out['own_rate']  = $rate;
+                    $out['own_cycle'] = strtoupper((string)$t['billing_cycle']) === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+                    /* Jo rate set hai wahi dikhao — global qeemat ab
+                       ghalat-fehmi na phailaye. */
+                    if ($out['own_cycle'] === 'YEARLY') { $out['yearly_price'] = (string)$rate; $out['monthly_price'] = ''; }
+                    else                                { $out['monthly_price'] = (string)$rate; $out['yearly_price'] = ''; }
+                }
             }
-        } catch (\Throwable $e) { /* table na ho to sirf rabte ki tafseel */ }
+        } catch (\Throwable $e) {}
+
+        /* Baqaya parcha — yehi asal raqam hai jo bhejni hai. */
+        try {
+            $q = DB::pdo()->prepare("SELECT invoice_no, total, due_on, public_token FROM invoices
+                                      WHERE tenant_id=? AND status='UNPAID'
+                                      ORDER BY created_at DESC LIMIT 1");
+            $q->execute([tenant_id()]);
+            if ($i = $q->fetch(PDO::FETCH_ASSOC)) {
+                $out['due_total']   = (float)$i['total'];
+                $out['due_invoice'] = (string)$i['invoice_no'];
+                $out['due_on']      = (string)($i['due_on'] ?? '');
+                $out['due_link']    = InvoiceService::link(['public_token' => (string)$i['public_token']]);
+            }
+        } catch (\Throwable $e) {}
+
         return $out;
     }
 
@@ -323,4 +361,4 @@ final class SelfService
     }
 }
 
-// build: V86 build 2026-09-01
+// build: V152 build 2026-10-12

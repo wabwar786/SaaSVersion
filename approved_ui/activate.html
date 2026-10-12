@@ -5,6 +5,28 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Activate your software</title>
 <link rel="stylesheet" href="shared.css">
+<style>
+/* ============================================================
+   V152 — is safhe ka design.
+
+   Pehle: safha do column mein toota hua tha, baayein taraf aadha
+   safha khali rehta, aur sab se ahem baat — KITNE PAISAY BHEJNE
+   HAIN — ek lambi fehrist ki pehli line thi, wo bhi platform ki
+   global qeemat (3000), na ke us business ka apna rate.
+
+   Ab: raqam sab se upar, bare harfon mein; phir kahan bhejni hai;
+   phir "paisay bhej diye" wala form.
+   ============================================================ */
+.act-wrap{padding:18px;max-width:1120px;margin:0 auto}
+.amt-card{margin:0 0 16px;background:linear-gradient(180deg,var(--surface) 0%,var(--surface-2) 100%)}
+.amt-lab{display:block;font-size:10.5px;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
+.amt-big{font-family:var(--display);font-size:38px;font-weight:800;letter-spacing:-.02em;
+  line-height:1.15;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.amt-sub{margin:0 0 14px;font-size:13px;color:var(--muted)}
+.amt-card .btn{margin-top:2px}
+@media(max-width:620px){ .amt-big{font-size:30px} }
+</style>
 </head>
 <body>
 <div class="app">
@@ -42,6 +64,18 @@
     +'padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">'
     +'<span style="color:var(--muted)">'+k+'</span><b style="text-align:right;word-break:break-all">'
     +v+'</b></div>') : ''; }
+
+  function money0(n){ return Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0}) }
+
+  /* Paisay bhejne ke raaste — sirf wo jo waqai bhare hue hain. */
+  function payWays(pay){
+    return row('Bank', esc(pay.bank_name||''))
+         + row('Account title', esc(pay.account_title||''))
+         + row('Account number', esc(pay.account_number||''))
+         + row('IBAN', esc(pay.iban||''))
+         + row('Easypaisa', esc(pay.easypaisa||''))
+         + row('JazzCash', esc(pay.jazzcash||''));
+  }
 
   function invoicesHtml(){
     var r; try{ r=DBApi.req('my-invoices'); }catch(e){ return '' }
@@ -88,7 +122,7 @@
 
     /* Agar darkhwast bheji ja chuki hai to form ki jagah uski halat. */
     if(req && String(req.status).toUpperCase()==='PENDING'){
-      $('#actBody').innerHTML='<div style="padding:18px;max-width:640px">'+head
+      $('#actBody').innerHTML='<div class="act-wrap" style="max-width:760px">'+head
         +'<section class="panel"><div class="panel-head"><div>'
         +'<h2>We have your payment details</h2>'
         +'<p>Sent on '+esc(String(req.created_at).slice(0,16))+'</p></div></div>'
@@ -111,19 +145,38 @@
 
     var rejected = req && String(req.status).toUpperCase()==='REJECTED';
 
-    $('#actBody').innerHTML='<div style="padding:18px"><div class="split" style="align-items:start">'
+    /* ---- V152: kitne paisay ----
+       Pehle yahan platform ki GLOBAL qeemat likhi aati thi (3000),
+       chahe us business ka rate kuch bhi ho. Super Admin 7000 set
+       karta aur customer 3000 bhej deta. Ab is business ka apna rate,
+       aur agar koi parcha baqaya hai to us ki ASAL raqam sab se upar. */
+    var amountCard = '';
+    if (pay.due_total > 0 || pay.own_rate > 0) {
+      var big   = pay.due_total > 0 ? pay.due_total : pay.own_rate;
+      var sub   = pay.due_total > 0
+          ? ('Invoice ' + esc(pay.due_invoice) + (pay.due_on ? (' &middot; due ' + esc(pay.due_on)) : ''))
+          : ((pay.own_cycle === 'YEARLY' ? 'Har saal' : 'Har mahine')
+             + (lic.expiry_date ? (' &middot; agli renewal ' + esc(lic.expiry_date)) : ''));
+      amountCard =
+        '<section class="panel amt-card"><div class="panel-body">'
+        + '<span class="amt-lab">' + (pay.due_total > 0 ? 'Amount due' : 'Your plan') + '</span>'
+        + '<div class="amt-big">PKR ' + money0(big) + '</div>'
+        + '<p class="amt-sub">' + sub + '</p>'
+        + (pay.due_link
+            ? ('<a class="btn" href="' + esc(pay.due_link) + '" target="_blank">Invoice kholein</a>')
+            : '')
+        + '</div></section>';
+    }
+
+    $('#actBody').innerHTML='<div class="act-wrap">'
       + head
+      + amountCard
+      +'<div class="split" style="align-items:start">'
       /* ---- kahan bhejein ---- */
       +'<section class="panel"><div class="panel-head"><div><h2>1. Send the payment</h2>'
-      +'<p>Any one of these</p></div></div><div class="panel-body">'
-      + row('Monthly', pay.monthly_price?('PKR '+esc(pay.monthly_price)):'')
-      + row('Yearly', pay.yearly_price?('PKR '+esc(pay.yearly_price)):'')
-      + row('Bank', esc(pay.bank_name||''))
-      + row('Account title', esc(pay.account_title||''))
-      + row('Account number', esc(pay.account_number||''))
-      + row('IBAN', esc(pay.iban||''))
-      + row('Easypaisa', esc(pay.easypaisa||''))
-      + row('JazzCash', esc(pay.jazzcash||''))
+      +'<p>In mein se kisi bhi tareeqe se</p></div></div><div class="panel-body">'
+      + (payWays(pay) || '<p class="hint" style="margin:0">Account ki tafseel ke liye '
+          + 'humein call ya WhatsApp karein.</p>')
       +'<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
       +'<a class="btn primary" href="tel:'+esc(tel)+'">Call '+esc(pay.phone||'')+'</a>'
       +'<a class="btn" href="mailto:'+esc(pay.email||'')+'">'+esc(pay.email||'')+'</a></div>'
@@ -172,12 +225,13 @@
       +'<p style="font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.6">'
       +'We check the payment before activating, so please send the exact reference from your receipt.</p>'
       +'</div></section>'
+      +'</div>'          /* split band — invoices poori chaurai par */
 
       /* ---- V151: customer ke apne invoices ----
          Parcha WhatsApp par jata hai, magar wo kho bhi sakta hai. Yahan
          har parcha apne link ke saath mojood rehta hai. */
       + invoicesHtml()
-      +'</div></div>';
+      +'</div>';
 
     var d=$('#aDate'); if(d)d.value=new Date().toISOString().slice(0,10);
 
@@ -221,4 +275,4 @@
 </body>
 </html>
 
-<!-- build: V151 build 2026-10-12 -->
+<!-- build: V152 build 2026-10-12 -->

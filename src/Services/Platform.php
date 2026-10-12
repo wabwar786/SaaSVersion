@@ -348,6 +348,15 @@ final class Platform
         $pdo = DB::pdo();
         $rows = $pdo->query("
             SELECT t.id, t.name, t.slug, t.industry_code, t.status, t.owner_email, t.created_at,
+                   /* V152 — har business ka apna rate yahin se list mein.
+                      Pehle rate dekhne ke liye har business ka dialog
+                      kholna parta tha, is liye yeh pata hi nahi chalta
+                      tha ke kis ka rate abhi set hi nahi hua. */
+                   t.billing_amount, t.billing_cycle, t.contact_phone,
+                   (SELECT COUNT(*) FROM invoices iv
+                     WHERE iv.tenant_id=t.id COLLATE utf8mb4_unicode_ci AND iv.status='UNPAID') AS unpaid_count,
+                   (SELECT COALESCE(SUM(iv.total),0) FROM invoices iv
+                     WHERE iv.tenant_id=t.id COLLATE utf8mb4_unicode_ci AND iv.status='UNPAID') AS unpaid_total,
                    (SELECT s.status      FROM tenant_subscriptions s WHERE s.tenant_id=t.id COLLATE utf8mb4_unicode_ci ORDER BY s.created_at DESC LIMIT 1) AS sub_status,
                    (SELECT s.expiry_date FROM tenant_subscriptions s WHERE s.tenant_id=t.id COLLATE utf8mb4_unicode_ci ORDER BY s.created_at DESC LIMIT 1) AS expiry_date,
                    (SELECT s.amount      FROM tenant_subscriptions s WHERE s.tenant_id=t.id COLLATE utf8mb4_unicode_ci ORDER BY s.created_at DESC LIMIT 1) AS amount,
@@ -360,6 +369,12 @@ final class Platform
         foreach ($rows as &$r) {
             $r['client_link'] = $base . '/login.html?b=' . $r['slug'];
             $r['expired'] = (!empty($r['expiry_date']) && $r['expiry_date'] < \date('Y-m-d'));
+            $r['billing_amount'] = (float)($r['billing_amount'] ?? 0);
+            $r['unpaid_total']   = (float)($r['unpaid_total'] ?? 0);
+            $r['unpaid_count']   = (int)($r['unpaid_count'] ?? 0);
+            $r['days_left']      = !empty($r['expiry_date'])
+                ? (int)\floor((\strtotime((string)$r['expiry_date']) - \strtotime(\date('Y-m-d'))) / 86400)
+                : null;
         }
         return $rows;
     }
@@ -373,4 +388,4 @@ final class Platform
     }
 }
 
-// build: V17.1 build 2026-08-25
+// build: V152 build 2026-10-12
