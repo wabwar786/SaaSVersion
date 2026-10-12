@@ -11,7 +11,7 @@
 }
 </style></head><body>
 <div class="app"><aside class="sidebar" id="side"></aside><main class="main">
-<header class="header"><button class="menu-btn" id="menuBtn">☰</button><div class="header-title"><h1>Purchasing</h1><p>Default view shows purchase history. Receive purchase quantities directly into inventory.</p></div><div class="header-spacer"></div><button class="header-btn primary" id="newPurchaseBtn">+ New Purchase</button></header>
+<header class="header"><button class="menu-btn" id="menuBtn">☰</button><div class="header-title"><h1>Purchasing</h1><p>Default view shows purchase history. Receive purchase quantities directly into inventory.</p></div><div class="header-spacer"></div><button class="header-btn" id="stockInBtn">+ Stock In</button><button class="header-btn primary" id="newPurchaseBtn">+ New Purchase</button></header>
 <div class="content">
 <div class="stats"><div class="stat"><span>Purchase Orders</span><b id="poCount">0</b><small>Current demo data</small></div><div class="stat"><span>Received</span><b id="receivedCount">0</b><small>Inventory updated</small></div><div class="stat"><span>Pending Receive</span><b id="pendingCount" style="color:var(--orange)">0</b><small>Awaiting GRN</small></div><div class="stat"><span>Total Purchase Value</span><b id="purchaseValue">PKR 0</b><small>Current list</small></div></div>
 <section class="panel"><div class="panel-head"><div><h2>Purchase List</h2><p>Latest purchase orders and goods receiving.</p></div><div class="spacer"></div><input id="purchaseSearch" placeholder="Search PO or supplier..." style="max-width:280px"></div>
@@ -29,17 +29,43 @@ let lines=[];
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),1700)}
 function openM(id){$('#'+id).classList.add('show')}function closeM(id){$('#'+id).classList.remove('show')}
 function money(n){return 'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2})}
+/* ============================================================
+   V147 — "+ New Purchase" har ASLI business mein khamoshi se marta tha.
+
+   Pehle yeh tha:
+       $('#newPurchaseBtn').onclick=()=>{ addLine('chicken'); addLine('coke_tin'); ... }
+
+   `'chicken'` aur `'coke_tin'` DEMO store ki ids hain. Asli business mein
+   items ke UUID hote hain, is liye `find()` ko kuch milta hi nahi tha aur
+   agli line `item.id` par exception de deti — modal khulne se PEHLE. Yani
+   button dabane par kuch nahi hota tha, aur koi paighaam bhi nahi.
+
+   Aur agar business mein abhi ek bhi inventory item na ho to
+   `state.inventoryItems[0].id` khud exception deta tha.
+
+   Ab: id di jaye to wahi, warna pehla ASLI item; aur ek bhi item na ho to
+   saaf paighaam, khamoshi nahi.
+   ============================================================ */
+function invItems(){
+ const st=RestaurantStore.getState();
+ return (st&&st.inventoryItems)||[];
+}
 function addLine(itemId){
- const state=RestaurantStore.getState(),item=state.inventoryItems.find(x=>x.id===(itemId||state.inventoryItems[0].id));
- lines.push({key:Date.now()+Math.random(),itemId:item.id,purchaseQty:1,unitCost:Number(item.avgStockCost)*Number(item.purchaseFactor)});
+ const items=invItems();
+ if(!items.length){toast('No inventory items yet - pehle Inventory se item banayein');return false}
+ const item=items.find(x=>x.id===itemId)||items[0];
+ lines.push({key:Date.now()+Math.random(),itemId:item.id,purchaseQty:1,
+   unitCost:Number(item.avgStockCost||0)*Number(item.purchaseFactor||1)});
  renderLines();
+ return true;
 }
 function renderLines(){
- const state=RestaurantStore.getState();
+ const items=invItems();
+ if(!items.length){$('#poLines').innerHTML='<p style="padding:10px 0;color:var(--muted)">No inventory items yet.</p>';return}
  $('#poLines').innerHTML=lines.map((l,idx)=>{
-   const item=state.inventoryItems.find(x=>x.id===l.itemId)||state.inventoryItems[0];
-   const opts=state.inventoryItems.map(i=>'<option value="'+i.id+'" '+(i.id===l.itemId?'selected':'')+'>'+i.name+'</option>').join('');
-   return '<div class="po-line"><label><span>Inventory Item</span><select data-line-item="'+idx+'">'+opts+'</select></label><label><span>Qty</span><input data-line-qty="'+idx+'" type="number" step="0.01" value="'+l.purchaseQty+'"></label><label><span>Purchase Unit</span><input value="'+item.purchaseUnit+'" readonly></label><label><span>Cost / Unit</span><input data-line-cost="'+idx+'" type="number" step="0.01" value="'+Number(l.unitCost).toFixed(2)+'"></label><button class="remove" data-remove-line="'+idx+'">×</button></div>';
+   const item=items.find(x=>x.id===l.itemId)||items[0];
+   const opts=items.map(i=>'<option value="'+i.id+'" '+(i.id===l.itemId?'selected':'')+'>'+i.name+'</option>').join('');
+   return '<div class="po-line"><label><span>Inventory Item</span><select data-line-item="'+idx+'">'+opts+'</select></label><label><span>Qty</span><input data-line-qty="'+idx+'" type="number" step="0.01" value="'+l.purchaseQty+'"></label><label><span>Purchase Unit</span><input value="'+(item.purchaseUnit||item.stockUnit||'')+'" readonly></label><label><span>Cost / Unit</span><input data-line-cost="'+idx+'" type="number" step="0.01" value="'+Number(l.unitCost).toFixed(2)+'"></label><button class="remove" data-remove-line="'+idx+'">×</button></div>';
  }).join('');
 }
 function render(){
@@ -49,9 +75,9 @@ function render(){
  $('#poRows').innerHTML=list.map(p=>'<tr><td><b>'+(p.grn_no||p.id)+'</b></td><td>'+p.date+'</td><td>'+p.supplier+'</td><td>'+p.lines+'</td><td>'+money(p.amount)+'</td><td><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></td><td>'+(p.status==='Received'?'<span class="tag green">Stock Updated</span>':'Pending')+'</td><td><div class="row-actions"><button title="Cancel / delete" data-del-grn="'+p.id+'" data-name="'+(p.grn_no||p.id)+'">&#128465;</button></div></td></tr>').join('');
  $('#poCards').innerHTML=list.map(p=>'<article class="purchase-card"><div class="purchase-card-top"><div><h3>'+p.id+'</h3><small>'+p.supplier+' · '+p.date+'</small></div><span class="tag '+(p.status==='Received'?'green':'orange')+'">'+p.status+'</span></div><div class="purchase-card-grid"><div><span>Items</span><b>'+p.lines+'</b></div><div><span>Amount</span><b>'+money(p.amount)+'</b></div><div><span>Inventory</span><b>'+(p.status==='Received'?'Updated':'Pending')+'</b></div><div><span>Reference</span><b>'+p.id+'</b></div></div></article>').join('');
 }
-$('#newPurchaseBtn').onclick=()=>{lines=[];addLine('chicken');addLine('coke_tin');openM('purchaseModal')};$('#addLine').onclick=()=>addLine();
+$('#newPurchaseBtn').onclick=()=>{lines=[];if(!addLine())return;openM('purchaseModal')};$('#addLine').onclick=()=>addLine();
 document.addEventListener('input',e=>{let m=e.target.dataset.lineQty;if(m!==undefined)lines[+m].purchaseQty=Number(e.target.value||0);m=e.target.dataset.lineCost;if(m!==undefined)lines[+m].unitCost=Number(e.target.value||0)});
-document.addEventListener('change',e=>{const idx=e.target.dataset.lineItem;if(idx!==undefined){const state=RestaurantStore.getState(),item=state.inventoryItems.find(x=>x.id===e.target.value);lines[+idx].itemId=item.id;lines[+idx].unitCost=Number(item.avgStockCost)*Number(item.purchaseFactor);renderLines()}});
+document.addEventListener('change',e=>{const idx=e.target.dataset.lineItem;if(idx!==undefined){const item=invItems().find(x=>x.id===e.target.value);if(!item)return;lines[+idx].itemId=item.id;lines[+idx].unitCost=Number(item.avgStockCost||0)*Number(item.purchaseFactor||1);renderLines()}});
 document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');if(c){closeM(c.dataset.close);return}const r=e.target.closest('[data-remove-line]');if(r){lines.splice(+r.dataset.removeLine,1);renderLines();return}
  /* V62 — purchase receipt cancel. Yeh sirf row nahi hatata: stock bhi
     wapas pehle jaisa hota hai (DeleteService reversing movement post
@@ -62,6 +88,12 @@ document.addEventListener('click',e=>{const c=e.target.closest('[data-close]');i
    warning:'Stock received on this receipt will be reversed and average cost recalculated. This action is recorded in the audit log.'});return}
 });
 $('#receivePurchase').onclick=()=>{if(!lines.length){toast('Add at least one purchase item');return}const result=RestaurantStore.receivePurchase(lines,{supplier:$('#supplier').value,reference:$('#poReference').value.trim()||undefined});if(window.RestaurantLive) RestaurantLive.recordPurchase(result.amount);closeM('purchaseModal');render();toast('Purchase received · '+result.movements.length+' inventory items updated')};
+/* Rozana ka maal Stock In se — supplier ka bill/udhaar rakhna ho tab
+   New Purchase. Dono ka raasta ek hi screen par. */
+$('#stockInBtn').onclick=()=>{
+ if(!window.StockIn||!StockIn.open){toast('Stock In could not load - refresh the page');return}
+ StockIn.open({onDone:()=>{try{location.reload()}catch(e){}}});
+};
 $('#purchaseSearch').oninput=render;render();
-</script><script src="access_store.js"></script><script src="shell.js" data-active="purchasing"></script><div class="scrim" id="scrim"></div></body></html>
+</script><script src="access_store.js"></script><script src="stock_in.js"></script><script src="shell.js" data-active="purchasing"></script><div class="scrim" id="scrim"></div></body></html>
 <!-- build: V62 build 2026-08-26 -->

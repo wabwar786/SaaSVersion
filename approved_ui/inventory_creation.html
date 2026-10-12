@@ -37,6 +37,7 @@
 <header class="header"><button class="menu-btn" id="menuBtn">☰</button>
   <div class="header-title"><h1>Inventory</h1><p>Default view shows all added stock items. Create items/categories only from New Item.</p></div>
   <div class="header-spacer"></div>
+  <button class="header-btn" id="stockInBtn">+ Stock In</button>
   <button class="header-btn primary" id="newItemBtn">+ New Item</button>
 </header>
 <div class="content">
@@ -220,5 +221,19 @@ document.addEventListener('click',e=>{
 });
 refreshCategoryControls();render();
 </script>
-<script src="access_store.js"></script><script src="shell.js" data-active="inventory"></script><div class="scrim" id="scrim"></div></body></html>
+<script src="access_store.js"></script><script src="stock_in.js"></script>
+<script>
+/* V147 — rozana ka maal yahin se stock mein.
+   Pehle stock sirf item banate waqt "opening stock" se ya poore purchase
+   order se barh sakta tha. Dono rozana ke liye bohot lambe hain, is liye
+   log stock daalte hi nahi thay aur number kabhi sahi na hota. */
+(function(){
+  var b=document.getElementById('stockInBtn'); if(!b)return;
+  b.onclick=function(){
+    if(!window.StockIn||!StockIn.open){alert('Stock In could not load - refresh the page');return}
+    StockIn.open({onDone:function(){ try{location.reload()}catch(e){} }});
+  };
+})();
+</script>
+<script src="shell.js" data-active="inventory"></script><div class="scrim" id="scrim"></div></body></html>
 <!-- build: V62 build 2026-08-26 -->

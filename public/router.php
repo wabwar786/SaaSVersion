@@ -187,7 +187,7 @@ if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r3"', $html);
+                     '$1="/retail/$2?b=r4"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -203,9 +203,9 @@ if($uiDir==='approved_ui/retail'){
    ============================================================ */
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
-  'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"'],
- ['href="/shared.css?b=v17"','src="/shared_store.js?b=v17"','src="/live_store.js?b=v17"','src="/access_store.js?b=v17"',
-  'src="/shell.js?b=v17"','src="/module.js?b=v17"','src="/module_config.js?b=v17"','src="/item_dialog.js?b=v17"'],
+  'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
+ ['href="/shared.css?b=v18"','src="/shared_store.js?b=v18"','src="/live_store.js?b=v18"','src="/access_store.js?b=v18"',
+  'src="/shell.js?b=v18"','src="/module.js?b=v18"','src="/module_config.js?b=v18"','src="/item_dialog.js?b=v18"','src="/stock_in.js?b=v18"'],
  $html
 );
 }

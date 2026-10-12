@@ -189,15 +189,20 @@
       '<p class="hint">Not in the list? <a href="#" id="idNewLink">Create it with this item</a>.</p></div>' +
 
       /* ---- same item: naya banao ---- */
+      /* V147 — "New inventory item name" ka khana hata diya gaya.
+         Customer ne theek kaha: jab "The same item" chuna hai to iska
+         matlab hi yeh hai ke YEH item khud stock hai — alag naam
+         maangna be-maani tha aur uljhan paida karta tha. Naam ab khud
+         item ka chala jata hai (server bhi yehi karta hai). */
       '<div id="paneNew" style="display:none">' +
-      '<div class="g" style="margin-top:11px">' +
-      '<div class="full"><label>New inventory item name</label><input id="idNn" placeholder="same as the item name"></div>' +
+      '<p class="hint" id="idNewNote" style="margin:11px 0 0"></p>' +
+      '<div class="g" style="margin-top:9px">' +
       '<div><label>Unit</label><select id="idNu">' + unitOpts() + '</select></div>' +
       '<div><label>Opening stock</label><input id="idNo" type="number" step="0.001" min="0" value="0"></div>' +
       '<div><label>Cost per unit</label><input id="idNc" type="number" step="0.01" min="0" value="0"></div>' +
       '<div><label>Units used per sale</label><input id="idNq" type="number" step="0.001" min="0.001" value="1"></div>' +
       '</div>' +
-      '<p class="hint"><a href="#" id="idExLink">Pick an existing inventory item instead</a></p></div>' +
+      '<p class="hint" id="idExLinkWrap"><a href="#" id="idExLink">Pick an existing inventory item instead</a></p></div>' +
 
       /* ---- recipe ---- */
       '<div id="paneRecipe" style="display:none">' +
@@ -240,6 +245,15 @@
       ov.querySelector('#paneExisting').style.display = (mode === 'existing') ? '' : 'none';
       ov.querySelector('#paneNew').style.display      = (mode === 'new')      ? '' : 'none';
       ov.querySelector('#paneRecipe').style.display   = (mode === 'recipe')   ? '' : 'none';
+
+      if (mode === 'new') {
+        var nm = (ov.querySelector('#idName').value || '').trim();
+        ov.querySelector('#idNewNote').innerHTML =
+          'Stock will be kept as <b>' + esc(nm || 'this item') + '</b> — the same name as the item.';
+        /* Koi inventory item hai hi nahi to "existing chunein" ka link
+           bekar hai; dikhana sirf uljhan hai. */
+        ov.querySelector('#idExLinkWrap').style.display = inv.length ? '' : 'none';
+      }
     }
     Array.prototype.forEach.call(ov.querySelectorAll('.mode'), function (m) {
       m.onclick = function () {
@@ -269,6 +283,7 @@
     ov.querySelector('#idAddIng').onclick = function () { addIng(null); };
 
     if (!inv.length && mode === 'existing') mode = 'new';
+    ov.querySelector('#idName').addEventListener('input', function () { if (mode === 'new') paint(); });
     paint();
     setTimeout(function () { try { ov.querySelector('#idName').focus(); } catch (e) {} }, 30);
 
@@ -294,7 +309,7 @@
       } else if (mode === 'new') {
         d.inventory = {
           mode: 'new',
-          name: (ov.querySelector('#idNn').value || '').trim() || d.name,
+          name: d.name,                       /* wahi naam — alag poochna hata diya */
           unit: ov.querySelector('#idNu').value,
           opening_qty: num(ov.querySelector('#idNo').value, 0),
           cost: num(ov.querySelector('#idNc').value, 0),

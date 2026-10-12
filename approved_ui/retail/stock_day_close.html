@@ -17,6 +17,12 @@
        opening + received - sold - wastage = expected
        counted - expected = difference
    ============================================================ */
+.dc-flow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:14px;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.dc-flow .s{display:flex;flex-direction:column;font-size:12.4px;color:var(--ink-2)}
+.dc-flow .s b{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dc-flow .ar{color:var(--brand);font-weight:800}
+@media(max-width:620px){.dc-flow .ar{display:none}.dc-flow .s{flex:1 0 100%}}
 .dc-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
 .dc-bar input[type=date],.dc-find{padding:9px 12px;border:1px solid var(--line);border-radius:10px;
   font:inherit;font-size:13.5px;background:var(--surface)}
@@ -63,6 +69,14 @@
       <button class="btn primary" id="dcClose">Close the day</button>
     </header>
     <div class="content">
+      <!-- V147 — rozana ka raasta saamne, taake customer ko samajhna na pare -->
+      <div class="dc-flow">
+        <span class="s"><b>Subah</b>Stock In &mdash; jo maal aaya</span>
+        <span class="ar">&rarr;</span>
+        <span class="s"><b>Din</b>Sale &mdash; stock khud katta hai</span>
+        <span class="ar">&rarr;</span>
+        <span class="s"><b>Shaam</b>Counter closing (shift) + ye stock closing</span>
+      </div>
       <div class="dc-kpis" id="dcKpis"></div>
       <div class="dc-bar">
         <input type="date" id="dcDate">
@@ -96,6 +110,7 @@
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="dayclose"></script>
+<script src="stock_in.js"></script>
 <script>
 (function(){
   var DATA={rows:[],totals:{}}, COUNTS={};
@@ -183,58 +198,13 @@
   document.getElementById('dcQ').addEventListener('input',paint);
   document.getElementById('dcDate').addEventListener('change',load);
 
-  /* ---------- Stock In ---------- */
+  /* ---------- Stock In ----------
+     V147 — popup ab `public/stock_in.js` mein hai, kyunke wahi Inventory
+     screen par bhi chahiye tha. Do copies rakhne ka anjaam hum pehle hi
+     dekh chuke hain (POS aur Menu ke do alag item forms). */
   document.getElementById('dcIn').onclick=function(){
-    var f=req('menu-item-form');
-    if(!f||!f.ok){toast((f&&f.message)||'Could not load items');return}
-    var inv=f.inventory||[];
-    if(!inv.length){toast('No inventory items yet — create one from Menu & Categories');return}
-
-    var ov=document.createElement('div');
-    ov.style.cssText='position:fixed;inset:0;background:rgba(20,17,15,.58);z-index:9000;display:flex;'+
-      'align-items:center;justify-content:center;padding:18px';
-    ov.innerHTML='<div style="background:#fff;border-radius:14px;width:min(430px,96vw);'+
-      'box-shadow:0 22px 60px rgba(20,17,15,.3);font:14px/1.5 Inter,system-ui,sans-serif">'+
-      '<div style="padding:17px 20px 13px;border-bottom:1px solid #e7e3dd">'+
-        '<h3 style="margin:0;font-size:17px">Stock In</h3>'+
-        '<p style="margin:3px 0 0;color:#78716b;font-size:12.5px">Goods received today</p></div>'+
-      '<div style="padding:16px 20px">'+
-        '<label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Item</label>'+
-        '<select id="siItem" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit;margin-bottom:11px">'+
-          inv.map(function(i){return '<option value="'+esc(i.id)+'" data-c="'+Number(i.cost||0)+'">'+esc(i.name)+'</option>'}).join('')+
-        '</select>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+
-          '<div><label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Quantity</label>'+
-          '<input id="siQty" type="number" step="0.001" min="0.001" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit"></div>'+
-          '<div><label style="display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#78716b;margin-bottom:4px">Rate per unit</label>'+
-          '<input id="siRate" type="number" step="0.01" min="0" style="width:100%;padding:9px 11px;border:1px solid #d8d2ca;border-radius:9px;font:inherit"></div>'+
-        '</div>'+
-        '<p style="margin:9px 0 0;font-size:11.6px;color:#78716b">Leave the rate blank to keep the current average cost.</p>'+
-      '</div>'+
-      '<div style="padding:13px 20px 17px;border-top:1px solid #e7e3dd;display:flex;gap:9px;justify-content:flex-end">'+
-        '<button class="btn" data-x style="padding:9px 17px;border-radius:9px;border:1px solid #d8d2ca;background:#fff;font:inherit;font-weight:650;cursor:pointer">Cancel</button>'+
-        '<button id="siGo" style="padding:9px 17px;border-radius:9px;border:1px solid #c0281a;background:#c0281a;color:#fff;font:inherit;font-weight:650;cursor:pointer">Add to stock</button>'+
-      '</div></div>';
-    document.body.appendChild(ov);
-    function close(){ov.remove()}
-    ov.onclick=function(e){if(e.target===ov)close()};
-    ov.querySelector('[data-x]').onclick=close;
-
-    var sel=ov.querySelector('#siItem'), rate=ov.querySelector('#siRate');
-    function fillRate(){ var o=sel.options[sel.selectedIndex]; rate.placeholder=o?Number(o.getAttribute('data-c')||0).toFixed(2):'0.00'; }
-    sel.onchange=fillRate; fillRate();
-    setTimeout(function(){ov.querySelector('#siQty').focus()},30);
-
-    ov.querySelector('#siGo').onclick=function(){
-      var qty=Number(ov.querySelector('#siQty').value||0);
-      if(!(qty>0)){toast('Enter a quantity');return}
-      this.disabled=true;this.textContent='Adding…';
-      var r=req('stock-in',{item_id:sel.value,qty:qty,rate:Number(rate.value||0)});
-      if(!r||!r.ok){this.disabled=false;this.textContent='Add to stock';toast((r&&r.message)||'Could not add stock');return}
-      close();
-      toast(n3(r.qty)+' × '+r.name+' added — now '+n3(r.on_hand)+' in stock');
-      load();
-    };
+    if(!window.StockIn||!StockIn.open){toast('Stock In could not load — refresh the page');return}
+    StockIn.open({onDone:load});
   };
 
   /* ---------- Close the day ---------- */

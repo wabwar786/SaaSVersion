@@ -1,3 +1,83 @@
+# WHATS UPDATED — V147 (daily inventory flow)
+
+Four things, all from what you reported.
+
+## 1. "The same item" no longer asks for a name
+
+You were right: if the setting is *the same item*, then the item **is** the
+stock — asking for a separate inventory name on top of it makes no sense.
+
+What actually happened: when a business has no inventory items yet, the dialog
+jumped straight to the "create a new one" pane, which carried a name box. Two
+fixes:
+
+- The name box is gone. The inventory item is created with the item's own name,
+  and the dialog says so plainly: *"Stock will be kept as Arabic Mandi — the
+  same name as the item."*
+- When inventory items **do** exist, "The same item" now opens the **picker**
+  first, not the create pane. Creating a new one is a link underneath.
+
+## 2. "+ New Purchase" did nothing — on every real business
+
+The button was this:
+
+```js
+$('#newPurchaseBtn').onclick = () => { lines=[]; addLine('chicken'); addLine('coke_tin'); ... }
+```
+
+`'chicken'` and `'coke_tin'` are **demo store ids**. A real business has UUIDs
+(`42356e06-…` = Basmati Rice), so `find()` returned nothing and the next line
+threw on `item.id` — **before** the modal was opened. Click, nothing happens, no
+message. A business with no inventory items at all threw on
+`inventoryItems[0].id` for the same reason.
+
+Now: the first real item is used, and if there are none you get a clear line
+instead of silence. While fixing it the test also caught a leftover `state`
+reference inside `renderLines` that would have thrown the moment a line was
+drawn.
+
+## 3. Stock In is where you need it
+
+It only lived on the Day Closing screen. It is now on **Inventory** and
+**Purchasing** as well, and it is one shared file (`public/stock_in.js`) rather
+than a second copy — the same lesson as the two item forms.
+
+The dialog also shows what is in stock right now before you add, so you are not
+typing blind:
+
+```
+In stock now: 55 KG  ·  today received 0, sold 0
+```
+
+Purchasing keeps `+ New Purchase` for a supplier bill; `+ Stock In` sits next to
+it for the daily "maal aa gaya".
+
+## 4. The daily flow is written on the screen
+
+A strip across the top of Day Closing:
+
+```
+Subah  Stock In — jo maal aaya
+  →    Din    Sale — stock khud katta hai
+  →    Shaam  Counter closing (shift) + ye stock closing
+```
+
+## Tested
+
+Against the real server, pages executed with real data:
+
+- Dialog: name box gone, "same item" opens the picker when inventory exists, and
+  the new pane's wording follows the item name as you type it.
+- Purchasing: modal opens, one line, **8 real item options**, Stock In present,
+  no JS errors.
+- Inventory: Stock In button with its handler.
+- Day Closing: flow strip, shared Stock In, rows load.
+- The Stock In dialog driven end to end — shows current stock, refuses an empty
+  quantity, posts, **55 → 62**, closes itself.
+- 81 menu pages across both verticals, all HTTP 200, zero JS errors.
+
+---
+
 # WHATS UPDATED — V146 (one menu, stock in, day closing)
 
 Three things, plus the Super Admin handbook.
