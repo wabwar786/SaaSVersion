@@ -55,6 +55,11 @@ return [
             'rtl_departments', 'rtl_categories', 'rtl_brands', 'rtl_products',
             'rtl_product_barcodes', 'rtl_product_uom', 'rtl_batches', 'rtl_counters',
             'rtl_sales', 'rtl_sale_items', 'rtl_bill_reprints', 'rtl_customer_ledger',
+            /* V154 — stock ki harkatein aur documents (GRN, return, count,
+               wastage, PO) bhi upar jati hain. Yeh sirf PUSH mein hain,
+               pull mein jaan boojh kar nahi: yeh branch par bante hain
+               aur har branch apna hisaab khud rakhti hai. */
+            'rtl_stock_moves', 'rtl_docs', 'rtl_doc_lines', 'rtl_supplier_ledger',
             'units',
             'sync_tombstones',
         
@@ -92,4 +97,4 @@ return [
     ],
 ];
 
-// build: V148 build 2026-10-12
+// build: V154 build 2026-10-13

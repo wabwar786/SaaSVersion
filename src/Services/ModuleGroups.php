@@ -50,7 +50,12 @@ final class ModuleGroups
         'RETAIL' => [
             ['Sale Counter',          ['shift','rpos','counters','sales','void','khata']],
             ['Catalog & Pricing',     ['products','departments','brands','uom','pricing','scale','labels']],
-            ['Stock & Purchasing',    ['inventory','batches','purchasing','po','grn','preturn','suppliers','transfer','count','dayclose','wastage']],
+            /* V154 — `transfer` yahan se nikal diya gaya. Retail mein har
+               branch apna hisaab khud rakhti hai aur doosri branch se koi
+               taalluq nahi, is liye Stock Transfer ka koi matlab nahi
+               banta. Restaurant ka transfer jaisa tha waisa hi hai (upar
+               RESTAURANT ki fehrist mein mojood). */
+            ['Stock & Purchasing',    ['inventory','batches','purchasing','po','grn','preturn','suppliers','count','dayclose','wastage']],
             ['Customers & Marketing', ['customers','loyalty','promotions','whatsapp']],
             ['Finance & Reports',     ['expenses','accounting','closing','reports','fbr']],
             ['System',                ['staff','users','printers','branches','offline','activity','settings','activate','backup']],
@@ -168,4 +173,4 @@ final class ModuleGroups
     }
 }
 
-// build: V149 build 2026-10-12
+// build: V154 build 2026-10-13

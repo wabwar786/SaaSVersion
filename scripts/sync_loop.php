@@ -35,7 +35,14 @@ register_shutdown_function(function () use ($pidFile) { @unlink($pidFile); });
 
 $beat = dirname(__DIR__).'/storage/logs/sync_loop.beat';
 
-fwrite(STDERR, "[sync-loop] har {$secs} second\n");
+/* V155 — POS yeh file chhorta hai jab koi bill bane. Is loop ka kaam
+   hai usay har second dekhna aur milte hi sync chala dena. POS khud
+   kabhi sync nahi chalata — wahi us ki sustee ki jarh thi. */
+$flagFile = dirname(__DIR__).'/storage/tmp/sync_now.flag';
+@mkdir(dirname($flagFile), 0775, true);
+@unlink($flagFile);                 /* purani nishani se shuruat nahi */
+
+fwrite(STDERR, "[sync-loop] har {$secs} second (+ bill par foran)\n");
 
 while (true) {
     $t0 = microtime(true);
@@ -48,9 +55,35 @@ while (true) {
     /* Heartbeat — dashboard isse batata hai ke background sync zinda hai. */
     @file_put_contents($beat, (string)time());
 
+    /* ============================================================
+       V155 — SONE KE DOURAN BHI KAAN KHULE.
+
+       Pehle yahan `sleep($wait)` tha — ek hi dafa poore 60-120 second
+       ka. Is liye bill ko cloud tak pohanchane ke liye POS ko KHUD
+       sync chalani parti thi (`sync_nudge`), aur wahi counter ko ek
+       minute tak jam deti thi.
+
+       Ab POS sirf ek nishani file chhor deta hai aur apne kaam se kaam
+       rakhta hai. Yeh loop us nishani ko har second dekhta hai, is
+       liye bill phir bhi ~1 second mein upar chala jata hai — magar
+       cashier ka koi intezar nahi.
+
+       Sona 1-1 second ke tukron mein isi liye hai: `sleep(120)` ke
+       doran nishani par nazar hi nahi par sakti thi.
+       ============================================================ */
     $spent = microtime(true) - $t0;
     $wait  = $secs - (int)$spent;
-    sleep($wait > 1 ? $wait : 1);
+    if ($wait < 1) $wait = 1;
+
+    for ($i = 0; $i < $wait; $i++) {
+        sleep(1);
+        if (@is_file($flagFile)) {
+            @unlink($flagFile);     /* pehle mitao, phir chalao — warna
+                                       chalte chalte aane wali nayi
+                                       nishani us hi run mein gum ho jati */
+            break;
+        }
+    }
 }
 
-// build: V64 build 2026-08-27
+// build: V155 build 2026-10-15

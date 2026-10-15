@@ -1719,11 +1719,32 @@ $('#chargeBtn').onclick=function(){
       var ob=ov.querySelector('.db'); if(ob)ob.style.pointerEvents='';
       toast(r.message||'Bill save failed');return}
     ov.remove();
-    if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
     /* fbr_no server se aata hai (pos-finalize ka jawab). QR isi ka banta
        hai; na mile to purana fallback payload chalta hai. */
     var info={billNo:r.bill_no||billNo,mode:mode,table:curTable,t:t,pay:pay,rcv:rcv,
               fbrNo:(r.fbr_no||''),fiscal:(r.fiscal||null),at:new Date().toLocaleString()};
+    lastBill=info;
+
+    /* ============================================================
+       V155 — PARCHI SAB SE PEHLE.
+
+       Pehle tarteeb yeh thi:
+           jawab -> records-delete -> loadHolds -> toasts -> PRINT
+
+       `records-delete` aur `loadHolds` dono SYNCHRONOUS server calls
+       hain. Aur hold se bana bill restaurant mein aam baat hai. Yani
+       aam soorat mein parchi se pehle do aur server calls khari hoti
+       thin — aur agar us waqt server masroof hota, cashier parchi ke
+       liye intezar karta rehta.
+
+       Print ko kisi bhi server call ki zaroorat hai hi nahi: slip
+       browser ke apne iframe mein banti aur chhapti hai, saara data
+       `info` mein pehle se mojood hai. Is liye ab wo sab se pehle,
+       aur baqi sab us ke baad.
+       ============================================================ */
+    printNode(slipNode('BILL',cart.slice(),info));
+
+    if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
   /* FBR chalu hai magar number nahi aaya — cashier ko abhi bata do,
      mahine ke aakhir mein nahi. */
   if(BOOT.fiscal&&BOOT.fiscal.enabled&&!(r.fbr_no||'')){
@@ -1741,9 +1762,7 @@ $('#chargeBtn').onclick=function(){
       /* FBR tak nahi pohancha - user ko USI WAQT pata chale, mahine baad nahi. */
       toast('Bill completed, but FBR is pending: '+(r.fiscal.message||r.fiscal.status),true);
     }
-    lastBill=info;
-    /* AUTO PRINT + background par naya bill */
-    printNode(slipNode('BILL',cart.slice(),info));
+    /* Print upar ho chuki hai (V155). Yahan sirf ittila aur naya bill. */
     toast('Bill #'+info.billNo+' complete - '+money(t.grand));
     newBill(r.next);
   }
@@ -2385,13 +2404,34 @@ function openItemModal(startTab){
 
 /* ================= QR ORDERS (customer se) ================= */
 var qrPending=[];
-function loadQr(){
+/* ============================================================
+   V155 — HAR 20 SECOND KA FREEZE KHATAM.
+
+   Yeh har 20 second par chalti hai (`setInterval`). Pehle andar
+   `api('qr-pending')` thi — aur `api()` SYNCHRONOUS XHR hai, yani
+   jawab aane tak browser ka main thread jam. Agar us lamhe server
+   masroof hota (ya bill ki finalize chal rahi hoti) to cashier ka
+   keyboard/touch beech billing mein ruk jata — wo bhi bilkul be-wajah,
+   sirf ek badge ke number ke liye.
+
+   Ab background wala chakkar ASYNC hai. Sirf jab cashier khud QR
+   button dabata hai (`loadQr(true)`) tab sync chalti hai, taake jo
+   fehrist khulti hai wo usi waqt ki sachi ho.
+   ============================================================ */
+function loadQr(sync){
   /* Aghaz par yeh data `pos-start` ke sath aa chuka hota hai — ek aur
      request bhejna sirf dair barhata hai. */
   if(window.__preQr){ qrPending=window.__preQr; window.__preQr=null; paintQrBadge(); return; }
-  var r=api('qr-pending');
-  qrPending=(r.ok&&r.orders)?r.orders:[];
-  paintQrBadge();
+  if(sync){
+    var r=api('qr-pending');
+    qrPending=(r.ok&&r.orders)?r.orders:[];
+    paintQrBadge();
+    return;
+  }
+  apiAsync('qr-pending',null,function(r){
+    qrPending=(r&&r.ok&&r.orders)?r.orders:[];
+    paintQrBadge();
+  });
 }
 function paintQrBadge(){
   var el=$('#qrCount'); if(el)el.textContent='('+qrPending.length+')';
@@ -2399,7 +2439,7 @@ function paintQrBadge(){
   if(btn)btn.style.background=qrPending.length?'#fdf4e9':'';
 }
 $('#qrBtn').onclick=function(){
-  loadQr();
+  loadQr(true);                 /* V155 — sirf yahan sync (fehrist taza chahiye) */
   var body=qrPending.length?qrPending.map(function(o,i){
     /* App se aaye order ke liye cashier ko teen cheezein foran chahiye:
        kaun, kis number par, aur takeaway hai ya delivery. Table wale QR
@@ -3066,4 +3106,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V150 build 2026-10-12 -->
+<!-- build: V155 build 2026-10-15 -->

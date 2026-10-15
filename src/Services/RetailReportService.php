@@ -51,6 +51,11 @@ final class RetailReportService
             ['id'=>'batch_stock',     'group'=>'Inventory','name'=>'Batch-wise stock',      'desc'=>'Remaining stock and value per batch'],
             ['id'=>'fast_slow',       'group'=>'Inventory','name'=>'Fast / slow movers',    'desc'=>'What sells fast and what does not'],
             ['id'=>'margin',          'group'=>'Inventory','name'=>'Margin by item',        'desc'=>'Profit and margin % per item'],
+            /* V154 — yeh sawaal V153 tak poocha hi nahi ja sakta tha:
+               "stock 40 se 37 kyun hua". Stock sirf POS se ghat sakta
+               tha aur us ka koi record nahi tha. */
+            ['id'=>'stock_moves',     'group'=>'Inventory','name'=>'Stock movement',        'desc'=>'Har tabdeeli — sale, GRN, return, count, wastage'],
+            ['id'=>'stock_card',      'group'=>'Inventory','name'=>'Stock card (by item)',  'desc'=>'Ek item ki poori tareekh, nayi pehle'],
 
             /* ---------------- MONEY ---------------- */
             ['id'=>'profit_margin',   'group'=>'Money',    'name'=>'Profit / margin',       'desc'=>'Sale vs cost — rozana munafa'],
@@ -460,6 +465,78 @@ final class RetailReportService
 
     /* ==================== INVENTORY ==================== */
 
+    /**
+     * V154 — STOCK MOVEMENT.
+     *
+     * V153 tak stock ki koi tareekh thi hi nahi: `stock_qty` ek number
+     * tha jo POS ghata deta tha, aur bas. "Yeh 40 se 37 kyun hua" ka
+     * jawab kahin nahi tha — na chori nazar aati thi, na ginti ki
+     * ghalti, na ghalat GRN.
+     *
+     * `balance_after` jo us waqt likha gaya tha wahi dikhaya jata hai,
+     * dobara ginti nahi hoti — warna ek purani ghalti poori tareekh ko
+     * jhoota kar deti.
+     */
+    private static function r_stock_moves(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT DATE_FORMAT(m.moved_at,'%Y-%m-%d %H:%i') AT, p.name item, p.sku,
+                    m.reason, m.qty_delta qty, m.balance_after balance,
+                    m.cost_at_move cost, m.ref_no reference,
+                    COALESCE(u.full_name,'') user_name, COALESCE(m.note,'') note
+               FROM rtl_stock_moves m
+               JOIN rtl_products p ON p.id = m.product_id
+          LEFT JOIN users u ON u.id = m.moved_by
+              WHERE m.tenant_id = ? AND m.deleted_at IS NULL
+                AND DATE(m.moved_at) BETWEEN ? AND ?
+              ORDER BY m.moved_at DESC
+              LIMIT 2000",
+            [tenant_id(), $f, $t]);
+
+        return self::shape('Stock movement',
+            [['k'=>'AT','l'=>'When'],['k'=>'item','l'=>'Item'],['k'=>'sku','l'=>'SKU'],
+             ['k'=>'reason','l'=>'Why'],['k'=>'qty','l'=>'Change','n'=>1],
+             ['k'=>'balance','l'=>'Balance','n'=>1],['k'=>'cost','l'=>'Cost','n'=>1],
+             ['k'=>'reference','l'=>'Document'],['k'=>'user_name','l'=>'By'],['k'=>'note','l'=>'Note']],
+            $rows, [],
+            'SALE = bill, GRN = maal aaya, SALE_RETURN = wapas, PURCH_RET = supplier ko wapas, '
+          . 'COUNT = ginti ka farq, WASTAGE = kharab maal.');
+    }
+
+    /** Ek item ki poori tareekh. Item na chuna ho to sab se zyada hilne wala item. */
+    private static function r_stock_card(string $f, string $t): array
+    {
+        $pid = \trim((string)($_GET['product_id'] ?? ''));
+        if ($pid === '') {
+            $pid = (string)(self::q(
+                "SELECT product_id FROM rtl_stock_moves
+                  WHERE tenant_id=? AND deleted_at IS NULL
+                  GROUP BY product_id ORDER BY COUNT(*) DESC LIMIT 1",
+                [tenant_id()])[0]['product_id'] ?? '');
+        }
+        if ($pid === '') {
+            return self::shape('Stock card', [['k'=>'item','l'=>'Item']], [], [],
+                'Abhi koi stock movement nahi hui.');
+        }
+        $rows = self::q(
+            "SELECT DATE_FORMAT(m.moved_at,'%Y-%m-%d %H:%i') AT, m.reason,
+                    m.qty_delta qty, m.balance_after balance, m.cost_at_move cost,
+                    m.ref_no reference, COALESCE(u.full_name,'') user_name
+               FROM rtl_stock_moves m
+          LEFT JOIN users u ON u.id = m.moved_by
+              WHERE m.tenant_id=? AND m.product_id=? AND m.deleted_at IS NULL
+              ORDER BY m.moved_at DESC LIMIT 500",
+            [tenant_id(), $pid]);
+        $nm = (string)(self::q("SELECT name FROM rtl_products WHERE id=? AND tenant_id=?",
+                               [$pid, tenant_id()])[0]['name'] ?? '');
+        return self::shape('Stock card — '.$nm,
+            [['k'=>'AT','l'=>'When'],['k'=>'reason','l'=>'Why'],['k'=>'qty','l'=>'Change','n'=>1],
+             ['k'=>'balance','l'=>'Balance','n'=>1],['k'=>'cost','l'=>'Cost','n'=>1],
+             ['k'=>'reference','l'=>'Document'],['k'=>'user_name','l'=>'By']],
+            $rows, [],
+            'Nayi harkat pehle. Balance wahi hai jo us waqt tha.');
+    }
+
     private static function r_stock_on_hand(string $f, string $t): array
     {
         $rows = self::q(
@@ -794,3 +871,5 @@ final class RetailReportService
         return \implode("\r\n", $out) . "\r\n";
     }
 }
+
+// build: V154 build 2026-10-13

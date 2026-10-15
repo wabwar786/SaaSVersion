@@ -8,7 +8,7 @@ declare(strict_types=1);
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 require_once dirname(__DIR__).'/src/bootstrap.php';
-use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;use Aio\Services\RetailCatalog;use Aio\Services\RetailPos;use Aio\Services\RetailReportService;use Aio\Services\RegionProfile;
+use Aio\Auth;use Aio\DB;use Aio\Csrf;use Aio\Services\PageData;use Aio\Services\UserService;use Aio\Services\InventoryService;use Aio\Services\PurchaseService;use Aio\Services\RecipeService;use Aio\Services\PosService;use Aio\Services\Sync;use Aio\Services\Platform;use Aio\Services\ModuleBridge;use Aio\Services\DeleteService;use Aio\Services\SettingsService;use Aio\Services\FiscalService;use Aio\Services\BillTemplate;use Aio\Services\Licence;use Aio\Services\PrinterService;use Aio\Services\ReportService;use Aio\Services\OpsService;use Aio\Services\Guide;use Aio\Services\Audit;use Aio\Services\Scope;use Aio\Services\CatalogService;use Aio\Services\SelfService;use Aio\Services\RetailCatalog;use Aio\Services\RetailPos;use Aio\Services\RetailStock;use Aio\Services\RetailDocs;use Aio\Services\RetailReportService;use Aio\Services\RegionProfile;
 header('Content-Type: application/json; charset=utf-8');
 /* ============================================================
    API ka jawab kabhi cache na ho.
@@ -240,27 +240,39 @@ function syncTableAllowed(string $table): bool {
 function sync_nudge():void{
   if((string)cfg('app.role')==='cloud')return;
   /* ============================================================
-     THROTTLE — offline POS ki doosri sust raftaari.
+     V155 — SALE POINT SE SYNC BILKUL NIKAL DI GAYI.
+
+     PEHLE YAHAN `Sync::run('bill')` CHALTI THI, aur yehi counter ki
+     sab se bari sustee thi.
 
      Offline node `php -S` par chalta hai jo EK WAQT MEIN EK request
-     leta hai. Yeh shutdown function jawab bhejne ke BAAD chalta hai,
-     magar server tab tak agli request nahi uthata. Yani har bill ke
-     baad cashier ki agli click cloud sync ke khatam hone ka intezar
-     karti thi — aur net kharab ho to yeh kai second ka hota tha.
+     leta hai (yeh naap kar dekha gaya: jis lamhe ek request 5 second
+     ka kaam kar rahi thi, 0 second wali doosri request bhi 5.04 second
+     mein aayi). Yeh shutdown function jawab bhejne ke BAAD chalta hai
+     — magar server tab tak AGLI request nahi uthata.
 
-     Ab: 20 second mein ek dafa se zyada nahi. Bill phir bhi foran
-     upar jata hai; sirf har bill par dobara koshish nahi hoti, aur
-     background loop 60 second wala apna kaam karta rehta hai.
+     Aur `Sync::run()` ek chhoti si cheez nahi: pullFeatures + push +
+     pull + tombstones + licence = paanch HTTP calls cloud ko, har ek
+     ka timeout 45 second. Net sust ho to yeh poora ek minute. Us poore
+     minute cashier ki agli click — parchi samet — qatar mein khari
+     rehti thi.
+
+     Pehle is par 20 second ka throttle lagaya gaya tha. Us se sirf yeh
+     hua ke latakna HAR bill par nahi, kabhi kabhi hota tha — aur
+     "kabhi kabhi" counter par sab se buri shakal hai, kyunke wajah
+     kabhi samajh nahi aati.
+
+     AB: yahan se network ko haath hi nahi lagta. Sirf ek nishani file
+     likhti hai — microsecond ka kaam. Background `sync_loop.php` har
+     second yeh nishani dekhta hai aur milte hi sync chala deta hai.
+
+     Natija: bill phir bhi ~1 second mein cloud par, magar POS ka koi
+     request kabhi cloud ka intezar nahi karta. Net band ho to counter
+     ko pata bhi nahi chalta.
      ============================================================ */
-  $stamp=dirname(__DIR__).'/storage/tmp/last_nudge.txt';
-  if(!is_dir(dirname($stamp)))@mkdir(dirname($stamp),0775,true);
-  if(is_file($stamp) && (time()-(int)@filemtime($stamp))<20) return;
-  @file_put_contents($stamp,(string)time());
-  try{
-    if(session_status()===PHP_SESSION_ACTIVE)@session_write_close();
-    @ignore_user_abort(true);
-    \Aio\Services\Sync::run('bill');
-  }catch(Throwable $e){ /* bill nahi rukta - loop 60s mein dobara koshish karega */ }
+  $flag=dirname(__DIR__).'/storage/tmp/sync_now.flag';
+  if(!is_dir(dirname($flag)))@mkdir(dirname($flag),0775,true);
+  @file_put_contents($flag,(string)time());
 }
 /* V144 — ek hi jagah ginta hai (Sync::moduleFingerprint).
    Pehle yahan SQL ka MD5(GROUP_CONCAT(...)) ki apni copy thi. Us ki do
@@ -3418,7 +3430,12 @@ case 'retail-customers':
 
 case 'rpos-sale':
   needLogin(); needRetail(); csrf_json();
-  try{ ok(['sale'=>RetailPos::saveSale(body())]); }catch(Throwable $e){ fail($e->getMessage()); }
+  /* V155 — retail bill par bhi wahi nishani jo restaurant bill par lagti
+     hai, taake background sync loop usay ~1 second mein cloud par bhej
+     de. Nishani file likhne mein microsecond lagte hain; counter par
+     koi network call nahi hoti. */
+  try{ $__s=RetailPos::saveSale(body()); register_shutdown_function('sync_nudge'); ok(['sale'=>$__s]); }
+  catch(Throwable $e){ fail($e->getMessage()); }
 
 case 'rpos-sales':
   needLogin(); needRetail();
@@ -3459,6 +3476,89 @@ case 'rpos-receive':
                                     (string)($d['method']??'CASH'),(string)($d['note']??''))); }
   catch(Throwable $e){ fail($e->getMessage()); }
 
+/* ============================================================
+   V154 — RETAIL KE DOCUMENTS: GRN, PRET, RET, CNT, PO.
+
+   Yeh paanchon pehle `records-save` ke zariye `ui_records` ke JSON
+   blob mein girte the: row mehfooz ho jati thi, "Saved" ka toast aa
+   jata tha, aur stock ko koi haath nahi lagata tha. Audit mein 20 pcs
+   ka GRN post karne par `ok:true` aaya aur stock 37 ka 37 raha.
+
+   HAR ACTION `needRetail()` SE GATED HAI. Restaurant ka koi user in
+   mein se kisi tak pohanch hi nahi sakta — na ghalti se, na seedha
+   URL se. Restaurant ka apna purchasing `PurchaseService` par hai aur
+   us ko V154 mein chhua tak nahi gaya.
+   ============================================================ */
+case 'rdoc-list':
+  needLogin(); needRetail();
+  $t=strtoupper((string)($_GET['type']??''));
+  if(!\Aio\Services\RetailDocs::isType($t))fail('Unknown document type');
+  ok(['rows'=>\Aio\Services\RetailDocs::listOf($t,(string)($_GET['status']??''))]);
+
+case 'rdoc-get':
+  needLogin(); needRetail();
+  $doc=\Aio\Services\RetailDocs::get((string)($_GET['id']??''));
+  if(!$doc)fail('Document not found',404);
+  ok(['doc'=>$doc]);
+
+case 'rdoc-save':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailDocs::save($d,(string)($d['id']??''))]); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
+case 'rdoc-post':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailDocs::post((string)($d['id']??''))]); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
+case 'rdoc-cancel':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailDocs::cancel((string)($d['id']??''),(string)($d['reason']??''))]); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
+/* Supplier ka khata — balance ledger se GINA jata hai, kahin likha
+   nahi hota. `suppliers` table restaurant ke saath mushtarak hai aur
+   use V154 mein chhua nahi gaya. */
+case 'rsupplier-ledger':
+  needLogin(); needRetail();
+  $sid=(string)($_GET['supplier_id']??'');
+  ok(['balance'=>\Aio\Services\RetailDocs::supplierBalance($sid),
+      'rows'=>\Aio\Services\RetailDocs::supplierLedger($sid)]);
+
+case 'rsupplier-pay':
+  needLogin(); needRetail(); csrf_json();
+  $d=body();
+  try{ ok(\Aio\Services\RetailDocs::paySupplier((string)($d['supplier_id']??''),
+            (float)($d['amount']??0),(string)($d['note']??''),(string)($d['ref_no']??''))); }
+  catch(Throwable $e){ fail($e->getMessage()); }
+
+/* Stock card aur stock movement — V153 tak yeh sawaal poocha hi nahi
+   ja sakta tha ke "stock 40 se 37 kyun hua". */
+case 'rstock-card':
+  needLogin(); needRetail();
+  ok(['rows'=>\Aio\Services\RetailStock::card((string)($_GET['product_id']??''))]);
+
+case 'rstock-moves':
+  needLogin(); needRetail();
+  ok(['rows'=>\Aio\Services\RetailStock::moves(
+        (string)($_GET['from']??date('Y-m-01')),(string)($_GET['to']??date('Y-m-d')),
+        (string)($_GET['reason']??''))]);
+
+/* WASTAGE ka apna endpoint JAAN BOOJH KAR NAHI hai.
+   Pehle yahan `rwastage-post` likha gaya tha jo seedha RetailStock se
+   stock nikal deta. Chalta theek tha, magar us ka matlab yeh hota ke
+   posting ka hisaab DO jagah likha hai: ek `RetailDocs::post()` mein
+   aur ek yahan. Yeh bilkul wahi shakal hai jis se V153 ke teeno bug
+   paida hue the. Ab wastage bhi ek document hai (`doc_type = WST`) aur
+   usi `rdoc-save` / `rdoc-post` se guzarta hai. Ek engine, ek jagah.
+
+   `ModuleBridge` ka wastage restaurant ke `inventory_items` par hai
+   aur use V154 mein chhua tak nahi gaya — restaurant ka wastage jaisa
+   tha waisa hi chal raha hai. */
+
 default:fail('Unknown API action',404);}
 }catch(Throwable $e){
   try{@file_put_contents(dirname(__DIR__).'/storage/logs/api-error.log','['.date('c').'] action='.($_GET['action']??'').' :: '.$e->getMessage().PHP_EOL,FILE_APPEND);}catch(Throwable $x){}
@@ -3479,4 +3579,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V153 build 2026-10-12
+// build: V155 build 2026-10-15

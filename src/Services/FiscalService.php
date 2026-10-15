@@ -362,8 +362,15 @@ final class FiscalService
     /* ---------------- HTTP ---------------- */
 
     /* Counter par 8 second bahut lambe hain. Fiscal service isi PC par
-       hoti hai — theek chal rahi ho to milli-second mein jawab deti hai. */
-    public static function post(string $url, array $payload, int $timeout = 3): array
+       hoti hai — theek chal rahi ho to milli-second mein jawab deti hai.
+
+       V155 — default 3 se 2 second. Wajah: cashier ka waada "FBR wale
+       business par bhi bill 1-2 second mein". Service localhost par hai;
+       2 second mein jawab na de to wo chal hi nahi rahi — aur breaker
+       trip ho kar agle bill foran nikalte hain. "Test connection" apna
+       timeout khud 8 second deta hai (neeche), is liye setup ki jaanch
+       par koi asar nahi. */
+    public static function post(string $url, array $payload, int $timeout = 2): array
     {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         $ctx = stream_context_create(['http' => [
@@ -392,7 +399,7 @@ final class FiscalService
         return ['ok' => true, 'body' => (string)$raw, 'error' => ''];
     }
 
-    public static function get(string $url, int $timeout = 3): array
+    public static function get(string $url, int $timeout = 2): array   /* V155 — 3s se 2s */
     {
         $ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => $timeout, 'ignore_errors' => true]]);
         $raw = @file_get_contents($url, false, $ctx);
@@ -524,4 +531,4 @@ final class FiscalService
     }
 }
 
-// build: V64 build 2026-08-27
+// build: V155 build 2026-10-15

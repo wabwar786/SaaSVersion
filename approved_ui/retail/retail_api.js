@@ -62,12 +62,67 @@
     window.Region.set = function () { };           // client region badal nahi sakta
   }
 
-  /* ---------- server-backed lists ---------- */
-  var MODULE_OF = {
-    products: 'products', departments: 'departments', categories: 'categories',
-    brands: 'brands', units: 'uom', batches: 'batches', counters: 'counters'
-  };
+  /* ============================================================
+     SERVER-BACKED LISTS — V154 MEIN YAHAN DOOSRA BARA BUG THA.
+
+     Pehle yahan ek HAATH SE LIKHI fehrist thi:
+
+         var MODULE_OF = { products:'products', departments:'departments',
+           categories:'categories', brands:'brands', units:'uom',
+           batches:'batches', counters:'counters' };
+         ...
+         var mod = MODULE_OF[key];
+         if (!mod) return [];              // <- yahan sab mar jate the
+
+     Jis bhi storeKey ka naam us saat ki fehrist mein nahi tha — suppliers,
+     expenses, staff, printers, branches, promotions, grn, po, returns —
+     us ka `S.get()` KHALI ARRAY wapas karta tha, chahe server par kitni
+     bhi rows hon. Aur likhna (`records-save`) bilkul alag raaste se jata
+     tha, is liye SAVE CHALTA THA AUR LIST NAHI: customer supplier add
+     karta, "Saved" dekhta, reload karta — row ghayab. Data chup chaap
+     jama hota rehta jo kisi ko nazar hi na aata.
+
+     Saboot (audit mein): server par suppliers/expenses/staff/branches
+     har ek mein 1 row, screen par 0.
+
+     ASAL WAJAH: ek hi fehrist DO jagah likhi hui thi. storeKey -> module
+     ka naqsha pehle se `module_config.js` mein mojood hai (har config
+     mein `key` aur `storeKey` dono likhe hain) — yahan us ki doosri copy
+     rakhna sirf drift paida karta tha.
+
+     AB: naqsha `MODULE_CONFIGS` se KHUD banta hai. Ek fehrist, ek jagah.
+     Naya module add karne par yahan kuch likhna hi nahi parta.
+
+     LAZY kyun: yeh file `module_config.js` se PEHLE load hoti hai, is
+     liye naqsha boot par nahi ban sakta. `S.get()` ke pehle call par
+     banta hai — us waqt tak configs mojood hoti hain.
+     ============================================================ */
   var cache = {};
+  var modMap = null;
+
+  function moduleOf(key) {
+    if (modMap === null) {
+      modMap = {};
+      var C = window.MODULE_CONFIGS || {};
+      for (var name in C) {
+        if (!Object.prototype.hasOwnProperty.call(C, name)) continue;
+        var cfg = C[name] || {};
+        var sk = cfg.storeKey, mod = cfg.key || name;
+        if (!sk) continue;
+        /* Ek storeKey par kai screens ho sakti hain: `stock`, `pricing`
+           aur `scale` teeno `products` par bani hain; `khata` aur
+           `loyalty` `customers` par. Aise mein wo config jeetti hai jis
+           ka apna key hi storeKey ho — yani asal maalik. Warna pehli
+           milne wali. */
+        if (modMap[sk] === undefined || mod === sk) modMap[sk] = mod;
+      }
+    }
+    /* Config na mile to key ko hi module maan lo — `records-list` ka
+       `ui_records` wala rasta har naam par chalta hai, is liye nayi
+       screen khali nahi rahegi. */
+    return modMap[key] || key;
+  }
+  S.moduleOf = moduleOf;
 
   S.get = function (key) {
     if (key === 'customers') {
@@ -85,10 +140,8 @@
       var s = quiet('rpos-sales&limit=100');
       return s ? s.rows.map(normalizeSale) : [];
     }
-    var mod = MODULE_OF[key];
-    if (!mod) return [];
     if (!cache[key]) {
-      var r = quiet('records-list&module=' + encodeURIComponent(mod));
+      var r = quiet('records-list&module=' + encodeURIComponent(moduleOf(key)));
       cache[key] = r ? r.rows : [];
     }
     return cache[key];
@@ -155,3 +208,5 @@
   S.holdBill = function (payload) { return api('rpos-hold', payload).id; };
   S.releaseHold = function (id) { return api('rpos-hold-release', { id: id }); };
 })();
+
+// build: V154 build 2026-10-13

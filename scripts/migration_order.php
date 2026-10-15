@@ -87,6 +87,12 @@ return [
     ['script' => 'migrate_tax_settings',  'optional' => true, 'stage' => 'background'],
     /* V151 — billing rate (tenants par) aur invoices ka khata. */
     ['script' => 'migrate_billing',       'optional' => true, 'stage' => 'background'],
+    /* V154 — retail ka stock aur documents. V153 tak supermarket ka
+       stock sirf GHAT sakta tha: POS bechta tha, aur maal AANE ka koi
+       rasta hi nahi tha. Yeh un tables ko banati hai jin par GRN,
+       return, count aur wastage chalte hain. Sirf nayi `rtl_*` tables —
+       restaurant ki kisi table ko haath nahi lagta. */
+    ['script' => 'migrate_retail_ops',    'optional' => true, 'stage' => 'background'],
     /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
        bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
        chalti thi — yani grace period khatam hone par kabhi kuch hota hi
@@ -105,6 +111,12 @@ return [
        jate aur har JOIN chalte hue toot jata. Ab deploy log mein
        `COLLATION_OK` likha hoga — ya kaun si columns peeche hain. */
     ['script' => 'check_collation',       'optional' => true, 'check' => true],
+    /* V154 — retail ki wiring ka pehra. V153 ke audit mein teen bug mile
+       aur teeno ki shakal ek thi: ek fehrist do jagah likhi hui, dono
+       chup chaap alag ho gayin. Screen khulti thi, "Saved" aata tha,
+       peeche kuch nahi hota tha — aur koi error kahin nazar nahi aata
+       tha. Yeh script wahi milan har deploy par kar deti hai. */
+    ['script' => 'check_retail_wiring',   'optional' => true, 'check' => true],
 ];
 
-// build: V153 build 2026-10-12
+// build: V154 build 2026-10-13

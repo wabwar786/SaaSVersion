@@ -291,14 +291,44 @@ final class RetailCatalog
                 $pdo->prepare("INSERT INTO rtl_products(id,tenant_id,site_id,$cl) VALUES(?,?,?,$ph)")
                     ->execute([$id, $tid, site_id(), ...\array_values($vals)]);
             }
-            /* Barcode alag table mein — ek product ke kai barcode ho sakte
-               hain (purana stock, imported pack). UI ek bhejta hai. */
-            $bc = \trim((string)($d['barcode'] ?? ''));
-            if ($bc !== '') {
-                $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes WHERE tenant_id=? AND barcode=? AND product_id<>?");
+            /* ============================================================
+               BARCODE — V154 MEIN YAHAN SAB SE BARA BUG THA.
+
+               Server sirf `barcode` (singular) parhta tha. Magar Product
+               Catalog ka form `onCreate` mein yeh karta hai:
+
+                   d.barcodes = d.barcode ? [d.barcode] : [];
+                   delete d.barcode;
+
+               Yani UI `barcode` ko MITA kar `barcodes[]` bhejta tha, aur
+               server us array ko dekhta hi nahi tha. Nateeja: screen se
+               banaya hua HAR product bina barcode ke mehfooz hota, aur
+               counter par kabhi scan nahi hota. Form "Product added"
+               kehta, `rtl_product_barcodes` khali rehti, aur kahin koi
+               error nazar na aata.
+
+               Ab DONO shakalein qubool hain. Sirf UI theek karna kaafi
+               nahi tha: pehle se lage hue offline nodes par PURANA UI
+               chal raha hoga aur wo `barcodes[]` hi bhejega — un ke liye
+               bhi chalna chahiye bina UPDATE.bat ke intezar ke.
+
+               Ek product ke kai barcode ho sakte hain (purana stock,
+               imported pack), is liye array ka poora chakkar chalta hai.
+               ============================================================ */
+            $codes = [];
+            if (isset($d['barcodes']) && \is_array($d['barcodes'])) {
+                foreach ($d['barcodes'] as $b) $codes[] = \trim((string)$b);
+            }
+            $codes[] = \trim((string)($d['barcode'] ?? ''));
+            $codes = \array_values(\array_unique(\array_filter($codes, fn($b) => $b !== '')));
+
+            foreach ($codes as $bc) {
+                $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes
+                                     WHERE tenant_id=? AND barcode=? AND product_id<>? AND deleted_at IS NULL");
                 $c->execute([$tid, $bc, $id]);
                 if ((int)$c->fetchColumn() > 0) throw new \RuntimeException("Barcode $bc is already used by another product");
-                $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes WHERE tenant_id=? AND barcode=? AND product_id=?");
+                $c = $pdo->prepare("SELECT COUNT(*) FROM rtl_product_barcodes
+                                     WHERE tenant_id=? AND barcode=? AND product_id=? AND deleted_at IS NULL");
                 $c->execute([$tid, $bc, $id]);
                 if ((int)$c->fetchColumn() === 0) {
                     $pdo->prepare("INSERT INTO rtl_product_barcodes(id,tenant_id,product_id,barcode) VALUES(?,?,?,?)")
@@ -482,3 +512,5 @@ final class RetailCatalog
         }
     }
 }
+
+// build: V154 build 2026-10-13

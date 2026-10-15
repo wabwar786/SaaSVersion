@@ -11,11 +11,12 @@
   <aside class="sidebar" id="side"></aside>
   <main class="main">
     <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Shift Closing History</h1><p>Counter-wise cash reconciliation</p></div>
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Shift Closing History</h1>
+        <p>Band hui shifts — counted cash aur variance</p></div>
       <div class="header-spacer"></div>
     </header>
-    <div class="content"></div>
+    <div class="content"><div class="hint" style="padding:18px">Loading…</div></div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
@@ -23,8 +24,76 @@
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="closing"></script>
-<script src="module.js"></script>
-<script src="module_config.js"></script>
-<script>RetailModule.render(MODULE_CONFIGS['closing']);</script>
+<script>
+/* ============================================================
+   V154 — YEH SCREEN PEHLE JHOOT BOL RAHI THI.
+
+   Config `storeKey: 'rtl_closing'` par thi, yani `ui_records` ka JSON
+   blob. Screen "Shifts 0, Cash collected 0" dikhati thi chahe counter
+   par roz shift khul aur band ho rahi ho.
+
+   Asli shift data pehle se mojood tha — `cashier_shifts` table par,
+   `shiftmgr-list` endpoint se. Sirf koi us ko parh nahi raha tha.
+
+   Ab wahi asli data. Koi nayi table nahi, koi naya endpoint nahi —
+   jo pehle se tha usi se.
+   ============================================================ */
+(function () {
+  function $(s) { return document.querySelector(s); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function money(n) { return window.Region ? Region.money(n) : Number(n || 0).toLocaleString(); }
+
+  var rows = [];
+  try {
+    var r = RetailStore.api('shiftmgr-list');
+    rows = (r && r.shifts) || [];
+  } catch (e) {
+    $('.content').innerHTML = '<div class="note" style="margin:18px">' + esc(e.message || 'Could not load shifts') + '</div>';
+    return;
+  }
+
+  var closed = rows.filter(function (s) { return s.status !== 'Open'; });
+  var cash = closed.reduce(function (a, s) { return a + Number(s.counted || 0); }, 0);
+  var varTotal = closed.reduce(function (a, s) { return a + Number(s.variance || 0); }, 0);
+  var shortCount = closed.filter(function (s) { return Number(s.variance || 0) < -0.009; }).length;
+
+  function row(s) {
+    var v = Number(s.variance || 0);
+    /* Variance ka rang ahem hai: short cash counter par sab se aam
+       masla hai aur ginti mein chhup jata hai. */
+    var tone = Math.abs(v) < 0.009 ? 'var(--muted)' : (v < 0 ? 'var(--danger)' : 'var(--ok)');
+    return '<tr><td><b>' + esc(s.shift) + '</b><span class="t-sub">' + esc(s.date || '') + '</span></td>' +
+      '<td>' + esc(s.cashier) + '</td>' +
+      '<td class="hint">' + esc(s.opened || '') + (s.closed ? ' &rarr; ' + esc(s.closed) : '') + '</td>' +
+      '<td class="num">' + money(s.opening) + '</td>' +
+      '<td class="num">' + money(s.expected) + '</td>' +
+      '<td class="num">' + money(s.counted) + '</td>' +
+      '<td class="num" style="color:' + tone + ';font-weight:600">' +
+        (v > 0 ? '+' : '') + money(v) + '</td>' +
+      '<td>' + (s.status === 'Open' ? '<span class="tag warn">Open</span>'
+                                    : '<span class="tag ok">Closed</span>') + '</td></tr>';
+  }
+
+  $('.content').innerHTML =
+    '<div class="kpis">' +
+    '<div class="kpi"><div class="lab">Closed shifts</div><div class="val">' + closed.length + '</div></div>' +
+    '<div class="kpi ok"><div class="lab">Cash counted</div><div class="val">' + money(cash) + '</div></div>' +
+    '<div class="kpi ' + (varTotal < -0.009 ? 'danger' : '') + '"><div class="lab">Total variance</div>' +
+      '<div class="val">' + (varTotal > 0 ? '+' : '') + money(varTotal) + '</div></div>' +
+    '<div class="kpi warn"><div class="lab">Short shifts</div><div class="val">' + shortCount + '</div></div>' +
+    '</div>' +
+    '<section class="panel"><div class="panel-head"><div><h2>Shifts</h2>' +
+    '<p>Counter kis ne khola, kitni cash gini, aur farq kitna raha</p></div></div>' +
+    '<div class="panel-body flush"><div class="table-wrap"><table class="table"><thead><tr>' +
+    '<th>Shift</th><th>Cashier</th><th>Open &rarr; Close</th>' +
+    '<th class="num">Opening</th><th class="num">Expected</th><th class="num">Counted</th>' +
+    '<th class="num">Variance</th><th>Status</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(row).join('')
+                 : '<tr><td colspan="8" class="hint" style="padding:18px">Abhi koi shift band nahi hui.</td></tr>') +
+    '</tbody></table></div></div></section>';
+})();
+</script>
 </body>
 </html>
+
+<!-- build: V154 build 2026-10-13 -->

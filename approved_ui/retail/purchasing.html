@@ -11,11 +11,12 @@
   <aside class="sidebar" id="side"></aside>
   <main class="main">
     <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Purchasing</h1><p>Goods received from suppliers</p></div>
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Purchasing</h1>
+        <p>Kharid ka register aur supplier ka khata</p></div>
       <div class="header-spacer"></div>
     </header>
-    <div class="content"></div>
+    <div class="content"><div class="hint" style="padding:18px">Loading…</div></div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
@@ -23,8 +24,132 @@
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="purchasing"></script>
-<script src="module.js"></script>
-<script src="module_config.js"></script>
-<script>RetailModule.render(MODULE_CONFIGS['purchasing']);</script>
+<script>
+/* ============================================================
+   V154 — PURCHASING AB APNA KOI DATA NAHI RAKHTI.
+
+   Pehle yeh screen `rtl_purchasing` ke JSON blob par thi: aap yahan ek
+   "purchase entry" likhte, wo kahin jaati nahi thi, aur GRN alag se
+   likhna parta tha. Do jagah wahi kharid.
+
+   Ab kharid sirf EK jagah darj hoti hai — Goods Receipt par. Yeh screen
+   usi ka REGISTER hai: GRN aur Purchase Return dono ek saath, aur har
+   supplier ka baqaya. Yahan kuch likha nahi jata, is liye dono kabhi
+   alag nahi ho sakte.
+   ============================================================ */
+(function () {
+  function $(s) { return document.querySelector(s); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function money(n) { return window.Region ? Region.money(n) : Number(n || 0).toLocaleString(); }
+  function toast(m, err) {
+    var t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = m; t.className = 'toast show' + (err ? ' err' : '');
+    setTimeout(function () { t.className = 'toast'; }, 2200);
+  }
+
+  var grn = [], pret = [], suppliers = [];
+  try {
+    grn  = (RetailStore.api('rdoc-list&type=GRN&status=POSTED').rows) || [];
+    pret = (RetailStore.api('rdoc-list&type=PRET&status=POSTED').rows) || [];
+    suppliers = RetailStore.get('suppliers') || [];
+  } catch (e) {
+    $('.content').innerHTML = '<div class="note" style="margin:18px">' + esc(e.message || 'Could not load') + '</div>';
+    return;
+  }
+
+  var bought = grn.reduce(function (a, d) { return a + Number(d.total || 0); }, 0);
+  var returned = pret.reduce(function (a, d) { return a + Number(d.total || 0); }, 0);
+
+  /* Har supplier ka baqaya ledger se GINA jata hai, kahin likha nahi
+     hota — is liye balance aur us ki tafseel kabhi alag nahi ho sakte. */
+  var payable = 0, supRows = suppliers.map(function (s) {
+    var bal = 0;
+    try { bal = Number(RetailStore.api('rsupplier-ledger&supplier_id=' + encodeURIComponent(s.id)).balance || 0); }
+    catch (e) { bal = 0; }
+    payable += bal;
+    return { id: s.id, name: s.name, phone: s.phone || '', bal: bal };
+  });
+
+  var all = grn.map(function (d) { return { t: 'GRN', d: d, sign: 1 }; })
+    .concat(pret.map(function (d) { return { t: 'Return', d: d, sign: -1 }; }))
+    .sort(function (a, b) { return String(b.d.doc_date).localeCompare(String(a.d.doc_date)); });
+
+  $('.content').innerHTML =
+    '<div class="note" style="margin-bottom:14px">Kharid <b>Goods Receipt</b> par darj hoti hai. ' +
+    'Yeh safha us ka register hai — yahan kuch likha nahi jata.</div>' +
+    '<div class="kpis">' +
+    '<div class="kpi"><div class="lab">Receipts</div><div class="val">' + grn.length + '</div></div>' +
+    '<div class="kpi ok"><div class="lab">Purchased</div><div class="val">' + money(bought) + '</div></div>' +
+    '<div class="kpi warn"><div class="lab">Returned</div><div class="val">' + money(returned) + '</div></div>' +
+    '<div class="kpi danger"><div class="lab">Payable</div><div class="val">' + money(payable) + '</div></div>' +
+    '</div>' +
+
+    '<section class="panel"><div class="panel-head"><div><h2>Purchase register</h2>' +
+    '<p>Posted receipts aur returns, nayi tareekh pehle</p></div></div>' +
+    '<div class="panel-body flush"><div class="table-wrap"><table class="table"><thead><tr>' +
+    '<th>Document</th><th>Date</th><th>Supplier</th><th>Bill no.</th>' +
+    '<th class="num">Items</th><th class="num">Value</th></tr></thead><tbody>' +
+    (all.length ? all.map(function (x) {
+      return '<tr><td><b>' + esc(x.d.doc_no) + '</b> ' +
+        (x.sign > 0 ? '<span class="tag ok">In</span>' : '<span class="tag warn">Out</span>') + '</td>' +
+        '<td class="hint">' + esc(x.d.doc_date) + '</td>' +
+        '<td>' + esc(x.d.supplier_name || '—') + '</td>' +
+        '<td class="hint">' + esc(x.d.ref_no || '') + '</td>' +
+        '<td class="num">' + x.d.line_count + '</td>' +
+        '<td class="num">' + (x.sign < 0 ? '−' : '') + money(x.d.total) + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" class="hint" style="padding:18px">Abhi koi kharid darj nahi hui. ' +
+      'Goods Receipt se shuru karein.</td></tr>') +
+    '</tbody></table></div></div></section>' +
+
+    '<section class="panel" style="margin-top:16px"><div class="panel-head"><div><h2>Supplier balances</h2>' +
+    '<p>Kis ko kitna dena hai</p></div></div>' +
+    '<div class="panel-body flush"><div class="table-wrap"><table class="table"><thead><tr>' +
+    '<th>Supplier</th><th>Phone</th><th class="num">Payable</th>' +
+    '<th style="text-align:right">Actions</th></tr></thead><tbody>' +
+    (supRows.length ? supRows.map(function (s) {
+      return '<tr><td><b>' + esc(s.name) + '</b></td><td class="hint">' + esc(s.phone) + '</td>' +
+        '<td class="num"' + (s.bal > 0.009 ? ' style="color:var(--danger);font-weight:600"' : '') + '>' +
+        money(s.bal) + '</td>' +
+        '<td class="num"><button class="btn sm" data-pay="' + esc(s.id) + '" ' +
+        'data-name="' + esc(s.name) + '">Pay</button></td></tr>';
+    }).join('') : '<tr><td colspan="4" class="hint" style="padding:18px">Koi supplier nahi.</td></tr>') +
+    '</tbody></table></div></div></section>' +
+
+    '<div class="modal" id="payM"><div class="dialog" style="width:min(440px,100%)">' +
+    '<div class="dialog-head"><div><h3>Pay supplier</h3><p id="payWho"></p></div>' +
+    '<button class="close" data-close>×</button></div>' +
+    '<div class="dialog-body"><div class="form-grid">' +
+    '<label class="field full"><span>Amount</span><input id="payAmt" type="number" step="any" min="0"></label>' +
+    '<label class="field full"><span>Reference</span><input id="payRef" placeholder="cheque / transfer no."></label>' +
+    '<label class="field full"><span>Note</span><input id="payNote"></label>' +
+    '</div></div><div class="dialog-foot"><button class="btn" data-close>Cancel</button>' +
+    '<button class="btn primary" id="payGo">Record payment</button></div></div></div>';
+
+  var payId = '';
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pay]');
+    if (b) {
+      payId = b.getAttribute('data-pay');
+      $('#payWho').textContent = b.getAttribute('data-name');
+      $('#payAmt').value = ''; $('#payRef').value = ''; $('#payNote').value = '';
+      $('#payM').classList.add('show');
+      return;
+    }
+    if (e.target.closest('[data-close]')) $('#payM').classList.remove('show');
+  });
+  $('#payGo').onclick = function () {
+    var amt = Number($('#payAmt').value || 0);
+    if (amt <= 0) { toast('Amount likhein', true); return; }
+    try {
+      RetailStore.api('rsupplier-pay', { supplier_id: payId, amount: amt,
+        ref_no: $('#payRef').value, note: $('#payNote').value });
+      toast('Payment recorded');
+      setTimeout(function () { location.reload(); }, 700);
+    } catch (err) { toast(err.message || 'Could not record', true); }
+  };
+})();
+</script>
 </body>
 </html>
+
+<!-- build: V154 build 2026-10-13 -->

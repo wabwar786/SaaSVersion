@@ -71,13 +71,130 @@ if (-not (Get-Command Invoke-Native -ErrorAction SilentlyContinue)) {
 }
 
 $RuntimeDir = Join-Path $Root 'runtime\mariadb'
-$DataDir    = Join-Path $Root 'data\mysql'
 $VendorZip  = Join-Path $Root 'vendor\mariadb.zip'
 $PidFile    = Join-Path $Root 'data\mariadb.pid'
 $PortFile   = Join-Path $Root 'data\mariadb.port'
 
 function Say($m,$c='Gray'){ Write-Host "      $m" -ForegroundColor $c }
 function Dots($m){ Write-Host "      $m" -NoNewline -ForegroundColor Gray }
+
+# ============================================================
+# V155 - DATABASE AB SOFTWARE KE FOLDER KA QAIDI NAHI.
+#
+# JO HUA (asli waqia, ek customer ke sath):
+#   Pehle software D:\MOB mein install hua. Teen hafte billing hui,
+#   data D:\MOB\data\mysql mein jama raha.
+#   Baad mein wahi software D:\MOB1 mein install kar liya gaya.
+#   $DataDir seedha $Root se banta tha, yani D:\MOB1\data\mysql -
+#   ek bilkul NAYA, KHALI datadir. Script ne chupchaap wo bana diya,
+#   `aio_local` bhi bana diya (khali), aur software chal para.
+#   Nateeja: php.exe crash aur "Login service error", kyunke database
+#   mein ek bhi table nahi tha. Customer ko lagta raha ke us ki
+#   30,000 ki sale MIT GAYI.
+#
+# Data gaya nahi tha - D:\MOB mein salamat para tha. Magar yeh baat
+# customer ko kaise pata chalti?
+#
+# AB TARTEEB YEH HAI:
+#   1. Is folder ke andar pehle se database hai? -> wahi chalao.
+#      (Purani installs jahan hain wahin kaam karti rahen - chalte
+#       POS ka datadir khiskana sab se khatarnaak kaam hota.)
+#   2. Nahi? To nishani (ProgramData\Wabwar\SmartPOS\datadir.txt)
+#      dekho - is PC par aakhri dafa database kahan tha.
+#   3. Nahi? To mushtarka jagah: %ProgramData%\Wabwar\SmartPOS\data
+#   4. Kuch bhi nahi? Nayi install hai - mushtarka jagah par banao.
+#
+# Is tarteeb ka faida: ab software kisi bhi folder mein dobara install
+# ho, data wahi rehta hai. Folder ka naam badalna, package naye folder
+# mein nikalna, purana folder rakh kar naya banana - kisi soorat mein
+# data gayab nahi hota.
+# ============================================================
+$SharedBase = Join-Path $env:ProgramData 'Wabwar\SmartPOS'
+$SharedData = Join-Path $SharedBase 'data\mysql'
+$LocalData  = Join-Path $Root 'data\mysql'
+$Marker     = Join-Path $SharedBase 'datadir.txt'
+$FreshFlag  = Join-Path $Root 'START_FRESH.txt'
+
+# Datadir "bhara" tab hai jab us ke andar `mysql` (system database)
+# mojood ho. Khali folder ya sirf ibdata1 se kuch sabit nahi hota.
+function Test-HasDb([string]$p) {
+  if (-not $p) { return $false }
+  try { return (Test-Path (Join-Path $p 'mysql')) } catch { return $false }
+}
+
+$MarkedDir = $null
+if (Test-Path $Marker) {
+  try { $MarkedDir = (((Get-Content $Marker -Raw) -split "`r?`n")[0]).Trim() } catch { $MarkedDir = $null }
+  if (-not $MarkedDir) { $MarkedDir = $null }
+}
+
+$DataDir = $null
+if (Test-HasDb $LocalData) {
+  $DataDir = $LocalData                      # 1 - purani install, jahan hai wahin rahe
+} elseif (Test-HasDb $MarkedDir) {
+  $DataDir = $MarkedDir                      # 2 - nishani se mila
+  Say ("Using the existing database from: " + $DataDir) 'DarkGray'
+} elseif (Test-HasDb $SharedData) {
+  $DataDir = $SharedData                     # 3 - mushtarka jagah
+} else {
+  # ----------------------------------------------------------
+  # V155 - KHALI DATADIR KA PEHRA.
+  #
+  # Yahan pohanchne ka matlab: naya database banana parega. Agar
+  # nishani kehti hai ke is PC par pehle database THA, magar us
+  # jagah ab nahi mil raha, to KHAMOSHI SE naya khali database
+  # bana dena sab se bara nuqsan hai - customer ka saara purana
+  # data "gayab" nazar aata hai (bilkul wohi jo D:\MOB / D:\MOB1
+  # wale sath hua). Ruk jao, aur sach batao.
+  # ----------------------------------------------------------
+  if ($MarkedDir -and -not (Test-Path $FreshFlag)) {
+    Say '' 'Gray'
+    Say 'A database already exists for this software on this computer,' 'Red'
+    Say 'but it is not where it was last time. Last known location:' 'Red'
+    Say ('    ' + $MarkedDir) 'Yellow'
+    Say '' 'Gray'
+    Say 'Nothing has been changed, and no data has been lost. This usually' 'White'
+    Say 'happens when the software folder was renamed, moved, or the package' 'White'
+    Say 'was extracted into a different folder.' 'White'
+    Say '' 'Gray'
+    Say 'What to do:' 'Cyan'
+    Say '  1. Find the folder above (it may be on another drive).' 'White'
+    Say '  2. Copy the whole "data" folder from there into:' 'White'
+    Say ('       ' + (Join-Path $SharedBase 'data')) 'Yellow'
+    Say '  3. Run this setup again.' 'White'
+    Say '' 'Gray'
+    Say 'If you really want to start with a brand new, EMPTY database and' 'DarkYellow'
+    Say 'you do not need the old sales, create an empty file named' 'DarkYellow'
+    Say ('    ' + $FreshFlag) 'Yellow'
+    Say 'and run this setup again.' 'DarkYellow'
+    Say '' 'Gray'
+    Say 'Need help? Wabwar Software House - +92 342 5095104' 'Cyan'
+    exit 1
+  }
+  $DataDir = $SharedData                     # 4 - nayi install
+  if (Test-Path $FreshFlag) {
+    try { Remove-Item -LiteralPath $FreshFlag -Force -ErrorAction SilentlyContinue } catch { }
+    Say 'Starting with a new, empty database (as requested).' 'DarkYellow'
+  }
+}
+
+# Mushtarka jagah banao - agar ProgramData par ijazat na mile to
+# chupchaap folder ke andar wapas aa jao (software band nahi hona
+# chahiye sirf is wajah se).
+if ($DataDir -eq $SharedData) {
+  try { New-Item -ItemType Directory -Force -Path (Split-Path $SharedData) -ErrorAction Stop | Out-Null }
+  catch {
+    Say 'Could not use the shared data folder; keeping the data inside this folder.' 'DarkYellow'
+    $DataDir = $LocalData
+  }
+}
+
+# Nishani likho - agli install (kisi bhi folder mein) isay parh kar
+# WAHI database dhoond legi.
+try {
+  New-Item -ItemType Directory -Force -Path $SharedBase -ErrorAction Stop | Out-Null
+  Set-Content -Path $Marker -Value $DataDir -Encoding ASCII -ErrorAction Stop
+} catch { }
 
 function Get-MysqldPath {
   if (-not (Test-Path $RuntimeDir)) { return $null }
@@ -350,3 +467,5 @@ Invoke-Native -Exe $mysqlExe -Arguments @(
 
 Say "Local database ready (127.0.0.1:$Port)." 'Green'
 exit 0
+
+# build: V155 build 2026-10-15

@@ -55,7 +55,7 @@ $retailModule=[
   'promotions.html'=>'promotions','returns.html'=>'void','shift.html'=>'shift',
   'closing.html'=>'closing','expenses.html'=>'expenses','accounting.html'=>'accounting',
   'reports.html'=>'reports','tax.html'=>'fbr','whatsapp.html'=>'whatsapp',
-  'stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','wastage.html'=>'wastage',
+  'stock_count.html'=>'count','stock_day_close.html'=>'dayclose','wastage.html'=>'wastage',
   'staff.html'=>'staff','users.html'=>'users','printers.html'=>'printers',
   'branches.html'=>'branches','offline_sync.html'=>'offline','activity.html'=>'activity',
   'settings.html'=>'settings',
@@ -202,8 +202,13 @@ $html=file_get_contents($file);
 if($uiDir==='approved_ui/retail'){
   /* Retail ke apne asset files hain (alag brand, alag engine). Inhein
      /retail/... se serve karte hain taake restaurant ki files se na takrayen. */
-  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r5"', $html);
+  /* V154 — `doc.js` aur `doc_config.js` bhi yahan. Yeh fehrist se
+     chhoot jana purani bemari hai: V151 tak `module.js` aur
+     `module_config.js` isi tarah chhoote hue the, aur un mein kiya hua
+     har change deploy ke baad bhi purana hi chalta rehta tha (max-age
+     3600). Nayi file banate waqt YAHAN likhna lazmi hai. */
+  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|doc\.js|doc_config\.js|shell\.js)"/',
+                     '$1="/retail/$2?b=r6"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -339,8 +344,21 @@ if(!in_array($name,$publicPages,true) && $uiDir!=='approved_ui/retail'){
    nahi — do jagah se data bharne se dono ek doosre par likhte the. */
 // V70 — KDS ab asli kitchen_tickets par (pehle hardcoded demo orders the).
 if($name==='kds.html')$tail.='<script src="/kds_db.js?b=v70"></script>';
-// V70 — Shift / Running Orders / Void ab asli tables par (pehle ui_records).
-if(in_array($name,['shift_management.html','orders_management.html','void_refund.html',
+/* V70 — Shift / Running Orders / Void ab asli tables par (pehle ui_records).
+
+   V154 — `$uiDir!=='approved_ui/retail'` ki shart NAYI hai aur zaroori thi.
+   Kuch file ke naam dono verticals mein ek jaise hain: `stock_count.html`,
+   `purchase_orders.html`, `stock_transfer.html`, `accounting.html`. Yeh
+   fehrist sirf NAAM dekhti thi, vertical nahi — is liye supermarket ke
+   Stock Count aur Purchase Orders par bhi RESTAURANT ka `ops_db.js` inject
+   ho jata tha. Wo script apna content `.content` par likh deti hai, aur
+   chunke wo baad mein chalti hai, retail ka poora safha chup chaap mit
+   jata tha: screen par "Nothing to show yet" reh jata aur kahin koi error
+   nahi aata.
+
+   Restaurant ke liye kuch nahi badla — wahi sab screens, wahi script. */
+if($uiDir!=='approved_ui/retail' &&
+   in_array($name,['shift_management.html','orders_management.html','void_refund.html',
                    'stock_transfer.html','stock_count.html','accounting.html',
                    'closing_history.html','activity_log.html','purchase_orders.html','backup_restore.html',
                    'online_orders.html','whatsapp_notifications.html'],true))
@@ -353,4 +371,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V153 build 2026-10-12
+// build: V154 build 2026-10-13

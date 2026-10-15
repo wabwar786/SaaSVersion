@@ -161,9 +161,25 @@ final class RetailPos
 
                 /* Stock base unit mein girta hai. Stock zero se neeche bhi
                    ja sakta hai — counter par bill rok dena is se bara
-                   masla hai. Ghalti reports mein nazar aa jayegi. */
-                $pdo->prepare("UPDATE rtl_products SET stock_qty = stock_qty - ? WHERE id=? AND tenant_id=?")
-                    ->execute([$l['qty'], $l['product_id'], tenant_id()]);
+                   masla hai. Ghalti reports mein nazar aa jayegi.
+
+                   V154 — pehle yahan seedha
+                       UPDATE rtl_products SET stock_qty = stock_qty - ?
+                   likha tha. Jab tak sirf POS stock hilata tha, theek
+                   tha. Ab GRN, return, purchase return, count aur
+                   wastage bhi hilate hain — wahi hisaab chhe jagah
+                   likha jata aur chhe mein se ek kabhi na kabhi alag
+                   hoti. Ab har harkat `RetailStock` se guzarti hai aur
+                   `rtl_stock_moves` par apna nishan chhorti hai, is liye
+                   "yeh stock yahan se wahan kyun gaya" ka jawab mojood
+                   rehta hai. */
+                /* `cost` jaan boojh kar nahi bheja: RetailStock us waqt ka
+                   apna `cost_price` utha leta hai. Yahan khali value
+                   bhejne se har bill par cost 0 likhi jati aur margin ki
+                   report jhooti ho jati. */
+                RetailStock::move($pdo, $l['product_id'], -$l['qty'], RetailStock::SALE, [
+                    'table' => 'rtl_sales', 'id' => $saleId, 'no' => $billNo,
+                ]);
 
                 self::consumeBatches($pdo, $l['product_id'], $l['qty']);
             }
@@ -360,3 +376,5 @@ final class RetailPos
         });
     }
 }
+
+// build: V154 build 2026-10-13

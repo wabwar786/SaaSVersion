@@ -149,6 +149,88 @@ if ("$check" -notmatch 'APP_OK') {
   Read-Host 'Press Enter to close'; exit 1
 }
 
+# ---------- 3a) V155: KHALI DATABASE KA PEHRA ----------
+#
+# JO HUA: ek customer ka `aio_local` mojood tha magar us mein EK BHI
+# TABLE NAHI THI (nayi jagah par bana khali datadir - dekho
+# resolve_mariadb.ps1 ka V155 wala hissa). Launcher ne phir bhi server
+# chala diya. Login ne `users` par query ki aur php.exe gir gaya:
+#
+#     php.exe - The instruction at 0x... referenced memory at 0x0
+#     Login service error
+#
+# Customer ko is se yeh nazar aaya ke "saara data mit gaya" - halanke
+# data doosre folder mein salamat tha. Teen ghante is ki tafteesh mein
+# gaye.
+#
+# AB: server chalane se PEHLE dekha jata hai ke tables hain ya nahi.
+# Nahi hain to khamoshi se crash hone ke bajaye setup khud dobara chal
+# jata hai. Yeh scripts idempotent hain (`CREATE TABLE IF NOT EXISTS`),
+# is liye jo data mojood hai usay koi khatra nahi.
+Say 'Checking database tables...' 'Cyan'
+$schemaCode = "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); SealedApp::run('scripts/check_local_schema.php');"
+$schema = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni", '-r', $schemaCode)
+$schemaExit = $global:NativeExitCode
+
+if ($schemaExit -eq 20 -or $schemaExit -eq 21) {
+  Write-Host ''
+  if ($schemaExit -eq 20) {
+    Say 'This database has no tables yet. Setting it up now...' 'Yellow'
+  } else {
+    Say 'Some database tables are missing. Repairing now...' 'Yellow'
+    Say ("  " + ("$schema" -split "`r?`n" | Where-Object { $_ -match 'SCHEMA_' } | Select-Object -First 1)) 'DarkGray'
+  }
+  Say 'This runs only once and takes about a minute. Please wait.' 'DarkGray'
+
+  # Wohi fehrist jo INSTALL_OFFLINE.bat chalati hai, usi tarteeb mein.
+  $setupScripts = @(
+    'install_schema','migrate_platform','migrate_sync','migrate_bridge',
+    'migrate_menu_image','migrate_branding','migrate_qr_orders','migrate_devices',
+    'migrate_shifts','migrate_sync_columns','migrate_sync_log','migrate_delete_support',
+    'migrate_print_rule_default','migrate_fiscal','migrate_security','migrate_modules',
+    'migrate_selfservice','migrate_licence_key','seed_roles','migrate_role_scope',
+    'seed_platform_modules','migrate_module_ids','migrate_retail','migrate_retail_ops',
+    'seed_industry_modules','bootstrap_offline','ensure_default_admin'
+  )
+  $setupFailed = 0
+  foreach ($s in $setupScripts) {
+    $c = "require '$rootFwd/runtime/boot.php'; SealedApp::boot('$rootFwd'); SealedApp::run('scripts/$s.php');"
+    $o = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni", '-r', $c)
+    if ($global:NativeExitCode -ne 0) {
+      $setupFailed++
+      Say ("  Step failed: " + $s) 'DarkYellow'
+      ("$o" -split "`r?`n") | Where-Object { $_ -match '\S' } | Select-Object -First 2 |
+        ForEach-Object { Say ("    " + $_) 'DarkGray' }
+    }
+  }
+
+  # Dobara dekho - ab bhi khali ho to server chalana be-maani hai.
+  $schema = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni", '-r', $schemaCode)
+  if ($global:NativeExitCode -ne 0) {
+    Bad ''
+    Bad 'The database could not be set up, so the software will not start.'
+    Bad 'Starting it now would only show a login error and crash.'
+    Bad ''
+    ("$schema" -split "`r?`n") | Where-Object { $_ -match '\S' } | Select-Object -First 3 |
+      ForEach-Object { Bad ("  " + $_) }
+    Bad ''
+    Bad 'Please run INSTALL_OFFLINE.bat once, then start the software again.'
+    Bad 'If this keeps happening, contact Wabwar Software House: +92 342 5095104'
+    Read-Host 'Press Enter to close'; exit 1
+  }
+  Say 'Database is ready.' 'Green'
+} elseif ($schemaExit -ne 0) {
+  # Database se baat hi nahi ho rahi. Server chalane ka koi faida nahi -
+  # har safha isi ghalti par ruk jata.
+  Bad ''
+  Bad 'The software cannot reach its own database.'
+  ("$schema" -split "`r?`n") | Where-Object { $_ -match '\S' } | Select-Object -First 3 |
+    ForEach-Object { Bad ("  " + $_) }
+  Bad ''
+  Bad 'Please run INSTALL_OFFLINE.bat once, then start the software again.'
+  Read-Host 'Press Enter to close'; exit 1
+}
+
 # ---------- 3b) licence ----------
 # V149 — `licence_enforce.php` sirf `windows_bootstrap.ps1` (pehli
 # install) mein chalti thi. Yani expiry ke baad 30 din ka grace period
@@ -373,3 +455,5 @@ try { Wait-Process -Id $srv.Id } finally {
   if ($sync) { Stop-Process -Id $sync.Id -Force -ErrorAction SilentlyContinue }
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1" -StopServer | Out-Null
 }
+
+# build: V155 build 2026-10-15

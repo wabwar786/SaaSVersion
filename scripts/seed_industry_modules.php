@@ -36,7 +36,6 @@ $COMMON = [
     'po'         => 'Purchase Orders',
     'suppliers'  => 'Suppliers',
     'customers'  => 'Customers',
-    'transfer'   => 'Stock Transfer',
     'count'      => 'Physical Stock Count',
     'wastage'    => 'Wastage / Adjustment',
     'expenses'   => 'Expenses',
@@ -70,6 +69,12 @@ $RESTAURANT = [
     'tables'       => 'Tables & Floors',
     'orders'       => 'Running Orders',
     'online'       => 'Online Orders',
+    /* V154 — `transfer` pehle COMMON mein tha. Retail mein har branch
+       apna hisaab khud rakhti hai aur doosri branch se koi taalluq nahi,
+       is liye supermarket se Stock Transfer nikal diya gaya. Restaurant
+       ke liye jaisa tha waisa hi hai — bas ab wo RESTAURANT ki apni
+       fehrist mein hai, COMMON mein nahi. */
+    'transfer'     => 'Stock Transfer',
     'recipe'       => 'Recipe & Food Cost',
     'menu'         => 'Menu & Categories',
     'delivery'     => 'Delivery',
@@ -137,4 +142,4 @@ echo "  restaurant tenant sees: " . (int)$pdo->query(
 echo "  retail tenant sees:     " . (int)$pdo->query(
     "SELECT COUNT(*) FROM platform_modules WHERE is_active=1 AND industry_code IN('RETAIL','COMMON')")->fetchColumn() . "\n";
 
-// build: V149 build 2026-10-12
+// build: V154 build 2026-10-13
