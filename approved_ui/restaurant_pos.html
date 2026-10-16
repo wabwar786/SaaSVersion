@@ -1744,7 +1744,11 @@ $('#chargeBtn').onclick=function(){
        ============================================================ */
     printNode(slipNode('BILL',cart.slice(),info));
 
-    if(curHoldId){api('records-delete',{module:HOLD,id:curHoldId});curHoldId='';loadHolds();}
+    /* V156 — `records-delete` nikal di gayi. Hold ab khud wahi order hai;
+       `finalize` usay CLOSED kar deta hai, is liye wo hold list se khud
+       nikal jata hai. Purani line `ui_records` ki aisi row mitati thi jo
+       ab banti hi nahi — har bill par ek faltu server call. */
+    if(curHoldId){curHoldId='';loadHolds();}
   /* FBR chalu hai magar number nahi aaya — cashier ko abhi bata do,
      mahine ke aakhir mein nahi. */
   if(BOOT.fiscal&&BOOT.fiscal.enabled&&!(r.fbr_no||'')){
@@ -2095,15 +2099,35 @@ function cancelHold(h,done){
   };
 }
 
+/* ============================================================
+   V156 — HOLD AB ASLI ORDER MEIN JATA HAI.
+
+   YEH BUG THA:
+
+       likhai  ->  api('records-save', {module:'held_bills'})  ->  ui_records
+       parhai  ->  api('pos-holds') -> OpsService::holdBills()  ->  orders
+
+   V94 mein PARHAI ko asli `orders` par le jaya gaya tha (taake tablet
+   ka bheja hua bill counter par bhi nazar aaye), magar LIKHAI wahin
+   `ui_records` par reh gayi. Do alag daraazein.
+
+   Nateeja:
+     KOT bhej di  -> asli order banta  -> Hold Bills mein DIKHTA tha
+     KOT nahi     -> sirf ui_records   -> Hold Bills mein KABHI NAHI
+
+   Is liye cashier ko lagta tha ke bina KOT wale bill gayab ho gaye.
+
+   Ab hold wahi `pos-hold` use karta hai jo tablet use karta hai, aur
+   asli `orders` mein likhta hai. Resume (`pos-hold-open`) saari items
+   lauta deta hai — `sent_qty` ki parwah kiye baghair — is liye Hold
+   Bills se table khol kar wo items bhi aa jate hain jin ki KOT nahi
+   nikli thi. Resume aur cancel pehle se asli orders par thay; sirf
+   yeh aakhri sira juRna baqi tha.
+   ============================================================ */
 function holdCurrent(silent){
   if(!cart.length){if(!silent)toast('Your cart is empty');return false}
-  var t=totals();
-  var d={billNo:billNo,mode:mode,table:curTable,total:t.grand,lines:cart.length,
-    at:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-    cart:JSON.stringify(cart),cust:curCustId,custName:curCustName,custPhone:curCustPhone};
-  if(curHoldId)d.id=curHoldId;      /* wahi record update ho, naya na bane */
-  var r=api('records-save',{module:HOLD,data:d});
-  if(!r.ok){toast(r.message||'Hold failed');return false}
+  var r=api('pos-hold',payload());
+  if(!r||!r.ok){toast((r&&r.message)||'Hold failed');return false}
   loadHolds();newBill();
   if(!silent)toast('Bill put on hold');
   return true;
@@ -3106,4 +3130,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V155 build 2026-10-15 -->
+<!-- build: V156 build 2026-10-16 -->
