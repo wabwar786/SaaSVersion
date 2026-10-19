@@ -404,6 +404,7 @@ final class OpsService
         $p = DB::pdo();
         $q = $p->prepare(
             "SELECT o.id, o.bill_no, o.service_mode, o.tax_amount, o.discount_amount,
+                    COALESCE(o.discount_pct,0) AS discount_pct, o.service_charge,
                     COALESCE(dt.display_name,'') AS table_name,
                     COALESCE(c.id,'')   AS cust_id,
                     COALESCE(c.full_name,'') AS cust_name,
@@ -433,6 +434,15 @@ final class OpsService
             'cust'     => (string)($o['cust_id'] ?: 'walkin'),
             'custName' => (string)($o['cust_name'] ?: 'Walk-in Customer'),
             'custPhone'=> (string)$o['cust_phone'],
+            /* V157 — DISCOUNT BHI WAPAS.
+               Yeh teen qadar query mein PEHLE SE parhi ja rahi thin,
+               magar is array mein kabhi daali hi nahi gayin — is liye
+               bill unhold karte hi discount gayab ho jata tha aur poori
+               keemat wapas aa jati thi. `pct` isi liye alag hai ke
+               "10%" ko 10% hi rehna chahiye, flat raqam nahi. */
+            'discount'    => (float)($o['discount_amount'] ?? 0),
+            'discountPct' => (float)($o['discount_pct'] ?? 0),
+            'service'     => (float)($o['service_charge'] ?? 0),
             'items'    => array_map(fn($x) => [
                 'id'       => (string)$x['menu_item_id'],
                 'name'     => (string)$x['name'],
@@ -465,6 +475,12 @@ final class OpsService
                         COALESCE(dt.display_name,'') AS table_name,
                         COALESCE(o.grand_total,0) AS total,
                         COALESCE(c.full_name,'') AS customer,
+                        /* V157 — naam se nahi, ID se milaate hain. Do
+                           customers ka naam ek jaisa ho sakta hai; POS
+                           ko table/customer se bill dhoondna hai, aur
+                           wahan ghalti ka matlab doosre ka bill khulna
+                           hai. */
+                        COALESCE(c.id,'') AS cust_id,
                         COALESCE(u.full_name,'') AS taken_by,
                         COALESCE(o.opened_at, o.created_at) AS opened_at,
                         (SELECT COUNT(*) FROM order_items oi
@@ -491,6 +507,7 @@ final class OpsService
                 'mode'     => ucwords(strtolower($mode)),
                 'table'    => (string)$r['table_name'],
                 'customer' => (string)$r['customer'],
+                'custId'   => (string)($r['cust_id'] ?? ''),
                 'by'       => (string)$r['taken_by'],
                 'total'    => (float)$r['total'],
                 'lines'    => (int)$r['line_count'],

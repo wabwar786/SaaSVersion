@@ -93,6 +93,11 @@ return [
        return, count aur wastage chalte hain. Sirf nayi `rtl_*` tables —
        restaurant ki kisi table ko haath nahi lagta. */
     ['script' => 'migrate_retail_ops',    'optional' => true, 'stage' => 'background'],
+    /* V157 — do chhoti columns: `orders.discount_pct` (hold/unhold par
+       "10%" wapas aaye, raqam nahi) aur `customers.discount_pct`
+       (customer ka tay-shuda discount). Dono default 0, purani rows par
+       koi asar nahi. */
+    ['script' => 'migrate_discounts',     'optional' => true, 'stage' => 'background'],
     /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
        bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
        chalti thi — yani grace period khatam hone par kabhi kuch hota hi

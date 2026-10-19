@@ -225,8 +225,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
- ['href="/shared.css?b=v19"','src="/shared_store.js?b=v19"','src="/live_store.js?b=v19"','src="/access_store.js?b=v19"',
-  'src="/shell.js?b=v19"','src="/module.js?b=v19"','src="/module_config.js?b=v19"','src="/item_dialog.js?b=v19"','src="/stock_in.js?b=v19"'],
+ ['href="/shared.css?b=v20"','src="/shared_store.js?b=v20"','src="/live_store.js?b=v20"','src="/access_store.js?b=v20"',
+  'src="/shell.js?b=v20"','src="/module.js?b=v20"','src="/module_config.js?b=v20"','src="/item_dialog.js?b=v20"','src="/stock_in.js?b=v20"'],
  $html
 );
 }
@@ -335,7 +335,7 @@ if($name==='login.html')$tail.='<script src="/login_form_bridge.js?b=v14"></scri
 if(!in_array($name,$publicPages,true) && $uiDir!=='approved_ui/retail'){
   $tail.='<script src="/approved_auth_exact.js?b=v14"></script>';
   $tail.='<script src="/db_mirror_bridge.js?b=v15"></script>';
-  $tail.='<script src="/ui_action_modal.js?b=v14"></script>';
+  $tail.='<script src="/ui_action_modal.js?b=v15"></script>';
 }
 
 // restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.

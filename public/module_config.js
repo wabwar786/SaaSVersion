@@ -49,10 +49,16 @@ window.MODULE_CONFIGS={
     columns:[
       {label:'Customer',field:'name',sub:'phone'},{label:'Area',field:'area'},
       {label:'Orders',field:'orders',align:'num'},{label:'Total spent',field:'spent',format:'money',align:'num'},
-      {label:'Points',field:'points',align:'num'},{label:'Tier',field:'tier',format:'tag',tags:{Gold:'warn',Silver:'neutral',Bronze:'info'}}
+      {label:'Points',field:'points',align:'num'},{label:'Tier',field:'tier',format:'tag',tags:{Gold:'warn',Silver:'neutral',Bronze:'info'}},
+      /* V157 — customer ka tay-shuda discount. Fehrist mein isi liye
+         dikhta hai ke malik ek nazar mein dekh sake kis kis ko kitna
+         de rakha hai. */
+      {label:'Discount %',field:'discount',align:'num'}
     ],
     fields:[
       {key:'name',label:'Full name',type:'text',required:true,full:true},{key:'phone',label:'Phone',type:'tel',required:true},
+      /* V157 — yahan daalne se Add aur Edit dono form mein aa jata hai. */
+      {key:'discount',label:'Discount %',type:'number',default:0},
       {key:'area',label:'Area',type:'text'},{key:'orders',label:'Orders',type:'number',default:0},
       {key:'spent',label:'Total spent',type:'money',default:0},{key:'points',label:'Loyalty points',type:'number',default:0},
       {key:'tier',label:'Tier',type:'select',options:['Bronze','Silver','Gold'],default:'Bronze'}

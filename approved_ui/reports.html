@@ -212,7 +212,18 @@
   /* KPIs report ke apne totals se bante hain — koi alag hisab nahi,
      warna KPI aur table ka number alag ho jata aur bharosa khatam. */
   function kpis(rep){
-    var nums=rep.columns.filter(function(c){return c.n});
+    /* V157 — KPI sirf us column ka jis ka total WAQAI bheja gaya ho.
+       Pehle har numeric column ka tile ban jata tha, chahe `totals`
+       mein us ka naam hi na ho — aur tab us par "0" chhap jata tha.
+       "Current stock" par yeh saaf ghalat lagta hai: ON HAND 0 aur
+       AVG COST 0, jabke neeche table bhara hua hai. (Aur yeh dono
+       jamaa karna be-maani bhi hai: PCS, G aur ML ko jorna, ya alag
+       alag items ki cost ko jorna, kisi kaam ka number nahi deta.)
+       Purani reports apne har numeric column ka total bhejti hain, is
+       liye un par koi farq nahi parta. */
+    var nums=rep.columns.filter(function(c){
+      return c.n && rep.totals && rep.totals[c.k]!==undefined;
+    });
     if(!rep.totals||!nums.length){$('#repKpis').style.display='none';return}
     var pick=nums.slice(0,4);
     var tones=['','ok','info','warn'];

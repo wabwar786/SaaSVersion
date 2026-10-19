@@ -613,6 +613,7 @@ final class ModuleBridge
     {
         $q = DB::pdo()->prepare(
             "SELECT c.id, c.full_name name, c.phone, c.customer_type type, c.status,
+                    COALESCE(c.discount_pct,0) discount,
                     ca.address_text address, ca.area,
                     (SELECT COUNT(*) FROM orders o WHERE o.customer_id=c.id) orders,
                     (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o WHERE o.customer_id=c.id AND o.order_status='CLOSED') spend
@@ -625,6 +626,9 @@ final class ModuleBridge
         return array_map(fn($x) => [
             'id' => $x['id'], 'name' => $x['name'], 'phone' => $x['phone'] ?: '',
             'type' => ucfirst(strtolower((string)$x['type'] ?: 'Regular')),
+            /* V157 — customer ka tay-shuda discount. POS usay chunte hi
+               bill par lag jata hai (cashier phir bhi badal sakta hai). */
+            'discount' => (float)($x['discount'] ?? 0),
             'address' => $x['address'] ?: '', 'area' => $x['area'] ?: '',
             'orders' => (int)$x['orders'], 'spend' => (float)$x['spend'],
             'status' => 'Active',
@@ -637,13 +641,21 @@ final class ModuleBridge
         $name = trim((string)($d['name'] ?? ''));
         if ($name === '') throw new \RuntimeException('Customer name required');
         $type = strtoupper(trim((string)($d['type'] ?? 'REGULAR'))) ?: 'REGULAR';
+        /* V157 — customer ka tay-shuda discount %.
+           0 se 100 ke beech hi rehta hai: 0 se kam ka matlab bill barha
+           dena hoga, aur 100 se zyada ka matlab manfi bill. Dono soorat
+           mein hisaab ka koi matlab nahi banta, is liye yahin rok dete
+           hain — screen par bharosa nahi kiya ja sakta. */
+        $dp = (float)($d['discount'] ?? 0);
+        if ($dp < 0)   $dp = 0;
+        if ($dp > 100) $dp = 100;
         if ($id !== '') {
-            $p->prepare("UPDATE customers SET full_name=?, phone=?, customer_type=?, updated_at=NOW(6) WHERE id=? AND tenant_id=?")
-              ->execute([$name, $d['phone'] ?? '', $type, $id, tenant_id()]);
+            $p->prepare("UPDATE customers SET full_name=?, phone=?, customer_type=?, discount_pct=?, updated_at=NOW(6) WHERE id=? AND tenant_id=?")
+              ->execute([$name, $d['phone'] ?? '', $type, $dp, $id, tenant_id()]);
         } else {
             $id = uuid();
-            $p->prepare("INSERT INTO customers(id,tenant_id,full_name,phone,customer_type,status,created_at) VALUES(?,?,?,?,?,'ACTIVE',NOW(6))")
-              ->execute([$id, tenant_id(), $name, $d['phone'] ?? '', $type]);
+            $p->prepare("INSERT INTO customers(id,tenant_id,full_name,phone,customer_type,discount_pct,status,created_at) VALUES(?,?,?,?,?,?,'ACTIVE',NOW(6))")
+              ->execute([$id, tenant_id(), $name, $d['phone'] ?? '', $type, $dp]);
         }
         $addr = trim((string)($d['address'] ?? ''));
         if ($addr !== '') {

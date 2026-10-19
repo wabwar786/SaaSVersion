@@ -1451,6 +1451,44 @@ function newBillFlow(isEdit){
     billStarted=true;
     ov.remove();renderCtx();renderCart();
   }
+  /* ============================================================
+     V157 — TABLE / CUSTOMER KA APNA BILL.
+
+     Pehle table (ya customer) chunna sirf ek LABEL badalta tha:
+
+         curTable = t;  done();          // cart jaisa tha waisa
+
+     Yani Table 1 ka 10-item wala bill hold karne ke baad, New Bill se
+     dobara Table 1 chunne par KHALI bill khulta tha. Ruka hua bill
+     `holds` mein mojood hota tha — magar table chunte waqt usay dekha
+     hi nahi jata tha. Cashier ke liye wo bill gum ho jata.
+
+     Ab: chunte hi us table/customer ka ruka hua bill KHUD khul jata
+     hai. Koi sawal nahi — seedha.
+
+     "Shift / Change Table" (alag button) jaisa tha waisa hai; us ka
+     matlab hi yeh hai ke "yehi bill doosre table par le jao".
+     ============================================================ */
+  /* V157 — customer ka tay-shuda discount khud lag jaye.
+     Cashier ise baad mein badal bhi sakta hai aur hata bhi sakta hai —
+     yeh sirf shuruati qadar hai, taala nahi. Jis customer ka discount
+     0 ho, us par koi chhera-chhari nahi hoti: agar cashier ne pehle se
+     is bill par koi discount laga rakha hai to wo barqarar rehta hai. */
+  function applyCustomerDiscount(c){
+    var p=Number(c&&c.discount)||0;
+    if(p>0){ disc={type:'percent',value:p}; toast((c.name||'Customer')+' ka '+p+'% discount laga diya'); }
+  }
+  function openOrFresh(key, byCustomer, setFresh){
+    var h=null;
+    for(var i=0;i<holds.length;i++){
+      var x=holds[i];
+      var mine = byCustomer ? (String(x.custId||'')===String(key) && !x.table)
+                            : (String(x.table||'')===String(key));
+      if(mine){ h=x; break; }
+    }
+    if(h && resumeHold(h)){ ov.remove(); return; }
+    setFresh(); done();
+  }
   function step2(m){
     mode=m;
     var s2=ov.querySelector('#nbStep2'), s1=ov.querySelector('#nbStep1');
@@ -1461,7 +1499,11 @@ function newBillFlow(isEdit){
         +'<div style="margin-top:10px"><button class="tb" id="nbNewTable">+ New Table</button></div>';
       function bindT(){
         Array.prototype.forEach.call(s2.querySelectorAll('[data-t]'),function(b){b.onclick=function(){
-          curTable=this.dataset.t;curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';done()}});
+          var t=this.dataset.t;
+          openOrFresh(t,false,function(){
+            curTable=t;curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';
+          });
+        }});
       }
       bindT();
       s2.querySelector('#nbNewTable').onclick=function(){
@@ -1482,15 +1524,20 @@ function newBillFlow(isEdit){
         Array.prototype.forEach.call(s2.querySelectorAll('[data-c]'),function(b){b.onclick=function(){
           var id=b.dataset.c;
           var c=(BOOT.customers||[]).filter(function(x){return x.id===id})[0];
-          curCustId=id;curCustName=(c&&c.name)||'Customer';curCustPhone=(c&&c.phone)||'';curTable='';done();
+          openOrFresh(id,true,function(){
+            curCustId=id;curCustName=(c&&c.name)||'Customer';curCustPhone=(c&&c.phone)||'';curTable='';
+            applyCustomerDiscount(c);
+          });
         }});
       }
       bindC();
       s2.querySelector('#nbCq').oninput=function(){s2.querySelector('#nbCl').innerHTML=custList(this.value);bindC()};
       s2.querySelector('#nbWalkin').onclick=function(){curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';curTable='';done()};
       s2.querySelector('#nbNewCust').onclick=function(){
-        newCustomerModal(function(id,name,phone){
-          curCustId=id;curCustName=name;curCustPhone=phone;curTable='';done();
+        newCustomerModal(function(id,name,phone,dp){
+          curCustId=id;curCustName=name;curCustPhone=phone;curTable='';
+          applyCustomerDiscount({name:name,discount:dp});
+          done();
         });
       };
     }
@@ -1505,6 +1552,9 @@ function newCustomerModal(cb){
     +'<div class="full"><label class="f">Name *</label><input class="inp" id="ccName"></div>'
     +'<div><label class="f">Phone</label><input class="inp" id="ccPhone"></div>'
     +'<div><label class="f">Type</label><select class="inp" id="ccType"><option>Regular</option><option>VIP</option><option>Corporate</option></select></div>'
+    /* V157 — customer ka apna discount. Har bill par haath se lagana
+       aur bhool jana — yehi shikayat thi. */
+    +'<div><label class="f">Discount %</label><input class="inp" id="ccDisc" type="number" min="0" max="100" step="0.5" value="0"></div>'
     +'<div class="full"><label class="f">Address</label><input class="inp" id="ccAddr"></div>'
     +'<div class="full"><label class="f">Area</label><input class="inp" id="ccArea"></div>'
     +'</div></div><div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="ccSave">Save Customer</button></div>');
@@ -1514,12 +1564,14 @@ function newCustomerModal(cb){
     if(!n){toast('Customer name is required');return}
     this.disabled=true;this.textContent='Saving...';
     var ph=ov.querySelector('#ccPhone').value||'';
+    var dp=Number(ov.querySelector('#ccDisc').value||0)||0;
     var r=api('records-save',{module:'customers',data:{name:n,phone:ph,type:ov.querySelector('#ccType').value,
+      discount:dp,
       address:ov.querySelector('#ccAddr').value||'',area:ov.querySelector('#ccArea').value||''}});
     if(!r.ok){this.disabled=false;this.textContent='Save Customer';toast(r.message||'Save failed');return}
     var bb=api('pos-boot'); if(bb.ok)BOOT.customers=bb.boot.customers;
     ov.remove();toast(n+' added');
-    if(cb)cb(r.id,n,ph);
+    if(cb)cb(r.id,n,ph,dp);
   };
 }
 
@@ -1621,7 +1673,13 @@ function payload(extra){
   var t=totals();
   var d={bill_no:billNo,service_mode:mode,table_name:mode==='Dine In'?curTable:'',
     customer_id:curCustId||'walkin',customer_name:curCustName||'Walk-in Customer',customer_phone:curCustPhone||'',
-    shift_id:(shift&&shift.id)||'',discount_amount:t.disc,service_charge:t.svc,tax_amount:t.tax,tax_rate:orderTax,tax_mode:(SET.tax_mode||'INCLUSIVE'),
+    shift_id:(shift&&shift.id)||'',discount_amount:t.disc,
+    /* V157 — raqam ke saath PERCENT bhi. Server isay `orders.discount_pct`
+       par likhta hai, taake bill unhold karne par "10%" hi wapas aaye —
+       usi raqam ka flat discount nahi (items badal jayen to wo raqam
+       ghalat ho jati hai). Flat discount par yeh 0 jata hai. */
+    discount_pct:(disc.type==='percent'?Number(disc.value)||0:0),
+    service_charge:t.svc,tax_amount:t.tax,tax_rate:orderTax,tax_mode:(SET.tax_mode||'INCLUSIVE'),
     items:cart.map(function(l){return {menu_item_id:l.id,base_name:l.name,name:l.name,qty:l.qty,unit_price:l.price,sent_qty:l.sentQty,note:l.note||''}})};
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
@@ -2132,6 +2190,41 @@ function holdCurrent(silent){
   if(!silent)toast('Bill put on hold');
   return true;
 }
+
+/* ============================================================
+   V157 — RUKA HUA BILL WAPAS CART MEIN.
+
+   Yeh code pehle Hold Bills ke dialog ke andar likha tha. Ab ek hi
+   jagah hai, kyunke do darwaze is tak aate hain: Hold Bills ki
+   fehrist, aur table/customer chunna.
+
+   DISCOUNT WALA BUG YAHIN THA: `pos-hold-open` ka jawab discount
+   lata hi nahi tha (server us ko parh kar bhi array mein nahi daalta
+   tha), aur yeh code `disc` ko haath hi nahi lagata tha. Nateeja:
+   bill unhold karte hi discount gayab, poori keemat wapas.
+   ============================================================ */
+function resumeHold(h){
+  if(!h)return false;
+  var r=api('pos-hold-open&id='+encodeURIComponent(h.id));
+  if(!r||!r.ok){toast((r&&r.message)||'This bill could not be opened');return false}
+  curHoldId=h.id;
+  cart=(r.items||[]).map(function(x){
+    return {id:x.id,name:x.name,qty:x.qty,price:x.price,
+            sentQty:x.sentQty||0,note:x.note||''};
+  });
+  billNo=r.billNo;mode=r.mode||'Dine In';curTable=r.table||'';
+  curCustId=r.cust||'walkin';curCustName=r.custName||'Walk-in Customer';
+  curCustPhone=r.custPhone||'';
+  /* Percent ho to percent, warna flat raqam. Dono soorat mein cashier
+     usay baad mein badal bhi sakta hai — discount khud se nahi hatta. */
+  var dp=Number(r.discountPct)||0, da=Number(r.discount)||0;
+  disc = dp>0 ? {type:'percent',value:dp} : {type:'flat',value:da};
+  billStarted=true;
+  loadHolds();renderCtx();renderCart();
+  toast('Bill #'+billNo+' resumed'+(curTable?(' — '+curTable):'')
+        +((dp>0||da>0)?(' · discount '+(dp>0?(dp+'%'):money(da))+' barqarar'):''));
+  return true;
+}
 $('#holdsBtn').onclick=function(){
   loadHolds();
   var body=holds.length?holds.map(function(h,i){
@@ -2159,23 +2252,7 @@ $('#holdsBtn').onclick=function(){
     cancelHold(h,function(){ ov.remove(); loadHolds(); });
   }});
   Array.prototype.forEach.call(ov.querySelectorAll('[data-res]'),function(b){b.onclick=function(){
-    var h=holds[this.dataset.res];
-    /* V94 — items SERVER se. Pehle yahan `ui_records` mein rakha hua
-       cart JSON parha jata tha; asli order mein wo hai hi nahi, is liye
-       tablet ka bill kholne par cart khali aata. */
-    var r=api('pos-hold-open&id='+encodeURIComponent(h.id));
-    if(!r||!r.ok){toast((r&&r.message)||'This bill could not be opened');return}
-    curHoldId=h.id;
-    cart=(r.items||[]).map(function(x){
-      return {id:x.id,name:x.name,qty:x.qty,price:x.price,
-              sentQty:x.sentQty||0,note:x.note||''};
-    });
-    billNo=r.billNo;mode=r.mode||'Dine In';curTable=r.table||'';
-    curCustId=r.cust||'walkin';curCustName=r.custName||'Walk-in Customer';
-    curCustPhone=r.custPhone||'';
-    billStarted=true;
-    ov.remove();loadHolds();renderCart();
-    toast('Bill #'+billNo+' resumed'+(curTable?(' — '+curTable):''));
+    if(resumeHold(holds[this.dataset.res])) ov.remove();
   }});
 };
 $('#dupBtn').onclick=function(){
@@ -3130,4 +3207,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V156 build 2026-10-16 -->
+<!-- build: V157 build 2026-10-19 -->

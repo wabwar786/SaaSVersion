@@ -43,6 +43,12 @@ final class ReportService
             ['id' => 'staff_sales',     'group' => 'Operations','name' => 'Sales by cashier',         'desc' => 'Who took how much'],
             ['id' => 'table_sales',     'group' => 'Operations','name' => 'Sales by table',           'desc' => 'Table turnover and value'],
             ['id' => 'void_discount',   'group' => 'Operations','name' => 'Voids and discounts',      'desc' => 'Every voided bill and discount given'],
+            /* V157 — "abhi kitna stock hai" batane wali koi report thi hi
+               nahi. `low_stock` sirf wo items dikhati hai jin ka reorder
+               level set ho AUR wo us se neeche gir chuke hon;
+               `tracked_inventory` sirf tracked items. Poora godam, uski
+               ginti aur uski maliyat kahin nazar nahi aati thi. */
+            ['id' => 'stock_on_hand',   'group' => 'Inventory', 'name' => 'Current stock',            'desc' => 'Har item ka mojooda stock aur uski maliyat'],
             ['id' => 'stock_movement',  'group' => 'Inventory', 'name' => 'Stock movement',           'desc' => 'What came in and what went out'],
             ['id' => 'tracked_inventory','group' => 'Inventory', 'name' => 'Tracked inventory',        'desc' => 'Only the items you chose to watch closely'],
             ['id' => 'low_stock',       'group' => 'Inventory', 'name' => 'Low stock',                'desc' => 'Items at or below their minimum level'],
@@ -934,6 +940,45 @@ final class ReportService
             $rows, self::sum($rows, ['opening','added','sold','returned','adjusted','remaining']),
             $rows ? 'Only items marked as tracked appear here. Turn tracking on from Inventory.'
                   : 'No items are marked as tracked yet. Open Inventory and switch tracking on for the items you want to watch.');
+    }
+
+    /* ============================================================
+       V157 — CURRENT STOCK.
+
+       Stock ki halat ABHI ki hoti hai, is liye yeh report date range
+       par nahi chalti — bilkul `low_stock` ki tarah. Note se yeh baat
+       saaf rehti hai, warna customer tareekh badal kar hairan hota
+       hai ke number kyun nahi badla.
+
+       Maliyat `avg_cost_per_stock_unit` se nikalti hai — wohi weighted
+       average jo Stock In ke waqt banti hai. Is liye jin items ki cost
+       kabhi daali hi nahi gayi, un ki value 0 aayegi (aur yehi sach
+       hai — hamein un ki laagat maloom hi nahi).
+       ============================================================ */
+    private static function r_stock_on_hand(string $f, string $t): array
+    {
+        $rows = self::q(
+            "SELECT ii.name AS item, COALESCE(ic.name,'-') AS category,
+                    COALESCE(u.code,'') AS unit,
+                    COALESCE((SELECT SUM(sb.qty_on_hand) FROM stock_balances sb
+                               WHERE sb.inventory_item_id = ii.id AND sb.site_id = ?),0) AS on_hand,
+                    COALESCE(ii.avg_cost_per_stock_unit,0) AS cost,
+                    ROUND(COALESCE((SELECT SUM(sb.qty_on_hand) FROM stock_balances sb
+                               WHERE sb.inventory_item_id = ii.id AND sb.site_id = ?),0)
+                          * COALESCE(ii.avg_cost_per_stock_unit,0), 2) AS value
+               FROM inventory_items ii
+               LEFT JOIN inventory_categories ic ON ic.id = ii.category_id
+               LEFT JOIN units u ON u.id = ii.stock_unit_id
+              WHERE ii.site_id = ? AND ii.is_active = 1 AND ii.deleted_at IS NULL
+              ORDER BY ic.name, ii.name",
+            [site_id(), site_id(), site_id()]);
+
+        return self::shape('Current stock',
+            [['k'=>'item','l'=>'Item'],['k'=>'category','l'=>'Category'],['k'=>'unit','l'=>'Unit'],
+             ['k'=>'on_hand','l'=>'On hand','n'=>1],['k'=>'cost','l'=>'Avg cost','n'=>1],
+             ['k'=>'value','l'=>'Stock value','n'=>1]],
+            $rows, self::sum($rows, ['value']),
+            'This shows stock as it is right now, so the date range does not apply.');
     }
 
     private static function r_low_stock(string $f, string $t): array

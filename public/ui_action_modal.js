@@ -5,7 +5,12 @@
 
   const configs={
     'customers.html':[
-      ['name','Full Name','text'],['phone','Phone','text'],['type','Customer Type','select',['Regular','VIP','Corporate']]
+      /* V157 — `discount`: customer ka tay-shuda discount %. POS us ko
+         chunte hi bill par laga deta hai; cashier phir bhi badal sakta
+         hai. Add aur Edit dono isi fehrist se bante hain, is liye ek
+         hi jagah likhna kaafi hai. */
+      ['name','Full Name','text'],['phone','Phone','text'],['type','Customer Type','select',['Regular','VIP','Corporate']],
+      ['discount','Discount %','number']
     ],
     'suppliers.html':[
       ['name','Supplier Name','text'],['phone','Phone','text'],['email','Email','email']
