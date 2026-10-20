@@ -18,6 +18,10 @@ Cashier ki screen se alag soch par bani hai. Cashier ka sawal hai
 "abhi kya karna hai", malik ka sawal hai "aaj kitna BACHA" aur
 "kahan dhyan dena hai".
 
+PORTAL KI ZUBAAN ENGLISH HAI. Malik ki screen ka har lafz English
+mein hai — Today, Sales, Stock, Account, aur andar ke sab unwan. (Code
+ke comments Roman Urdu hi hain, jaise baqi software mein.)
+
 YEH SCREEN KUCH BADAL NAHI SAKTI. Na bill, na rate, na stock ki qty.
 Sirf ek cheez: kisi item par sitara (nazar mein rakhna). Malik apna
 phone kisi ko pakra de to bhi nuqsaan ka rasta nahi.
@@ -66,19 +70,19 @@ khud shamil ho jata aur yehi pehra bekar ho jata.
 ------------------------------------------------------------
  CHAAR SCREEN
 ------------------------------------------------------------
-AAJ
+TODAY
   Aaj ki sale, aur "kal IS WAQT TAK" se moqabla — poore kal se nahi.
   (Dopahar 2 baje aaj ki aadhi sale ko kal ke poore din se milana
   hamesha "kam" dikhata hai, chahe aaj behtar ja raha ho.)
   Saath: bills, average bill, discount, abhi kitne order chal rahe,
   paisa kahan se aaya, kis ghante kitna, aaj sab se ziada, kis ne
   kitna becha. Lagat aur kharcha darj hon to poora hisaab:
-  Sale − lagat − kharcha = BACHA.
+  Sales − food cost − expenses = LEFT.
 
-SALE
+SALES
   7 din / 30 din / saal. Rozana chart, dine-in vs takeaway vs
   delivery, category ka hissa, food cost %, void.
-  Aur SAB SE ZIADA NAFA dene wali cheezein — jo sab se ziada bikta
+  Aur "Best margins" — sab se ziada nafa dene wali cheezein — jo sab se ziada bikta
   hai zaroori nahi wohi sab se ziada deta ho. Lagat recipe se (ya
   seedhe jure hue inventory item se) nikalti hai; jis item ka koi
   rasta na ho us ka nafa nahi dikhaya jata — ghalat number se koi
@@ -89,7 +93,7 @@ STOCK — LIVE
   neeche ek baareek lakeer: reorder se kitna ooper ya neeche (sabz
   theek, ambar khatam honay ko). Jo neeche gir chuki hain wo khud
   ooper aa jati hain. Naam se dhoondiye.
-  Kisi cheez par tap: subah thi / aaj aaya / aaj laga / abhi hai.
+  Kisi cheez par tap: Opening / Received / Used / In stock.
 
   INVENTORY KA TRACK AB YAHAN SE. Sitara dabate hi wo cheez "Nazar
   mein" mein aa jati hai AUR raat ki closing parchi par bhi (wahi
@@ -113,10 +117,11 @@ ACCOUNT
   Chalu karne par baqi 42 modules band nahi hue                   PASS
   Sitara -> inventory_items.is_tracked 0 -> 1 -> 0                PASS
   Stock dhoondna ("chick" -> Boneless Chicken)                    PASS
-  Item ki tafseel: subah 2.4 KG, abhi 2.4 KG, maliyat 4,535       PASS
-  Arsa badalna 30 din -> 7 din (sirf Sale ka hissa aaya)          PASS
+  Item ki tafseel: Opening 2.4 KG, In stock 2.4 KG, Value 4,535   PASS
+  Arsa badalna "Last 30 days" -> "Last 7 days"                    PASS
   Unit ek hi paimane par (42.002 KG ke sath "aaya 0.005 KG")      PASS
-  Nafa ka hisaab: 2 x 42.57 = 85 lagat, 90 rate -> 5%             PASS
+  Margin ka hisaab: 2 x 42.57 = 85 cost, 90 price -> 5%           PASS
+  Chaaron screen par koi Roman Urdu lafz nahi bacha               PASS
 
   run_migrations --stage=all -> ok=42 skipped=0 failed=0
   Restaurant 43 screens -> 0 masla, 0 JS error

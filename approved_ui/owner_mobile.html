@@ -276,17 +276,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     <div class="sub" id="sSub">&mdash;</div>
     <div class="lines" id="sBody"></div>
     <div class="perf"></div>
-    <div class="keys"><div>Yeh sirf dikhane ke liye hai &mdash; stock yahan se badalta nahi.</div></div>
+    <div class="keys"><div>This view only shows stock &mdash; nothing changes from here.</div></div>
   </div>
 </div>
 
 <nav class="tabs">
   <button class="on" data-go="today">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
-         stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3.5l2.5 6 4-13 2.5 7H21"/></svg>Aaj</button>
+         stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3.5l2.5 6 4-13 2.5 7H21"/></svg>Today</button>
   <button data-go="sale">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
-         stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V11M12 20V4M19 20v-7"/></svg>Sale</button>
+         stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V11M12 20V4M19 20v-7"/></svg>Sales</button>
   <button data-go="stock">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
          stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l9-4.5 9 4.5-9 4.5-9-4.5z"/>
@@ -325,10 +325,10 @@ function api(action, payload, done){
   x.onload = function(){
     var j = null;
     try { j = JSON.parse(x.responseText); } catch(e){}
-    done(j || {ok:false, message:'Server ne jawab nahi diya'});
+    done(j || {ok:false, message:'The server did not answer'});
   };
   x.onerror = x.ontimeout = function(){
-    done({ok:false, message:'Internet nahi mil raha'});
+    done({ok:false, message:'No internet connection'});
   };
   x.send(payload ? JSON.stringify(payload) : null);
 }
@@ -343,7 +343,7 @@ function n0(v){ return Number(v||0).toLocaleString('en-US',{maximumFractionDigit
 function n2(v){ return Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2}); }
 /* Roman Urdu: ek "bika", ek se zyada "bike". Chhoti baat hai, magar
    "1 bike" parhne mein khatakti hai. */
-function sold(q){ return n2(q) + (Number(q) === 1 ? ' bika' : ' bike'); }
+function sold(q){ return n2(q) + (Number(q) === 1 ? ' sold' : ' sold'); }
 
 /* Bari raqam ko lakh mein — 12,46,000 parhne mein waqt lagta hai,
    "12.46 lakh" ek nazar mein samajh aa jata hai. */
@@ -359,11 +359,11 @@ function pctChange(now, was){
 }
 function trendLine(now, was, tail){
   var p = pctChange(now, was);
-  if (p === null) return '<div class="trend">' + tail + ' &mdash; pehle ka koi record nahi</div>';
+  if (p === null) return '<div class="trend">' + tail + ' &mdash; nothing to compare with yet</div>';
   var cls = p >= 0 ? 'up' : 'down';
   var sign = p >= 0 ? '+' : '';
   return '<div class="trend">' + tail + ' <b class="' + cls + '">' + sign + p + '%</b>'
-       + ' &mdash; ' + n0(was) + ' tha</div>';
+       + ' &mdash; was ' + n0(was) + '</div>';
 }
 function head(title, sub, amount, unit, trend){
   var a = big(amount);
@@ -389,7 +389,7 @@ function sect(title, hint, body){
    parhne mein mushkil ho jate hain, is liye teen hi. */
 function share(parts){
   var tot = parts.reduce(function(s,p){ return s + Number(p.v||0); }, 0);
-  if (tot <= 0) return '<p class="hint">Is arse mein kuch nahi.</p>';
+  if (tot <= 0) return '<p class="hint">Nothing in this period.</p>';
   return '<div class="share">' + parts.map(function(p){
       return '<i style="width:' + (p.v/tot*100).toFixed(1) + '%;background:' + p.c + '"></i>';
     }).join('') + '</div><div class="keys">' + parts.map(function(p){
@@ -418,10 +418,10 @@ function paintToday(){
   var sub = '<span class="pulse"><i></i>' + esc(B.biz.branch || B.biz.name) + '</span>';
 
   var chips = [
-    {n:'Chal rahe', v:L.running, c:'go'},
-    {n:'Kitchen mein', v:L.kitchen, c:'warn'},
+    {n:'Running', v:L.running, c:'go'},
+    {n:'In kitchen', v:L.kitchen, c:'warn'},
     {n:'Late', v:L.late, c:'hot'},
-    {n:'Table', v:L.busy + '/' + L.tables, c:'go'}
+    {n:'Tables', v:L.busy + '/' + L.tables, c:'go'}
   ].filter(function(c){ return c.n !== 'Late' || c.v > 0; });
 
   var vals = t.hours.map(function(h){ return h.a; });
@@ -429,16 +429,16 @@ function paintToday(){
   var peak = vals.indexOf(Math.max.apply(null, vals.concat([0])));
 
   var html = head(B.biz.name, sub, t.net, niceDate(t.date),
-                  trendLine(t.net, t.yest.net, 'Kal is waqt tak'))
+                  trendLine(t.net, t.yest.net, 'Yesterday by this time'))
     + '<div class="live">' + chips.map(function(c){
         return '<span class="' + c.c + '"><i></i>' + esc(c.n) + ' <b>' + esc(c.v) + '</b></span>';
       }).join('') + '</div>'
     + '<div class="sheet">'
     + '<div class="sect"><div class="pair">'
-    +   pairCell('Bills', n0(t.bills), 'kal ' + n0(t.yest.bills))
-    +   pairCell('Average bill', n0(t.avg), t.bills ? '' : 'koi bill nahi')
-    +   (t.guests ? pairCell('Mehmaan', n0(t.guests), 'kal ' + n0(t.yest.guests))
-                  : (t.disc > 0 ? pairCell('Discount diya', n0(t.disc), 'bills mein se') : ''))
+    +   pairCell('Bills', n0(t.bills), 'yesterday ' + n0(t.yest.bills))
+    +   pairCell('Average bill', n0(t.avg), t.bills ? '' : 'no bills yet')
+    +   (t.guests ? pairCell('Guests', n0(t.guests), 'yesterday ' + n0(t.yest.guests))
+                  : (t.disc > 0 ? pairCell('Discount given', n0(t.disc), 'off the bills') : ''))
     + '</div></div>';
 
   /* ============================================================
@@ -456,19 +456,19 @@ function paintToday(){
      tasalli dena hai.
      ============================================================ */
   if (t.cost > 0 || t.exp > 0){
-    html += sect('Aaj ka hisaab', 'Jo bana, us mein se jo gaya, aur jo bacha.',
+    html += sect('Money today', 'What came in, what went out, and what is left.',
       '<div class="lines">'
-      + ln('Sale', t.disc > 0 ? (n0(t.disc) + ' discount ke baad') : '', n0(t.net))
-      + (t.cost > 0 ? ln('Khaane ki lagat', 'sale ka ' + Math.round(t.cost/Math.max(t.net,1)*100) + '%',
+      + ln('Sales', t.disc > 0 ? ('after ' + n0(t.disc) + ' discount') : '', n0(t.net))
+      + (t.cost > 0 ? ln('Food cost', Math.round(t.cost/Math.max(t.net,1)*100) + '% of sales',
                          '&minus;' + n0(t.cost)) : '')
-      + (t.exp > 0 ? ln('Kharcha', '', '&minus;' + n0(t.exp)) : '')
-      + ln('Bacha', '', n0(t.left), '', 'total')
+      + (t.exp > 0 ? ln('Expenses', '', '&minus;' + n0(t.exp)) : '')
+      + ln('Left', '', n0(t.left), '', 'total')
       + '</div>');
   }
 
   /* Khali khana dikhane se behtar hai na dikhana. */
   if (p.cash + p.card + p.online > 0){
-    html += sect('Paisa kahan se aaya', '', share([
+    html += sect('How they paid', '', share([
         {n:'Cash', v:p.cash, c:'#1F7A4C'},
         {n:'Card', v:p.card, c:'#C8A24A'},
         {n:'Online', v:p.online, c:'#4A4336'}
@@ -478,20 +478,20 @@ function paintToday(){
   /* Do sutoon koi naqsha nahi hote — teen se kam par sirf jagah khate
      hain aur bara sutoon be-maani lagta hai. */
   if (vals.length >= 3){
-    html += sect('Kis ghante kitna',
-      'Sab se bhara waqt ' + labs[peak] + ' baje — ' + n0(vals[peak]) + '.',
+    html += sect('Busiest hours',
+      'Busiest at ' + labs[peak] + ' o\'clock — ' + n0(vals[peak]) + '.',
       bars(vals, labs, peak, vals.length - 1));
   }
 
   if (t.items.length){
-    html += sect('Aaj sab se ziada', '', '<div class="lines">' + t.items.map(function(i){
+    html += sect('Top sellers today', '', '<div class="lines">' + t.items.map(function(i){
       return ln(i.n, sold(i.q), n0(i.a),
                 Math.round(i.a / Math.max(t.net,1) * 100) + '%');
     }).join('') + '</div>');
   }
 
   if (t.staff.length > 1){
-    html += sect('Kis ne kitna becha', '', '<div class="lines">' + t.staff.map(function(s){
+    html += sect('Sales by cashier', '', '<div class="lines">' + t.staff.map(function(s){
       return ln(s.n, '', n0(s.a), n0(s.bills) + ' bills');
     }).join('') + '</div>');
   }
@@ -505,7 +505,7 @@ function pairCell(k, v, s){
 function niceDate(d){
   try{
     var x = new Date(d + 'T00:00:00');
-    return 'Aaj, ' + x.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
+    return 'Today, ' + x.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
   }catch(e){ return d; }
 }
 
@@ -524,26 +524,26 @@ function paintSale(){
   var peak = vals.indexOf(Math.max.apply(null, vals.concat([0])));
 
   var html = head('Sale', esc(B.biz.name), s.net,
-                  'Pichhle ' + s.days + ' din',
-                  trendLine(s.net, s.prev, 'Is se pehle ke ' + s.days + ' din'))
+                  'Last ' + s.days + ' days',
+                  trendLine(s.net, s.prev, 'The ' + s.days + ' days before that'))
     + '<div class="sheet" style="padding-top:22px">'
     + '<div class="when-pick">'
-    +   [[7,'7 din'],[30,'30 din'],[365,'Yeh saal']].map(function(o){
+    +   [[7,'7 days'],[30,'30 days'],[365,'This year']].map(function(o){
           return '<button data-days="' + o[0] + '"'
                + (o[0] === DAYS ? ' class="on"' : '') + '>' + o[1] + '</button>';
         }).join('')
     + '</div>';
 
   html += '<div class="sect"><div class="pair">'
-    + pairCell('Rozana', n0(s.perDay), s.days + ' din ka औsat'.replace('औ','au'))
+    + pairCell('Per day', n0(s.perDay), 'average over ' + s.days + ' days')
     + pairCell('Bills', n0(s.bills), '')
-    + pairCell('Food cost', s.costPct + '%', 'sale ka hissa')
+    + pairCell('Food cost', s.costPct + '%', 'of sales')
     + '</div></div>';
 
-  if (vals.length >= 3) html += sect('Rozana', '', bars(vals, labs, peak, -1));
+  if (vals.length >= 3) html += sect('Day by day', '', bars(vals, labs, peak, -1));
 
   if (m.dine + m.take + m.deliver > 0){
-    html += sect('Kis tarah bika', '', share([
+    html += sect('How it sold', '', share([
         {n:'Dine in', v:m.dine, c:'#17150F'},
         {n:'Takeaway', v:m.take, c:'#C8A24A'},
         {n:'Delivery', v:m.deliver, c:'#8A8275'}
@@ -551,26 +551,26 @@ function paintSale(){
   }
 
   if (s.cats.length){
-    html += sect('Category ka hissa', '', '<div class="lines">' + s.cats.map(function(c){
+    html += sect('By category', '', '<div class="lines">' + s.cats.map(function(c){
       return ln(c.n, sold(c.q), n0(c.a),
                 Math.round(c.a / Math.max(s.net,1) * 100) + '%');
     }).join('') + '</div>');
   }
 
   if (s.margin.length){
-    html += sect('Sab se ziada nafa',
-      'Jo sab se ziada bikta hai zaroori nahi wohi sab se ziada deta ho.',
+    html += sect('Best margins',
+      'The biggest seller is not always the biggest earner.',
       '<div class="lines">' + s.margin.map(function(x){
-        return ln(x.n, 'lagat ' + n0(x.cost) + ' · rate ' + n0(x.price),
-                  x.pct + '%', 'nafa');
+        return ln(x.n, 'cost ' + n0(x.cost) + ' · price ' + n0(x.price),
+                  x.pct + '%', 'margin');
       }).join('') + '</div>');
   }
 
   if (s.exp > 0 || s.void.n > 0){
     html += '<div class="sect"><div class="pair">'
-      + pairCell('Kharcha', n0(s.exp), s.days + ' din')
-      + pairCell('Lagat', n0(s.cost), 'khaane ki')
-      + (s.void.n ? pairCell('Void', n0(s.void.n), n0(s.void.a) + ' ka') : '')
+      + pairCell('Expenses', n0(s.exp), s.days + ' days')
+      + pairCell('Food cost', n0(s.cost), 'in money')
+      + (s.void.n ? pairCell('Void', n0(s.void.n), 'worth ' + n0(s.void.a)) : '')
       + '</div></div>';
   }
 
@@ -622,43 +622,50 @@ function paintStock(){
   var list = document.getElementById('stockList');
   if (list){     /* sirf dhoondne par — poora safha dobara banane ki zaroorat nahi */
     list.innerHTML = shown.length ? shown.map(stockRow).join('')
-      : '<div class="ln"><div class="nm"><span>Is naam ki koi cheez nahi mili.</span></div></div>';
+      : '<div class="ln"><div class="nm"><span>No item by that name.</span></div></div>';
     paintWatch();
     return;
   }
 
   var lowOnes = k.items.filter(function(it){ return levelOf(it) !== 'ok'; });
   var html = head('Stock',
-      '<span class="pulse"><i></i>Live</span> &nbsp;har bill ke sath badalta hai',
-      k.value, 'Abhi godaam mein',
-      '<div class="trend">' + n0(k.count) + ' cheezein'
-      + (k.low ? ' &mdash; <b class="down">' + n0(k.low) + '</b> khatam honay ko' : '') + '</div>')
+      '<span class="pulse"><i></i>Live</span> &nbsp;updates with every bill',
+      k.value, 'In stock right now',
+      '<div class="trend">' + n0(k.count) + ' items'
+      + (k.low ? ' &mdash; <b class="down">' + n0(k.low) + '</b> running low' : '') + '</div>')
     + '<div class="sheet" style="padding-top:22px">';
 
   if (lowOnes.length){
+    /* Ek hi cheez ho to us ka naam unwan mein hai — neeche dobara
+       likhna sirf shor hai. Zyada hon to unwan ginti deta hai aur
+       neeche naam aate hain. */
     html += '<div class="flag"><div><b>' + esc(lowOnes[0].n)
-      + (lowOnes.length > 1 ? ' aur ' + (lowOnes.length - 1) + ' aur cheez' : '')
-      + ' khatam honay ko hai</b><p>'
-      + esc(lowOnes.map(function(x){ return x.n + ' ' + n2(x.q) + ' ' + x.u; }).slice(0,3).join(', '))
-      + '. Reorder level se neeche.</p></div></div>';
+      + (lowOnes.length > 1 ? ' and ' + (lowOnes.length - 1) + ' more' : '')
+      + ' running low</b><p>'
+      + (lowOnes.length === 1
+          ? ('Only ' + n2(lowOnes[0].q) + ' ' + esc(lowOnes[0].u) + ' left, against a minimum of '
+             + n2(lowOnes[0].min) + ' ' + esc(lowOnes[0].u) + '.')
+          : (esc(lowOnes.map(function(x){ return x.n + ' ' + n2(x.q) + ' ' + x.u; })
+               .slice(0,3).join(', ')) + '. All below the reorder level.'))
+      + '</p></div></div>';
   }
 
   if (k.inVal > 0 || k.outVal > 0 || k.waste > 0){
     html += '<div class="sect"><div class="pair">'
-      + pairCell('Aaj aaya', n0(k.inVal), 'maliyat')
-      + pairCell('Aaj laga', n0(k.outVal), 'bills se')
-      + (k.waste > 0 ? pairCell('Zaya', n0(k.waste), '') : '')
+      + pairCell('Received today', n0(k.inVal), 'in money')
+      + pairCell('Used today', n0(k.outVal), 'from bills')
+      + (k.waste > 0 ? pairCell('Wasted', n0(k.waste), '') : '')
       + '</div></div>';
   }
 
-  html += '<div class="sect"><h2>Nazar mein</h2>'
-    + '<p class="hint">Jin cheezon par aap nishan lagate hain wo yahan rehti hain, '
-    + 'aur raat ki closing parchi par bhi.</p><div class="lines" id="watch"></div></div>'
-    + '<div class="sect"><h2>Har cheez, abhi</h2>'
+  html += '<div class="sect"><h2>On watch</h2>'
+    + '<p class="hint">Items you star stay here, and on the closing slip at night.'
+    + '</p><div class="lines" id="watch"></div></div>'
+    + '<div class="sect"><h2>Everything, right now</h2>'
     + '<div class="find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
     +   ' stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>'
     +   '<path d="M20 20l-3.5-3.5"/></svg>'
-    + '<input id="q" placeholder="Cheez ka naam dhoondein" autocomplete="off"></div>'
+    + '<input id="q" placeholder="Search an item" autocomplete="off"></div>'
     + '<div class="lines" id="stockList">' + shown.map(stockRow).join('') + '</div></div>';
 
   document.getElementById('p-stock').innerHTML = html + '</div>';
@@ -670,22 +677,22 @@ function paintWatch(){
   if (!box) return;
   var w = B.stock.items.filter(function(it){ return it.watch; });
   box.innerHTML = w.length ? w.map(stockRow).join('')
-    : '<div class="ln"><div class="nm"><span>Abhi koi cheez nazar mein nahi. '
-      + 'Neeche kisi bhi cheez par sitara dabayein.</span></div></div>';
+    : '<div class="ln"><div class="nm"><span>Nothing on watch yet. '
+      + 'Star any item below.</span></div></div>';
 }
 function openSlip(id){
   var it = null;
   B.stock.items.forEach(function(x){ if (x.id === id) it = x; });
   if (!it) return;
   document.getElementById('sName').textContent = it.n;
-  document.getElementById('sSub').textContent = (it.c || 'Stock') + ' — har bill ke sath live';
+  document.getElementById('sSub').textContent = (it.c || 'Stock') + ' — live with every bill';
   document.getElementById('sBody').innerHTML =
-      ln('Subah thi',  '', n2(it.open) + ' ' + it.u)
-    + ln('Aaj aaya',   '', (it.in  ? '+' + n2(it.in)  : '0') + ' ' + it.u)
-    + ln('Aaj laga',   '', (it.out ? '−' + n2(it.out) : '0') + ' ' + it.u)
-    + ln('Abhi hai',   '', n2(it.q) + ' ' + it.u, '', 'total')
-    + (it.min > 0 ? ln('Kam se kam', '', n2(it.min) + ' ' + it.u) : '')
-    + ln('Maliyat',    '', CUR + ' ' + n0(it.val));
+      ln('Opening',   '', n2(it.open) + ' ' + it.u)
+    + ln('Received',  '', (it.in  ? '+' + n2(it.in)  : '0') + ' ' + it.u)
+    + ln('Used',      '', (it.out ? '−' + n2(it.out) : '0') + ' ' + it.u)
+    + ln('In stock',  '', n2(it.q) + ' ' + it.u, '', 'total')
+    + (it.min > 0 ? ln('Minimum', '', n2(it.min) + ' ' + it.u) : '')
+    + ln('Value',     '', CUR + ' ' + n0(it.val));
   document.getElementById('slip').classList.add('on');
 }
 
@@ -696,31 +703,31 @@ function paintAcct(){
   var a = B.acct;
   var stuck = a.open.filter(function(o){ return o.days >= 1; });
 
-  var html = head('Account', 'Daraz, shift aur kharcha', a.drawer, 'Abhi daraz mein',
-      '<div class="trend">' + (a.open.length ? n0(a.open.length) + ' account khule hain' : 'Koi account khula nahi')
-      + (stuck.length ? ' &mdash; <b class="down">ek ' + stuck[0].days + ' din se</b>' : '') + '</div>')
+  var html = head('Account', 'Cash, shifts and expenses', a.drawer, 'Cash in the drawer',
+      '<div class="trend">' + (a.open.length ? n0(a.open.length) + ' account' + (a.open.length>1?'s':'') + ' open' : 'No account open')
+      + (stuck.length ? ' &mdash; <b class="down">one for ' + stuck[0].days + ' day' + (stuck[0].days>1?'s':'') + '</b>' : '') + '</div>')
     + '<div class="sheet" style="padding-top:22px">';
 
   if (stuck.length){
     html += '<div class="flag bad"><div><b>' + esc(stuck[0].who)
-      + ' ka account ' + stuck[0].days + ' din se khula hai</b>'
-      + '<p>' + esc(stuck[0].since) + ' se. Jab tak band nahi hota, us din ka hisaab '
-      + 'mukammal nahi hota.</p></div></div>';
+      + '&rsquo;s account has been open ' + stuck[0].days + ' day' + (stuck[0].days>1?'s':'') + '</b>'
+      + '<p>Since ' + esc(stuck[0].since) + '. Until it is closed, that day is not settled.'
+      + '</p></div></div>';
   }
 
   if (a.open.length){
-    html += sect('Khule account', '', '<div class="lines">' + a.open.map(function(o){
-      return ln(o.who, o.since + ' se · ' + n0(o.bills) + ' bills', n0(o.net),
-                o.days >= 1 ? (o.days + ' din') : 'aaj');
+    html += sect('Open accounts', '', '<div class="lines">' + a.open.map(function(o){
+      return ln(o.who, 'since ' + o.since + ' · ' + n0(o.bills) + ' bills', n0(o.net),
+                o.days >= 1 ? (o.days + ' day' + (o.days > 1 ? 's' : '')) : 'today');
     }).join('') + '</div>');
   }
 
   if (a.closed.length){
-    html += sect('Pichhli closing', 'Ginti aur hisaab ka farq — yahi batata hai kahan dhyan dena hai.',
+    html += sect('Recent closings', 'Counted against expected — this is where to look.',
       '<div class="lines">' + a.closed.map(function(c){
         var v = Number(c.var || 0);
         var col = v === 0 ? 'var(--ok)' : 'var(--bad)';
-        var tag = v === 0 ? 'poora mila' : (v > 0 ? n0(v) + ' zyada' : n0(-v) + ' kam');
+        var tag = v === 0 ? 'balanced' : (v > 0 ? n0(v) + ' over' : n0(-v) + ' short');
         return '<div class="ln"><div class="nm"><b>' + esc(c.who) + '</b>'
           + '<span>' + esc(c.when) + ' · ' + esc(c.span) + '</span></div>'
           + '<div class="amt" style="color:' + col + '">' + n0(c.net)
@@ -729,9 +736,9 @@ function paintAcct(){
   }
 
   if (a.exp.length){
-    html += sect('Aaj ka kharcha', '', '<div class="lines">' + a.exp.map(function(e){
+    html += sect('Expenses today', '', '<div class="lines">' + a.exp.map(function(e){
         return ln(e.n, e.at + (e.who ? ' · ' + e.who : ''), n0(e.a));
-      }).join('') + ln('Kul', '', n0(a.expTotal), '', 'total') + '</div>');
+      }).join('') + ln('Total', '', n0(a.expTotal), '', 'total') + '</div>');
   }
 
   document.getElementById('p-acct').innerHTML = html + '</div>';
@@ -747,17 +754,17 @@ function fail(msg){
       '<div class="ledger"><div class="sum"><div class="when">Owner</div>'
     + '<div class="amt" style="font-size:26px">&mdash;</div></div></div>'
     + '<div class="sheet" style="padding-top:22px"><div class="flag bad"><div>'
-    + '<b>Data nahi aaya</b><p>' + esc(msg) + '</p></div></div>'
+    + '<b>Could not load</b><p>' + esc(msg) + '</p></div></div>'
     + '<div class="sect"><button class="btn" id="again" style="font-size:14px;'
     + 'padding:11px 18px;border:1px solid var(--rule);border-radius:10px;'
-    + 'background:var(--paper-2)">Dobara koshish karein</button></div></div>';
+    + 'background:var(--paper-2)">Try again</button></div></div>';
   var b = document.getElementById('again');
   if (b) b.onclick = load;
 }
 
 function load(){
   api('owner-mobile-boot', null, function(r){
-    if (!r.ok){ fail(r.message || 'Server ne mana kar diya'); return; }
+    if (!r.ok){ fail(r.message || 'The server refused'); return; }
     B = r.boot;
     CUR = B.biz.cur || 'PKR';
     /* `document.title` yahan set NAHI karte: router pehle hi business ka

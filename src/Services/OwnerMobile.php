@@ -531,8 +531,11 @@ final class OwnerMobile
         foreach (self::q(
             /* `expenses` par koi `title` nahi — category ka naam asal
                pehchan hai ("Sabzi mandi", "Gas"), aur description us ki
-               tafseel. Dono na hon to kam se kam "Kharcha". */
-            "SELECT COALESCE(NULLIF(ec.name,''), NULLIF(e.description,''), 'Kharcha') label,
+               tafseel. Dono na hon to kam se kam "Expense".
+
+               Yeh lafz malik ki screen par chhapta hai, is liye English
+               mein — poora owner portal English hai. */
+            "SELECT COALESCE(NULLIF(ec.name,''), NULLIF(e.description,''), 'Expense') label,
                     e.amount, e.created_at, COALESCE(u.full_name,'—') who
                FROM expenses e
                LEFT JOIN expense_categories ec ON ec.id=e.category_id
