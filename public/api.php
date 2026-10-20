@@ -2414,12 +2414,25 @@ case 'menu-stock-setup':needLogin();
 
 case 'menu-categories':needLogin();
  /* Menu page aur POS dono ek hi fehrist par chalen — yehi wo jagah hai
-    jahan se dono lete hain. */
- $q=DB::pdo()->prepare("SELECT id,name FROM menu_categories
+    jahan se dono lete hain.
+    V158 — `sort_order` bhi: Menu screen par "Category order" ka dialog
+    isi se maujooda numbers parhta hai. */
+ $q=DB::pdo()->prepare("SELECT id,name,sort_order FROM menu_categories
                           WHERE site_id=? AND deleted_at IS NULL
                           ORDER BY sort_order,name");
  $q->execute([site_id()]);
  ok(['rows'=>$q->fetchAll()]);
+
+case 'menu-category-order':needLogin();
+ /* V158 — category ki tarteeb. Column pehle se thi, usay badalne ka
+    rasta nahi tha. Wahi ijazat jo category banane par lagti hai. */
+ try{Scope::requireManagement('changing the menu order');}catch(Throwable $e){fail($e->getMessage(),403);}
+ if(!Auth::isManager())fail('Only an Admin or Manager can change the menu order',403);
+ $d=body();$rows=isset($d['rows'])&&is_array($d['rows'])?$d['rows']:[];
+ if(!$rows)fail('Nothing to save');
+ try{$r=\Aio\Services\MenuItemService::saveCategoryOrder($rows);}catch(Throwable $e){fail($e->getMessage(),422);}
+ Audit::log('MENU_CATEGORY_ORDER','menu',['desc'=>'reordered '.$r['saved'].' categories']);
+ ok($r);
 
 case 'menu-category-create':needLogin();
  try{Scope::requireManagement('creating categories');}catch(Throwable $e){fail($e->getMessage(),403);}if(!Auth::isManager())fail('Only an Admin or Manager can create categories',403);$d=body();$name=trim((string)($d['name']??''));if($name==='')fail('Category name required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? AND deleted_at IS NULL LIMIT 1");$q->execute([site_id(),$name]);if($q->fetchColumn())fail('Category already exists');$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,icon_text,sort_order,is_active) VALUES(?,?,?,?,?,99,1)")->execute([$cid,tenant_id(),site_id(),$name,(string)($d['icon']??'•')]);$st=strtolower(trim((string)($d['printer']??'')));if($st!==''){$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND LOWER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$st]);if($pid=$pr->fetchColumn())$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,route_priority,print_rule,is_active) VALUES(?,?,?,?,?,1,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}ok(['id'=>$cid,'name'=>$name]);

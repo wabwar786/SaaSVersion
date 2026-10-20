@@ -51,23 +51,43 @@ final class PageData {
   $bq=$p->prepare("SELECT oi.item_name_snapshot name,SUM(oi.qty) qty,SUM(oi.line_total) sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED' GROUP BY oi.item_name_snapshot ORDER BY qty DESC LIMIT 8");$bq->execute([site_id(),$date]);$best=array_map(fn($x)=>['name'=>$x['name'],'qty'=>(float)$x['qty'],'sales'=>(float)$x['sales'],'cost'=>0],$bq->fetchAll());
   return array_merge(['netSales'=>(float)$a['s'],'grossSales'=>(float)$a['gross'],'orders'=>(int)$a['c'],'runningOrders'=>$running,'preparing'=>$preparing,'ready'=>$ready,'delayed'=>$delayed,'onlineNew'=>$online,'ridersRoad'=>$riders,'occupiedTables'=>$occ,'totalTables'=>$tables,'expenses'=>$expenses,'foodCost'=>$food,'shift'=>$shift['shift_no'],'openingCash'=>(float)$shift['opening_cash'],'best'=>$best,'hourly'=>$hourly,'updatedAt'=>date(DATE_ATOM)],$pay,$mix); }
  public static function posBoot(): array { $p=DB::pdo();$date=today();
-  $q=$p->prepare("SELECT mi.id,mi.name,mi.description,mi.item_type,mi.base_price,mi.image_url,mc.name category,(SELECT COUNT(*) FROM menu_item_variants v WHERE v.menu_item_id=mi.id AND v.is_active=1) variants FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id=mi.category_id WHERE mi.site_id=? AND mi.is_active=1 AND mi.is_pos=1 AND mi.deleted_at IS NULL ORDER BY COALESCE(mc.sort_order,999),mi.name");$q->execute([site_id()]);/* PERF: pehle har product par 3 alag queries chalti thin (20 items = 60 queries).
-   Ab teeno windows ek hi grouped query se aati hain. */
-  $rows=$q->fetchAll();
-  $today=$date; $yest=date('Y-m-d',strtotime('-1 day',strtotime($date))); $wk=date('Y-m-d',strtotime('-6 day',strtotime($date)));
-  $agg=[];
-  if($rows){
-    $sq=$p->prepare("SELECT oi.menu_item_id mid,
-        COALESCE(SUM(CASE WHEN o.business_date=? THEN oi.qty ELSE 0 END),0) d0,
-        COALESCE(SUM(CASE WHEN o.business_date=? THEN oi.qty ELSE 0 END),0) d1,
-        COALESCE(SUM(oi.qty),0) d7
-      FROM order_items oi JOIN orders o ON o.id=oi.order_id
-      WHERE o.site_id=? AND o.order_status='CLOSED' AND o.business_date BETWEEN ? AND ?
-      GROUP BY oi.menu_item_id");
-    $sq->execute([$today,$yest,site_id(),$wk,$today]);
-    foreach($sq->fetchAll() as $a){$agg[$a['mid']]=[(float)$a['d0'],(float)$a['d1'],(float)$a['d7']];}
+  /* ============================================================
+     V158 — DO BADLAV IS QUERY MEIN.
+
+     1) TARTEEB AB RESTAURANT KI MARZI SE.
+        Pehle: ORDER BY category ki tarteeb, phir ITEM KA NAAM.
+        Yani POS par items alphabet par lagte thay. Jo cheez sab se
+        zyada bikti hai usay pehle laane ka koi rasta nahi tha.
+        Ab `mi.sort_order` (Menu screen par "Order" ka khana) beech
+        mein aa gaya hai; barabar number waale phir naam par.
+
+        `mi.sort_order` nayi column hai (migrate_menu_sort). Migration
+        background stage mein chalti hai, is liye ek aadh deploy par
+        column se pehle yeh query chal sakti hai — tab POS KHULNA hi
+        band ho jata. Is liye ek dafa pooch lete hain, aur jawab
+        static mein rakh lete hain (per-request ek hi dafa).
+
+     2) BIN-ISTEMAAL AGGREGATE NIKAL DIYA.
+        Yahan ek GROUP BY query thi jo har item ka aaj / kal / 7 din
+        ka bika hua qty nikalti thi (today/yesterday/days7). POS par
+        us ka ek hi khareedar tha: "Best Selling" ka dropdown — jo
+        kabhi WIRE hi nahi hua (us select par koi handler nahi tha).
+        Yani har bill ki screen par ek poori order_items JOIN orders
+        query be-wajah chalti thi. Dono cheezein khatam.
+     ============================================================ */
+  static $hasItemSort=null;
+  if($hasItemSort===null){
+    try{
+      $cq=$p->prepare("SELECT COUNT(*) FROM information_schema.columns
+                        WHERE table_schema=DATABASE() AND table_name='menu_items'
+                          AND column_name='sort_order'");
+      $cq->execute();$hasItemSort=(bool)$cq->fetchColumn();
+    }catch(\Throwable $e){$hasItemSort=false;}
   }
-  $products=[];$i=0;foreach($rows as $x){$stats=$agg[$x['id']]??[0,0,0];$products[]=['id'=>$x['id'],'name'=>$x['name'],'cat'=>$x['category']?:'General','price'=>(float)$x['base_price'],'weighted'=>$x['item_type']==='WEIGHTED','unit'=>$x['item_type']==='WEIGHTED'?'KG':'','pizza'=>($x['category']??'')==='Pizza'||(int)$x['variants']>0,'desc'=>$x['description']??'','img'=>($x['image_url']?:('assets/menu_'.str_pad((string)(($i%12)+1),2,'0',STR_PAD_LEFT).'.jpg')),'today'=>$stats[0],'yesterday'=>$stats[1],'days7'=>$stats[2],'variants'=>[]];$i++;}
+  $itemOrder=$hasItemSort?'mi.sort_order,':'';
+  $q=$p->prepare("SELECT mi.id,mi.name,mi.description,mi.item_type,mi.base_price,mi.image_url,mc.name category,(SELECT COUNT(*) FROM menu_item_variants v WHERE v.menu_item_id=mi.id AND v.is_active=1) variants FROM menu_items mi LEFT JOIN menu_categories mc ON mc.id=mi.category_id WHERE mi.site_id=? AND mi.is_active=1 AND mi.is_pos=1 AND mi.deleted_at IS NULL ORDER BY COALESCE(mc.sort_order,999),mc.name,$itemOrder mi.name");$q->execute([site_id()]);
+  $rows=$q->fetchAll();
+  $products=[];$i=0;foreach($rows as $x){$products[]=['id'=>$x['id'],'name'=>$x['name'],'cat'=>$x['category']?:'General','price'=>(float)$x['base_price'],'weighted'=>$x['item_type']==='WEIGHTED','unit'=>$x['item_type']==='WEIGHTED'?'KG':'','pizza'=>($x['category']??'')==='Pizza'||(int)$x['variants']>0,'desc'=>$x['description']??'','img'=>($x['image_url']?:('assets/menu_'.str_pad((string)(($i%12)+1),2,'0',STR_PAD_LEFT).'.jpg')),'variants'=>[]];$i++;}
   if($products){$vq=$p->prepare("SELECT menu_item_id,name,price FROM menu_item_variants WHERE site_id=? AND is_active=1 ORDER BY sort_order");$vq->execute([site_id()]);$vmap=[];foreach($vq->fetchAll() as $v){$vmap[$v['menu_item_id']][]=['name'=>$v['name'],'price'=>(float)$v['price']];}foreach($products as &$pp){if(!empty($vmap[$pp['id']])){$pp['variants']=$vmap[$pp['id']];$pp['pizza']=true;}}unset($pp);}
   $pr=$p->prepare("SELECT p.id,p.name,p.station_code FROM printers p WHERE p.site_id=? AND p.is_active=1 AND p.printer_type='KITCHEN'");$pr->execute([site_id()]);$printers=[];foreach($pr->fetchAll() as $x){$key=strtolower($x['station_code']?:'main');$printers[$key]=['id'=>$x['id'],'name'=>$x['name'],'station'=>$x['station_code']?:'Kitchen'];}
   $mc=$p->prepare("SELECT mc.id,mc.name,COALESCE(LOWER(NULLIF(p.station_code,'')),'main') printer FROM menu_categories mc LEFT JOIN menu_category_printer_routes r ON r.category_id=mc.id AND r.is_active=1 AND r.is_primary=1 LEFT JOIN printers p ON p.id=r.printer_id WHERE mc.site_id=? AND mc.deleted_at IS NULL ORDER BY mc.sort_order");$mc->execute([site_id()]);/* `id` bhi — delete ke liye naam se dhoondna parta tha. */
@@ -115,7 +135,13 @@ final class PageData {
                      LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id
                      LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id
                     ORDER BY o.closed_at DESC");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
-  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
+  /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
+     Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
+     hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par
+     "kya version chal raha hai?" ka jawab GHALAT milta tha. Ab `VERSION`
+     file se seedha aata hai. */
+  $build=trim((string)@file_get_contents(\dirname(__DIR__,2).'/VERSION'));
+  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'build'=>$build,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
  /** Har node ka apna bill prefix (offline package config se; cloud par khali).
   *  Is ke baghair offline aur online dono aaj ke din 0001 banate the aur
   *  cloud par unique (site,date,bill_no) takra kar ek doosre ko mita dete the. */

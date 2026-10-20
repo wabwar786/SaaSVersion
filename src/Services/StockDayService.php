@@ -51,7 +51,24 @@ final class StockDayService
         $rate = (float)($d['rate'] ?? 0);
         $note = trim((string)($d['note'] ?? ''));
 
-        if ($qty <= 0) throw new \RuntimeException('Quantity must be more than zero');
+        /* ============================================================
+           V158 — MANFI (negative) QTY BHI QUBOOL.
+
+           Pehle yahan `if ($qty <= 0) throw` tha. Masla yeh tha: galti
+           se zyada stock daal diya jaye to usay theek karne ka koi
+           rasta hi nahi bachta tha — na edit, na ghatane ka zariya.
+           Store keeper ko ya to ghalat number ke saath jeena parta, ya
+           koi jhooti "wastage" daalni parti (jo report ko aur kharab
+           karti).
+
+           Ab manfi qty chalti hai, magar us ka transaction type
+           `PURCHASE` NAHI — `ADJUSTMENT` hai. Warna "Purchases" report
+           mein ek manfi kharidari nazar aati, jo kabhi hui hi nahi.
+
+           Sifar phir bhi mana hai: us se kuch hota hi nahi, sirf ek
+           khali entry ledger mein par jati.
+           ============================================================ */
+        if ($qty == 0.0) throw new \RuntimeException('Quantity cannot be zero');
 
         $iq = $p->prepare("SELECT id,name,avg_cost_per_stock_unit FROM inventory_items
                             WHERE id=? AND site_id=? AND deleted_at IS NULL");
@@ -65,10 +82,16 @@ final class StockDayService
 
         $loc = self::location($p, (string)($d['location_id'] ?? ''));
 
-        $tx = DB::tx(function (PDO $p) use ($item, $loc, $qty, $rate, $note) {
+        /* Barhao = kharidari. Ghatao = durusti (correction), kharidari
+           nahi — warna "Purchases" report mein manfi kharidari chhap
+           jaye jo hui hi nahi. Note bhi khud likh dete hain taake
+           ledger mein wajah nazar aaye. */
+        $type = $qty > 0 ? 'PURCHASE' : 'ADJUSTMENT';
+        $memo = $note !== '' ? $note : ($qty > 0 ? 'Stock In' : 'Stock correction');
+
+        $tx = DB::tx(function (PDO $p) use ($item, $loc, $qty, $rate, $type, $memo) {
             return InventoryService::postMovement(
-                $p, 'PURCHASE', 'STOCK_IN', null,
-                $note !== '' ? $note : 'Stock In',
+                $p, $type, 'STOCK_IN', null, $memo,
                 [(object)['item_id' => $item, 'location_id' => $loc,
                           'qty' => $qty, 'unit_cost' => $rate, 'source_order_item_id' => null]],
                 current_user()['id'] ?? null

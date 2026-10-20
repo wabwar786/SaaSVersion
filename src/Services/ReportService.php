@@ -49,6 +49,7 @@ final class ReportService
                `tracked_inventory` sirf tracked items. Poora godam, uski
                ginti aur uski maliyat kahin nazar nahi aati thi. */
             ['id' => 'stock_on_hand',   'group' => 'Inventory', 'name' => 'Current stock',            'desc' => 'Har item ka mojooda stock aur uski maliyat'],
+            ['id' => 'stock_ledger',    'group' => 'Inventory', 'name' => 'Opening / closing stock',  'desc' => 'Opening, aaj ki kharidari, aaj ki sale, closing aur current'],
             ['id' => 'stock_movement',  'group' => 'Inventory', 'name' => 'Stock movement',           'desc' => 'What came in and what went out'],
             ['id' => 'tracked_inventory','group' => 'Inventory', 'name' => 'Tracked inventory',        'desc' => 'Only the items you chose to watch closely'],
             ['id' => 'low_stock',       'group' => 'Inventory', 'name' => 'Low stock',                'desc' => 'Items at or below their minimum level'],
@@ -979,6 +980,110 @@ final class ReportService
              ['k'=>'value','l'=>'Stock value','n'=>1]],
             $rows, self::sum($rows, ['value']),
             'This shows stock as it is right now, so the date range does not apply.');
+    }
+
+    /* ============================================================
+       V158 — OPENING / CLOSING STOCK.
+
+       HISAAB KA TAREEQA — yeh samajhna zaroori hai:
+
+         Current  = abhi jo stock_balances par para hai
+         Closing  = Current minus wo har harkat jo `to` ke BAAD hui
+         Opening  = Closing minus (jo arse mein aaya) plus (jo gaya)
+
+       Yani hum PEECHE KI TARAF ginte hain, kyunke sirf mojooda balance
+       hi yaqeeni hai — `stock_balances` wohi ek jagah hai jise
+       `postMovement` hamesha update karta hai. Agar opening ko kisi
+       alag "snapshot" table se nikalte to wo aur mojooda balance kabhi
+       na kabhi alag ho jate, aur phir pata hi na chalta ke kaun sa
+       sach hai.
+
+       `Purchased` = arse ke andar jo bhi stock BARHA (Stock In, GRN,
+       opening entry, transfer in, wapsi). `Sold` = jo bill ke zariye
+       gaya (`reference_type='ORDER'`).
+
+       EK BAAT SAAF REHNI CHAHIYE: wastage, stock count aur transfer
+       bhi stock hilate hain, magar un ka apna column yahan nahi hai
+       (aap ne nahi manga). Is liye jis din wastage ya count hui ho,
+       us din `Opening + Purchased - Sold` aur `Closing` barabar nahi
+       honge — farq wahi wastage/count hai. CLOSING hamesha ASAL stock
+       hai; note mein yeh likha bhi aata hai. Column chahiye ho to
+       bata dijiye ga, ek line ka kaam hai.
+       ============================================================ */
+    private static function r_stock_ledger(string $f, string $t): array
+    {
+        $start = $f . ' 00:00:00';
+        $end   = $t . ' 23:59:59';
+        $sid   = site_id();
+
+        $rows = self::q(
+            "SELECT ii.name AS item, COALESCE(u.code,'') AS unit,
+                    /* abhi ka stock */
+                    COALESCE((SELECT SUM(sb.qty_on_hand) FROM stock_balances sb
+                               WHERE sb.inventory_item_id=ii.id AND sb.site_id=?),0) AS current_qty,
+                    /* arse ke andar aaya */
+                    COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                               JOIN stock_transactions st ON st.id=stl.stock_transaction_id
+                              WHERE stl.inventory_item_id=ii.id AND st.site_id=?
+                                AND st.posted_at BETWEEN ? AND ? AND stl.qty_change>0),0) AS purchased,
+                    /* arse ke andar bill se gaya */
+                    COALESCE((SELECT -SUM(stl.qty_change) FROM stock_transaction_lines stl
+                               JOIN stock_transactions st ON st.id=stl.stock_transaction_id
+                              WHERE stl.inventory_item_id=ii.id AND st.site_id=?
+                                AND st.posted_at BETWEEN ? AND ? AND stl.qty_change<0
+                                AND st.reference_type='ORDER'),0) AS sold,
+                    /* arse ke andar ki KUL harkat (opening peeche ginne ke liye) */
+                    COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                               JOIN stock_transactions st ON st.id=stl.stock_transaction_id
+                              WHERE stl.inventory_item_id=ii.id AND st.site_id=?
+                                AND st.posted_at BETWEEN ? AND ?),0) AS net_in_period,
+                    /* `to` ke BAAD ki harkat (closing nikalne ke liye) */
+                    COALESCE((SELECT SUM(stl.qty_change) FROM stock_transaction_lines stl
+                               JOIN stock_transactions st ON st.id=stl.stock_transaction_id
+                              WHERE stl.inventory_item_id=ii.id AND st.site_id=?
+                                AND st.posted_at > ?),0) AS net_after
+               FROM inventory_items ii
+               LEFT JOIN units u ON u.id=ii.stock_unit_id
+              WHERE ii.site_id=? AND ii.is_active=1 AND ii.deleted_at IS NULL
+              ORDER BY ii.name",
+            [$sid, $sid,$start,$end, $sid,$start,$end, $sid,$start,$end, $sid,$end, $sid]);
+
+        $out = [];
+        foreach ($rows as $r) {
+            $current = (float)$r['current_qty'];
+            $closing = $current - (float)$r['net_after'];
+            $opening = $closing - (float)$r['net_in_period'];
+            $out[] = [
+                'item'     => $r['item'],
+                'unit'     => $r['unit'],
+                'opening'  => round($opening, 3),
+                'purchased'=> round((float)$r['purchased'], 3),
+                'sold'     => round((float)$r['sold'], 3),
+                'closing'  => round($closing, 3),
+                'current'  => round($current, 3),
+            ];
+        }
+
+        return self::shape('Opening / closing stock',
+            [['k'=>'item','l'=>'Item'],['k'=>'unit','l'=>'Unit'],
+             ['k'=>'opening','l'=>'Opening','n'=>1],['k'=>'purchased','l'=>'Purchased','n'=>1],
+             ['k'=>'sold','l'=>'Sold','n'=>1],['k'=>'closing','l'=>'Closing','n'=>1],
+             ['k'=>'current','l'=>'Current stock','n'=>1]],
+            /* ============================================================
+               TOTALS JAAN BOOJH KAR KHALI.
+
+               V157 mein "Current stock" par yehi sabaq mila tha: KPI
+               tile har numeric column ka ban jata hai, aur yahan PCS,
+               G aur ML ek sath jamaa ho kar "1.3L Purchased" jaisa
+               be-maani aankra bana dete hain. 42,005 gram chawal aur
+               106 bun ko jorna kis kaam ka?
+
+               Har item ki apni line poori maloomat deti hai; neeche
+               jama karne ki zaroorat hai hi nahi. */
+            $out, [],
+            'Closing hamesha asal stock hai. Wastage, stock count ya manfi stock-in '
+            .'(durusti) waale din Opening + Purchased - Sold us se thora alag ho sakta hai '
+            .'- farq wahi wastage/count/durusti hota hai.');
     }
 
     private static function r_low_stock(string $f, string $t): array

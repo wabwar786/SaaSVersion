@@ -98,6 +98,12 @@ return [
        (customer ka tay-shuda discount). Dono default 0, purani rows par
        koi asar nahi. */
     ['script' => 'migrate_discounts',     'optional' => true, 'stage' => 'background'],
+    /* V158 — `menu_items.sort_order`, taake POS par tarteeb restaurant
+       ki marzi se ho (naam ke alphabet se nahi). Saath hi jin sites ne
+       category ki tarteeb kabhi set nahi ki, un ki categories ko
+       1,2,3... de deta hai — nazar aane wali tarteeb badalti nahi, bas
+       screen par badalne ke qabil ho jati hai. */
+    ['script' => 'migrate_menu_sort',     'optional' => true, 'stage' => 'background'],
     /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
        bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
        chalti thi — yani grace period khatam hone par kabhi kuch hota hi

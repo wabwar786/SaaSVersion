@@ -57,8 +57,14 @@ final class MenuItemService
        ------------------------------------------------------------ */
     public static function listItems(): array
     {
+        /* V158 — tarteeb ka number list mein bhi (Menu screen par item
+           ke naam ke saath "#3" nazar aata hai), aur ORDER BY mein bhi:
+           screen par wahi tarteeb jo Sale Point par hai. `sort_order`
+           nayi column hai, is liye dono jagah pehre ke saath. */
+        $hasSort = self::hasSortColumn(DB::pdo());
         $q = DB::pdo()->prepare(
             "SELECT mi.id, mi.name, mi.base_price price, mi.item_type,
+                    " . ($hasSort ? 'mi.sort_order,' : '') . "
                     mi.is_active, mi.consumption_type,
                     mi.direct_inventory_item_id, mi.direct_inventory_qty,
                     mc.id category_id, mc.name category,
@@ -72,7 +78,9 @@ final class MenuItemService
                LEFT JOIN inventory_items  ii ON ii.id = mi.direct_inventory_item_id
                LEFT JOIN recipes r ON r.menu_item_id = mi.id AND r.is_current = 1
               WHERE mi.site_id = ? AND mi.deleted_at IS NULL
-              ORDER BY mc.name, mi.name"
+              ORDER BY COALESCE(mc.sort_order,999), mc.name, "
+            . ($hasSort ? 'mi.sort_order, ' : '')
+            . "mi.name"
         );
         $q->execute([site_id()]);
 
@@ -90,6 +98,7 @@ final class MenuItemService
                 'price'       => (float)$r['price'],
                 'type'        => $r['item_type'] === 'WEIGHTED' ? 'weighted' : 'standard',
                 'active'      => (int)$r['is_active'] === 1,
+                'sort_order'  => (int)($r['sort_order'] ?? 99),
                 'mode'        => $mode,
                 'stock_label' => self::stockLabel($mode, $r),
                 'cost'        => (float)($r['food_cost_amount'] ?? 0),
@@ -160,6 +169,11 @@ final class MenuItemService
             'type'     => $r['item_type'] === 'WEIGHTED' ? 'weighted' : 'standard',
             'desc'     => (string)($r['description'] ?? ''),
             'active'   => (int)$r['is_active'] === 1,
+            /* V158 — Sale Point par tarteeb ka number. `sort_order` nayi
+               column hai aur migration background stage mein chalti hai,
+               is liye ??99 ka sahara: column na ho to screen par 99
+               nazar aata hai (wahi default). */
+            'sort_order'=> (int)($r['sort_order'] ?? 99),
             'variants' => $vq->fetchAll(PDO::FETCH_ASSOC),
             'inventory'=> [
                 'mode'        => $mode,
@@ -234,27 +248,49 @@ final class MenuItemService
 
         $created = ($id === '');
 
+        /* ============================================================
+           V158 — `sort_order` SIRF us waqt likhte hain jab column ho.
+
+           Column `migrate_menu_sort` banati hai, jo background stage
+           mein chalti hai. Agar yeh service us se pehle chal jaye aur
+           hum column ko seedha INSERT/UPDATE mein daal dein, to item
+           SAVE hona hi band ho jata — poora menu screen bekar. Is liye
+           ek dafa pooch lete hain.
+           ============================================================ */
+        $hasSort = self::hasSortColumn($p);
+        $sort    = max(0, (int)($d['sort_order'] ?? 99));
+
         DB::tx(function (PDO $p) use (&$id, $created, $d, $cid, $name, $itemType,
                                       $consumption, $directId, $directQty, $price,
-                                      $active, $mode, $inv, $ingredients) {
+                                      $active, $mode, $inv, $ingredients, $hasSort, $sort) {
             if ($created) {
                 $id = uuid();
                 $p->prepare(
                     "INSERT INTO menu_items(id,tenant_id,site_id,category_id,name,description,item_type,
                                             consumption_type,direct_inventory_item_id,direct_inventory_qty,
-                                            base_price,is_active,is_online,is_pos)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,1)"
-                )->execute([$id, tenant_id(), site_id(), $cid, $name, (string)($d['desc'] ?? ''),
-                            $itemType, $consumption, $directId, $directQty, $price, $active]);
+                                            base_price,is_active,is_online,is_pos"
+                    . ($hasSort ? ',sort_order' : '') . ")
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,1" . ($hasSort ? ',?' : '') . ")"
+                )->execute(array_merge(
+                    [$id, tenant_id(), site_id(), $cid, $name, (string)($d['desc'] ?? ''),
+                     $itemType, $consumption, $directId, $directQty, $price, $active],
+                    $hasSort ? [$sort] : []
+                ));
             } else {
                 $p->prepare(
                     "UPDATE menu_items
                         SET category_id=?, name=?, description=?, item_type=?,
                             consumption_type=?, direct_inventory_item_id=?, direct_inventory_qty=?,
-                            base_price=?, is_active=?, updated_at=NOW(6), row_version=row_version+1
+                            base_price=?, is_active=?"
+                    . ($hasSort ? ', sort_order=?' : '') . ",
+                            updated_at=NOW(6), row_version=row_version+1
                       WHERE id=? AND site_id=?"
-                )->execute([$cid, $name, (string)($d['desc'] ?? ''), $itemType,
-                            $consumption, $directId, $directQty, $price, $active, $id, site_id()]);
+                )->execute(array_merge(
+                    [$cid, $name, (string)($d['desc'] ?? ''), $itemType,
+                     $consumption, $directId, $directQty, $price, $active],
+                    $hasSort ? [$sort] : [],
+                    [$id, site_id()]
+                ));
             }
 
             /* Variants — poori list dobara likhi jati hai. Purani ko
@@ -317,6 +353,55 @@ final class MenuItemService
         });
 
         return ['id' => $id, 'created' => $created, 'inventory_item_id' => $directId, 'mode' => $mode];
+    }
+
+    /**
+     * V158 — `menu_items.sort_order` maujood hai ya nahi.
+     *
+     * Ek hi dafa poochte hain aur jawab yaad rakh lete hain. Migration
+     * background stage mein chalti hai, is liye ek aadh request us se
+     * pehle aa sakti hai — aur us waqt column ko query mein daalna
+     * poore menu screen ko tor deta.
+     */
+    private static function hasSortColumn(PDO $p): bool
+    {
+        static $has = null;
+        if ($has !== null) return $has;
+        try {
+            $q = $p->prepare("SELECT COUNT(*) FROM information_schema.columns
+                               WHERE table_schema=DATABASE() AND table_name='menu_items'
+                                 AND column_name='sort_order'");
+            $q->execute();
+            $has = (bool)$q->fetchColumn();
+        } catch (\Throwable $e) { $has = false; }
+        return $has;
+    }
+
+    /**
+     * V158 — CATEGORY KI TARTEEB BADALNA.
+     *
+     * `menu_categories.sort_order` column pehle se thi, magar usay set
+     * karne ka koi rasta UI mein nahi tha: har nayi category 99 par
+     * banti thi aur POS un ko naam ke hisaab se lagata tha. Ab Menu
+     * screen se number diya ja sakta hai.
+     *
+     * $rows: [{id, sort_order}, ...]
+     */
+    public static function saveCategoryOrder(array $rows): array
+    {
+        $p = DB::pdo();
+        /* `row_version` bhi barhate hain — sync isi par chalta hai. */
+        $up = $p->prepare("UPDATE menu_categories
+                              SET sort_order=?, updated_at=NOW(6), row_version=row_version+1
+                            WHERE id=? AND site_id=? AND deleted_at IS NULL");
+        $n = 0;
+        foreach ($rows as $r) {
+            $cid = trim((string)($r['id'] ?? ''));
+            if ($cid === '') continue;
+            $up->execute([max(0, (int)($r['sort_order'] ?? 99)), $cid, site_id()]);
+            $n += $up->rowCount() > 0 ? 1 : 0;
+        }
+        return ['saved' => $n];
     }
 
     /** Category naam se id — na mile to bana do (POS bhi yahi karta hai). */

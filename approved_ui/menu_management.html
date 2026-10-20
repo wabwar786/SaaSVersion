@@ -63,6 +63,11 @@
       <div class="header-spacer"></div>
       <button class="btn" id="mmStock">Set up stock</button>
       <button class="btn" id="mmCat">+ Category</button>
+      <!-- V158 — category ki tarteeb. `sort_order` column pehle se thi
+           magar usay badalne ka koi rasta nahi tha: har nayi category
+           99 par banti thi aur Sale Point un ko naam ke hisaab se
+           lagata tha. -->
+      <button class="btn" id="mmCatOrder">Category order</button>
       <button class="btn primary" id="mmAdd">+ Add item</button>
     </header>
     <div class="content">
@@ -163,7 +168,11 @@
              :'<span class="mm-tag none">No stock</span>';
       return '<tr>'+
         '<td class="mm-name"><b>'+esc(x.name)+(x.active?'':' <span class="mm-tag off">Inactive</span>')+'</b>'+
-          '<span>'+esc(x.category)+(x.variants?(' · '+x.variants+' option'+(x.variants===1?'':'s')):'')+'</span></td>'+
+          /* V158 — Sale Point ki tarteeb ka number saath hi. 99 default
+             hai (yani tarteeb set nahi), us ko dikhane ka faida nahi. */
+          '<span>'+esc(x.category)+
+            (x.sort_order!=null&&x.sort_order!==99?(' · #'+x.sort_order):'')+
+            (x.variants?(' · '+x.variants+' option'+(x.variants===1?'':'s')):'')+'</span></td>'+
         '<td>'+tag+'<div class="mm-stock">'+esc(x.stock_label)+'</div></td>'+
         '<td class="num">'+(x.cost?money(x.cost):'<span style="color:var(--faint)">—</span>')+'</td>'+
         '<td class="num"><b>'+money(x.price)+'</b></td>'+
@@ -225,6 +234,64 @@
     var r=req('menu-category-create',{name:n});
     if(!r||!r.ok){toast((r&&r.message)||'Could not create the category');return}
     toast('Category "'+n+'" added'); load();
+  };
+
+  /* ============================================================
+     V158 — CATEGORY ORDER.
+
+     Chhota number pehle. Jo categories barabar number par hon wo
+     apas mein naam ke hisaab se lagti hain — yani purana rawaiya
+     kahin jata nahi, bas us ke ooper qaboo mil jata hai.
+
+     Drag-and-drop jaan boojh kar nahi rakha: yeh screen touch POS
+     par bhi khulti hai, aur wahan drag ki tarteeb barbad karna
+     bohot aasan hai. Number likhna har jagah chalta hai.
+     ============================================================ */
+  document.getElementById('mmCatOrder').onclick=function(){
+    var r=req('menu-categories');
+    if(!r||!r.ok){ toast((r&&r.message)||'Could not load categories'); return; }
+    var cats=r.rows||[];
+    if(!cats.length){ toast('Pehle koi category banayein'); return; }
+
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(20,16,12,.46);z-index:9400;'+
+      'display:flex;align-items:center;justify-content:center;padding:18px';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;'+
+      'max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.28)">'+
+      '<div style="padding:15px 18px;border-bottom:1px solid #eee7df">'+
+        '<h3 style="margin:0;font-size:15.5px">Category order</h3>'+
+        '<p style="margin:4px 0 0;font-size:12px;color:#8a8278">Chhota number pehle aata hai. '+
+        'Barabar number waali categories naam ke hisaab se lagti hain.</p></div>'+
+      '<div id="coBody" style="padding:12px 18px;overflow:auto;flex:1"></div>'+
+      '<div style="padding:12px 18px;border-top:1px solid #eee7df;display:flex;gap:8px;justify-content:flex-end">'+
+        '<button class="btn" id="coCancel">Cancel</button>'+
+        '<button class="btn primary" id="coSave">Save order</button></div></div>';
+
+    ov.querySelector('#coBody').innerHTML=cats.map(function(c){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
+        '<input type="number" step="1" min="0" data-cid="'+esc(c.id)+'" value="'+
+        (c.sort_order==null?99:Number(c.sort_order))+
+        '" style="width:72px;padding:6px 8px;border:1px solid #e3dcd2;border-radius:8px;font-weight:700">'+
+        '<span style="font-size:13.5px">'+esc(c.name)+'</span></div>';
+    }).join('');
+
+    function shut(){ ov.remove(); }
+    ov.querySelector('#coCancel').onclick=shut;
+    ov.addEventListener('click',function(e){ if(e.target===ov) shut(); });
+    ov.querySelector('#coSave').onclick=function(){
+      var rows=[];
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-cid]'),function(el){
+        rows.push({id:el.getAttribute('data-cid'),sort_order:Number(el.value||99)});
+      });
+      this.disabled=true; this.textContent='Saving…';
+      var s=req('menu-category-order',{rows:rows});
+      if(!s||!s.ok){ this.disabled=false; this.textContent='Save order';
+                     toast((s&&s.message)||'Could not save the order'); return; }
+      shut();
+      toast('Tarteeb mehfooz — Sale Point par Ctrl+Shift+R se nazar aayegi');
+      load();
+    };
+    document.body.appendChild(ov);
   };
 
   ['mmQ','mmCatF','mmModeF'].forEach(function(id){

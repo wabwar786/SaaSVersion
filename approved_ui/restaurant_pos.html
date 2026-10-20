@@ -404,7 +404,13 @@ textarea.inp{min-height:62px;resize:vertical}
       <input type="checkbox" id="qtyMode"><span>Qty first</span>
     </label>
     <div class="search"><span>&#128269;</span><input id="q" placeholder="Search menu, item code, barcode..."><span class="kbd">Ctrl K</span></div>
-    <div class="perio"><span>Best Selling</span><select id="period"><option>Today</option><option>Yesterday</option><option>Last 7 days</option></select></div>
+    <!-- V158 — "Best Selling" ka dropdown yahan se nikal diya.
+         Wo kabhi kaam hi nahi karta tha: us select par koi handler
+         nahi tha, is liye Today/Yesterday/Last 7 days chunne se menu
+         par kuch nahi hota tha. Sirf cashier ko dhoka deta tha aur
+         server par har bill ki screen par ek be-wajah sales query
+         chalwata tha (woh bhi hata di). Items ki tarteeb ab Menu
+         screen ke "Order" number se tay hoti hai. -->
     <div style="flex:1"></div>
     <button class="tb" id="qrBtn">QR Orders <b id="qrCount">(0)</b></button>
     <button class="tb" id="voidBtn">Void Logs</button>
@@ -471,7 +477,11 @@ textarea.inp{min-height:62px;resize:vertical}
 
 <script>
 'use strict';
-var VERSION='POS v48';
+/* V158 — asal build server se aata hai (BOOT.build, yani `VERSION`
+   file). Yeh sirf pehli load tak ka sahara hai, jab tak boot nahi
+   aaya. Pehle yahan 'POS v48' likha hua tha jo V49 se V157 tak kabhi
+   badla hi nahi — support call par ghalat jawab milta tha. */
+var VERSION='POS';
 var $=function(s){return document.querySelector(s)};
 var CSRF=window.APP_CSRF||'';
 
@@ -821,6 +831,7 @@ function boot(){
   }
   var eb=document.getElementById('errBar'); if(eb)eb.remove();
   BOOT=r.boot;
+  if(BOOT.build) VERSION='POS '+BOOT.build;
   billNo=String(BOOT.nextBill||1).padStart(4,'0');
   shift=BOOT.shift||null;
   if(BOOT.cashier){
@@ -1479,6 +1490,40 @@ function newBillFlow(isEdit){
     if(p>0){ disc={type:'percent',value:p}; toast((c.name||'Customer')+' ka '+p+'% discount laga diya'); }
   }
   function openOrFresh(key, byCustomer, setFresh){
+    /* ============================================================
+       V158 — DOOSRA TABLE CHUNNE SE PEHLE MOJOODA BILL HOLD HO.
+
+       V157 ne "table chunte hi us ka ruka hua bill khul jaye" theek
+       kar diya, magar ULTA raasta khula reh gaya tha:
+
+           Table 1 par 2 item punch kiye (hold NAHI kiya)
+           -> New Bill -> Table 2
+           -> wo dono item TABLE 2 ke bill par chale jate thay
+
+       Kyunke yahan sirf `curTable` badal kar `done()` bulaya jata
+       tha — cart ko haath hi nahi lagta tha. Table 1 ka khana kisi
+       aur ke bill par chhap jata.
+
+       Ab: jo cart khula hai wo pehle KHUD-BA-KHUD hold ho jata hai
+       (chup chaap, kyunke cashier ne hold ka button nahi dabaya),
+       aur phir naya table khulta hai. Table 1 ka kaam `holds` mein
+       mehfooz rehta hai — gum kahin nahi hota.
+
+       DO SOORTEIN ISTISNA hain:
+         * "Change Bill Context" (isEdit) — us ka matlab hi yeh hai
+           ke "YEHI bill doosri jagah le jao". Wahan hold karna poora
+           ulat kaam hota.
+         * Wahi table/customer dobara chunna — kuch badalna hi nahi
+           hai, is liye seedha dialog band.
+       ============================================================ */
+    if(!isEdit && cart.length){
+      var sameSpot = byCustomer ? (String(curCustId||'')===String(key) && !curTable)
+                                : (String(curTable||'')===String(key));
+      if(sameSpot){ ov.remove(); return; }
+      /* Hold na ho saka (server ne mana kiya) to kuch bhi na chhero —
+         warna cart aise bill par chala jata jo bana hi nahi. */
+      if(!holdCurrent(true)) return;
+    }
     var h=null;
     for(var i=0;i<holds.length;i++){
       var x=holds[i];
@@ -2152,7 +2197,20 @@ function cancelHold(h,done){
     this.disabled=false;this.textContent='Cancel bill';
     if(!r||!r.ok){toast((r&&r.message)||'Could not cancel');return}
     ov.remove(); toast('Bill #'+esc(h.billNo)+' cancelled');
-    if(curHoldId===h.id){ curHoldId=''; cart=[]; renderAll(); }
+    if(curHoldId===h.id){ curHoldId=''; cart=[]; }
+    /* ============================================================
+       V158 — CANCEL KE BAAD SCREEN HAMESHA DOBARA BANTI HAI.
+
+       Pehle `renderAll()` SIRF us soorat mein chalta tha jab cancel
+       hone wala bill wohi ho jo is waqt khula hai. Baqi har soorat
+       mein screen jaisi thi waisi chhor di jati thi — aur customer
+       ki shikayat yehi thi ke cancel ke baad menu ki items gayab ho
+       jati hain aur Ctrl+Shift+R ke baghair wapas nahi aatin.
+
+       Dobara banane mein kuch kharcha nahi (grid pehle se mojood
+       `BOOT.products` se banti hai, server se kuch nahi mangwata),
+       aur screen ka kisi bhi adhoore haal mein phansna khatam. */
+    renderAll();
     if(done)done();
   };
 }

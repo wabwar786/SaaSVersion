@@ -185,6 +185,14 @@
         '<option value="1"' + (!item || item.active ? ' selected' : '') + '>Active</option>' +
         '<option value="0"' + (item && !item.active ? ' selected' : '') + '>Inactive</option>' +
       '</select></div>' +
+      /* V158 — Sale Point par tarteeb. Pehle items alphabet par lagte
+         thay, is liye sab se zyada bikne wali cheez neeche kahin chali
+         jati thi. Chhota number pehle. Khali chhor dein to 99 — yani
+         jin par number laga hai wo pehle, baqi naam ke hisaab se. */
+      '<div><label>Order on Sale Point</label>' +
+        '<input id="idSort" type="number" step="1" min="0" value="' +
+        (item && item.sort_order != null ? item.sort_order : 99) +
+        '" title="Chhota number pehle aata hai. Khali = 99"></div>' +
       '</div>' +
 
       '<div class="sec"><h4>When this item is sold, take stock off&hellip;</h4>' +
@@ -310,7 +318,8 @@
         price: num(ov.querySelector('#idPrice').value, 0),
         category: ov.querySelector('#idCat').value,
         type: ov.querySelector('#idType').value,
-        active: ov.querySelector('#idActive').value === '1'
+        active: ov.querySelector('#idActive').value === '1',
+        sort_order: num(ov.querySelector('#idSort').value, 99)
       };
       if (editing) d.id = item.id;
       if (!d.name) { showErr('Item name is required'); return; }

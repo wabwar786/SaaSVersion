@@ -59,7 +59,12 @@
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th></th><th>Track</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
+      <!-- V158 — HEADING AUR COLUMN AB BARABAR.
+           Pehle heading 12 thi aur cells bhi 12, magar TARTEEB alag thi:
+           Edit ka button "Usage" ke neeche, Track "On Hand" ke neeche,
+           qty ke ooper "Rate" likha aata tha. Ab Edit aur Track dono
+           Actions ke saath aakhir mein, aur khali <th> khatam. -->
+      <table class="table"><thead><tr><th>Item</th><th>Category</th><th>Usage</th><th>On Hand</th><th>Purchase Unit</th><th>Avg Cost</th><th>Reorder</th><th>Storage</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
     <div class="inventory-cards" id="cards"></div>
   </section>
@@ -121,8 +126,27 @@ function render(){
   $('#statLow').textContent=state.inventoryItems.filter(i=>status(i)==='Low').length;
   $('#statDirect').textContent=state.inventoryItems.filter(i=>i.usage==='Direct Sale').length;
   $('#statBoth').textContent=state.inventoryItems.filter(i=>i.usage==='Both').length;
-  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td><td><button class="btn sm" data-editi="'+i.id+'" title="Edit this item">Edit</button></td>'
-      +'<td><button class="btn sm" data-track="'+i.id+'" data-on="'+(i.tracked?1:0)+'" title="Watch this item on the closing report">'+(i.tracked?'&#9679; Tracked':'Track')+'</button></td><td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td><td>'+RestaurantStore.formatStock(i)+'</td><td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td><td>'+RestaurantStore.formatPurchaseCost(i)+'</td><td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td><td>'+i.storage+'</td><td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td><td><div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div></td></tr>').join('');
+  /* Tarteeb bilkul <thead> jaisi: Item · Category · Usage · On Hand ·
+     Purchase Unit · Avg Cost · Reorder · Storage · Status · Actions */
+  $('#rows').innerHTML=list.map(i=>'<tr><td><b>'+i.name+'</b></td><td>'+i.category+'</td>'
+      +'<td><span class="tag '+(i.usage==='Both'?'blue':i.usage==='Direct Sale'?'orange':'green')+'">'+i.usage+'</span></td>'
+      +'<td>'+RestaurantStore.formatStock(i)+'</td>'
+      +'<td>'+i.purchaseUnit+' × '+i.purchaseFactor+'</td>'
+      +'<td>'+RestaurantStore.formatPurchaseCost(i)+'</td>'
+      +'<td>'+RestaurantStore.formatStock({...i,stockQty:i.reorderQty})+'</td>'
+      +'<td>'+i.storage+'</td>'
+      +'<td><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></td>'
+      /* Delete ka icon `.row-actions button` se 30x30 banta hai — Edit
+         aur Track text wale hain, un ko us ke andar daalna unhein
+         kuchal deta. Is liye Edit/Track bahir, delete apne khane mein. */
+      /* Tang padding + nowrap: warna Actions ka khana itna chaura ho
+         jata hai ke 1440px par bhi table ko dhakka lagta hai aur
+         delete ka icon kinare se bahar nikal jata hai. */
+      +'<td><div style="display:flex;gap:5px;justify-content:flex-end;align-items:center;white-space:nowrap">'
+        +'<button class="btn sm" style="padding:0 8px" data-editi="'+i.id+'" title="Edit this item">Edit</button>'
+        +'<button class="btn sm" style="padding:0 8px" data-track="'+i.id+'" data-on="'+(i.tracked?1:0)+'" title="Watch this item on the closing report">'+(i.tracked?'&#9679; Tracked':'Track')+'</button>'
+        +'<div class="row-actions"><button title="Delete" data-del-item="'+i.id+'" data-name="'+i.name+'">&#128465;</button></div>'
+      +'</div></td></tr>').join('');
   $('#cards').innerHTML=list.map(i=>'<article class="inventory-card"><div class="inventory-card-top"><div><h3>'+i.name+'</h3><small>'+i.category+' · '+i.usage+'</small></div><span class="tag '+(status(i)==='Low'?'red':'green')+'">'+status(i)+'</span></div><div class="inventory-card-grid"><div><span>On Hand</span><b>'+RestaurantStore.formatStock(i)+'</b></div><div><span>Average Cost</span><b>'+RestaurantStore.formatPurchaseCost(i)+'</b></div><div><span>Purchase Unit</span><b>'+i.purchaseUnit+' × '+i.purchaseFactor+'</b></div><div><span>Storage</span><b>'+i.storage+'</b></div></div><div class="action-row" style="margin-top:8px;display:flex;justify-content:flex-end"><button class="btn sm danger" data-del-item="'+i.id+'" data-name="'+i.name+'">Delete</button></div></article>').join('');
 }
 function setTab(tab){

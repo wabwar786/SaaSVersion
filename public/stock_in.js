@@ -116,11 +116,18 @@
         }).join('') +
       '</select>' +
       '<div class="g">' +
-      '<div><label>Quantity</label><input id="sinQty" type="number" step="0.001" min="0.001" placeholder="0"></div>' +
+      /* V158 — min hata diya. Manfi qty bhi chalni chahiye: galti se
+         zyada stock chadh jaye to usay theek karne ka koi rasta hi
+         nahi tha (na edit, na ghatao). Manfi daalne par server us ko
+         PURCHASE nahi, ADJUSTMENT likhta hai — Purchases report mein
+         manfi kharidari nazar nahi aati. */
+      '<div><label>Quantity</label><input id="sinQty" type="number" step="0.001" placeholder="0"></div>' +
       '<div><label>Rate per unit</label><input id="sinRate" type="number" step="0.01" min="0"></div>' +
       '</div>' +
       '<div><label style="margin-top:11px">Note (optional)</label><input id="sinNote" placeholder="Supplier, bill no…"></div>' +
-      '<p class="hint">Leave the rate blank to keep the current average cost.</p>' +
+      '<p class="hint">Leave the rate blank to keep the current average cost. '+
+        'Stock ghatana ho to manfi quantity likhein (jaise <b>-3</b>) &mdash; wo durusti '+
+        'ke taur par darj hoti hai, kharidari ke taur par nahi.</p>' +
       '<div class="on-hand" id="sinOn"></div>' +
       '</div>' +
       '<div class="ft"><button class="btn" data-x>Cancel</button>' +
@@ -157,7 +164,10 @@
     ov.querySelector('#sinGo').onclick = function () {
       err.style.display = 'none';
       var qty = Number(ov.querySelector('#sinQty').value || 0);
-      if (!(qty > 0)) { err.textContent = 'Enter a quantity'; err.style.display = 'block'; return; }
+      /* Sifar se kuch nahi hota, sirf ek khali entry ledger mein parti
+         hai — is liye wo mana hai. Manfi chalti hai (durusti). */
+      if (!qty) { err.textContent = 'Enter a quantity (ghatane ke liye manfi, jaise -3)';
+                  err.style.display = 'block'; return; }
       var btn = this;
       btn.disabled = true; btn.textContent = 'Adding…';
       var r = req('stock-in', {
@@ -168,7 +178,10 @@
       btn.disabled = false; btn.textContent = 'Add to stock';
       if (!r || !r.ok) { err.textContent = (r && r.message) || 'Could not add stock'; err.style.display = 'block'; return; }
       close();
-      note(n3(r.qty) + ' × ' + r.name + ' added — now ' + n3(r.on_hand) + ' in stock');
+      /* Manfi par "added" likhna jhoot hai — alag jumla. */
+      note(r.qty < 0
+            ? (n3(Math.abs(r.qty)) + ' × ' + r.name + ' kam kar diya — ab ' + n3(r.on_hand) + ' in stock')
+            : (n3(r.qty) + ' × ' + r.name + ' added — now ' + n3(r.on_hand) + ' in stock'));
       if (opts.onDone) opts.onDone(r);
     };
 
