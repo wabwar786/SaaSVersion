@@ -29,6 +29,9 @@
       <div class="header-spacer"></div>
       <button class="btn" id="btnCsv">⤓ CSV</button>
       <button class="btn" id="btnPrint">⎙ Print</button>
+      <!-- V159 — counter par A4 ka printer hota hi nahi, 80mm thermal
+           laga hota hai. Wohi kaghaz jis par bill chhapta hai. -->
+      <button class="btn" id="btnPrint80" title="Counter wale 80mm thermal printer par">⎙ 3&quot;</button>
     </header>
 
     <div class="content">
@@ -168,6 +171,13 @@
   $('from').onchange=function(){if(current)run(current)};
   $('to').onchange=function(){if(current)run(current)};
   $('btnPrint').onclick=function(){window.print()};
+  /* V159 — 80mm (3 inch), seedha server se: wohi engine jo bill
+     chhapta hai, is liye kaghaz par shakl bhi wohi rehti hai. */
+  $('btnPrint80').onclick=function(){
+    if(!current){alert('Pehle koi report chunein.');return}
+    window.open('/api.php?action=report-pdf&id='+encodeURIComponent(current)+
+      '&from='+$('from').value+'&to='+$('to').value,'_blank');
+  };
   $('btnCsv').onclick=function(){
     if(!current){alert('Choose a report first.');return}
     window.location.href='/api.php?action=report-csv&id='+encodeURIComponent(current)+

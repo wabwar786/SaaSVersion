@@ -82,6 +82,10 @@
         <button data-r="year">Year</button>
       </div>
       <button class="btn" id="printBtn">Print</button>
+      <!-- V159 — counter par A4 ka printer hota hi nahi, 80mm thermal
+           laga hota hai. Yeh wohi kaghaz hai jis par bill aur shift
+           closing chhapti hai. -->
+      <button class="btn" id="print80Btn" title="Counter wale 80mm thermal printer par">Print 3&quot;</button>
       <button class="btn primary" id="csvBtn">Export CSV</button>
     </header>
 
@@ -385,6 +389,15 @@
   $('#printBtn').onclick=function(){
     if(!$('#repBody').querySelector('table')){toast('Run a report first',true);return}
     window.print();
+  };
+  /* V159 — 80mm (3 inch). CSV wale button ki tarah seedha server se
+     banta hai: wohi engine jo bill aur shift closing chhapta hai, is
+     liye kaghaz par shakl bhi wohi rehti hai. */
+  $('#print80Btn').onclick=function(){
+    if(!current){toast('Pehle koi report chalayein',true);return}
+    window.open('/api.php?action=report-pdf&id='+encodeURIComponent(current)
+      +'&from='+encodeURIComponent($('#dFrom').value)
+      +'&to='+encodeURIComponent($('#dTo').value),'_blank');
   };
   $('#csvBtn').onclick=function(){
     if(!current){toast('Export works on the built-in reports. Pick one from the list.',true);return}

@@ -1053,14 +1053,53 @@ final class ReportService
             $current = (float)$r['current_qty'];
             $closing = $current - (float)$r['net_after'];
             $opening = $closing - (float)$r['net_in_period'];
+
+            $n = [
+                'opening'   => $opening,
+                'purchased' => (float)$r['purchased'],
+                'sold'      => (float)$r['sold'],
+                'closing'   => $closing,
+                'current'   => $current,
+            ];
+
+            /* ============================================================
+               BARI UNIT MEIN DIKHAO — WARNA QTY PAISA LAGTI HAI.
+
+               Yeh saare aankre QUANTITY hain, raqam nahi. Magar stock
+               andar GRAM aur MILLILITRE mein rakha jata hai, is liye
+               42 kilo chawal screen par "42,000" chhapta tha — aur wo
+               bilkul rupees jaisa lagta hai.
+
+               Inventory screen yeh masla pehle se hal karti hai
+               (`formatStock`): 1000 se ooper gram ko KG aur ml ko L
+               bana deti hai. Report ab wahi qanoon chalati hai, taake
+               dono jagah ek hi number nazar aaye.
+
+               AHEM: taqseem PAANCHON columns par ek sath hoti hai, aur
+               faisla sab se bare aankre se hota hai — na ke sirf
+               mojooda stock se. Warna jis item ka stock aaj khatam ho
+               chuka ho us ka Opening 50,000 (gram) aur Current 0 (KG)
+               ek hi line mein aa jata, aur ginti bekar ho jati.
+               ============================================================ */
+            $u   = strtoupper((string)$r['unit']);
+            $max = 0.0;
+            foreach ($n as $v) $max = max($max, abs($v));
+
+            if ($max >= 1000 && ($u === 'G' || $u === 'ML')) {
+                foreach ($n as $k => $v) $n[$k] = $v / 1000;
+                $u = ($u === 'G') ? 'KG' : 'L';
+            } elseif ($u === 'PCS') {
+                $u = 'pcs';
+            }
+
             $out[] = [
                 'item'     => $r['item'],
-                'unit'     => $r['unit'],
-                'opening'  => round($opening, 3),
-                'purchased'=> round((float)$r['purchased'], 3),
-                'sold'     => round((float)$r['sold'], 3),
-                'closing'  => round($closing, 3),
-                'current'  => round($current, 3),
+                'unit'     => $u,
+                'opening'  => round($n['opening'], 3),
+                'purchased'=> round($n['purchased'], 3),
+                'sold'     => round($n['sold'], 3),
+                'closing'  => round($n['closing'], 3),
+                'current'  => round($n['current'], 3),
             ];
         }
 
@@ -1081,7 +1120,9 @@ final class ReportService
                Har item ki apni line poori maloomat deti hai; neeche
                jama karne ki zaroorat hai hi nahi. */
             $out, [],
-            'Closing hamesha asal stock hai. Wastage, stock count ya manfi stock-in '
+            'Yeh sab QUANTITY hai, raqam nahi - har item apni unit mein (KG, L, pcs). '
+            .'Rozana ka opening/closing dekhne ke liye upar "Today" chunein. '
+            .'Closing hamesha asal stock hai. Wastage, stock count ya manfi stock-in '
             .'(durusti) waale din Opening + Purchased - Sold us se thora alag ho sakta hai '
             .'- farq wahi wastage/count/durusti hota hai.');
     }

@@ -445,7 +445,37 @@ final class Sync
         $sql = "SELECT * FROM `$table` WHERE $where ORDER BY `$ts` ASC LIMIT $limit";
         $q = DB::pdo()->prepare($sql);
         $q->execute($args);
-        return $q->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+
+        /* ============================================================
+           V159 — ITEM KI TASWEER UPAR NAHI JATI.
+
+           `menu_items.image_url` mein poori tasweer BASE64 ban kar
+           baithti hai — har item tak ~1MB. Aur `menu_items` sync ki
+           dono fehriston mein hai, is liye counter par lagayi hui har
+           tasweer cloud database mein chali jati thi. Chand sau items
+           ke baad yeh sainkaron MB ban jata hai: backup bhara, pull
+           sust, aur hosting ka kharcha barha — jabke us tasweer ko
+           cloud par koi dekhta hi nahi.
+
+           Ab tasweer SIRF us computer par rehti hai jahan lagayi gayi.
+
+           SHART SIRF LOCAL NODE PAR hai, dono taraf nahi:
+             local -> cloud (push)  : tasweer nikal di jati hai
+             cloud -> local (pull)  : tasweer SAATH AATI HAI
+
+           Kyunke cloud ki tasweeren QR menu aur customer ke mobile
+           menu par nazar aati hain — wo malik khud lagata hai aur wo
+           har branch tak pohanchni chahiyen. Neeche aane par wo local
+           ki apni tasweer ko mitati bhi nahi (dekhein applyRows).
+           ============================================================ */
+        if ($rows && $table === 'menu_items' && cfg('app.role') !== 'cloud'
+            && in_array('image_url', $cols, true)) {
+            foreach ($rows as &$r) { $r['image_url'] = null; }
+            unset($r);
+        }
+
+        return $rows;
     }
 
     /**
@@ -501,6 +531,29 @@ final class Sync
                 continue;
             }
             if ($forceTenantId !== null && $hasTenant) $data['tenant_id'] = $forceTenantId;
+
+            /* ============================================================
+               V159 — KHALI TASWEER KISI MOJOOD TASWEER KO NA MITAYE.
+
+               `changedRows()` push par `image_url` nikal deta hai, is
+               liye node se cloud par hamesha KHALI aati hai. Agar hum
+               usay waise hi likh dein to:
+
+                 * cloud par: malik ki lagayi hui QR-menu wali tasweer
+                   har sync par mit jati (jabke node ne bheji hi nahi
+                   thi, sirf khali jagah bheji thi)
+                 * node par: cloud khali ho to counter par lagayi hui
+                   tasweer agle pull par gayab ho jati
+
+               Is liye qanoon ek hi hai, dono taraf: KHALI tasweer ko
+               likha hi nahi jata. Tasweer tabhi badalti hai jab doosri
+               taraf se asal tasweer aaye. Mitani ho to usi computer
+               par se hatani hogi jahan lagi hai — wahi theek bhi hai.
+               ============================================================ */
+            if ($table === 'menu_items' && array_key_exists('image_url', $data)
+                && ($data['image_url'] === null || $data['image_url'] === '')) {
+                unset($data['image_url']);
+            }
 
             try {
                 // Last-write-wins: local copy nayi ho to chhoR do

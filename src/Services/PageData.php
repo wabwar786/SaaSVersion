@@ -21,12 +21,50 @@ final class PageData {
   * magar cashier ka intezar us se lamba ho jata tha. Yeh do queries
   * kaafi hain.
   */
+ /**
+  * V159 — KHULE ACCOUNT KA HISAAB TAREEKH SE NAHI, SHIFT SE.
+  *
+  * Pehle yahan sirf `business_date = aaj` tha. Jo restaurant raat 12
+  * ke baad tak chalta hai (ya jis ka account do din band hi nahi
+  * hota) us ka natija yeh tha:
+  *
+  *     raat 11:59  ->  Aaj ki sale 48,000
+  *     raat 12:00  ->  Aaj ki sale 0        (account abhi bhi KHULA hai)
+  *
+  * Cash daraz mein maujood hai, closing report us ko theek ginti hai
+  * (wo `shift_id` se chalti hai), magar screen par sifar. Cashier ko
+  * yeh andaza hi nahi hota ke uske zimme kitni raqam hai.
+  *
+  * Ab: shift khuli ho to USI shift ka hisaab — wohi number jo closing
+  * ke waqt report par aayega. Koi shift khuli na ho to pehle jaisa
+  * (aaj ki tareekh), kyunke tab ginne ke liye koi account hi nahi.
+  *
+  * `shift_id IS NULL` wali shart un purane bills ke liye hai jo is
+  * nizam se pehle bane — unhein waqt se joda jata hai.
+  */
+ private static function openShift(\PDO $p): ?array {
+    $q=$p->prepare("SELECT id,opened_at FROM cashier_shifts
+                     WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                     ORDER BY opened_at DESC LIMIT 1");
+    $q->execute([site_id(), current_user()['id'] ?? '']);
+    return $q->fetch(\PDO::FETCH_ASSOC) ?: null;
+ }
+
  public static function posCounters(): array {
     $p=DB::pdo();
-    $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s, COUNT(*) c
-                      FROM orders
-                     WHERE site_id=? AND business_date=? AND order_status='CLOSED'");
-    $q->execute([site_id(), today()]);
+    $sh=self::openShift($p);
+    if($sh){
+      $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s, COUNT(*) c
+                        FROM orders
+                       WHERE site_id=? AND order_status='CLOSED'
+                         AND (shift_id=? OR (shift_id IS NULL AND closed_at>=?))");
+      $q->execute([site_id(), $sh['id'], $sh['opened_at']]);
+    } else {
+      $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s, COUNT(*) c
+                        FROM orders
+                       WHERE site_id=? AND business_date=? AND order_status='CLOSED'");
+      $q->execute([site_id(), today()]);
+    }
     $r=$q->fetch(\PDO::FETCH_ASSOC) ?: ['s'=>0,'c'=>0];
 
     $o=$p->prepare("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status='OPEN'");
@@ -122,11 +160,22 @@ final class PageData {
      liye. 27 ms har POS load par, aur data barhne ke sath barhta jata.
      Ab andar wali query index se seedha 50 ids nikalti hai aur join
      unhi 50 par lagta hai. */
+  /* V159 — yeh fehrist bhi KHULE ACCOUNT ki hai, aaj ki tareekh ki
+     nahi. Warna raat 12 bajte hi "Duplicate Bill" ki list khali ho
+     jati thi aur cashier apni hi shift ka bill dobara nahi nikaal
+     sakta tha — halanke account abhi khula tha. (Tafseel ke liye
+     posCounters ka note dekhein.) */
+  $pick = $shift
+    ? ["WHERE site_id=? AND order_status='CLOSED'
+             AND (shift_id=? OR (shift_id IS NULL AND closed_at>=?))",
+       [site_id(), $shift['id'], $shift['opened_at']]]
+    : ["WHERE site_id=? AND business_date=? AND order_status='CLOSED'",
+       [site_id(), $date]];
   $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,
                           dt.display_name table_name,c.full_name customer_name,
                           pm.name payment_name,fi.provider_invoice_no fbr_no
                      FROM (SELECT id FROM orders
-                            WHERE site_id=? AND business_date=? AND order_status='CLOSED'
+                            {$pick[0]}
                             ORDER BY closed_at DESC LIMIT 50) pick
                      JOIN orders o ON o.id=pick.id
                      LEFT JOIN dining_tables dt ON dt.id=o.table_id
@@ -134,7 +183,7 @@ final class PageData {
                      LEFT JOIN payments py ON py.order_id=o.id
                      LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id
                      LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id
-                    ORDER BY o.closed_at DESC");$sb->execute([site_id(),$date]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
+                    ORDER BY o.closed_at DESC");$sb->execute($pick[1]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
   /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
      Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
      hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par

@@ -362,6 +362,115 @@ final class BillTemplate
         return array_merge($L, self::foot($ctx, true));
     }
 
+    /**
+     * V159 — KOI BHI REPORT, 80mm (3 inch) KAGHAZ PAR.
+     *
+     * ============================================================
+     * YEH KYUN
+     * ============================================================
+     * Reports ka safha sirf A4 par chhapta tha (`@page{margin:14mm}`).
+     * Magar counter par jo printer laga hota hai wo 80mm thermal hai —
+     * A4 ka printer wahan hota hi nahi. Natija: sale ya closing ki
+     * report dekhni ho to kaghaz par nikal hi nahi sakti thi, chahe
+     * screen par maujood ho.
+     *
+     * 80mm ka poora engine pehle se maujood tha (`Pdf::receipt` +
+     * yehi class) — bill aur shift closing isi se chhapte hain. Yeh
+     * function usi engine ko har report ke liye khol deta hai.
+     *
+     * ============================================================
+     * SHAKL KA FAISLA — COLUMN SAATH SAATH KYUN NAHI
+     * ============================================================
+     * 80mm par ek line mein sirf 37 characters aate hain. "Opening /
+     * closing stock" ke 7 columns saath saath kabhi nahi samayenge;
+     * zabardasti karne par har column 4-5 characters ka reh jata aur
+     * number kat jate — jo report na hone se bhi bura hai.
+     *
+     * Is liye har row ka apna chhota block banta hai: pehla column
+     * (naam) apni line par, baqi columns neeche "label ....... value"
+     * ki shakl mein. Jahan sirf do columns hain (misal Payment
+     * methods) wahan yeh khud ba khud ek hi line par aa jata hai, is
+     * liye chhoti reports phoolti nahi.
+     *
+     * @param array $rep  ReportService::shape() ka natija
+     *                    (title, columns[{k,l,n}], rows, totals, note)
+     * @param array $ctx  wohi business context jo bill istemal karta hai
+     * @param string $range  "01 Oct 2026 - 19 Oct 2026" jaisi line
+     */
+    public static function report(array $rep, array $ctx, string $range = ''): array
+    {
+        $cols = (array)($rep['columns'] ?? []);
+        $rows = (array)($rep['rows'] ?? []);
+        $tot  = (array)($rep['totals'] ?? []);
+
+        $L = self::head([], $ctx, true);
+        $L[] = [strtoupper((string)($rep['title'] ?? 'REPORT')), 'c', 9];
+        if ($range !== '') $L[] = [$range, 'c', 7];
+        $L[] = self::rule();
+
+        if (!$rows) {
+            $L[] = ['Is arse mein koi record nahi.', 'c', 8];
+            $L[] = self::rule();
+        } else {
+            $first = $cols[0] ?? null;
+            $rest  = array_slice($cols, 1);
+
+            foreach ($rows as $r) {
+                /* Pehla column = row ka naam. Bold, apni line par. */
+                if ($first) {
+                    $L[] = self::row(self::cell($r, $first), '', true);
+                }
+                foreach ($rest as $c) {
+                    $v = self::cell($r, $c);
+                    if ($v === '') continue;
+                    $L[] = self::row('  ' . (string)($c['l'] ?? ''), $v);
+                }
+                $L[] = ['', 'l', self::SZ];
+            }
+            $L[] = self::rule();
+        }
+
+        /* Totals — sirf wo jo report ne waqai bheje. (Jis report ne
+           jaan boojh kar totals nahi diye, misal stock ki report jahan
+           PCS aur G ko jorna be-maani hai, wahan kuch nahi chhapta.) */
+        if ($tot) {
+            $L[] = ['TOTAL', 'c', 8];
+            foreach ($cols as $c) {
+                $k = (string)($c['k'] ?? '');
+                if ($k === '' || !array_key_exists($k, $tot)) continue;
+                $L[] = self::row((string)($c['l'] ?? $k), self::num($tot[$k]), true);
+            }
+            $L[] = self::rule('=');
+        }
+
+        if (!empty($rep['note'])) {
+            $L[] = ['', 'l', self::SZ];
+            $L = array_merge($L, self::wrap('Note: ' . (string)$rep['note']));
+        }
+
+        $L[] = ['', 'l', self::SZ];
+        $L[] = ['Printed ' . date('d M Y  H:i'), 'c', 7];
+        return $L;
+    }
+
+    /** Report ki ek khaane ki qadar, chhapne ke qabil shakl mein. */
+    private static function cell(array $row, array $col): string
+    {
+        $k = (string)($col['k'] ?? '');
+        if ($k === '' || !array_key_exists($k, $row)) return '';
+        $v = $row[$k];
+        if ($v === null) return '';
+        return !empty($col['n']) ? self::num($v) : trim((string)$v);
+    }
+
+    /** Numbers par hazaron ka comma, magar paisay tabhi jab waqai hon. */
+    private static function num($v): string
+    {
+        if (!is_numeric($v)) return trim((string)$v);
+        $f = (float)$v;
+        return (floor($f) == $f) ? number_format($f, 0) : number_format($f, 2);
+    }
+
 }
 
 // build: V64 build 2026-08-27

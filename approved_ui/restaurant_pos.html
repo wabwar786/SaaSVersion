@@ -2320,15 +2320,36 @@ $('#dupBtn').onclick=function(){
       +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)+' &middot; '+esc(b.payment||'')+'</small></div>'
       +'<button data-dup="'+i+'">Reprint</button></div>';
   }).join(''):'<div class="cempty">No closed bills today</div>';
-  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Closed bills from today &mdash; reprint</p></div>'
+  /* V159 — "from today" ab sach nahi raha: yeh fehrist KHULE ACCOUNT ki
+     hai. Account do din khula rahe to dono din ke bills yahan rehte
+     hain, warna raat 12 bajte hi cashier apni hi shift ka bill dobara
+     nahi nikaal sakta tha. */
+  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Khule account ke band bills &mdash; reprint</p></div>'
     +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer" style="margin-bottom:10px">'
     +'<div id="dupList">'+body+'</div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   function bind(){
+    /* ============================================================
+       V159 — DUPLICATE AB ASLI BILL HAI.
+
+       Pehle yahan bill DOBARA BANAYA jata tha, us data se jo is
+       screen ke paas tha — aur us ke paas sirf kul raqam thi:
+
+           slipPreview('BILL',[{name:'Bill total',qty:1,price:x.amount}],
+             { t:{sub:x.amount, disc:0, svc:0, tax:0, grand:x.amount} });
+
+       Yani customer ko jo "duplicate" milta tha us par EK HI line
+       hoti thi — "Bill total" — na items ke naam, na quantity, aur
+       discount/service/tax teenon SIFAR likhe aate (chahe asal bill
+       par lage hon). Hisaab maangne wale customer ke liye wo kaghaz
+       kisi kaam ka nahi tha, aur tax waale bill par to ghalat bhi.
+
+       `bill-pdf` naam ka raasta pehle se maujood tha jo bill number
+       se asal items aur asli tax server se nikal kar wohi 80mm shakl
+       banata hai jo pehli dafa chhapi thi. Duplicate ab wohi hai.
+       ============================================================ */
     Array.prototype.forEach.call(ov.querySelectorAll('[data-dup]'),function(b){b.onclick=function(){
       var x=bills[this.dataset.dup];
-      slipPreview('BILL',[{name:'Bill total',qty:1,price:x.amount,note:''}],
-        {billNo:x.billNo,mode:x.mode,table:x.table,at:x.time,pay:x.payment,rcv:x.amount,
-         t:{sub:x.amount,disc:0,svc:0,tax:0,grand:x.amount}});
+      window.open('/api.php?action=bill-pdf&bill='+encodeURIComponent(x.id||x.billNo),'_blank');
     }});
   }
   bind();

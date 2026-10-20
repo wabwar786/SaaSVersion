@@ -1084,6 +1084,39 @@ case 'report-run':
  catch(Throwable $e){fail($e->getMessage());}
  ok(['report'=>$r]);
 
+case 'report-pdf':needLogin();Auth::requireModule('reports');
+ /* ============================================================
+    V159 — KOI BHI REPORT 80mm (3 inch) KAGHAZ PAR.
+
+    Reports ka safha sirf A4 par chhapta tha, magar counter par A4
+    ka printer hota hi nahi — wahan 80mm thermal laga hota hai. Sale
+    ya closing ki report kaghaz par nikalni ho to koi rasta nahi tha.
+
+    Wahi engine jo bill aur shift-closing chhapta hai (BillTemplate +
+    Pdf::receipt) — do alag copies nahi. Retail aur restaurant dono
+    ek hi `shape()` wala dhancha dete hain, is liye renderer ek hi
+    kaafi hai.
+    ============================================================ */
+ $id=preg_replace('/[^a-z_]/','',strtolower((string)($_GET['id']??'')));
+ $rf=(string)($_GET['from']??''); $rt=(string)($_GET['to']??'');
+ try{
+   $r = Auth::tenantIndustry()==='RETAIL'
+          ? RetailReportService::run($id,$rf,$rt)
+          : ReportService::run($id,$rf,$rt);
+ }catch(Throwable $e){fail($e->getMessage());}
+ Audit::log('REPORT_PRINT','reports',['label'=>$id]);
+ $st=SettingsService::get();
+ $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
+       'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>'','footer'=>'',
+       'currency'=>$st['currency']??'PKR','fbr_no'=>'','fbr_pending'=>false];
+ $fmt=function(string $d){ $t=strtotime($d); return $t?date('d M Y',$t):''; };
+ $range=trim($fmt($rf).($rt!==''&&$rt!==$rf?(' - '.$fmt($rt)):''));
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::report($r,$ctx,$range));
+ while(ob_get_level())ob_end_clean();
+ header('Content-Type: application/pdf');
+ header('Content-Disposition: inline; filename="'.$id.'-80mm.pdf"');
+ echo $pdf; exit;
+
 case 'report-sources':needLogin();Auth::requireModule('reports');
  ok(['sources'=>ReportService::sources()]);
 
