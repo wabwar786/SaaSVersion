@@ -3004,6 +3004,86 @@ case 'sa-fbr-status':needSuper();
  $f=$fj?(json_decode((string)$fj,true)?:null):null;
  ok(['enabled'=>($f===null)?true:in_array('fbr',$f,true),'unrestricted'=>($f===null)]);
 
+/* ============================================================
+   V160 — OWNER KE PORTAL KA DATA.
+
+   Teen pehre, isi tarteeb se (wahi jo router par bhi lagte hain —
+   API ko bhi khud apni hifazat karni hoti hai, kyunke koi bhi seedha
+   `/api.php?action=…` chala sakta hai):
+     1. login
+     2. super admin ne is property ko diya hai
+     3. malik ya manager
+   ============================================================ */
+case 'owner-mobile-boot':needLogin();
+ if(!Auth::ownerMobile())fail('Owner app is not switched on for this business.',403);
+ if(!Auth::isManager())fail('Only the owner or a manager can open this.',403);
+ ok(['boot'=>\Aio\Services\OwnerMobile::boot()]);
+
+case 'owner-mobile-sale':needLogin();
+ /* Arsa badalne par sirf yehi hissa dobara aata hai — poora portal
+    nahi. Phone ke internet par chhoti request ka matlab kam intezar. */
+ if(!Auth::ownerMobile())fail('Owner app is not switched on for this business.',403);
+ if(!Auth::isManager())fail('Only the owner or a manager can open this.',403);
+ ok(['sale'=>\Aio\Services\OwnerMobile::sale((int)($_GET['days']??30))]);
+
+case 'owner-mobile-watch':needLogin();
+ /* Poore portal mein yehi ek cheez likhti hai: kis item par nazar
+    rakhni hai. Stock ki qty ya koi raqam yahan se nahi badalti. */
+ if(!Auth::ownerMobile())fail('Owner app is not switched on for this business.',403);
+ if(!Auth::isManager())fail('Only the owner or a manager can do this.',403);
+ $d=body();
+ try{ $r=\Aio\Services\OwnerMobile::watch((string)($d['id']??''),(bool)($d['on']??false)); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ Audit::log($r['watch']?'STOCK_WATCH_ON':'STOCK_WATCH_OFF','inventory',['label'=>$r['name']]);
+ ok($r);
+
+case 'sa-owner-mobile-status':needSuper();
+ /* ============================================================
+    V160 — OWNER KA MOBILE PORTAL: kis property ko mila hai.
+
+    FBR ke bar-aks yahan "khali features = sab allowed" wala qanoon
+    NAHI chalta. Yeh cheez super admin ek ek property ko soch samajh
+    kar deta hai, is liye khula sirf tab hai jab `owner_mobile` saaf
+    likha ho. (Wahi shart Auth::ownerMobile() mein bhi hai — ek hi
+    jagah sach, do jagah nahi.)
+    ============================================================ */
+ $tid=(string)($_GET['tenant_id']??''); if($tid==='')fail('tenant_id is required');
+ $q=DB::pdo()->prepare("SELECT features_json,slug,name FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]); $row=$q->fetch(); if(!$row)fail('Business not found',404);
+ $f=$row['features_json']?(json_decode((string)$row['features_json'],true)?:null):null;
+ $base=rtrim((string)(cfg('app.base_url')?:''),'/');
+ ok(['enabled'=>is_array($f)&&in_array('owner_mobile',$f,true),
+     'slug'=>(string)$row['slug'],'name'=>(string)$row['name'],
+     'link'=>$base.'/m'.($row['slug']?('?b='.rawurlencode((string)$row['slug'])):'')]);
+
+case 'sa-owner-mobile-toggle':needSuper();
+ $d=body();
+ $tid=(string)($d['tenant_id']??''); if($tid==='')fail('tenant_id is required');
+ $on=(bool)($d['enabled']??false);
+ $p=DB::pdo();
+ $q=$p->prepare("SELECT features_json,industry_code,slug FROM tenants WHERE id=? LIMIT 1");
+ $q->execute([$tid]); $row=$q->fetch(); if(!$row)fail('Business not found',404);
+ $cur=$row['features_json']?(json_decode((string)$row['features_json'],true)?:null):null;
+ if($cur===null){
+   /* Ab tak koi hadd set nahi thi (= sab modules allowed). Agar hum
+      seedha sirf ["owner_mobile"] likh dein to is business ke BAQI
+      SAARE modules band ho jayenge. Is liye pehle poori mojooda list
+      banate hain, phir us mein yeh ek cheez jorte hain. */
+   $mq=$p->prepare("SELECT module_key FROM platform_modules
+                     WHERE is_active=1 AND industry_code IN (?, 'COMMON')");
+   $mq->execute([strtoupper((string)($row['industry_code']?:'RESTAURANT'))]);
+   $cur=array_column($mq->fetchAll(),'module_key');
+ }
+ $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='owner_mobile')));
+ if($on)$cur[]='owner_mobile';
+ $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
+   ->execute([json_encode(array_values($cur)),$tid]);
+ Audit::log($on?'OWNER_APP_ON':'OWNER_APP_OFF','platform',['label'=>$tid]);
+ $base=rtrim((string)(cfg('app.base_url')?:''),'/');
+ ok(['enabled'=>$on,
+     'link'=>$base.'/m'.($row['slug']?('?b='.rawurlencode((string)$row['slug'])):''),
+     'message'=>$on?'Owner app chalu kar diya':'Owner app band kar diya']);
+
 case 'sa-features-get':
  /* ============================================================
     V141 — features ab GROUPS ki shakal mein jate hain.

@@ -30,6 +30,37 @@ if(str_starts_with($name,'retail/')){
 require_once dirname(__DIR__).'/src/bootstrap.php';
 if(($name==='login.html') && isset($_GET['b']) && (($GLOBALS['config']['app']['role']??'')==='cloud')){ $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)$_GET['b'])); $_SESSION['login_tenant_slug']=$slug; $tid=\Aio\Services\Platform::tenantIdBySlug($slug); if($tid){$_SESSION['login_tenant_id']=$tid;} }
 
+/* ============================================================
+   V160 — OWNER KE MOBILE PORTAL KA CHHOTA PATA:  /m
+
+   Malik ko bhejne ke liye `https://…/owner_mobile.html?b=slug` jaisa
+   lamba pata theek nahi: WhatsApp par toot jata hai, aur phone par
+   haath se likhna mushkil. `/m?b=slug` chhota hai aur yaad bhi reh
+   jata hai.
+
+   Yeh sirf darwaza hai, chaabi nahi: koi token nahi, koi khufiya
+   raasta nahi. Link kholte hi login maanga jata hai — jaise baqi
+   poore software mein. Link kisi aur ke haath lag bhi jaye to us ke
+   paas user aur password nahi hoga.
+
+   `?b=` sirf yeh batata hai ke KIS business ka login kholna hai (wohi
+   kaam jo `login.html?b=` karta hai), aur login ke baad kahan jana
+   hai yeh session mein likh dete hain.
+   ============================================================ */
+if($name==='m' || $name==='m/' || $name==='m.html'){
+  if(isset($_GET['b']) && (($GLOBALS['config']['app']['role']??'')==='cloud')){
+    $slug=preg_replace('/[^a-z0-9-]/','',strtolower((string)$_GET['b']));
+    if($slug!==''){
+      $_SESSION['login_tenant_slug']=$slug;
+      $tid=\Aio\Services\Platform::tenantIdBySlug($slug);
+      if($tid)$_SESSION['login_tenant_id']=$tid;
+    }
+  }
+  $_SESSION['after_login']='/owner_mobile.html';
+  header('Location: /owner_mobile.html');
+  exit;
+}
+
 use Aio\Auth;
 use Aio\Csrf;
 
@@ -79,7 +110,11 @@ $publicPages=['login.html','signup.html','signup_pending.html','setup.html','sup
   'invoice.html'];
 /* Kisi bhi vertical ke nahi — platform ke utility pages. Yeh hamesha
    `approved_ui/` se aate hain, chahe tenant retail ho. */
-$sharedPages=['activate.html','backup_restore.html'];
+/* `owner_mobile.html` yahan hai kyunke yeh kisi ek vertical ki screen
+   nahi — restaurant ho ya store, malik ko wohi cheezein dekhni hoti
+   hain. Warna retail tenant par yeh `approved_ui/retail/` mein dhoondi
+   jati aur 404 ho jati. */
+$sharedPages=['activate.html','backup_restore.html','owner_mobile.html'];
 
 /* ============================================================
    LICENCE GATE — offline node.
@@ -124,6 +159,38 @@ if($licenceBlocked && !in_array($name,$licenceAllow,true)
   exit;
 }
 $fileModule=['index.html'=>'dashboard','dashboard.html'=>'dashboard','shift_management.html'=>'shift','restaurant_pos.html'=>'pos','restaurant_order_taker_tablet.html'=>'tablet','kds.html'=>'kds','closing_history.html'=>'closing','activate.html'=>'activate','backup_restore.html'=>'backup','purchase_orders.html'=>'purchasing','activity_log.html'=>'activity','tables_floors.html'=>'tables','orders_management.html'=>'orders','online_orders.html'=>'online','inventory_creation.html'=>'inventory','purchasing.html'=>'purchasing','recipe_making.html'=>'recipe','menu_management.html'=>'menu','wastage_adjustment.html'=>'wastage','stock_transfer.html'=>'transfer','stock_count.html'=>'count','stock_day_close.html'=>'dayclose','suppliers.html'=>'suppliers','customers.html'=>'customers','customer_mobile_app.html'=>'customer_app','customer_web_qr.html'=>'customer_web','delivery.html'=>'delivery','rider_management.html'=>'riders','reservations.html'=>'reservations','loyalty.html'=>'loyalty','whatsapp_notifications.html'=>'whatsapp','expenses.html'=>'expenses','accounting.html'=>'accounting','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','void_refund.html'=>'void','reports.html'=>'reports','fbr.html'=>'fbr','printer_devices.html'=>'printers','multi_branch.html'=>'branches','offline_sync.html'=>'offline','users_access.html'=>'users','settings.html'=>'settings'];
+
+/* ============================================================
+   V160 — OWNER PORTAL KA APNA PEHRA.
+
+   Yeh `$fileModule` ki fehrist mein JAAN BOOJH KAR nahi hai. Us raste
+   par `canModule()` chalta hai, jis ka qanoon yeh hai ke "features
+   khali ho to sab allowed" — aur zyadatar businesses par wo khali hi
+   hota hai. Nateeja yeh nikalta ke portal har jagah khud khul jata,
+   jabke yeh wo cheez hai jo super admin ek ek property ko deta hai.
+
+   Teen sawal, isi tarteeb se:
+     1. Login hai? Nahi to login par, aur usi business ka (`?b=`).
+     2. Super admin ne is property ko diya hai? (Auth::ownerMobile)
+     3. Yeh malik/manager hai? Cashier ke liye yeh screen nahi —
+        us par poore business ka munafa aur sab ka hisaab hai.
+   ============================================================ */
+if($name==='owner_mobile.html'){
+  if(!Auth::user()){
+    $slug=(string)($_SESSION['login_tenant_slug']??'');
+    $_SESSION['after_login']='/owner_mobile.html';
+    header('Location: /login.html'.($slug!==''?('?b='.rawurlencode($slug)):''));
+    exit;
+  }
+  if(!Auth::ownerMobile()){
+    http_response_code(403);
+    exit('Owner app is not switched on for this business. Ask Wabwar Software House to enable it.');
+  }
+  if(!Auth::isManager()){
+    http_response_code(403);
+    exit('Only the owner or a manager can open this screen.');
+  }
+}
 
 if(!in_array($name,$publicPages,true)){
   if(!Auth::user()){header('Location: /login.html');exit;   /* V65: '?build=v14' address bar mein nazar aata tha */}
@@ -225,8 +292,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
- ['href="/shared.css?b=v22"','src="/shared_store.js?b=v22"','src="/live_store.js?b=v22"','src="/access_store.js?b=v22"',
-  'src="/shell.js?b=v22"','src="/module.js?b=v22"','src="/module_config.js?b=v22"','src="/item_dialog.js?b=v22"','src="/stock_in.js?b=v22"'],
+ ['href="/shared.css?b=v23"','src="/shared_store.js?b=v23"','src="/live_store.js?b=v23"','src="/access_store.js?b=v23"',
+  'src="/shell.js?b=v23"','src="/module.js?b=v23"','src="/module_config.js?b=v23"','src="/item_dialog.js?b=v23"','src="/stock_in.js?b=v23"'],
  $html
 );
 }

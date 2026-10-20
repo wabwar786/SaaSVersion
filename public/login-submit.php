@@ -45,8 +45,25 @@ try {
         session_write_close();
     }
 
+    /* ============================================================
+       V160 — LOGIN KE BAAD WAHIN WAPIS JAHAN SE AAYA THA.
+
+       Pehle login ke baad hamesha `/index.html` khulta tha. Malik ko
+       owner app ka link bheja jaye, wo kholay, login karay — aur
+       saamne dashboard aa jaye. Phir usay khud dobara link kholna
+       parta. Chhoti baat hai, magar pehli hi dafa mein bura tajurba.
+
+       Sirf GINI CHUNI andar ki jagahen qubool hain. "Jo bhi path
+       aaye wahan bhej do" wala rasta khula chhorna khatarnak hai:
+       link mein bahar ki website daal kar bande ko login ke foran
+       baad kisi naqli safhay par bheja ja sakta hai.
+       ============================================================ */
+    $next = (string)($_SESSION['after_login'] ?? '');
+    unset($_SESSION['after_login']);
+    $allowed = ['/owner_mobile.html'];
+
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    header('Location: /index.html', true, 303);
+    header('Location: '.(in_array($next, $allowed, true) ? $next : '/index.html'), true, 303);
     exit;
 } catch (Throwable $e) {
     /*

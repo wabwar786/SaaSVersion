@@ -999,6 +999,8 @@ async function loadBiz(){
       +'<button class="btn sm" onclick="bizBrand(\'' + b.id + '\')">Branding</button>'
       +'<button class="btn sm" onclick="bizFeatures(\'' + b.id + '\')">Features</button>'
       +'<button class="btn sm" onclick="bizFbr(\'' + b.id + '\')">FBR</button>'
+      /* V160 — owner ka mobile portal, per property. */
+      +'<button class="btn sm" onclick="bizOwnerApp(\'' + b.id + '\')">Owner app</button>'
       +'<button class="btn sm" onclick="bizWa(\'' + b.id + '\')">WhatsApp</button>'
       +'<button class="btn sm" onclick="bizToggle(\'' + b.id + '\',' + (susp?1:0) + ')">'+(susp?'Activate':'Suspend')+'</button>'
       +'</div></td></tr>';
@@ -1432,6 +1434,75 @@ async function bizFbr(id){
     if(!r.ok){toast(r.message||'Failed');return}
     toast(r.message||'Ho gaya');
     ov.remove(); loadBiz();
+  };
+}
+
+/* ============================================================
+   V160 — OWNER KA MOBILE PORTAL, EK EK PROPERTY KO.
+
+   Yeh baaki modules jaisa nahi hai. Baqi ka qanoon yeh hai ke agar
+   business par koi hadd set na ho to sab kuch allowed — yani wo khud
+   ba khud har jagah chal parte hain. Owner app us tarah nahi khulta:
+   khulta SIRF tab hai jab yahan se saaf diya jaye.
+
+   Link mein koi token nahi — wo sirf darwaza hai. Kholte hi login
+   maanga jata hai, aur phir malik/manager hi andar ja sakta hai.
+   Cashier ke paas user-password ho to bhi yeh screen nahi khulti:
+   is par poore business ka munafa aur sab ka hisaab hai.
+   ============================================================ */
+async function bizOwnerApp(id){
+  const st=await api('sa-owner-mobile-status&tenant_id='+encodeURIComponent(id));
+  if(!st.ok){toast(st.message||'Status not found');return}
+  const on=!!st.enabled;
+  const pill = on ? '<span class="tag green">On</span>' : '<span class="tag red">Off</span>';
+
+  const ov=sModal('<h3 style="margin:0 0 4px">Owner app</h3>'
+    +'<p class="lead" style="margin:0 0 14px">'+esc(st.name||'')+'</p>'
+    +'<div class="note" style="margin-bottom:12px">Currently: '+pill+'</div>'
+    +'<div style="font-size:12.5px;line-height:1.75;color:var(--muted)">'
+      +'A read-only phone portal for the owner: today&rsquo;s sale, what is selling, '
+      +'live stock, and which accounts are still open. It cannot change anything.'
+      +'<br>Only the owner or a manager can open it &mdash; a cashier with a password cannot.'
+      +'<br><span class="muted">Works from any phone browser. No app store, no install.</span>'
+    +'</div>'
+    +(on
+      ? '<div style="margin-top:14px">'
+        +'<div class="muted" style="font-size:11.5px;margin-bottom:5px">Send this link to the owner</div>'
+        +'<div class="row" style="gap:8px;align-items:stretch">'
+        +'<input id="oaLink" readonly value="'+esc(st.link||'')+'" '
+        +'style="flex:1;min-width:0;font-size:12.5px;padding:9px 11px;border:1px solid var(--line);'
+        +'border-radius:8px;background:var(--surface-2);color:var(--ink)">'
+        +'<button class="btn sm" id="oaCopy" style="flex:none;white-space:nowrap">Copy</button>'
+        +'</div></div>'
+      : '')
+    +'<div class="row" style="margin-top:16px;gap:8px">'
+      +'<button class="btn ghost" data-x>Cancel</button>'
+      +'<button class="btn'+(on?' danger':'')+'" id="oaGo">'+(on?'Turn off':'Turn on')+'</button>'
+    +'</div>');
+
+  const cp=ov.querySelector('#oaCopy');
+  if(cp)cp.onclick=function(){
+    const el=ov.querySelector('#oaLink');
+    el.select(); el.setSelectionRange(0,99999);
+    /* Purane browsers par clipboard API nahi hoti — execCommand hi
+       ek sahara hai, aur wo bhi na chale to text select rehta hai
+       taake bande haath se copy kar sake. */
+    try{ document.execCommand('copy'); toast('Link copy ho gaya'); }
+    catch(e){ toast('Link select hai — haath se copy karein'); }
+  };
+
+  ov.querySelector('#oaGo').onclick=async function(){
+    const label=this.textContent;
+    this.disabled=true; this.textContent='Saving…';
+    const r=await api('sa-owner-mobile-toggle',{tenant_id:id,enabled:!on});
+    this.disabled=false; this.textContent=label;
+    if(!r.ok){toast(r.message||'Failed');return}
+    toast(r.message||'Ho gaya');
+    ov.remove();
+    /* Foran dobara khol dete hain: chalu karne ke baad bande ko link
+       chahiye hota hai, aur dialog band kar dena usay dobara dhoondne
+       par majboor karta. */
+    if(r.enabled) bizOwnerApp(id); else loadBiz();
   };
 }
 

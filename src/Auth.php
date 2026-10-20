@@ -418,6 +418,28 @@ final class Auth {
         return self::$featCache;
     }
 
+    /**
+     * V160 — OWNER KA MOBILE PORTAL is business ke liye khula hai ya nahi.
+     *
+     * Yeh `canModule()` se JAAN BOOJH KAR alag hai. `canModule()` ka
+     * qanoon yeh hai: `features_json` khali (NULL) ho to SAB allowed.
+     * Zyadatar businesses par wo NULL hi hota hai, yani owner portal
+     * khud-ba-khud har jagah khul jata — jabke yeh wo cheez hai jo
+     * super admin SOCH SAMAJH kar, ek ek property ko deta hai.
+     *
+     * Is liye yahan shart ulat hai: khula SIRF tab hai jab `owner_mobile`
+     * fehrist mein SAAF LIKHA ho. Kuch likha hi na ho to band.
+     *
+     * Isi wajah se `owner_mobile` ko `platform_modules` mein bhi darj
+     * nahi kiya gaya — warna "sab modules" wali fehrist banate waqt wo
+     * khud shamil ho jata aur yehi pehra bekar ho jata.
+     */
+    public static function ownerMobile(): bool
+    {
+        $feat = self::tenantFeatures();
+        return is_array($feat) && in_array('owner_mobile', $feat, true);
+    }
+
     /** module_key -> industry_code (ek dafa load, phir cache). */
     private static ?array $moduleIndustryMap = null;
 
