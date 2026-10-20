@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#17150F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Owner</title>
+<!--
+  ============================================================
+  OWNER / EXECUTIVE — MOBILE
+
+  KIS KE LIYE: restaurant ke MALIK ke liye. Cashier ke liye nahi.
+
+  Yeh screen kuch BADAL nahi sakti — na bill, na rate, na stock ki
+  qty. Sirf dikhati hai (aik istisna: kisi item ko "Nazar mein"
+  rakhna, jo neeche likha hai). Malik apna phone kisi ko pakra de to
+  bhi nuqsaan ka rasta nahi.
+
+  ============================================================
+  SHAKL KAHAN SE AAYI — AUR KYUN
+  ============================================================
+  Pehli koshish mein yeh wohi aam "dashboard" ban gayi thi: ek jaisi
+  gol-kone wali cards ki qataar, har heading ke ooper CHHOTE CAPITAL
+  ka label, har cheez ke neeche wahi halka saya. Woh kisi bhi software
+  ki screen ho sakti thi — is restaurant ki nahi.
+
+  Is dafa shakl isi dhande se nikali gayi hai. Is kaam ki asal cheez
+  jo har roz haath mein aati hai wo hai PARCHI — 80mm ka wohi roll jis
+  par bill aur raat ki closing chhapti hai. Malik ke zehan mein "din"
+  ka matlab bhi wohi dher hai jo counter par jama hota hai.
+
+  Is liye:
+    * Upar ka hissa GEHRA (ink) hai — khata/ledger wali shakl, aur
+      cashier wali safed screen se foran alag pehchana jata hai.
+    * Us ka neeche wala kinara PHATI HUI PARCHI jaisa hai. Yeh sirf
+      sajawat nahi: wohi lakeer "malik ka hissa" aur "tafseel" ko
+      alag karti hai.
+    * Jahan jama/tafreeq hoti hai wahan parchi wali NUQTA-DAR lakeer
+      hai (jaise bill par total se ooper hoti hai), aam hairline nahi.
+    * Numbers MONOSPACE hain — cash register wali tarteeb, aur har
+      number doosre ke theek neeche aata hai. Yeh phone ke apne font
+      se aata hai, bahar se koi font nahi mangwaya jata (offline PC
+      par bahar ka font aata hi nahi).
+
+  RANG: brand ka surkh (cashier ki screen ka rang) sirf wahan jahan
+  "abhi, live" dikhana ho. Malik ke apne hisse ka rang PEETAL (brass)
+  hai — yeh us ki screen ko staff ki screen se alag darja deta hai.
+
+  ============================================================
+  TEEN USOOL
+  ============================================================
+  1. EK NAZAR, EK HAATH. Malik gaari mein ya mehfil mein phone dekhta
+     hai, report parhne nahi baithta. Har screen ka pehla number sab
+     se bara; tafseel neeche.
+  2. HAR NUMBER KE SATH US KA MATLAB. Akela "48,260" kuch nahi kehta.
+     "Kal se 12% ziada" sab keh deta hai.
+  3. ANGOOTHE KI JAGAH. Tabs neeche. 6 inch ke phone par upar ka kona
+     angoothe se nahi aata.
+
+  Width 360px (chhote Android) tak theek, aur iPhone ke notch aur
+  home-indicator ki jagah chhori gayi hai.
+
+  ABHI DEMO DATA PAR HAI — sirf shakl dekhne ke liye. Sara data ek
+  hi jagah (`D`) rakha hai; manzoori ke baad usi ki jagah server ka
+  jawab aayega aur baqi screen waisi ki waisi rahegi.
+  ============================================================
+-->
+<style>
+:root{
+  /* Khata: gehra ink (thanda kala nahi — is brand ki garmaish ke sath) */
+  --ink:#17150F; --ink-2:#231F17; --ink-3:#332D22;
+  /* Parchi */
+  --paper:#F7F4EE; --paper-2:#FFFDF8; --rule:#E2DCCE;
+  --text:#1B1813; --text-2:#4A4336; --ash:#8A8275; --faint:#B3AA99;
+  /* Malik ka apna rang */
+  --brass:#C8A24A; --brass-soft:#F5EAD0;
+  /* Abhi / live — cashier wali screen ka brand rang */
+  --live:#E0301A;
+  --ok:#1F7A4C; --ok-soft:#E4F2E9;
+  --warn:#B26A06; --warn-soft:#FBF0DC;
+  --bad:#C02617; --bad-soft:#FBE9E6;
+  --tab-h:60px;
+  --sb:env(safe-area-inset-bottom,0px);
+  --st:env(safe-area-inset-top,0px);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Roboto Mono","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);color:var(--text);font-family:var(--sans);
+  font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  -webkit-user-select:none;user-select:none;overscroll-behavior-y:contain;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.app{min-height:100dvh;padding-bottom:calc(var(--tab-h) + var(--sb) + 10px)}
+.pane{display:none}.pane.on{display:block}
+
+/* ============ KHATA (gehra hissa) ============ */
+.ledger{background:var(--ink);color:#fff;position:relative;padding:calc(var(--st) + 15px) 20px 26px}
+.ledger::after{            /* phati hui parchi ka kinara */
+  content:'';position:absolute;left:0;right:0;bottom:-1px;height:11px;background:var(--paper);
+  -webkit-mask-image:radial-gradient(circle at 7px 11px,#000 6px,transparent 6.5px);
+  mask-image:radial-gradient(circle at 7px 11px,#000 6px,transparent 6.5px);
+  -webkit-mask-size:14px 11px;mask-size:14px 11px;
+  -webkit-mask-repeat:repeat-x;mask-repeat:repeat-x;
+}
+.bizrow{display:flex;align-items:center;gap:12px}
+.seal{width:40px;height:40px;border-radius:11px;flex:none;display:grid;place-items:center;
+  font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.04em;
+  color:var(--brass);border:1.5px solid rgba(200,162,74,.42);background:rgba(200,162,74,.08)}
+.bizrow h1{margin:0;font-size:16.5px;font-weight:650;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bizrow .meta{flex:1;min-width:0}
+.bizrow .meta p{margin:1px 0 0;font-size:12px;color:#9C958A}
+.pulse{display:inline-flex;align-items:center;gap:6px}
+.pulse i{width:6px;height:6px;border-radius:50%;background:#54D18A;flex:none;
+  box-shadow:0 0 0 0 rgba(84,209,138,.6);animation:p 2.6s infinite}
+@keyframes p{70%{box-shadow:0 0 0 7px rgba(84,209,138,0)}100%{box-shadow:0 0 0 0 rgba(84,209,138,0)}}
+
+.sum{margin-top:22px}
+.sum .when{font-size:13px;color:#A69D8C;letter-spacing:.01em}
+.sum .amt{
+  font-family:var(--mono);font-weight:700;letter-spacing:-.045em;
+  font-size:clamp(42px,13.5vw,54px);line-height:1;margin:7px 0 0;
+  display:flex;align-items:baseline;gap:9px;
+}
+.sum .amt u{font:inherit;font-size:.36em;letter-spacing:.05em;color:#8A8274;
+  text-decoration:none;font-weight:600}
+.sum .bar{height:2px;background:var(--brass);width:46px;margin:15px 0 13px;border-radius:2px}
+.trend{font-size:13.5px;color:#CFC7B8}
+.trend b{font-family:var(--mono);font-weight:700;letter-spacing:-.01em}
+.trend b.up{color:#6FD79B} .trend b.down{color:#F09A8D}
+
+/* live chips — seam par baithti hain */
+.live{display:flex;gap:8px;overflow-x:auto;padding:0 16px;margin:-13px 0 20px;
+  scrollbar-width:none;position:relative;z-index:2}
+.live::-webkit-scrollbar{display:none}
+.live span{flex:none;background:var(--paper-2);border:1px solid var(--rule);border-radius:999px;
+  padding:7px 13px;font-size:12.5px;color:var(--text-2);display:flex;align-items:center;gap:7px;
+  box-shadow:0 2px 8px rgba(23,21,15,.06)}
+.live span b{font-family:var(--mono);font-weight:700;color:var(--text)}
+.live span i{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ash)}
+.live span.go i{background:var(--ok)} .live span.warn i{background:var(--warn)}
+.live span.hot i{background:var(--live)}
+
+/* ============ parchi wali tarteeb ============ */
+.sheet{padding:0 20px}
+.sect{margin-bottom:26px}
+.sect > h2{font-size:15px;font-weight:650;letter-spacing:-.01em;margin:0 0 2px}
+.sect > p.hint{margin:0 0 13px;font-size:12.5px;color:var(--ash)}
+
+/* Nuqta-dar lakeer — bill par total se ooper wali */
+.perf{height:1px;background:repeating-linear-gradient(90deg,var(--rule) 0 4px,transparent 4px 8px);
+  margin:13px 0}
+
+/* do number saath saath, bina card ke */
+.pair{display:flex;gap:26px}
+.pair > div{flex:1;min-width:0}
+.pair .k{font-size:12.5px;color:var(--ash)}
+.pair .v{font-family:var(--mono);font-weight:700;font-size:23px;letter-spacing:-.03em;margin-top:2px}
+.pair .s{font-size:11.5px;color:var(--faint);margin-top:1px}
+
+/* ledger lines — har qataar ek parchi ki line */
+.lines{display:flex;flex-direction:column}
+.ln{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule)}
+.ln:last-child{border-bottom:0}
+.ln .nm{flex:1;min-width:0;font-size:14px}
+.ln .nm b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ln .nm span{font-size:12px;color:var(--ash)}
+.ln .amt{font-family:var(--mono);font-weight:700;font-size:14.5px;text-align:right;white-space:nowrap}
+.ln .amt em{display:block;font-style:normal;font-size:11px;color:var(--faint);font-weight:500;
+  font-family:var(--sans);margin-top:1px}
+.ln.total{border-top:1.5px solid var(--text);border-bottom:0;padding-top:11px;margin-top:2px}
+.ln.total .nm b{font-weight:700}
+.ln.total .amt{font-size:17px}
+
+/* hissa (share) meter — parchi par jo nazar aata hai wo yehi hai */
+.share{display:flex;height:7px;border-radius:999px;overflow:hidden;background:var(--rule);margin:4px 0 12px}
+.share i{display:block}
+.keys{display:flex;flex-wrap:wrap;gap:7px 18px}
+.keys div{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2)}
+.keys i{width:8px;height:8px;border-radius:2px;flex:none}
+.keys b{font-family:var(--mono);font-weight:700;color:var(--text)}
+
+/* ghante ka naqsha */
+.hours{display:flex;align-items:flex-end;gap:4px;height:76px}
+.hours div{flex:1;background:var(--brass-soft);border-radius:3px 3px 1px 1px;min-height:3px;position:relative}
+.hours div.peak{background:var(--brass)}
+.hours div.now{background:var(--live)}
+.hlab{display:flex;gap:4px;margin-top:7px}
+.hlab span{flex:1;text-align:center;font-size:10px;color:var(--faint);font-family:var(--mono)}
+
+/* tanbeeh */
+.flag{display:flex;gap:11px;align-items:flex-start;border-left:3px solid var(--warn);
+  background:var(--warn-soft);border-radius:0 10px 10px 0;padding:12px 14px;margin-bottom:16px}
+.flag.bad{border-left-color:var(--bad);background:var(--bad-soft)}
+.flag b{display:block;font-size:13.5px;font-weight:650;margin-bottom:2px}
+.flag p{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.4}
+
+/* arsa chunne ka switch */
+.when-pick{display:flex;gap:20px;border-bottom:1px solid var(--rule);margin-bottom:18px}
+.when-pick button{padding:0 0 9px;font-size:13.5px;color:var(--ash);font-weight:600;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.when-pick button.on{color:var(--text);border-bottom-color:var(--brass)}
+
+/* ============ STOCK ============ */
+.find{display:flex;align-items:center;gap:9px;background:var(--paper-2);border:1px solid var(--rule);
+  border-radius:11px;padding:10px 13px;margin-bottom:16px}
+.find input{flex:1;border:0;background:none;outline:none;font-size:14px;min-width:0;
+  -webkit-user-select:text;user-select:text}
+.find svg{width:16px;height:16px;flex:none;color:var(--ash)}
+.item{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule);
+  width:100%;text-align:left}
+.item:last-child{border-bottom:0}
+.star{width:26px;height:26px;flex:none;display:grid;place-items:center;color:var(--faint)}
+.star svg{width:17px;height:17px}
+.star.on{color:var(--brass)}
+.item .nm{flex:1;min-width:0}
+.item .nm b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.gauge{display:block;height:4px;background:#E7E1D3;border-radius:3px;margin-top:7px;overflow:hidden;max-width:132px}
+.gauge i{display:block;height:100%;background:var(--ok);border-radius:2px}
+.gauge.low i{background:var(--warn)} .gauge.out i{background:var(--bad)}
+.item .qty{font-family:var(--mono);font-weight:700;font-size:14.5px;text-align:right;white-space:nowrap}
+.item .qty u{text-decoration:none;font-size:10.5px;color:var(--faint);margin-left:3px}
+.item .qty em{display:block;font-style:normal;font-size:11px;color:var(--faint);font-weight:500;
+  font-family:var(--sans)}
+.item.low .qty{color:var(--warn)} .item.out .qty{color:var(--bad)}
+
+/* item ki tafseel — neeche se uthne wali parchi */
+.slip{position:fixed;inset:0;z-index:60;display:none}
+.slip.on{display:block}
+.slip .veil{position:absolute;inset:0;background:rgba(23,21,15,.42)}
+.slip .card{position:absolute;left:0;right:0;bottom:0;background:var(--paper);
+  border-radius:20px 20px 0 0;padding:20px 20px calc(22px + var(--sb));
+  animation:rise .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes rise{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.slip .grip{width:34px;height:4px;border-radius:3px;background:var(--rule);margin:0 auto 15px}
+.slip h3{margin:0;font-size:18px;font-weight:650;letter-spacing:-.01em}
+.slip .sub{font-size:12.5px;color:var(--ash);margin:2px 0 16px}
+
+/* ============ tabs ============ */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(247,244,238,.94);
+  backdrop-filter:blur(16px);border-top:1px solid var(--rule);padding-bottom:var(--sb);
+  display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs button{height:var(--tab-h);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:4px;color:var(--faint);font-size:10.5px;font-weight:600}
+.tabs button svg{width:21px;height:21px;display:block}
+.tabs button.on{color:var(--text)}
+.tabs button.on svg{color:var(--brass)}
+
+.sign{text-align:center;font-size:11px;color:var(--faint);padding:2px 0 20px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <section class="pane on" id="p-today"></section>
+  <section class="pane"     id="p-sale"></section>
+  <section class="pane"     id="p-stock"></section>
+  <section class="pane"     id="p-acct"></section>
+  <div class="sign">SmartPOS &middot; Wabwar Software House</div>
+</div>
+
+<div class="slip" id="slip">
+  <div class="veil" data-shut></div>
+  <div class="card">
+    <div class="grip"></div>
+    <h3 id="sName">&mdash;</h3>
+    <div class="sub" id="sSub">&mdash;</div>
+    <div class="lines" id="sBody"></div>
+    <div class="perf"></div>
+    <div class="keys"><div>Yeh sirf dikhane ke liye hai &mdash; stock yahan se badalta nahi.</div></div>
+  </div>
+</div>
+
+<nav class="tabs">
+  <button class="on" data-go="today">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3.5l2.5 6 4-13 2.5 7H21"/></svg>Aaj</button>
+  <button data-go="sale">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V11M12 20V4M19 20v-7"/></svg>Sale</button>
+  <button data-go="stock">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l9-4.5 9 4.5-9 4.5-9-4.5z"/>
+      <path d="M3 12.5l9 4.5 9-4.5"/><path d="M3 16.5l9 4.5 9-4.5"/></svg>Stock</button>
+  <button data-go="acct">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/>
+      <path d="M3 10h18"/><path d="M7 14.5h3.5"/></svg>Account</button>
+</nav>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   SARA DATA SERVER SE. EK CALL.
+
+   Phone ka internet kamzor hota hai: char alag requests ka matlab
+   char dafa intezar aur char dafa nakami ka imkaan. Poora portal
+   `owner-mobile-boot` se bharta hai; sirf arsa badalne par Sale ka
+   hissa alag se aata hai.
+   ============================================================ */
+var B = null;            /* server ka jawab */
+var DAYS = 30;           /* Sale ka mojooda arsa */
+var CUR = 'PKR';
+
+function api(action, payload, done){
+  var x = new XMLHttpRequest();
+  x.open(payload ? 'POST' : 'GET', '/api.php?action=' + action, true);
+  x.setRequestHeader('Accept','application/json');
+  if (payload){
+    x.setRequestHeader('Content-Type','application/json');
+    x.setRequestHeader('X-CSRF-Token', window.APP_CSRF || '');
+  }
+  x.timeout = 30000;
+  x.onload = function(){
+    var j = null;
+    try { j = JSON.parse(x.responseText); } catch(e){}
+    done(j || {ok:false, message:'Server ne jawab nahi diya'});
+  };
+  x.onerror = x.ontimeout = function(){
+    done({ok:false, message:'Internet nahi mil raha'});
+  };
+  x.send(payload ? JSON.stringify(payload) : null);
+}
+
+/* ---------- chhote madadgar ---------- */
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+function n0(v){ return Number(v||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function n2(v){ return Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2}); }
+/* Roman Urdu: ek "bika", ek se zyada "bike". Chhoti baat hai, magar
+   "1 bike" parhne mein khatakti hai. */
+function sold(q){ return n2(q) + (Number(q) === 1 ? ' bika' : ' bike'); }
+
+/* Bari raqam ko lakh mein — 12,46,000 parhne mein waqt lagta hai,
+   "12.46 lakh" ek nazar mein samajh aa jata hai. */
+function big(v){
+  v = Number(v||0);
+  if (Math.abs(v) >= 100000) return {v:(v/100000).toFixed(2), u:'lakh'};
+  return {v:n0(v), u:''};
+}
+function pctChange(now, was){
+  now = Number(now||0); was = Number(was||0);
+  if (was <= 0) return null;
+  return Math.round(((now - was) / was) * 1000) / 10;
+}
+function trendLine(now, was, tail){
+  var p = pctChange(now, was);
+  if (p === null) return '<div class="trend">' + tail + ' &mdash; pehle ka koi record nahi</div>';
+  var cls = p >= 0 ? 'up' : 'down';
+  var sign = p >= 0 ? '+' : '';
+  return '<div class="trend">' + tail + ' <b class="' + cls + '">' + sign + p + '%</b>'
+       + ' &mdash; ' + n0(was) + ' tha</div>';
+}
+function head(title, sub, amount, unit, trend){
+  var a = big(amount);
+  return '<div class="ledger">'
+    + '<div class="bizrow"><div class="seal">' + esc(B.biz.ini) + '</div>'
+    +   '<div class="meta"><h1>' + esc(title) + '</h1><p>' + sub + '</p></div></div>'
+    + '<div class="sum"><div class="when">' + esc(unit) + '</div>'
+    +   '<div class="amt"><u>' + esc(CUR) + '</u>' + a.v
+    +     (a.u ? '<u style="font-size:.42em">' + a.u + '</u>' : '') + '</div>'
+    +   '<div class="bar"></div>' + trend + '</div></div>';
+}
+function ln(name, sub, amt, note, cls){
+  return '<div class="ln' + (cls ? ' ' + cls : '') + '">'
+    + '<div class="nm"><b>' + esc(name) + '</b>'
+    +   (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>'
+    + '<div class="amt">' + amt + (note ? '<em>' + note + '</em>' : '') + '</div></div>';
+}
+function sect(title, hint, body){
+  return '<div class="sect"><h2>' + esc(title) + '</h2>'
+    + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '') + body + '</div>';
+}
+/* Hissa dikhane wali patti + uske neeche naam. Teen se zyada tukre
+   parhne mein mushkil ho jate hain, is liye teen hi. */
+function share(parts){
+  var tot = parts.reduce(function(s,p){ return s + Number(p.v||0); }, 0);
+  if (tot <= 0) return '<p class="hint">Is arse mein kuch nahi.</p>';
+  return '<div class="share">' + parts.map(function(p){
+      return '<i style="width:' + (p.v/tot*100).toFixed(1) + '%;background:' + p.c + '"></i>';
+    }).join('') + '</div><div class="keys">' + parts.map(function(p){
+      return '<div><i style="background:' + p.c + '"></i>' + esc(p.n) + ' <b>' + n0(p.v) + '</b></div>';
+    }).join('') + '</div>';
+}
+/* Sutoon (bars). Sab se bara sutoon poori oonchai leta hai — asal
+   raqam se nahi, warna kam sale wale din par kuch nazar hi nahi aata. */
+function bars(vals, labels, peakAt, nowAt){
+  var mx = Math.max.apply(null, vals.concat([1]));
+  return '<div class="hours">' + vals.map(function(v,i){
+      var c = i === nowAt ? ' class="now"' : (i === peakAt ? ' class="peak"' : '');
+      return '<div' + c + ' style="height:' + Math.max(3, v/mx*100).toFixed(0) + '%"></div>';
+    }).join('') + '</div><div class="hlab">'
+    + labels.map(function(l){ return '<span>' + esc(l) + '</span>'; }).join('') + '</div>';
+}
+function hour12(h){
+  var x = h % 12; if (x === 0) x = 12; return String(x);
+}
+
+/* ============================================================
+   AAJ
+   ============================================================ */
+function paintToday(){
+  var t = B.today, L = t.live, p = t.pay;
+  var sub = '<span class="pulse"><i></i>' + esc(B.biz.branch || B.biz.name) + '</span>';
+
+  var chips = [
+    {n:'Chal rahe', v:L.running, c:'go'},
+    {n:'Kitchen mein', v:L.kitchen, c:'warn'},
+    {n:'Late', v:L.late, c:'hot'},
+    {n:'Table', v:L.busy + '/' + L.tables, c:'go'}
+  ].filter(function(c){ return c.n !== 'Late' || c.v > 0; });
+
+  var vals = t.hours.map(function(h){ return h.a; });
+  var labs = t.hours.map(function(h){ return hour12(h.h); });
+  var peak = vals.indexOf(Math.max.apply(null, vals.concat([0])));
+
+  var html = head(B.biz.name, sub, t.net, niceDate(t.date),
+                  trendLine(t.net, t.yest.net, 'Kal is waqt tak'))
+    + '<div class="live">' + chips.map(function(c){
+        return '<span class="' + c.c + '"><i></i>' + esc(c.n) + ' <b>' + esc(c.v) + '</b></span>';
+      }).join('') + '</div>'
+    + '<div class="sheet">'
+    + '<div class="sect"><div class="pair">'
+    +   pairCell('Bills', n0(t.bills), 'kal ' + n0(t.yest.bills))
+    +   pairCell('Average bill', n0(t.avg), t.bills ? '' : 'koi bill nahi')
+    +   (t.guests ? pairCell('Mehmaan', n0(t.guests), 'kal ' + n0(t.yest.guests))
+                  : (t.disc > 0 ? pairCell('Discount diya', n0(t.disc), 'bills mein se') : ''))
+    + '</div></div>';
+
+  /* ============================================================
+     HISAAB SIRF TAB JAB WAQAI KUCH GHATA HO.
+
+     Discount is qataar mein JAAN BOOJH KAR nahi hai: `grand_total`
+     mein se wo pehle hi nikal chuka hota hai. Usay dobara "−180"
+     likhna do dafa ghatana hai — aur phir "Bacha" wohi number aata
+     hai jo "Sale" hai, jo parhne wale ko ghalat lagta hai (aur theek
+     bhi yehi lagta, kyunke jama-tafreeq poori nahi hoti). Discount
+     ab apni alag jagah par hai, ek maloomat ke tor par.
+
+     Aur agar lagat aur kharcha dono darj hi na hue hon to yeh poora
+     khana nahi aata: "Bacha = Sale" likh dena malik ko jhooti
+     tasalli dena hai.
+     ============================================================ */
+  if (t.cost > 0 || t.exp > 0){
+    html += sect('Aaj ka hisaab', 'Jo bana, us mein se jo gaya, aur jo bacha.',
+      '<div class="lines">'
+      + ln('Sale', t.disc > 0 ? (n0(t.disc) + ' discount ke baad') : '', n0(t.net))
+      + (t.cost > 0 ? ln('Khaane ki lagat', 'sale ka ' + Math.round(t.cost/Math.max(t.net,1)*100) + '%',
+                         '&minus;' + n0(t.cost)) : '')
+      + (t.exp > 0 ? ln('Kharcha', '', '&minus;' + n0(t.exp)) : '')
+      + ln('Bacha', '', n0(t.left), '', 'total')
+      + '</div>');
+  }
+
+  /* Khali khana dikhane se behtar hai na dikhana. */
+  if (p.cash + p.card + p.online > 0){
+    html += sect('Paisa kahan se aaya', '', share([
+        {n:'Cash', v:p.cash, c:'#1F7A4C'},
+        {n:'Card', v:p.card, c:'#C8A24A'},
+        {n:'Online', v:p.online, c:'#4A4336'}
+      ]));
+  }
+
+  /* Do sutoon koi naqsha nahi hote — teen se kam par sirf jagah khate
+     hain aur bara sutoon be-maani lagta hai. */
+  if (vals.length >= 3){
+    html += sect('Kis ghante kitna',
+      'Sab se bhara waqt ' + labs[peak] + ' baje — ' + n0(vals[peak]) + '.',
+      bars(vals, labs, peak, vals.length - 1));
+  }
+
+  if (t.items.length){
+    html += sect('Aaj sab se ziada', '', '<div class="lines">' + t.items.map(function(i){
+      return ln(i.n, sold(i.q), n0(i.a),
+                Math.round(i.a / Math.max(t.net,1) * 100) + '%');
+    }).join('') + '</div>');
+  }
+
+  if (t.staff.length > 1){
+    html += sect('Kis ne kitna becha', '', '<div class="lines">' + t.staff.map(function(s){
+      return ln(s.n, '', n0(s.a), n0(s.bills) + ' bills');
+    }).join('') + '</div>');
+  }
+
+  document.getElementById('p-today').innerHTML = html + '</div>';
+}
+function pairCell(k, v, s){
+  return '<div><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>'
+       + '<div class="s">' + esc(s) + '</div></div>';
+}
+function niceDate(d){
+  try{
+    var x = new Date(d + 'T00:00:00');
+    return 'Aaj, ' + x.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
+  }catch(e){ return d; }
+}
+
+/* ============================================================
+   SALE
+   ============================================================ */
+function paintSale(){
+  var s = B.sale, m = s.mode;
+  var vals = s.daily.map(function(d){ return d.a; });
+  var labs = s.daily.map(function(d){
+    try{ return new Date(d.d + 'T00:00:00').toLocaleDateString('en-GB',{weekday:'short'}); }
+    catch(e){ return ''; }
+  });
+  /* 30 din ke 30 label ek line mein nahi aate — har 5wan. */
+  if (labs.length > 10) labs = labs.map(function(l,i){ return i % 5 === 0 ? l : ''; });
+  var peak = vals.indexOf(Math.max.apply(null, vals.concat([0])));
+
+  var html = head('Sale', esc(B.biz.name), s.net,
+                  'Pichhle ' + s.days + ' din',
+                  trendLine(s.net, s.prev, 'Is se pehle ke ' + s.days + ' din'))
+    + '<div class="sheet" style="padding-top:22px">'
+    + '<div class="when-pick">'
+    +   [[7,'7 din'],[30,'30 din'],[365,'Yeh saal']].map(function(o){
+          return '<button data-days="' + o[0] + '"'
+               + (o[0] === DAYS ? ' class="on"' : '') + '>' + o[1] + '</button>';
+        }).join('')
+    + '</div>';
+
+  html += '<div class="sect"><div class="pair">'
+    + pairCell('Rozana', n0(s.perDay), s.days + ' din ka औsat'.replace('औ','au'))
+    + pairCell('Bills', n0(s.bills), '')
+    + pairCell('Food cost', s.costPct + '%', 'sale ka hissa')
+    + '</div></div>';
+
+  if (vals.length >= 3) html += sect('Rozana', '', bars(vals, labs, peak, -1));
+
+  if (m.dine + m.take + m.deliver > 0){
+    html += sect('Kis tarah bika', '', share([
+        {n:'Dine in', v:m.dine, c:'#17150F'},
+        {n:'Takeaway', v:m.take, c:'#C8A24A'},
+        {n:'Delivery', v:m.deliver, c:'#8A8275'}
+      ]));
+  }
+
+  if (s.cats.length){
+    html += sect('Category ka hissa', '', '<div class="lines">' + s.cats.map(function(c){
+      return ln(c.n, sold(c.q), n0(c.a),
+                Math.round(c.a / Math.max(s.net,1) * 100) + '%');
+    }).join('') + '</div>');
+  }
+
+  if (s.margin.length){
+    html += sect('Sab se ziada nafa',
+      'Jo sab se ziada bikta hai zaroori nahi wohi sab se ziada deta ho.',
+      '<div class="lines">' + s.margin.map(function(x){
+        return ln(x.n, 'lagat ' + n0(x.cost) + ' · rate ' + n0(x.price),
+                  x.pct + '%', 'nafa');
+      }).join('') + '</div>');
+  }
+
+  if (s.exp > 0 || s.void.n > 0){
+    html += '<div class="sect"><div class="pair">'
+      + pairCell('Kharcha', n0(s.exp), s.days + ' din')
+      + pairCell('Lagat', n0(s.cost), 'khaane ki')
+      + (s.void.n ? pairCell('Void', n0(s.void.n), n0(s.void.a) + ' ka') : '')
+      + '</div></div>';
+  }
+
+  document.getElementById('p-sale').innerHTML = html + '</div>';
+}
+
+/* ============================================================
+   STOCK
+   ============================================================ */
+function levelOf(it){
+  if (it.q <= 0) return 'out';
+  if (it.min > 0 && it.q <= it.min) return 'low';
+  return 'ok';
+}
+function stockRow(it){
+  var lv = levelOf(it);
+  /* Patti reorder ke DO guna tak naapi jati hai: aadha bhara hona
+     "theek", aur neeche girna foran nazar aata hai. Jis cheez ki koi
+     hadd set hi nahi, us par patti nahi — jhooti tasalli se behtar
+     hai kuch na dikhana. */
+  var g = '';
+  if (it.min > 0){
+    var pct = Math.max(3, Math.min(100, it.q / (it.min * 2) * 100));
+    g = '<span class="gauge ' + (lv === 'ok' ? '' : lv) + '">'
+      + '<i style="width:' + pct.toFixed(0) + '%"></i></span>';
+  }
+  return '<button class="item ' + (lv === 'ok' ? '' : lv) + '" data-i="' + esc(it.id) + '">'
+    + '<span class="star' + (it.watch ? ' on' : '') + '" data-w="' + esc(it.id) + '">'
+    +   '<svg viewBox="0 0 24 24" fill="' + (it.watch ? 'currentColor' : 'none') + '"'
+    +   ' stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">'
+    +   '<path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.7 1-5.75-4.2-4.1 5.8-.85z"/>'
+    +   '</svg></span>'
+    + '<span class="nm"><b>' + esc(it.n) + '</b>' + g + '</span>'
+    + '<span class="qty">' + n2(it.q) + '<u>' + esc(it.u) + '</u>'
+    +   '<em>' + n0(it.val) + '</em></span></button>';
+}
+function paintStock(){
+  var k = B.stock;
+  var q = (document.getElementById('q') ? document.getElementById('q').value : '').trim().toLowerCase();
+
+  var shown = k.items.filter(function(it){
+    return !q || (it.n + ' ' + it.c).toLowerCase().indexOf(q) >= 0;
+  }).sort(function(a,b){
+    var r = {out:0, low:1, ok:2};
+    var d = r[levelOf(a)] - r[levelOf(b)];
+    return d !== 0 ? d : a.n.localeCompare(b.n);
+  });
+
+  var list = document.getElementById('stockList');
+  if (list){     /* sirf dhoondne par — poora safha dobara banane ki zaroorat nahi */
+    list.innerHTML = shown.length ? shown.map(stockRow).join('')
+      : '<div class="ln"><div class="nm"><span>Is naam ki koi cheez nahi mili.</span></div></div>';
+    paintWatch();
+    return;
+  }
+
+  var lowOnes = k.items.filter(function(it){ return levelOf(it) !== 'ok'; });
+  var html = head('Stock',
+      '<span class="pulse"><i></i>Live</span> &nbsp;har bill ke sath badalta hai',
+      k.value, 'Abhi godaam mein',
+      '<div class="trend">' + n0(k.count) + ' cheezein'
+      + (k.low ? ' &mdash; <b class="down">' + n0(k.low) + '</b> khatam honay ko' : '') + '</div>')
+    + '<div class="sheet" style="padding-top:22px">';
+
+  if (lowOnes.length){
+    html += '<div class="flag"><div><b>' + esc(lowOnes[0].n)
+      + (lowOnes.length > 1 ? ' aur ' + (lowOnes.length - 1) + ' aur cheez' : '')
+      + ' khatam honay ko hai</b><p>'
+      + esc(lowOnes.map(function(x){ return x.n + ' ' + n2(x.q) + ' ' + x.u; }).slice(0,3).join(', '))
+      + '. Reorder level se neeche.</p></div></div>';
+  }
+
+  if (k.inVal > 0 || k.outVal > 0 || k.waste > 0){
+    html += '<div class="sect"><div class="pair">'
+      + pairCell('Aaj aaya', n0(k.inVal), 'maliyat')
+      + pairCell('Aaj laga', n0(k.outVal), 'bills se')
+      + (k.waste > 0 ? pairCell('Zaya', n0(k.waste), '') : '')
+      + '</div></div>';
+  }
+
+  html += '<div class="sect"><h2>Nazar mein</h2>'
+    + '<p class="hint">Jin cheezon par aap nishan lagate hain wo yahan rehti hain, '
+    + 'aur raat ki closing parchi par bhi.</p><div class="lines" id="watch"></div></div>'
+    + '<div class="sect"><h2>Har cheez, abhi</h2>'
+    + '<div class="find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    +   ' stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>'
+    +   '<path d="M20 20l-3.5-3.5"/></svg>'
+    + '<input id="q" placeholder="Cheez ka naam dhoondein" autocomplete="off"></div>'
+    + '<div class="lines" id="stockList">' + shown.map(stockRow).join('') + '</div></div>';
+
+  document.getElementById('p-stock').innerHTML = html + '</div>';
+  document.getElementById('q').addEventListener('input', paintStock);
+  paintWatch();
+}
+function paintWatch(){
+  var box = document.getElementById('watch');
+  if (!box) return;
+  var w = B.stock.items.filter(function(it){ return it.watch; });
+  box.innerHTML = w.length ? w.map(stockRow).join('')
+    : '<div class="ln"><div class="nm"><span>Abhi koi cheez nazar mein nahi. '
+      + 'Neeche kisi bhi cheez par sitara dabayein.</span></div></div>';
+}
+function openSlip(id){
+  var it = null;
+  B.stock.items.forEach(function(x){ if (x.id === id) it = x; });
+  if (!it) return;
+  document.getElementById('sName').textContent = it.n;
+  document.getElementById('sSub').textContent = (it.c || 'Stock') + ' — har bill ke sath live';
+  document.getElementById('sBody').innerHTML =
+      ln('Subah thi',  '', n2(it.open) + ' ' + it.u)
+    + ln('Aaj aaya',   '', (it.in  ? '+' + n2(it.in)  : '0') + ' ' + it.u)
+    + ln('Aaj laga',   '', (it.out ? '−' + n2(it.out) : '0') + ' ' + it.u)
+    + ln('Abhi hai',   '', n2(it.q) + ' ' + it.u, '', 'total')
+    + (it.min > 0 ? ln('Kam se kam', '', n2(it.min) + ' ' + it.u) : '')
+    + ln('Maliyat',    '', CUR + ' ' + n0(it.val));
+  document.getElementById('slip').classList.add('on');
+}
+
+/* ============================================================
+   ACCOUNT
+   ============================================================ */
+function paintAcct(){
+  var a = B.acct;
+  var stuck = a.open.filter(function(o){ return o.days >= 1; });
+
+  var html = head('Account', 'Daraz, shift aur kharcha', a.drawer, 'Abhi daraz mein',
+      '<div class="trend">' + (a.open.length ? n0(a.open.length) + ' account khule hain' : 'Koi account khula nahi')
+      + (stuck.length ? ' &mdash; <b class="down">ek ' + stuck[0].days + ' din se</b>' : '') + '</div>')
+    + '<div class="sheet" style="padding-top:22px">';
+
+  if (stuck.length){
+    html += '<div class="flag bad"><div><b>' + esc(stuck[0].who)
+      + ' ka account ' + stuck[0].days + ' din se khula hai</b>'
+      + '<p>' + esc(stuck[0].since) + ' se. Jab tak band nahi hota, us din ka hisaab '
+      + 'mukammal nahi hota.</p></div></div>';
+  }
+
+  if (a.open.length){
+    html += sect('Khule account', '', '<div class="lines">' + a.open.map(function(o){
+      return ln(o.who, o.since + ' se · ' + n0(o.bills) + ' bills', n0(o.net),
+                o.days >= 1 ? (o.days + ' din') : 'aaj');
+    }).join('') + '</div>');
+  }
+
+  if (a.closed.length){
+    html += sect('Pichhli closing', 'Ginti aur hisaab ka farq — yahi batata hai kahan dhyan dena hai.',
+      '<div class="lines">' + a.closed.map(function(c){
+        var v = Number(c.var || 0);
+        var col = v === 0 ? 'var(--ok)' : 'var(--bad)';
+        var tag = v === 0 ? 'poora mila' : (v > 0 ? n0(v) + ' zyada' : n0(-v) + ' kam');
+        return '<div class="ln"><div class="nm"><b>' + esc(c.who) + '</b>'
+          + '<span>' + esc(c.when) + ' · ' + esc(c.span) + '</span></div>'
+          + '<div class="amt" style="color:' + col + '">' + n0(c.net)
+          + '<em style="color:' + col + '">' + tag + '</em></div></div>';
+      }).join('') + '</div>');
+  }
+
+  if (a.exp.length){
+    html += sect('Aaj ka kharcha', '', '<div class="lines">' + a.exp.map(function(e){
+        return ln(e.n, e.at + (e.who ? ' · ' + e.who : ''), n0(e.a));
+      }).join('') + ln('Kul', '', n0(a.expTotal), '', 'total') + '</div>');
+  }
+
+  document.getElementById('p-acct').innerHTML = html + '</div>';
+}
+
+/* ============================================================
+   WIRING
+   ============================================================ */
+function paintAll(){ paintToday(); paintSale(); paintStock(); paintAcct(); }
+
+function fail(msg){
+  document.getElementById('p-today').innerHTML =
+      '<div class="ledger"><div class="sum"><div class="when">Owner</div>'
+    + '<div class="amt" style="font-size:26px">&mdash;</div></div></div>'
+    + '<div class="sheet" style="padding-top:22px"><div class="flag bad"><div>'
+    + '<b>Data nahi aaya</b><p>' + esc(msg) + '</p></div></div>'
+    + '<div class="sect"><button class="btn" id="again" style="font-size:14px;'
+    + 'padding:11px 18px;border:1px solid var(--rule);border-radius:10px;'
+    + 'background:var(--paper-2)">Dobara koshish karein</button></div></div>';
+  var b = document.getElementById('again');
+  if (b) b.onclick = load;
+}
+
+function load(){
+  api('owner-mobile-boot', null, function(r){
+    if (!r.ok){ fail(r.message || 'Server ne mana kar diya'); return; }
+    B = r.boot;
+    CUR = B.biz.cur || 'PKR';
+    /* `document.title` yahan set NAHI karte: router pehle hi business ka
+       naam title mein laga deta hai, aur dobara lagane se wo do dafa
+       nazar aata hai. */
+    paintAll();
+  });
+}
+
+document.addEventListener('click', function(e){
+  /* Sitara — poore portal mein yehi ek cheez badalti hai. Nishan
+     foran badal dete hain (phone par intezar bura lagta hai) aur
+     server ne mana kiya to wapas palat dete hain. */
+  var w = e.target.closest('[data-w]');
+  if (w){
+    e.stopPropagation();
+    var id = w.getAttribute('data-w'), it = null;
+    B.stock.items.forEach(function(x){ if (x.id === id) it = x; });
+    if (!it) return;
+    var was = it.watch;
+    it.watch = was ? 0 : 1;
+    paintStock();
+    api('owner-mobile-watch', {id:id, on: !was}, function(r){
+      if (!r.ok){ it.watch = was; paintStock(); }
+    });
+    return;
+  }
+  var it = e.target.closest('[data-i]');
+  if (it){ openSlip(it.getAttribute('data-i')); return; }
+  if (e.target.closest('[data-shut]')) document.getElementById('slip').classList.remove('on');
+
+  var dy = e.target.closest('[data-days]');
+  if (dy){
+    DAYS = +dy.getAttribute('data-days');
+    dy.parentNode.querySelectorAll('button').forEach(function(x){
+      x.classList.toggle('on', x === dy);
+    });
+    api('owner-mobile-sale&days=' + DAYS, null, function(r){
+      if (!r.ok) return;
+      B.sale = r.sale; paintSale();
+    });
+  }
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') document.getElementById('slip').classList.remove('on');
+});
+
+var tabs = [].slice.call(document.querySelectorAll('.tabs button'));
+tabs.forEach(function(b){
+  b.onclick = function(){
+    tabs.forEach(function(x){ x.classList.toggle('on', x === b); });
+    [].slice.call(document.querySelectorAll('.pane')).forEach(function(p){
+      p.classList.toggle('on', p.id === 'p-' + b.dataset.go);
+    });
+    window.scrollTo(0,0);
+  };
+});
+
+load();
+})();
+</script>
+</body>
+</html>

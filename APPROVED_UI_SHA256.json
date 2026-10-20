@@ -58,7 +58,7 @@
   "assets/menu_13.jpg": "35e9f4be1b9e4e09342635e8fba71d477924fa441f3cda7dfe54589bde882db3",
   "assets/menu_02.jpg": "4a655453e9eab95af728f727d94356c3461cc39f8012702498c7729e46c93309",
   "assets/menu_14.jpg": "821ab044f11fda61c5f45de535d66b118d32f9b3cf96f7ad2332408b6fb98b13",
-  "super_admin.html": "e5d14a39813fffaf3e07228538e6bc54d16c319f08b5d3e367f1ea8998a80c2a",
+  "super_admin.html": "649f23e08aaba7cac6f6233b5db80d79afed0a6689bacc479f3c6e2b281f9052",
   "qr.html": "a572173416e968d801002ba09b03065ebd96ebd6a42d4a39e922d5c6681b0912",
   "setup.html": "e4fdc371680e7a8c2d8ed4a49089aaca99d60cf0c0c48785280a2307071e097b",
   "closing_history.html": "b9d85bc83e156d75a3b40cb7cdbc54497368894ef9699acdccff8f15846c83b9",
@@ -67,5 +67,6 @@
   "purchase_orders.html": "3e59580c0cd5dc00a501ba2641cef6f8eb2af0bcb391e83115628316475ba600",
   "activate.html": "7e2f169c8e2fb35110735572c026aae5374e2710e9c071d518b8414545f849cd",
   "register.html": "4e1c21a4af7d761b8e7ca105b3197ec9db895f2653313d16343c82dd22784cd6",
-  "backup_restore.html": "5aba95684b3a3ec8eb653e4617a6b2a809fe47d441ae53748bff371996dc0bcc"
+  "backup_restore.html": "5aba95684b3a3ec8eb653e4617a6b2a809fe47d441ae53748bff371996dc0bcc",
+  "owner_mobile.html": "91b25e68e66b1a4377b2d0abf4393495ddab05a3f9d85015ea81d2e9e22d0b2f"
 }
