@@ -39,7 +39,12 @@ final class FiscalService
             'pos_id'        => '',
             'ntn'           => '',
             'access_key'    => '',
-            'price_incl_tax'=> 'No',
+            /* 'price_incl_tax' yahan se hata diya gaya — V161.
+               Yeh wahi sawal doosri dafa poochta tha jo Settings -> Tax ->
+               Price mode poochta hai, aur dono ke default ULTE thay
+               (yahan 'No', wahan INCLUSIVE). Ab sirf TaxMode::current()
+               chalta hai. Purani qeemat DB mein pari rahe to bhi padhi
+               nahi jati — settings() sirf in keys ko maanta hai. */
             'default_pct'   => '98016000',
             'pos_fee'       => 'Off',
         ];
@@ -140,6 +145,97 @@ final class FiscalService
         ]];
     }
 
+    /**
+     * Bill ki lines wesi banao jesi customer ne di hain.
+     *
+     * DO CHEEZEIN JO PEHLE CHOOT RAHI THIN:
+     *
+     *   1. BILL KA DISCOUNT. POS discount poore bill par lagata hai
+     *      (`orders.discount_amount`), lines par nahi. Yahan wo lines par
+     *      un ke hisse ke mutabiq taqseem hota hai, warna FBR ko bheji
+     *      gayi lines ka jama us raqam se zyada hota hai jo customer ne
+     *      di. Aakhri line par bacha hua poora daal diya jata hai, taake
+     *      taqseem ke paise kahin gum na hon.
+     *
+     *   2. SERVICE CHARGE. Yeh item nahi hai, is liye kabhi FBR tak gaya
+     *      hi nahi — halanke bill us par tax le chuka hota hai
+     *      (POS: tax = (subtotal - discount + service) par). Ab wo apni
+     *      line banta hai, usi rate par. Na hone par koi line nahi jurti.
+     *
+     * ItemCode: menu item ka apna `code` bhara ho to wohi, warna pehle ki
+     * tarah andar ki id. (FBR ko dukan ka apna code chahiye, UUID nahi.)
+     */
+    private static function billLines(array $rows, array $o, array $cfg): array
+    {
+        $gross = 0.0;
+        foreach ($rows as $r) $gross += (float)$r['line_total'];
+
+        $disc = max(0.0, (float)($o['discount_amount'] ?? 0));
+        if ($disc > $gross) $disc = $gross;      /* discount kabhi bill se bara na ho */
+
+        $items = [];
+        $done  = 0.0;
+        $last  = \count($rows) - 1;
+
+        foreach ($rows as $i => $r) {
+            $lt = (float)$r['line_total'];
+            $d  = ($i === $last)
+                ? round($disc - $done, 2)                             /* bacha hua poora */
+                : ($gross > 0 ? round($disc * $lt / $gross, 2) : 0.0);
+            $done += $d;
+
+            $code = \trim((string)($r['code'] ?? ''));
+            $items[] = [
+                'item_id'    => $code !== '' ? $code : (string)($r['menu_item_id'] ?? ''),
+                'name'       => (string)$r['nm'],
+                'pct'        => (string)($r['pct_code'] ?: $cfg['default_pct']),
+                'qty'        => (float)$r['qty'],
+                'unit_price' => (float)$r['unit_price'],
+                'line_total' => $lt,
+                'discount'   => $d,
+            ];
+        }
+
+        $svc = round((float)($o['service_charge'] ?? 0), 2);
+        if ($svc > 0.009) {
+            $items[] = [
+                'item_id'    => 'SERVICE',
+                'name'       => 'Service Charge',
+                'pct'        => (string)$cfg['default_pct'],
+                'qty'        => 1.0,
+                'unit_price' => $svc,
+                'line_total' => $svc,
+                'discount'   => 0.0,
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * FBR ko jane wala kul, bill ke kul se mila kar dekho.
+     *
+     * Paison ki gunjaish: har line do decimal par round hoti hai, is liye
+     * lambe bill par thora sa farq qudrati hai — magar sirf paise. Jo
+     * masla pakarna hai wo rupon ka hota hai (ghalat price mode, chhoota
+     * hua service charge), is liye yeh gunjaish us se bohat chhoti hai.
+     *
+     * @return string khali = sab theek; warna galti ka bayan.
+     */
+    private static function totalsMismatch(array $o, array $calc, int $lineCount): string
+    {
+        $bill = round((float)($o['grand_total'] ?? 0), 2);
+        $sent = round((float)$calc['totals']['total'], 2);
+        $tol  = 0.02 + 0.01 * $lineCount;
+
+        if (abs($bill - $sent) <= $tol) return '';
+
+        return sprintf(
+            'Bill %s not sent: FBR total %.2f does not match the bill total %.2f (difference %.2f).',
+            (string)($o['bill_no'] ?? ''), $sent, $bill, $sent - $bill
+        );
+    }
+
     /* ==================== submit ==================== */
 
     /**
@@ -214,7 +310,7 @@ final class FiscalService
             if (!$o) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'Bill not found'];
 
             $iq = $p->prepare("SELECT oi.qty, oi.unit_price, oi.line_total, oi.menu_item_id,
-                                      COALESCE(oi.item_name_snapshot, mi.name) nm, mi.pct_code
+                                      COALESCE(oi.item_name_snapshot, mi.name) nm, mi.pct_code, mi.code
                                  FROM order_items oi
                                  LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
                                 WHERE oi.order_id=?");
@@ -222,19 +318,26 @@ final class FiscalService
             $rows = $iq->fetchAll(PDO::FETCH_ASSOC);
             if (!$rows) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'The bill has no items'];
 
-            $rate = self::rateFor($orderId);
-            $items = [];
-            foreach ($rows as $r) {
-                $items[] = [
-                    'item_id'    => (string)($r['menu_item_id'] ?? ''),
-                    'name'       => (string)$r['nm'],
-                    'pct'        => (string)($r['pct_code'] ?: $cfg['default_pct']),
-                    'qty'        => (float)$r['qty'],
-                    'unit_price' => (float)$r['unit_price'],
-                    'line_total' => (float)$r['line_total'],
-                ];
+            $rate  = self::rateFor($orderId);
+            $items = self::billLines($rows, $o, $cfg);
+
+            /* PRICE MODE — wahi ek setting jo bill padhta hai.
+               Pehle yahan `$cfg['price_incl_tax']` tha: ek doosra khana,
+               jiska default 'No' tha jabke tax_mode ka default INCLUSIVE.
+               Jis dukan ne dono haath se set nahi kiye thay, us ka har
+               bill FBR ko galat raqam bhej raha tha. */
+            $calc = self::compute($items, $rate, TaxMode::current() === TaxMode::INCLUSIVE);
+
+            /* PEHRA — FBR ka total bill ke total ke barabar hona chahiye.
+               Na ho to bhejna hi nahi: galat declaration se PENDING behtar
+               hai, kyunke PENDING nazar aata hai aur galat raqam nahi. */
+            $bad = self::totalsMismatch($o, $calc, \count($items));
+            if ($bad !== '') {
+                try { ErrorLog::op('fbr/mismatch', $bad, 'ERROR'); } catch (\Throwable $e) {}
+                $res = ['status' => 'PENDING', 'invoice_no' => '', 'message' => $bad];
+                self::record($orderId, (string)$o['bill_no'], $cfg, $res, $calc);
+                return $res;
             }
-            $calc = self::compute($items, $rate, ($cfg['price_incl_tax'] ?? 'No') === 'Yes');
 
             $res = ($cfg['provider'] === 'KPRA')
                  ? self::sendKpra($cfg, $o, $calc)
@@ -531,4 +634,4 @@ final class FiscalService
     }
 }
 
-// build: V155 build 2026-10-15
+// build: V161 build 2026-10-24

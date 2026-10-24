@@ -82,7 +82,13 @@
             <label class="field full"><span>Fiscal service URL <span class="hint">&middot; on this computer</span></span><input data-s="fiscal_service_url" placeholder="http://localhost:8524/api/IMSFiscal/GetInvoiceNumberByModel"></label>
             <label class="field"><span>NTN</span><input data-s="fiscal_ntn" placeholder="1234567-8"></label>
             <label class="field"><span>Access key <span class="hint">&middot; for KPRA</span></span><input data-s="fiscal_access_key"></label>
-            <label class="field"><span>Prices include tax</span><select data-s="fiscal_price_incl_tax"><option>No</option><option>Yes</option></select></label>
+            <!-- V161: "Prices include tax" yahan se hata diya gaya. Yeh wahi sawal
+                 doosri dafa poochta tha jo Tax -> Price mode poochta hai, aur dono ke
+                 default ulte thay — is liye bill kuch chhapta tha aur FBR ko kuch aur
+                 jata tha. Ab ek hi setting hai; yahan sirf raasta likha hai. -->
+            <div class="field"><span>Prices include tax</span>
+              <div class="hint" style="padding-top:9px;line-height:1.5">Set in <b>Tax &rarr; Price mode</b>.
+              The bill and FBR now follow that one setting.</div></div>
             <label class="field"><span>Default PCT code</span><input data-s="fiscal_default_pct" placeholder="98016000"></label>
             <label class="field"><span>FBR POS fee (Re. 1)</span><select data-s="fiscal_pos_fee"><option>Off</option><option>On</option></select></label>
             <div class="field full"><span>&nbsp;</span>
@@ -253,4 +259,4 @@
 </body>
 </html>
 
-<!-- build: V148 build 2026-10-12 -->
+<!-- build: V161 build 2026-10-24 -->

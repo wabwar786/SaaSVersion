@@ -292,8 +292,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
- ['href="/shared.css?b=v23"','src="/shared_store.js?b=v23"','src="/live_store.js?b=v23"','src="/access_store.js?b=v23"',
-  'src="/shell.js?b=v23"','src="/module.js?b=v23"','src="/module_config.js?b=v23"','src="/item_dialog.js?b=v23"','src="/stock_in.js?b=v23"'],
+ ['href="/shared.css?b=v24"','src="/shared_store.js?b=v24"','src="/live_store.js?b=v24"','src="/access_store.js?b=v24"',
+  'src="/shell.js?b=v24"','src="/module.js?b=v24"','src="/module_config.js?b=v24"','src="/item_dialog.js?b=v24"','src="/stock_in.js?b=v24"'],
  $html
 );
 }
