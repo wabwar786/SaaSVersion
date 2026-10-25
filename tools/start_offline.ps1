@@ -391,11 +391,17 @@ if ($lanIp) {
 # Har start par background mein check: portal par naya build hai to
 # package khud aa jata hai. INSTALL karna phir bhi user ke DABANE par
 # hota hai -- chalte POS ko beech mein badalna kabhi theek nahi.
+# V163 — jab update ka paigham chhapa ho to window ko tray mein chhupaya
+# NahI jata. Warna wo paigham teen second mein gayab ho jata aur kisi ko
+# kabhi pata na chalta ke naya build para hai.
+$holdWindow = $false
+
 if (Test-Path (Join-Path $root 'updates\ready.txt')) {
   Write-Host ''
   Say '  A NEW UPDATE IS DOWNLOADED AND READY' 'Cyan'
-  Say '  Close this window and run UPDATE.bat to apply it.' 'White'
+  Say '  Stop SmartPOS (tray icon -> Stop), then run UPDATE.bat to apply it.' 'White'
   Write-Host ''
+  $holdWindow = $true
 } elseif (Test-Path (Join-Path $root 'updates\available.txt')) {
   # Naya build hai magar utara nahi gaya - faisla user ka.
   $av = (Get-Content (Join-Path $root 'updates\available.txt') -ErrorAction SilentlyContinue |
@@ -405,6 +411,7 @@ if (Test-Path (Join-Path $root 'updates\ready.txt')) {
   Say '  It has NOT been downloaded. Run UPDATE.bat to get and apply it.' 'White'
   Say '  (or ignore this - your software keeps working as it is).' 'DarkGray'
   Write-Host ''
+  $holdWindow = $true
 } else {
   Start-Job -ScriptBlock {
     param($root, $phpExe, $phpIni)
@@ -421,7 +428,8 @@ if (Test-Path (Join-Path $root 'updates\ready.txt')) {
   } -ArgumentList $root, $phpExe, $phpIni | Out-Null
 }
 
-Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
+Say 'This window will move to the tray (bottom-right) in a moment.' 'DarkGray'
+Say '   Double-click the tray icon to bring it back, or right-click for Stop.' 'DarkGray'
 Say "If the browser shows an error, open a different browser and go to http://localhost:$port" 'DarkGray'
 Write-Host ''
 
@@ -450,10 +458,159 @@ $watch = Start-Job -ScriptBlock {
   }
 } -ArgumentList $root, $phpExe, $phpIni, $logDir
 
-try { Wait-Process -Id $srv.Id } finally {
-  Stop-Process -Id $srv.Id -ErrorAction SilentlyContinue
-  if ($sync) { Stop-Process -Id $sync.Id -Force -ErrorAction SilentlyContinue }
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1" -StopServer | Out-Null
+# ============================================================
+#  V163 — SYSTEM TRAY
+#
+#  MASLA
+#  Software chalne ke baad bhi yeh kaali CMD window screen par pari
+#  rehti thi. Counter par customer ke saamne yeh acha nazar nahi aata,
+#  aur minimize kar dene par bhi taskbar ghera rehti thi.
+#
+#  YEH WINDOW BEKAR NAHI HAI — PHP server is ka child hai aur window
+#  band hote hi neeche wala cleanup chalta hai (server, sync aur
+#  MariaDB teenon theek se band). Is liye ise sirf "gayab" nahi kiya
+#  ja sakta: band karne ka koi raasta bacha rehna chahiye.
+#
+#  HAL
+#  Window chhup jati hai aur us ki jagah TRAY ICON aa jata hai:
+#     double-click   -> window wapas (error/log dekhne ke liye)
+#     right-click    -> Open POS  |  Show window  |  Stop SmartPOS
+#  "Stop" wahi purana cleanup chalata hai jo pehle window band karne
+#  par chalta tha.
+#
+#  SERVER KHUD MAR JAYE TO CHHUPNA BAND. Har 5 second dekha jata hai;
+#  server gir jaye to window khud saamne aa jati hai aur tray par
+#  ittila bhi aati hai — warna user ko lagta rahega sab theek hai.
+#
+#  AGAR TRAY NA BAN SAKE (purana Windows, .NET ka masla, policy) to
+#  purana tareeqa hi chalta hai — window khuli rehti hai. Software
+#  kisi soorat rukna nahi chahiye.
+# ============================================================
+$trayOk = $false
+try {
+  Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+  Add-Type -AssemblyName System.Drawing       -ErrorAction Stop
+  Add-Type -Namespace SmartPos -Name NativeWin -ErrorAction Stop -MemberDefinition @'
+    [DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")]   public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]   public static extern bool SetForegroundWindow(System.IntPtr hWnd);
+'@
+  $trayOk = $true
+} catch { $trayOk = $false }
+
+if ($trayOk) {
+
+  $script:hWnd   = [SmartPos.NativeWin]::GetConsoleWindow()
+  $script:srvP   = $srv
+  $script:syncP  = $sync
+  $script:appUrl = $url
+  $script:appRoot= $root
+  $SW_HIDE = 0; $SW_SHOW = 5; $SW_RESTORE = 9
+
+  function Show-PosWindow {
+    if ($script:hWnd -ne [IntPtr]::Zero) {
+      [SmartPos.NativeWin]::ShowWindow($script:hWnd, 9)  | Out-Null   # SW_RESTORE
+      [SmartPos.NativeWin]::ShowWindow($script:hWnd, 5)  | Out-Null   # SW_SHOW
+      [SmartPos.NativeWin]::SetForegroundWindow($script:hWnd) | Out-Null
+    }
+  }
+  function Hide-PosWindow {
+    if ($script:hWnd -ne [IntPtr]::Zero) {
+      [SmartPos.NativeWin]::ShowWindow($script:hWnd, 0) | Out-Null    # SW_HIDE
+    }
+  }
+
+  # ---- tray icon ----
+  $ico = $null
+  try {
+    $icoPath = Join-Path $root 'public\assets\app.ico'
+    if (Test-Path $icoPath) { $ico = New-Object System.Drawing.Icon($icoPath) }
+  } catch { }
+  if (-not $ico) { $ico = [System.Drawing.SystemIcons]::Application }
+
+  $script:ni = New-Object System.Windows.Forms.NotifyIcon
+  $script:ni.Icon = $ico
+  # NotifyIcon.Text ki hadd 63 harf hai — is se zyada par exception aata
+  # hai aur poora tray icon ban-na hi band ho jata hai.
+  $tip = "$bizName - POS on port $port"
+  if ($tip.Length -gt 62) { $tip = $tip.Substring(0, 62) }
+  $script:ni.Text = $tip
+  $script:ni.Visible = $true
+
+  # ---- band karne ka wahi purana cleanup ----
+  $script:stopping = $false
+  function Stop-PosAll {
+    if ($script:stopping) { return }
+    $script:stopping = $true
+    try { if ($script:ni) { $script:ni.Visible = $false; $script:ni.Dispose() } } catch { }
+    try { Stop-Process -Id $script:srvP.Id -ErrorAction SilentlyContinue } catch { }
+    try { if ($script:syncP) { Stop-Process -Id $script:syncP.Id -Force -ErrorAction SilentlyContinue } } catch { }
+    try {
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $script:appRoot 'tools\resolve_mariadb.ps1') -StopServer | Out-Null
+    } catch { }
+    try { [System.Windows.Forms.Application]::Exit() } catch { }
+  }
+
+  # ---- right-click ka menu ----
+  $menu = New-Object System.Windows.Forms.ContextMenuStrip
+
+  $miOpen = $menu.Items.Add('Open POS')
+  $miOpen.add_Click({ try { Start-Process $script:appUrl } catch { } })
+
+  $miShow = $menu.Items.Add('Show window')
+  $miShow.add_Click({ Show-PosWindow })
+
+  $menu.Items.Add('-') | Out-Null
+
+  $miStop = $menu.Items.Add('Stop SmartPOS')
+  $miStop.add_Click({
+    $ans = [System.Windows.Forms.MessageBox]::Show(
+      'Stop SmartPOS? The POS will close for everyone on this counter.',
+      'SmartPOS', 'YesNo', 'Warning')
+    if ($ans -eq 'Yes') { Stop-PosAll }
+  })
+
+  $script:ni.ContextMenuStrip = $menu
+  $script:ni.add_MouseDoubleClick({ Show-PosWindow })
+
+  # ---- server gir jaye to chhupna band ----
+  $script:timer = New-Object System.Windows.Forms.Timer
+  $script:timer.Interval = 5000
+  $script:timer.add_Tick({
+    if ($script:srvP.HasExited -and -not $script:stopping) {
+      $script:timer.Stop()
+      try {
+        $script:ni.BalloonTipTitle = 'SmartPOS stopped'
+        $script:ni.BalloonTipText  = 'The POS server is not running. The window has been opened so you can read the message.'
+        $script:ni.ShowBalloonTip(10000)
+      } catch { }
+      Show-PosWindow
+    }
+  })
+  $script:timer.Start()
+
+  if ($holdWindow) {
+    # Update ka paigham screen par hai — ise chhupana nahi. Tray icon ban
+    # chuka hai, is liye user jab chahe window band kar sakta hai.
+    Say 'Tray icon is ready. This window is staying open so you can read the update notice.' 'DarkGray'
+  } else {
+    Start-Sleep -Seconds 3      # user ko "running" wala paigham parhne ka waqt
+    Hide-PosWindow
+  }
+
+  [System.Windows.Forms.Application]::Run()   # tray ka message loop
+
+  Stop-PosAll
+
+} else {
+  Say 'Tray icon could not be created - this window will stay open.' 'DarkYellow'
+  Say 'Keep this window open. Closing it will stop the software.' 'DarkGray'
+  try { Wait-Process -Id $srv.Id } finally {
+    Stop-Process -Id $srv.Id -ErrorAction SilentlyContinue
+    if ($sync) { Stop-Process -Id $sync.Id -Force -ErrorAction SilentlyContinue }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\tools\resolve_mariadb.ps1" -StopServer | Out-Null
+  }
 }
 
-# build: V155 build 2026-10-15
+# build: V164 build 2026-10-25
