@@ -177,6 +177,166 @@
     if (f) setTimeout(function () { f.focus(); }, 60);
   }
 
+  /* ============================================================
+     V166 — EK SATH KAI RECORD.
+
+     Pehle menu saaf karne ke liye har item par alag Delete dabana
+     parta tha (Akorwal: 49 items + 17 categories = 66 confirm). Ab
+     checkbox se chun kar ek hi dafa.
+
+     opts:
+       entity   : 'menu_item' | 'menu_category'  (server par bhi yehi do)
+       items    : [{id, name}]
+       title    : dialog ka unwan
+       note     : peela paigham (misal "purane bill salamat rehte hain")
+       cascade  : true ho to "andar ke items bhi" ka checkbox dikhta hai
+                  (sirf categories ke liye)
+       onDone   : function(summary) — na dein to page reload
+
+     CHUNK 100 KA KYUN: `DBApi.req()` synchronous XHR hai. 500 record
+     ek hi request mein bhejne par browser us poore arse ke liye jam
+     jata hai aur PHP ka waqt bhi khatam ho sakta hai. 100 ke tukron
+     mein har request choti rehti hai, aur agar beech mein kuch toote
+     to pata chal jata hai ke kahan tak hua.
+     ============================================================ */
+  var CHUNK = 100;
+
+  function confirmMany(opts) {
+    opts = opts || {};
+    var items = (opts.items || []).filter(function (x) { return x && x.id; });
+    if (!items.length) { toast('Pehle kuch select karein', true); return; }
+
+    var n = items.length;
+    var shown = items.slice(0, 8);
+    var rest = n - shown.length;
+
+    var body =
+      '<div class="dialog-head"><div><h3>' + esc(opts.title || ('Delete ' + n + ' records?')) + '</h3>'
+      + '<p>' + n + ' selected</p></div>'
+      + '<button class="close" data-dk="x">&times;</button></div>'
+      + '<div class="dialog-body">'
+      + '<div style="background:var(--surface-2,#fbfcfd);border:1px solid var(--line,#ebedf0);'
+      +   'border-radius:8px;padding:9px 11px;font-size:12px;max-height:150px;overflow:auto">'
+      + shown.map(function (x) { return '<div style="padding:2px 0">&bull; ' + esc(x.name || x.id) + '</div>'; }).join('')
+      + (rest > 0 ? '<div style="padding:3px 0;opacity:.65">+ ' + rest + ' more</div>' : '')
+      + '</div>';
+
+    if (opts.cascade) {
+      /* Checkbox par inline naap lazmi hai: shared.css `.dialog-body input`
+         ko poori chaurai aur apna border deti hai, is liye bina is ke
+         yeh ek bara gulabi dabba ban jata tha (test mein pakra gaya). */
+      body += '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12px;cursor:pointer">'
+            + '<input type="checkbox" data-dk="casc" style="width:16px;height:16px;flex:0 0 16px;'
+            +   'margin:2px 0 0;padding:0;border:0;border-radius:0;background:none;appearance:auto;'
+            +   '-webkit-appearance:checkbox;box-shadow:none">'
+            + '<span>Inside items bhi delete karein'
+            + '<br><span class="hint">Bina is ke, jis category mein items paray hon wo delete nahi hoti.</span></span></label>';
+    }
+
+    body += '<label class="field" style="margin-top:12px"><span>Admin / Manager password</span>'
+          + '<input type="password" data-dk="pw" placeholder="Password" autocomplete="off"></label>'
+          + '<label class="field"><span>Reason <span class="hint">&middot; optional, for the audit log</span></span>'
+          + '<input data-dk="reason" placeholder="e.g. menu dobara banana hai"></label>'
+          + '<div class="note" style="background:var(--warn-soft,#fff6e5);border-color:var(--warn-line,#f0d9a8);'
+          +   'color:var(--warn,#8a5a00);margin-top:10px">'
+          + esc(opts.note || 'Purane bill mehfooz rehte hain — yeh un par waise hi chhapte rahenge.')
+          + '</div>'
+          + '</div>'
+          + '<div class="dialog-foot"><button class="btn" data-dk="x">Cancel</button>'
+          + '<button class="btn danger" data-dk="go">Delete ' + n + '</button></div>';
+
+    var m = overlay(body);
+
+    m.el.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-dk]');
+      if (!b) return;
+      var a = b.getAttribute('data-dk');
+      if (a === 'x') { m.close(); return; }
+      if (a !== 'go') return;
+
+      var pw = (m.q('[data-dk="pw"]') || {}).value || '';
+      if (!pw) { toast('Admin ya manager ka password likhein', true); return; }
+      var rs = (m.q('[data-dk="reason"]') || {}).value || '';
+      var cc = m.q('[data-dk="casc"]');
+      var casc = !!(cc && cc.checked);
+      m.close();
+      run(pw, rs, casc);
+    });
+
+    var pwf = m.q('[data-dk="pw"]');
+    if (pwf) setTimeout(function () { pwf.focus(); }, 60);
+
+    function run(pw, reason, casc) {
+      var ids = items.map(function (x) { return x.id; });
+      var sum = { deleted: 0, failed: 0, rows: [] };
+
+      /* Categories + "andar ke items bhi": pehle items, phir category.
+         Ulta karne par har category BLOCKED hoti hai. */
+      if (casc && typeof opts.itemIdsFor === 'function') {
+        var inner = opts.itemIdsFor(ids);
+        if (inner && inner.length) {
+          var ri = send('menu_item', inner, pw, reason);
+          if (ri === null) return;
+          sum.deleted += ri.deleted; sum.failed += ri.failed;
+          sum.rows = sum.rows.concat(ri.rows);
+        }
+      }
+
+      var r = send(opts.entity, ids, pw, reason);
+      if (r === null) return;
+      sum.deleted += r.deleted; sum.failed += r.failed;
+      sum.rows = sum.rows.concat(r.rows);
+
+      report(sum);
+    }
+
+    /* null = request hi nakaam (password ghalat waghera) — toast ho chuka. */
+    function send(entity, ids, pw, reason) {
+      var out = { deleted: 0, failed: 0, rows: [] };
+      for (var i = 0; i < ids.length; i += CHUNK) {
+        var res = call('entity-delete-bulk', {
+          entity: entity, ids: ids.slice(i, i + CHUNK),
+          manager_password: pw, reason: reason
+        });
+        if (!res.ok) { toast(res.message || 'Could not delete', true); return null; }
+        out.deleted += (res.deleted || 0);
+        out.failed += (res.failed || 0);
+        out.rows = out.rows.concat(res.rows || []);
+      }
+      return out;
+    }
+
+    function report(sum) {
+      if (!sum.failed) {
+        toast(sum.deleted + ' deleted');
+        if (typeof opts.onDone === 'function') opts.onDone(sum);
+        else setTimeout(function () { location.reload(); }, 450);
+        return;
+      }
+      /* Kuch nahi hua to WAJAH dikhani hai — khamoshi se "done" kehna
+         wahi purani bimari thi jis ke liye yeh file bani thi. */
+      var bad = sum.rows.filter(function (x) { return !x.ok; }).slice(0, 10);
+      var m2 = overlay(
+        '<div class="dialog-head"><div><h3>' + sum.deleted + ' deleted, ' + sum.failed + ' nahi hue</h3>'
+        + '<p>Neeche wajah likhi hai</p></div><button class="close" data-dk="x">&times;</button></div>'
+        + '<div class="dialog-body">'
+        + '<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)">'
+        + bad.map(function (x) {
+            return '<div style="margin:3px 0">&bull; <b>' + esc(x.name || x.id) + '</b> — ' + esc(x.message) + '</div>';
+          }).join('')
+        + (sum.failed > bad.length ? '<div style="margin-top:5px;opacity:.75">+ ' + (sum.failed - bad.length) + ' more</div>' : '')
+        + '</div></div>'
+        + '<div class="dialog-foot"><button class="btn primary" data-dk="x">Theek hai</button></div>'
+      );
+      m2.el.addEventListener('click', function (e) {
+        if (!e.target.closest('[data-dk="x"]')) return;
+        m2.close();
+        if (typeof opts.onDone === 'function') opts.onDone(sum);
+        else setTimeout(function () { location.reload(); }, 300);
+      });
+    }
+  }
+
   /* ---------------- restore ---------------- */
   function restore(entity, id, onDone) {
     var res = call('entity-restore', { entity: entity, id: id });
@@ -186,7 +346,7 @@
     else setTimeout(function () { location.reload(); }, 450);
   }
 
-  window.DeleteKit = { confirm: confirmDelete, restore: restore, toast: toast };
+  window.DeleteKit = { confirm: confirmDelete, confirmMany: confirmMany, restore: restore, toast: toast };
 })();
 
-/* build: V62 build 2026-08-26 */
+/* build: V166 build 2026-10-25 */

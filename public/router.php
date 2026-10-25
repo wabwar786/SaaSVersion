@@ -381,7 +381,7 @@ $head='<script src="/ui_state_reset.js?b=v14"></script>'
      .'<script src="/db_api.js?b=v14"></script>'
      /* V62 — delete confirm har page par available hona is required (POS samet),
         warna har screen apna alag adhoora delete likhti hai. */
-     .'<script src="/delete_kit.js?b=v62"></script>'
+     .'<script src="/delete_kit.js?b=v166"></script>'
      .'<script src="/brand.js?b=v26"></script>';
 // DB-first hydration only on authenticated app pages (source of truth = DB).
 // db_boot POS par NahI is required: POS khud pos-boot se hydrate hota hai, aur
@@ -464,4 +464,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V165 build 2026-10-25
+// build: V166 build 2026-10-25

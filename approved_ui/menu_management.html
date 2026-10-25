@@ -34,6 +34,14 @@
 .mm-tbl th{background:var(--surface-2);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);border-top:0;white-space:nowrap}
 .mm-tbl tbody tr:hover{background:var(--surface-2)}
+/* V166 — select karne ka column aur chuni hui cheezon ki patti. */
+.mm-tbl th.mm-cb,.mm-tbl td.mm-cb{width:38px;padding-right:0;text-align:center}
+.mm-tbl .mm-cb input{width:16px;height:16px;cursor:pointer;vertical-align:middle}
+.mm-tbl tbody tr.mm-on{background:#fff9ec}
+.mm-tbl tbody tr.mm-on:hover{background:#fff4de}
+.mm-selbar{display:flex;align-items:center;gap:9px;margin-bottom:10px;padding:9px 13px;
+  background:#fff6e5;border:1px solid #f0d9a8;border-radius:10px}
+.mm-selbar b{font-size:12.5px;color:#8a5a00}
 .mm-tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .mm-name b{display:block}
 .mm-name span{font-size:11.5px;color:var(--muted)}
@@ -83,9 +91,19 @@
         </select>
         <span class="mm-count" id="mmCount"></span>
       </div>
+      <!-- V166 — chuni hui cheezon ki patti. Tab tak chhupi rehti hai
+           jab tak ek bhi checkbox na lage, taake aam istemal mein
+           screen par ek bhi cheez zyada na ho. -->
+      <div class="mm-selbar" id="mmSelBar" style="display:none">
+        <b id="mmSelCount">0 selected</b>
+        <span style="flex:1"></span>
+        <button class="btn sm" id="mmSelClear">Clear</button>
+        <button class="btn sm danger" id="mmSelDel">Delete selected</button>
+      </div>
       <div class="mm-wrap">
         <table class="mm-tbl">
           <thead><tr>
+            <th class="mm-cb"><input type="checkbox" id="mmAll" title="Select all shown"></th>
             <th>Item</th><th>Stock when sold</th><th class="num">Food cost</th>
             <th class="num">Price</th><th class="num">Margin</th><th></th>
           </tr></thead>
@@ -108,6 +126,8 @@
 <script>
 (function(){
   var ROWS=[];
+  /* V166 — jo is waqt screen par nazar aa rahe hain (filter ke baad). */
+  var SHOWN=[];
 
   function req(a,p){ return (window.DBApi&&DBApi.req)?DBApi.req(a,p):{ok:false,message:'Offline'}; }
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
@@ -148,6 +168,7 @@
       if(q&&(x.name+' '+x.category).toLowerCase().indexOf(q)<0)return false;
       return true;
     });
+    SHOWN=list;
 
     /* KPIs — asli ginti, demo ke hisaab se nahi. */
     var tracked=ROWS.filter(function(x){return x.mode!=='none'}).length;
@@ -166,7 +187,9 @@
       var tag=x.mode==='direct'?'<span class="mm-tag direct">Same item</span>'
              :x.mode==='recipe'?'<span class="mm-tag recipe">Recipe</span>'
              :'<span class="mm-tag none">No stock</span>';
-      return '<tr>'+
+      return '<tr'+(SEL[x.id]?' class="mm-on"':'')+'>'+
+        '<td class="mm-cb"><input type="checkbox" data-pick="'+esc(x.id)+'"'+
+          (SEL[x.id]?' checked':'')+'></td>'+
         '<td class="mm-name"><b>'+esc(x.name)+(x.active?'':' <span class="mm-tag off">Inactive</span>')+'</b>'+
           /* V158 — Sale Point ki tarteeb ka number saath hi. 99 default
              hai (yani tarteeb set nahi), us ko dikhane ka faida nahi. */
@@ -190,10 +213,82 @@
             'data-name="'+esc(x.name)+'">Delete</button></td>'+
       '</tr>';
     }).join('');
+    syncSel();
   }
   function kpi(l,v){return '<div class="mm-kpi"><span>'+esc(l)+'</span><b>'+esc(v)+'</b></div>'}
 
+  /* ============================================================
+     V166 — KAI ITEMS EK SATH.
+
+     Pehle har item par alag Delete dabana parta tha. Akorwal ka menu
+     saaf karne ke liye 49 dafa confirm — log aise mein seedha
+     database par jate hain, aur wahan se purane bill tootte hain.
+
+     SEL mein sirf ids rakhi jati hain, poore row nahi: filter badalne
+     par list dobara banti hai aur purane row ke reference bekaar ho
+     jate. Jo item filter ki wajah se nazar nahi aa raha, uska select
+     bhi khud hat jata hai — warna banda "3 selected" parh kar koi
+     aisi cheez delete kar deta jo screen par thi hi nahi.
+     ============================================================ */
+  var SEL={};
+
+  function shownRows(){
+    return SHOWN.filter(function(x){return SEL[x.id]});
+  }
+  function syncSel(){
+    /* Jo ab nazar nahi aa raha, us ka select bhi gaya. */
+    var vis={}; SHOWN.forEach(function(x){vis[x.id]=1});
+    Object.keys(SEL).forEach(function(id){ if(!vis[id]) delete SEL[id]; });
+
+    var picked=shownRows(), n=picked.length;
+    var bar=document.getElementById('mmSelBar');
+    bar.style.display = n ? '' : 'none';
+    document.getElementById('mmSelCount').textContent =
+      n + ' item' + (n===1?'':'s') + ' selected';
+    var all=document.getElementById('mmAll');
+    all.checked = n>0 && n===SHOWN.length;
+    all.indeterminate = n>0 && n<SHOWN.length;
+  }
+
+  document.getElementById('mmAll').addEventListener('change',function(){
+    if(this.checked) SHOWN.forEach(function(x){SEL[x.id]=1});
+    else SEL={};
+    paint();
+  });
+  document.getElementById('mmSelClear').addEventListener('click',function(){
+    SEL={}; paint();
+  });
+  document.getElementById('mmSelDel').addEventListener('click',function(){
+    var picked=shownRows();
+    if(!picked.length)return;
+    if(!window.DeleteKit||!window.DeleteKit.confirmMany){
+      toast('Delete could not load - refresh the page'); return;
+    }
+    window.DeleteKit.confirmMany({
+      entity:'menu_item',
+      items:picked.map(function(x){return {id:x.id,name:x.name}}),
+      title:'Delete '+picked.length+' menu item'+(picked.length===1?'':'s')+'?',
+      note:'Purane bill mehfooz rehte hain — yeh items un par waise hi chhapte rahenge. '
+          +'Sirf Sale Point se hat jayenge.',
+      onDone:function(){ SEL={}; load(); }
+    });
+  });
+
+  /* V166 — row ka checkbox. `change` par is liye ke keyboard (space)
+     se bhi theek chale, sirf mouse se nahi. */
+  document.getElementById('mmRows').addEventListener('change',function(e){
+    var cb=e.target.closest('[data-pick]');
+    if(!cb)return;
+    var id=cb.getAttribute('data-pick');
+    if(cb.checked)SEL[id]=1; else delete SEL[id];
+    var tr=cb.closest('tr');
+    if(tr)tr.className=cb.checked?'mm-on':'';
+    syncSel();
+  });
+
   document.getElementById('mmRows').addEventListener('click',function(e){
+    /* Checkbox par click row ke baqi handlers tak na jaye. */
+    if(e.target.closest('[data-pick]'))return;
     /* V149 — ek item ka stock yahin se. Customer ne theek kaha tha:
        "aik hi kaam 2,2 bar krna mushkil hai" — pehle har menu item
        dobara Inventory mein haath se banana parta tha. */
@@ -281,7 +376,15 @@
         '<h3 style="margin:0;font-size:15.5px">Categories</h3>'+
         '<p style="margin:4px 0 0;font-size:12px;color:#8a8278">Chhota number pehle aata hai. '+
         'Barabar number waali categories naam ke hisaab se lagti hain. '+
-        'Category hatane ke liye us ke saamne <b>&times;</b> dabayein.</p></div>'+
+        'Category hatane ke liye us ke saamne <b>&times;</b> dabayein, '+
+        'ya kai ek sath chun kar <b>Delete selected</b>.</p></div>'+
+      /* V166 — chuni hui categories ki patti. Items wali screen jaisi hi. */
+      '<div id="coSelBar" style="display:none;align-items:center;gap:9px;padding:9px 18px;'+
+        'background:#fff6e5;border-bottom:1px solid #f0d9a8">'+
+        '<b id="coSelCount" style="font-size:12.5px;color:#8a5a00"></b>'+
+        '<span style="flex:1"></span>'+
+        '<button class="btn sm" id="coSelClear">Clear</button>'+
+        '<button class="btn sm danger" id="coSelDel">Delete selected</button></div>'+
       '<div id="coBody" style="padding:12px 18px;overflow:auto;flex:1"></div>'+
       '<div style="padding:12px 18px;border-top:1px solid #eee7df;display:flex;gap:8px;justify-content:flex-end">'+
         '<button class="btn" id="coCancel">Cancel</button>'+
@@ -289,6 +392,8 @@
 
     ov.querySelector('#coBody').innerHTML=cats.map(function(c){
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
+        '<input type="checkbox" data-cpick="'+esc(c.id)+'" data-cname="'+esc(c.name)+'" '+
+          'title="Select" style="width:16px;height:16px;flex:0 0 auto">'+
         '<input type="number" step="1" min="0" data-cid="'+esc(c.id)+'" value="'+
         (c.sort_order==null?99:Number(c.sort_order))+
         '" style="width:72px;padding:6px 8px;border:1px solid #e3dcd2;border-radius:8px;font-weight:700">'+
@@ -299,6 +404,60 @@
         '<button class="btn sm danger" data-delcat="'+esc(c.id)+'" '+
           'data-name="'+esc(c.name)+'" title="Yeh category hata dein">&times;</button></div>';
     }).join('');
+
+    /* ============================================================
+       V166 — KAI CATEGORIES EK SATH.
+
+       Ek shart yaad rakhni hai: jis category ke andar item para ho wo
+       delete NAHI hoti (server saaf inkar karta hai). Is liye dialog
+       mein "Inside items bhi delete karein" ka option hai — us soorat
+       mein pehle items jate hain, phir categories. Ulta karne par har
+       category BLOCKED hoti aur kuch bhi na hota.
+       ============================================================ */
+    function coPicked(){
+      return Array.prototype.slice.call(ov.querySelectorAll('[data-cpick]:checked'))
+        .map(function(el){ return {id:el.getAttribute('data-cpick'),
+                                   name:el.getAttribute('data-cname')||''}; });
+    }
+    function coSync(){
+      var n=coPicked().length;
+      ov.querySelector('#coSelBar').style.display = n ? 'flex' : 'none';
+      ov.querySelector('#coSelCount').textContent =
+        n + ' categor' + (n===1?'y':'ies') + ' selected';
+    }
+    ov.addEventListener('change',function(e){
+      if(e.target.closest('[data-cpick]')) coSync();
+    });
+    ov.querySelector('#coSelClear').onclick=function(){
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-cpick]'),
+        function(el){el.checked=false});
+      coSync();
+    };
+    ov.querySelector('#coSelDel').onclick=function(){
+      var picked=coPicked();
+      if(!picked.length)return;
+      if(!window.DeleteKit||!window.DeleteKit.confirmMany){
+        toast('Delete could not load - refresh the page'); return;
+      }
+      shut();
+      window.DeleteKit.confirmMany({
+        entity:'menu_category',
+        items:picked,
+        cascade:true,
+        title:'Delete '+picked.length+' categor'+(picked.length===1?'y':'ies')+'?',
+        note:'Purane bill mehfooz rehte hain. Jis category mein items paray hon, wo '
+            +'tab tak delete nahi hoti jab tak upar wala option na lagayen.',
+        /* ROWS mein har item ke sath us ki category_id aati hai, is liye
+           naam se milane ki zaroorat nahi — do categories ka naam ek
+           jaisa ho to naam se milana ghalat item uRa deta. */
+        itemIdsFor:function(catIds){
+          var want={}; catIds.forEach(function(id){want[id]=1});
+          return ROWS.filter(function(x){return want[x.category_id]})
+                     .map(function(x){return x.id});
+        },
+        onDone:function(){ SEL={}; load(); }
+      });
+    };
 
     /* Delete ka click — dialog ke andar hi. DeleteKit apna popup khud
        dikhati hai aur server ki wajah (agar inkar ho) bhi parhti hai. */

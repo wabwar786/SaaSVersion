@@ -1903,6 +1903,119 @@ case 'entity-delete':needLogin();$d=body();
  }
  ok($r);
 
+case 'entity-delete-bulk':needLogin();$d=body();
+ /* ============================================================
+    V166 — EK SATH KAI RECORD, ADMIN KE PASSWORD KE SATH.
+
+    MASLA: menu saaf karne ke liye har item par alag Delete dabana
+    parta tha. Akorwal ke 49 items + 17 categories = 66 dafa confirm.
+    Log aise mein seedha database par jate hain — aur wahan se purane
+    bill tootte hain.
+
+    YAHAN TEEN PEHRE HAIN. Teenon jaan boojh kar:
+
+    1. SIRF MENU. Entity ki choti si fehrist — menu item aur menu
+       category. Bulk delete ek taqatwar cheez hai; usay har entity
+       par khol dena (users, bills, stock) bewaqoofi hoti. Jab kisi
+       aur screen par zaroorat ho, us waqt soch samajh kar barhayenge.
+
+    2. PASSWORD HAR DAFA — ADMIN KO BHI. Akele record par admin se
+       password nahi maanga jata (wo malik hai), magar yahan ek click
+       se pachas record ja sakte hain. Khula POS chhorne par koi aur
+       aa kar poora menu uRa de — yeh ek password us darmiyan khara
+       hai.
+
+    3. GINTI KI HADD. 500 se zyada ek request mein nahi. PHP ka waqt
+       khatam ho jaye to aadha kaam hua aur user ko pata bhi nahi —
+       yeh sab se buri soorat hai.
+
+    Delete khud wahi purana `auto` (soft) delete hai — koi naya
+    raasta nahi banaya gaya. Is liye purane bill bilkul salamat
+    rehte hain, aur jo category items rakhti ho wo pehle ki tarah
+    BLOCKED hi hoti hai.
+    ============================================================ */
+ $ent=preg_replace('/[^a-z_]/','',strtolower((string)($d['entity']??'')));
+ if(!in_array($ent,['menu_item','menu_category'],true))
+   fail('Bulk delete is not available for: '.($ent!==''?$ent:'(nothing)'));
+ if(!DeleteService::has($ent))fail('Unknown record type: '.$ent);
+
+ $ids=$d['ids']??[];
+ if(!is_array($ids))fail('No records were selected');
+ /* Duplicate ids ginti ko jhoota bana dete hain. */
+ $ids=array_values(array_unique(array_filter(array_map(
+        fn($x)=>trim((string)$x), $ids), fn($x)=>$x!=='')));
+ if(!$ids)fail('No records were selected');
+ if(count($ids)>500)fail('Too many at once — select 500 or fewer (you selected '.count($ids).')',422);
+
+ /* --- password: har dafa, admin ko bhi --- */
+ $pw=(string)($d['manager_password']??'');
+ if($pw==='')fail('An admin or manager password is required',422);
+ $p=DB::pdo();
+ $mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u
+                    LEFT JOIN user_roles ur ON ur.user_id=u.id
+                    LEFT JOIN roles r ON r.id=ur.role_id
+                   WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                     AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%'
+                          OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+ $mq->execute([tenant_id()]);
+ $okPw=false;
+ foreach($mq->fetchAll() as $mu){ if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okPw=true;break;} }
+ /* ============================================================
+    422 — 401 NAHI. YEH FARQ MAINE TEST MEIN PAKRA.
+
+    `db_api.js` mein likha hai: jo bhi jawab 401 ho, usay "session
+    khatam" samajh kar seedha login.html par bhej do. Yani password
+    mein ek harf ki ghalti par user ka POS band ho jata aur usay
+    dobara login karna parta — aur jo kaam chal raha tha wo gaya.
+
+    Password ghalat hona "aap login nahi hain" nahi hai. 422 bhejne
+    se wahi paigham screen par nazar aata hai aur user apni jagah
+    khara rehta hai.
+    ============================================================ */
+ if(!$okPw)fail('Incorrect admin or manager password',422);
+ /* Password sahi — is ek request ke liye manager ki haisiyat, taake
+    cashier bhi malik ke samne yeh kaam kar sake. */
+ DeleteService::$managerVerified=true;
+
+ $reason=(string)($d['reason']??'');
+ $done=0;$fail=0;$rows=[];
+ foreach($ids as $one){
+   try{
+     $r=DeleteService::delete($ent,$one,'auto',$reason);
+     $okOne=(($r['result']??'')!=='BLOCKED');
+     if($okOne)$done++;else $fail++;
+     /* ============================================================
+        WAJAH `blockers` mein hoti hai, `message` mein nahi.
+
+        `message` sirf sarnama hai — 'Menu category "Rice" cannot be
+        deleted:' — aur asal wajah ('this category has 3 item(s) -
+        move or remove them first') alag array mein aati hai. Pehle
+        yahan sirf `message` bheja ja raha tha, is liye user ko adhoora
+        jumla milta tha jo kuch batata hi nahi. Wahi purani bimari jis
+        ke liye delete_kit banaya gaya tha.
+        ============================================================ */
+     $why='';
+     if(!$okOne){
+       $bl=$r['blockers']??[];
+       $why=is_array($bl)&&$bl ? implode('; ',array_map('strval',$bl))
+                               : (string)($r['message']??'Could not delete');
+     }
+     $rows[]=['id'=>$one,'ok'=>$okOne,'name'=>(string)($r['label']??''),
+              'result'=>(string)($r['result']??''),'message'=>$why];
+   }catch(Throwable $e){
+     /* Ek record ka girna baqi sab ko nahi girata — warna 49 mein se
+        pehla hi masla poore kaam ko rok deta. */
+     $fail++;
+     $msg=$e->getMessage();
+     if(stripos($msg,'foreign key')!==false||stripos($msg,'23000')!==false)
+       $msg='Attached to older bills — those cannot be broken.';
+     $rows[]=['id'=>$one,'ok'=>false,'name'=>'','result'=>'ERROR','message'=>$msg];
+   }
+ }
+ ok(['deleted'=>$done,'failed'=>$fail,'rows'=>$rows,
+     'message'=>$fail===0 ? ($done.' deleted')
+                          : ($done.' deleted, '.$fail.' could not be deleted')]);
+
 case 'entity-restore':needLogin();$d=body();
  $ent=preg_replace('/[^a-z_]/','',strtolower((string)($d['entity']??'')));
  if($ent===''||!DeleteService::has($ent))fail('Unknown record type: '.$ent);
