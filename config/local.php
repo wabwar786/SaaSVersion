@@ -45,6 +45,16 @@ return [
             'expenses', 'cashier_shifts', 'reservations', 'riders',
             'promotions', 'printers', 'devices', 'employee_profiles',
             'floors', 'dining_tables', 'stock_adjustments', 'notification_queue',
+            /* V162 — STOCK KI HARKATEIN AUR MAUJOODA BALANCE.
+               Yeh teen tables is fehrist mein THIN HI NAHI. Nateeja: dukan
+               ke computer par stock badlo (ginti, adjustment, sab sifar) to
+               online par kabhi nazar hi na aata — na number, na wajah.
+               (Naye sealed package ki apni config mein yeh pehle se hain;
+               masla un nodes par tha jo isi file par chalte hain.)
+               Sirf PUSH mein — pull mein jaan boojh kar nahi, taake cloud
+               ka purana number dukan ke asal stock ko na mitaye. Offline
+               ka likha hua hi aakhri faisla hai. */
+            'stock_transactions', 'stock_transaction_lines', 'stock_balances',
             // V62.2 — staff aur unki permissions. Yeh pehle list mein thin
             // hi nahi, is liye node par banaye gaye users/modules kabhi
             // cloud par nazar nahi aate the.
@@ -97,4 +107,4 @@ return [
     ],
 ];
 
-// build: V154 build 2026-10-13
+// build: V162 build 2026-10-24

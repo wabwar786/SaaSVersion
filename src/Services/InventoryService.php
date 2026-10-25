@@ -53,6 +53,95 @@ final class InventoryService {
             return $id;
         });
     }
+    /**
+     * V162 — STOCK KO EXACT NUMBER PAR LE AAO (ginti ke baad, ya sab sifar).
+     *
+     * YEH KYUN BANA
+     * Stock sifar karne ka koi raasta hi nahi tha. Jo tareeqe thay:
+     *   • Stock In popup se har item par alag alag minus — 50 item ho to
+     *     50 dafa, aur ek ghalti se number aur bigar jata.
+     *   • Seedha SQL `UPDATE stock_balances SET qty_on_hand=0` — number
+     *     to sifar ho jata magar `stock_transactions` mein koi entry na
+     *     hoti, is liye inventory report ka Opening/Used/Closing us din
+     *     ke baad mel khana chhor deta.
+     *   • `node_reset.php` — wo stock ke sath orders, shifts aur payments
+     *     bhi uraa deta hai. Sirf handover ke liye hai.
+     *
+     * Ab yeh ek ASAL adjustment transaction post karta hai. Faida sirf
+     * report ka nahi: `stock_transactions`, `stock_transaction_lines`
+     * aur `stock_balances` teenon sync ki push list mein hain, is liye
+     * offline par kiya gaya adjustment agle sync par KHUD cloud tak
+     * pohanch jata hai — kuch alag se karne ki zaroorat nahi.
+     *
+     * HAR LOCATION THEEK HOTI HAI. Stock ek se ziada jagah para ho sakta
+     * hai (Kitchen + Store). Sirf default location ko haath lagane se
+     * kul number wahi ka wahi reh jata, is liye: target default location
+     * par, baqi sab sifar.
+     *
+     * @param array<int,array{id:string,qty:float}> $targets
+     * @return array{items:int,lines:int,tx:?string}
+     */
+    public static function adjustTo(array $targets, string $reason, ?string $userId = null): array
+    {
+        if (!$targets) return ['items' => 0, 'lines' => 0, 'tx' => null];
+
+        return DB::tx(function (PDO $pdo) use ($targets, $reason, $userId) {
+            $def   = self::defaultLocationId($pdo);
+            $lines = [];
+            $touched = 0;
+
+            foreach ($targets as $t) {
+                $itemId = (string)($t['id'] ?? '');
+                if ($itemId === '') continue;
+                $target = round((float)($t['qty'] ?? 0), 6);
+                if ($target < 0) throw new \RuntimeException('Quantity cannot be negative');
+
+                $q = $pdo->prepare(
+                    "SELECT sb.stock_location_id loc, sb.qty_on_hand qty,
+                            ii.avg_cost_per_stock_unit cost
+                       FROM stock_balances sb
+                       JOIN inventory_items ii ON ii.id = sb.inventory_item_id
+                      WHERE sb.inventory_item_id=? AND sb.site_id=?");
+                $q->execute([$itemId, site_id()]);
+                $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+
+                $cost = 0.0; $hasDefault = false; $any = false;
+                foreach ($rows as $b) {
+                    $cost  = (float)$b['cost'];
+                    $isDef = ((string)$b['loc'] === $def);
+                    if ($isDef) $hasDefault = true;
+                    $delta = round(($isDef ? $target : 0.0) - (float)$b['qty'], 6);
+                    if ($delta == 0.0) continue;
+                    $lines[] = (object)['item_id' => $itemId, 'location_id' => (string)$b['loc'],
+                                        'qty' => $delta, 'unit_cost' => $cost,
+                                        'source_order_item_id' => null];
+                    $any = true;
+                }
+
+                /* Default location par koi row hi na ho aur stock daalna ho */
+                if (!$hasDefault && $target != 0.0) {
+                    if ($cost == 0.0) {
+                        $cq = $pdo->prepare("SELECT avg_cost_per_stock_unit FROM inventory_items WHERE id=? LIMIT 1");
+                        $cq->execute([$itemId]);
+                        $cost = (float)$cq->fetchColumn();
+                    }
+                    $lines[] = (object)['item_id' => $itemId, 'location_id' => $def,
+                                        'qty' => $target, 'unit_cost' => $cost,
+                                        'source_order_item_id' => null];
+                    $any = true;
+                }
+
+                if ($any) $touched++;
+            }
+
+            if (!$lines) return ['items' => 0, 'lines' => 0, 'tx' => null];
+
+            $ref = trim($reason) !== '' ? trim($reason) : 'Stock adjustment';
+            $tx  = self::postMovement($pdo, 'ADJUSTMENT', null, null, substr($ref, 0, 80), $lines, $userId);
+            return ['items' => $touched, 'lines' => count($lines), 'tx' => $tx];
+        });
+    }
+
     public static function postMovement(PDO $pdo,string $type,?string $refType,?string $refId,?string $refNo,array $lines,?string $userId): string {
         $tx=uuid();
         $pdo->prepare('INSERT INTO stock_transactions(id,tenant_id,site_id,transaction_type,business_date,reference_type,reference_id,reference_no,posted_by_user_id) VALUES(?,?,?,?,?,?,?,?,?)')->execute([$tx,tenant_id(),site_id(),$type,today(),$refType,$refId,$refNo,$userId]);
@@ -73,4 +162,4 @@ final class InventoryService {
     }
 }
 
-// build: V17.1 build 2026-08-25
+// build: V162 build 2026-10-24

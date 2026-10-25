@@ -360,6 +360,23 @@ final class OpsService
               GROUP BY method ORDER BY amount DESC");
         $pq->execute($args);
 
+        /* V162 — CASH SALES. Closing parchi par "Expected" sifar chhapta
+           tha jab tak shift band na ho (expected_cash shift band karte
+           waqt bharta hai), aur neeche "BALANCED 0" — jabke din bhar ki
+           sale ho chuki hoti. Ab daraz ka asal hisaab parchi par banta
+           hai: opening float + cash sales - cash kharcha. */
+        $cash = 0.0;
+        try {
+            $cq = $p->prepare(
+                "SELECT COALESCE(SUM(pay.amount),0)
+                   FROM payments pay
+                   JOIN orders o ON o.id = pay.order_id
+                   JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                  WHERE $where AND pay.status<>'CANCELLED' AND pm.method_type='CASH'");
+            $cq->execute($args);
+            $cash = (float)$cq->fetchColumn();
+        } catch (\Throwable $e) {}
+
         /* Expenses jo isi shift mein counter se nikle — cash count ka
            hissa hain, is liye report par nazar aane chahiyen. */
         $exp = 0.0;
@@ -381,6 +398,7 @@ final class OpsService
             'opened'   => substr($open, 0, 16),
             'closed'   => $sh['closed_at'] ? substr((string)$sh['closed_at'], 0, 16) : '',
             'opening'  => (float)$sh['opening_cash'],
+            'cash_sales' => $cash,
             'expected' => (float)$sh['expected_cash'],
             'counted'  => (float)$sh['actual_cash'],
             'variance' => (float)$sh['variance_amount'],
@@ -1086,4 +1104,4 @@ final class OpsService
     }
 }
 
-// build: V70 build 2026-08-27
+// build: V162 build 2026-10-24

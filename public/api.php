@@ -1265,7 +1265,12 @@ case 'bill-pdf':needLogin();
        'footer'=>$st['receipt_footer']??'','currency'=>$st['currency']??'PKR',
        'tax_rate'=>(float)($st['tax_cash']??0),
        'fbr_no'=>(string)($o['fiscal_invoice_no']??''),
-       'fbr_pending'=>in_array((string)($o['fiscal_status']??''),['PENDING','FAILED'],true)];
+       'fbr_pending'=>in_array((string)($o['fiscal_status']??''),['PENDING','FAILED'],true),
+       /* V163 — business ka logo aur FBR ka POS id. Sirf "khaata" template
+          inhen use karta hai; baqi teen template inhen dekhte hi nahi, is
+          liye un par koi asar nahi. */
+       'logo'=>\Aio\Services\ReceiptLogo::tenantLogo(),
+       'pos_id'=>(string)(\Aio\Services\FiscalService::settings()['pos_id']??'')];
  $tpl=(string)($_GET['template']??'')?:(string)($st['receipt_template']??'classic');
  $pdf=\Aio\Services\Pdf::receipt(BillTemplate::render($tpl,$o,$items,$ctx));
  while(ob_get_level())ob_end_clean();
@@ -1286,7 +1291,12 @@ case 'bill-preview':needLogin();
  $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
        'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>$st['receipt_header']??'',
        'footer'=>$st['receipt_footer']??'','currency'=>$st['currency']??'PKR','tax_rate'=>$rate,
-       'fbr_no'=>'','fbr_pending'=>false];
+       /* Preview mein FBR ka namoona QR sirf tab jab is dukan par FBR
+          waqai chalu ho — warna sahib ko lagta ke FBR on hai jabke nahi. */
+       'fbr_no'=>(!empty(\Aio\Services\FiscalService::settings()['enabled'])?'1627132610211226458':''),
+       'fbr_pending'=>false,
+       'logo'=>\Aio\Services\ReceiptLogo::tenantLogo(),
+       'pos_id'=>(string)(\Aio\Services\FiscalService::settings()['pos_id']??'')];
  $pdf=\Aio\Services\Pdf::receipt(BillTemplate::render($tpl,$o,$items,$ctx));
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');header('Content-Disposition: inline; filename="preview.pdf"');header('Content-Length: '.strlen($pdf));echo $pdf;exit;
@@ -2068,7 +2078,7 @@ case 'pos-boot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet
  $bb['settings']=SettingsService::taxes()+['tax_mode'=>\Aio\Services\TaxMode::current()];
 /* POS ko FBR ki halat bhi chahiye — warna QR khamoshi se gayab rehta hai
    aur cashier ko wajah ka pata hi nahi chalta. */
-$bb['fiscal']=['enabled'=>FiscalService::availableHere(),'tenant_on'=>FiscalService::enabledForTenant(),'provider'=>(string)(FiscalService::settings()['provider']??'NONE')];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
+$bb['fiscal']=['enabled'=>FiscalService::availableHere(),'tenant_on'=>FiscalService::enabledForTenant(),'provider'=>(string)(FiscalService::settings()['provider']??'NONE'),/* V163 — POS id bill ke footer par likhi jati hai (khaata template). */'pos_id'=>(string)(FiscalService::settings()['pos_id']??'')];$bq=DB::pdo()->prepare("SELECT name,display_name,logo_url,brand_color,brand_accent FROM tenants WHERE id=? LIMIT 1");$bq->execute([tenant_id()]);$br=$bq->fetch()?:[];
 $bb['brand']=['name'=>($br['display_name']?:($br['name']??'Restaurant')),'logo'=>$br['logo_url']??'','color'=>$br['brand_color']??'','accent'=>$br['brand_accent']??''];
 $bb['can']=['manage'=>Auth::isManager(),'reports'=>Auth::canModule('reports'),'offline_download'=>(cfg('app.role')==='cloud'),'modules'=>Auth::effectiveModules()];
 $bb['cashier']=['name'=>$bu['full_name']??'Cashier','role'=>Auth::isManager()?(!empty($bu['is_tenant_admin'])?'Admin':'Manager'):'Cashier'];ok(['boot'=>$bb]);
@@ -2380,6 +2390,29 @@ case 'stock-in':needLogin();
  try{ $r=\Aio\Services\StockDayService::stockIn($d); }
  catch(Throwable $e){ fail($e->getMessage(),422); }
  Audit::log('STOCK_IN','inventory',['label'=>$r['name'],'qty'=>$r['qty']]);
+ ok($r);
+
+/* V162 — STOCK ADJUST / SAB SIFAR.
+   Yeh Stock In se zyada ikhtiyar wala kaam hai: ek hi baar mein poori
+   inventory ka number badal sakta hai. Is liye sirf is property ka
+   ADMIN — manager bhi nahi. Har adjustment asal stock transaction
+   banata hai, is liye reports theek rehti hain aur offline par kiya
+   gaya kaam agle sync par khud cloud tak chala jata hai. */
+case 'stock-adjust':needLogin();
+ if(!Auth::canModule('inventory'))fail('Permission denied',403);
+ if(!Auth::isAdmin())fail('Only the admin of this property can adjust stock',403);
+ $d=body();
+ $items=[];
+ foreach((array)($d['items']??[]) as $x){
+   $id=(string)($x['id']??''); if($id==='')continue;
+   $items[]=['id'=>$id,'qty'=>(float)($x['qty']??0)];
+ }
+ if(!$items)fail('No items to adjust',422);
+ if(count($items)>2000)fail('Too many items in one adjustment',422);
+ try{ $r=\Aio\Services\InventoryService::adjustTo($items,(string)($d['reason']??''),current_user()['id']??null); }
+ catch(Throwable $e){ fail($e->getMessage(),422); }
+ Audit::log('STOCK_ADJUST','inventory',
+   ['items'=>$r['items'],'lines'=>$r['lines'],'reason'=>substr((string)($d['reason']??''),0,80)]);
  ok($r);
 
 case 'stock-day':needLogin();Auth::requireModule('dayclose');
@@ -3705,4 +3738,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V155 build 2026-10-15
+// build: V163 build 2026-10-25

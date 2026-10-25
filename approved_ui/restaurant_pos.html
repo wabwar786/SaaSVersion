@@ -326,6 +326,37 @@ textarea.inp{min-height:62px;resize:vertical}
 .slip table{width:100%;border-collapse:collapse}
 .slip td{padding:2px 0;vertical-align:top}
 .slip .r{text-align:right}
+/* ===== V163 — "Khaata" bill ka dhancha =====
+   Nuqta-dar lakeeron ki jagah THOS, item ka khaata ek frame ke andar,
+   dena kitna hai wo bharay hue band mein, aur FBR ka QR raqamon ke
+   BAYEN us khali jagah mein jo waise bhi bachi hoti hai. */
+.slip .blogo{text-align:center;margin:0 0 5px}
+.slip .blogo img{max-height:46px;max-width:76%;filter:grayscale(1) contrast(2.2)}
+.slip .srule{border-top:1.6px solid #000;margin:5px 0}
+.slip .binfo td{font-size:10.5px;padding:1px 0}
+/* Bayen khana (bill no aur tareekh) kabhi na toote — "21 Oct 2026, 12:26
+   PM" do line mein bat jaye to parhne mein ajeeb lagta hai. Lamba naam
+   daayen khane mein wrap ho jaye, wo theek hai. */
+.slip .binfo td:first-child{white-space:nowrap;padding-right:7px}
+.slip .bitems{width:100%;border-collapse:collapse;border:1px solid #000;margin-top:6px;font-size:10.5px}
+.slip .bitems th,.slip .bitems td{padding:2px 4px;vertical-align:top}
+.slip .bitems thead th{font-weight:800;text-align:left;border-bottom:1px solid #000;letter-spacing:.4px}
+.slip .bitems .r{text-align:right;white-space:nowrap}
+.slip .bpay{display:flex;gap:9px;align-items:flex-start;margin-top:8px}
+.slip .bqr{flex:0 0 96px}
+.slip .bqr img{width:96px;height:96px;display:block}
+/* QR ke saath wali column tang hai (~190px). Yahan parchi ka aam font
+   (12px) bohat bara parta tha aur har line do-teen line le leti thi, is
+   liye yahan wahi chhota font jo item ke khaate mein hai, aur raqam
+   kabhi toot kar agli line par na jaye. */
+.slip .bpay .tot{flex:1 1 auto;width:auto;font-size:10.5px}
+.slip .bpay .tot td{padding:1px 0;line-height:1.5}
+.slip .bpay .tot td.r{text-align:right;white-space:nowrap;padding-left:6px}
+.slip .bpayline{text-align:center;font-size:10px;margin-top:4px}
+.slip .bband{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  background:#000;color:#fff;padding:3px 7px;margin-top:7px;font-weight:800;font-size:13px;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.slip .fbrline{text-align:center;font-size:9px;margin-top:5px;word-break:break-all;line-height:1.35}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:11px;font-weight:600;opacity:0;transition:.24s;z-index:990;pointer-events:none;max-width:88vw;text-align:center}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 /* ============================================================
@@ -509,6 +540,12 @@ function api(action,payload){
   }catch(e){return {ok:false,message:(e&&e.message)||'Server unreachable'}}
 }
 function money(n){return 'PKR '+Math.round(Number(n)||0).toLocaleString()}
+/* Bill ke khaate ke liye SIRF raqam — bina "PKR".
+   V163 ki parchi par har raqam "PKR 9,720" chhap rahi thi: item ki column
+   aur QR ke saath wali totals ki column dono tang hain, is liye har line
+   do-teen line le leti thi ("Sales Tax  PKR / 1,341"). Currency ab sirf
+   PAYABLE ke band par ek dafa likhi jati hai — wahin customer dekhta hai. */
+function amt(n){return Math.round(Number(n)||0).toLocaleString()}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function toast(m){var t=$('#toast');t.textContent=m;t.className='toast on';clearTimeout(t._t);t._t=setTimeout(function(){t.className='toast'},2600)}
 function qfmt(q){return (Number(q)%1)?Number(q).toFixed(3).replace(/0+$/,'').replace(/\.$/,''):String(q)}
@@ -1904,28 +1941,56 @@ function slipHtml(kind,lines,info){
        line par (ek line mein jor dene se 80mm par toot jate hain);
        phir bill ki tafseel. Branch ka naam sirf tab jab wo business ke
        naam se alag ho — warna do dafa wahi cheez chhapti hai. */
-    head='<h4>'+esc(bizName)+'</h4>'
+    /* V163 — "KHAATA" KA SAR-NAMA.
+       Logo sab se ooper agar business ne lagaya ho (wahi logo jo Super
+       Admin ki Branding screen se lagta hai; router har safhe par
+       `APP_BRAND` mein bhejta hai). Na ho to sar-nama waisa hi jaisa
+       pehle tha — sirf naam se shuru. Logo load na ho to apni jagah khud
+       hata deta hai, taake khali daba na rahe. */
+    var bLogo=(window.APP_BRAND&&APP_BRAND.logo)?String(APP_BRAND.logo):'';
+    var idBits=[];
+    if(ST.phone)idBits.push('PH '+esc(ST.phone));
+    if(ST.ntn)idBits.push('NTN '+esc(ST.ntn));
+    var bInfoR=esc((info&&info.table)||curTable||'');
+    var bCash=esc((info&&info.cashier)||(window.APP_USER&&APP_USER.name)||'');
+    if(bCash)bInfoR=bInfoR?(bInfoR+' / '+bCash):bCash;
+    head=(bLogo?'<div class="blogo"><img src="'+esc(bLogo)+'" alt="" onerror="this.parentNode.remove()"></div>':'')
+      +'<h4>'+esc(bizName)+'</h4>'
       +(brName&&brName!==bizName?'<div class="addr">'+esc(brName)+'</div>':'')
       +(ST.address?'<div class="addr">'+esc(ST.address)+'</div>':'')
-      +(ST.phone?'<div class="meta">Ph : '+esc(ST.phone)+'</div>':'')
-      +(ST.ntn?'<div class="meta">NTN : '+esc(ST.ntn)+'</div>':'')
+      +(idBits.length?'<div class="meta">'+idBits.join(' &middot; ')+'</div>':'')
       +(ST.receipt_header?'<div class="meta">'+esc(ST.receipt_header)+'</div>':'')
-      +'<div class="doc">SALES INVOICE</div>'
-      +'<div class="meta">Bill No : '+esc((info&&info.billNo)||billNo)
-      +' &middot; '+esc((info&&info.mode)||mode)
-      +((info&&info.table)||curTable?(' &middot; '+esc((info&&info.table)||curTable)):'')+'</div>'
-      +'<div class="meta">'+esc((info&&info.at)||new Date().toLocaleString())+'</div><hr>';
+      +'<div class="srule"></div>'
+      +'<div class="doc">'+(ST.ntn?'SALES TAX INVOICE':'SALES INVOICE')+'</div>'
+      +'<div class="srule"></div>'
+      +'<table class="binfo">'
+        +'<tr><td>Invoice '+esc((info&&info.billNo)||billNo)+'</td>'
+          +'<td class="r">'+esc(String((info&&info.mode)||mode).toUpperCase())+'</td></tr>'
+        +'<tr><td>'+esc((info&&info.at)||new Date().toLocaleString())+'</td>'
+          +'<td class="r">'+bInfoR+'</td></tr>'
+      +'</table>';
   }
-  /* Bill par column headers — "Item Description" aur "Total Amount".
-     KOT par inki zaroorat nahi (wahan sirf qty aur item hota hai). */
-  var itemHead = (kind==='KOT') ? ''
-    : '<tr class="ith"><td colspan="2">Item Description</td><td class="r">Total Amount</td></tr>';
-
-  var rows=itemHead+lines.map(function(l){
-    return kind==='KOT'
-      ? '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)+(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>'
-      : '<tr><td>'+qfmt(l.qty)+' x</td><td>'+esc(l.name)+(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td><td class="r">'+money(l.qty*l.price)+'</td></tr>';
-  }).join('');
+  /* ITEM KA KHAATA.
+     KOT pehle jaisa — qty bara, naam bara, koi frame nahi.
+     Bill par ab ek FRAME ke andar, ITEM / QTY / AMOUNT ke sar-namon ke
+     sath (V163). Naam ki apni column hai, is liye lamba naam kata nahi
+     balke apni cell mein wrap ho jata hai. */
+  var body;
+  if(kind==='KOT'){
+    body='<table>'+lines.map(function(l){
+      return '<tr><td class="kq">'+qfmt(l.qty)+'</td><td class="kn">'+esc(l.name)
+        +(l.note?'<br><i>'+esc(l.note)+'</i>':'')+'</td></tr>';
+    }).join('')+'</table>';
+  }else{
+    body='<table class="bitems"><thead><tr><th>ITEM</th>'
+      +'<th class="r">QTY</th><th class="r">AMOUNT</th></tr></thead><tbody>'
+      +lines.map(function(l){
+        return '<tr><td>'+esc(l.name)
+          +(l.note?'<br><i style="font-size:9px">'+esc(l.note)+'</i>':'')+'</td>'
+          +'<td class="r">'+qfmt(l.qty)+'</td>'
+          +'<td class="r">'+amt(l.qty*l.price)+'</td></tr>';
+      }).join('')+'</tbody></table>';
+  }
   /* Pehle QR fail hone is missing the `this.remove()` tha - QR khamoshi se gayab.
      FBR ke bill par yeh na-qabil-e-qabool hai; ab wajah likhi aati hai. */
   /* V150 — YEH TEEN CHEEZEIN YAHAN SE HATA DI GAYI HAIN.
@@ -1975,34 +2040,59 @@ function slipHtml(kind,lines,info){
       : ('INV:'+((info&&info.billNo)||billNo)
          +'|NTN:'+((SET&&SET.ntn)||'')
          +'|AMT:'+Math.round(t.grand)+'|TAX:'+Math.round(t.tax));
-    fbrQr='<hr><div class="c"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(payload)
-      +'" style="width:118px;height:118px" onerror="qrFail(this)">'
-      +'<div class="qrlbl">FBR Invoice QR'+(fbrNo?'':' &middot; PENDING')+'</div>'
-      +(fbrNo?'':'<div style="font-size:9px">will be filed when the fiscal service responds</div>')
-      +'</div>';
+    /* V163 — QR ab apne block mein, raqamon ke BAYEN (neeche beech mein
+       nahi). Us se har bill par taqreeban 30% roll bachta hai, kyunke
+       raqamon ke bayen ki jagah waise bhi khali jaati thi. */
+    fbrQr='<div class="bqr"><img src="/api.php?action=qr&scale=4&data='+encodeURIComponent(payload)
+      +'" alt="" onerror="qrFail(this)"></div>';
   }
-  var foot=kind==='KOT'?'<hr>'
-    :'<hr><table class="tot">'
-      /* INCLUSIVE mein "Subtotal + Sales Tax = GRAND TOTAL" jhoot hota hai
-         (tax subtotal ke ANDAR hai). Is liye us soorat mein tax ko
-         "included" likh kar dikhaya jata hai, jama nahi kiya jata. */
-      +'<tr><td>Subtotal</td><td class="r">'+money(t.sub)+'</td></tr>'
-      +(t.disc?'<tr><td>Discount</td><td class="r">-'+money(t.disc)+'</td></tr>':'')
-      +(t.svc?'<tr><td>Service Charge</td><td class="r">'+money(t.svc)+'</td></tr>':'')
+  var foot;
+  if(kind==='KOT'){
+    foot='<hr>';
+  }else{
+    /* INCLUSIVE mein "Subtotal + Sales Tax = GRAND TOTAL" jhoot hota hai
+       (tax subtotal ke ANDAR hai). Is liye us soorat mein tax ko
+       "included" likh kar dikhaya jata hai, jama nahi kiya jata. */
+    var totT='<table class="tot">'
+      +'<tr><td>Subtotal</td><td class="r">'+amt(t.sub)+'</td></tr>'
+      +(t.disc?'<tr><td>Discount</td><td class="r">-'+amt(t.disc)+'</td></tr>':'')
+      +(t.svc?'<tr><td>Service</td><td class="r">'+amt(t.svc)+'</td></tr>':'')
       /* Tax ke sath uska % bhi — customer aur auditor dono ko foran
          pata chale ke kis rate par laga hai. Inclusive mein "incl."
          likha jata hai, kyunke wo raqam subtotal ke ANDAR hai. */
-      +(t.tax?('<tr><td>Sales Tax '+orderTax+'%'+(t.inclusive?' (incl.)':'')
-               +'</td><td class="r">'+money(t.tax)+'</td></tr>'):'')
-      +'<tr class="gt"><td>GRAND TOTAL</td><td class="r">'+money(t.grand)+'</td></tr>'
-      +(info?'<tr><td>Paid ('+esc(info.pay)+')</td><td class="r">'+money(info.rcv)+'</td></tr>'
-        +'<tr><td>Change</td><td class="r">'+money(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
-      +'</table>'+fbrQr+'<hr>'
+      +(t.tax?('<tr><td>Tax '+orderTax+'%'+(t.inclusive?' incl.':'')
+               +'</td><td class="r">'+amt(t.tax)+'</td></tr>'):'')
+      +(info?'<tr><td>Paid</td><td class="r">'+amt(info.rcv)+'</td></tr>'
+        +'<tr><td>Change</td><td class="r">'+amt(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
+      +'</table>';
+
+    /* GRAND TOTAL ab table ki aakhri row nahi — apne BHARAY HUE BAND mein.
+       Door se, jaldi mein, yehi ek cheez customer dhoondta hai. */
+    var band='<div class="bband"><span>PAYABLE</span><span>'+money(t.grand)+'</span></div>';
+
+    /* FBR ka number band ke neeche ek line mein — QR ke saath dobara
+       likhne ki zaroorat nahi. Number na aaya ho to saaf PENDING. */
+    var fbrLine='';
+    if(fbrNo){
+      fbrLine='<div class="fbrline">FBR '+esc(fbrNo)
+        +((BOOT.fiscal&&BOOT.fiscal.pos_id)?(' &middot; POS '+esc(BOOT.fiscal.pos_id)):'')+'</div>';
+    }else if(fbrOn){
+      fbrLine='<div class="fbrline">*** FBR: PENDING ***<br>'
+        +'will be filed when the fiscal service responds</div>';
+    }
+
+    /* Kis tareeqe se paisa aaya — pehle "Paid (Credit Card)" tang column
+       ke andar tha aur teen line le leta tha. Ab band ke neeche apni
+       line par, jahan poori chaurai hai. */
+    var payLine=(info&&info.pay)?('<div class="bpayline">Paid by '+esc(info.pay)+'</div>'):'';
+
+    foot='<div class="bpay">'+fbrQr+totT+'</div>'+band+payLine+fbrLine
       +(PRINT.footer?'<div class="thanks">'+esc(PRINT.footer)+'</div>':'')
       /* Software ki pehchan — har bill par, chhote magar saaf font mein. */
       +'<div class="byline">Software by '+esc(PRINT.vendor||'Wabwar Software House')
         +' @ '+esc(PRINT.vendorPhone||'0342-5095104')+'</div>';
-  return '<div class="slip">'+head+'<table>'+rows+'</table>'+foot+'</div>';
+  }
+  return '<div class="slip">'+head+body+foot+'</div>';
 }
 function slipNode(kind,lines,info){
   var d=document.createElement('div');
@@ -2074,6 +2164,25 @@ function printNode(node,wide){
     +'.thanks{text-align:center;font-size:14px;font-weight:700;margin-top:4px;line-height:1.4}'
     +'.byline{text-align:center;font-size:11px;font-weight:700;margin-top:5px;line-height:1.35}'
     +'hr{border:0;border-top:1px dashed #999;margin:7px 0}.slip{border:0;padding:0}'
+    /* V163 — "Khaata" wala dhancha, chhapte waqt bare font par.
+       `print-color-adjust:exact` ke baghair browser kaala band gira deta
+       hai aur "PAYABLE" safed par safed chhapta hai — yani gayab. */
+    +'.blogo{text-align:center;margin:0 0 6px}'
+    +'.blogo img{max-height:'+(wide?'70px':'54px')+';max-width:76%;filter:grayscale(1) contrast(2.2)}'
+    +'.srule{border-top:2px solid #000;margin:6px 0}'
+    +'.binfo td{font-size:12px;font-weight:700;padding:1px 0}'
+    +'.bitems{width:100%;border-collapse:collapse;border:1.5px solid #000;margin-top:7px;font-size:13px}'
+    +'.bitems th,.bitems td{padding:3px 5px;vertical-align:top}'
+    +'.bitems thead th{font-size:11px;font-weight:900;text-align:left;border-bottom:1.5px solid #000;letter-spacing:.5px}'
+    +'.bitems .r{text-align:right;white-space:nowrap}'
+    +'.bpay{display:flex;gap:10px;align-items:flex-start;margin-top:9px}'
+    +'.bqr{flex:0 0 '+(wide?'120px':'104px')+'}'
+    +'.bqr img{width:100%;height:auto;display:block}'
+    +'.bpay .tot{flex:1 1 auto;width:auto}'
+    +'.bband{display:flex;justify-content:space-between;align-items:baseline;gap:8px;'
+      +'background:#000;color:#fff;padding:4px 8px;margin-top:8px;font-weight:900;font-size:17px;'
+      +'-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'.fbrline{text-align:center;font-size:11px;font-weight:700;margin-top:6px;word-break:break-all;line-height:1.35}'
     +'@page{size:'+(wide?'auto':mm+' auto')+';margin:'+(wide?'8mm':'2mm')+'}'
     +(wide?'':'body{width:'+mm+'}')
     +'.kotType{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px}'
@@ -3286,4 +3395,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V157 build 2026-10-19 -->
+<!-- build: V163 build 2026-10-25 -->

@@ -38,6 +38,8 @@
   <div class="header-title"><h1>Inventory</h1><p>Default view shows all added stock items. Create items/categories only from New Item.</p></div>
   <div class="header-spacer"></div>
   <button class="header-btn" id="stockInBtn">+ Stock In</button>
+  <!-- V162 — sirf is property ke ADMIN ko nazar aata hai (shell neeche chhupata hai) -->
+  <button class="header-btn" id="adjustBtn" style="display:none">Adjust Stock</button>
   <button class="header-btn primary" id="newItemBtn">+ New Item</button>
 </header>
 <div class="content">
@@ -259,5 +261,139 @@ refreshCategoryControls();render();
   };
 })();
 </script>
+<script>
+/* ============================================================
+   V162 — ADJUST STOCK / SAB SIFAR.
+
+   YEH KYUN BANA
+   Stock ko sahi number par lane ka koi raasta nahi tha. Ginti ke baad
+   har item par alag alag Stock In mein minus daalna parta tha — 50 item
+   hon to 50 dafa — aur sifar karne ke liye to koi tareeqa hi nahi tha
+   siwaye seedha database chhune ke. Database seedha chhune se number to
+   badal jata magar stock ki koi entry na banti, is liye inventory report
+   us din ke baad mel khana chhor deti.
+
+   Yahan se kiya gaya kaam ASAL adjustment transaction banata hai, is
+   liye reports theek rehti hain — aur `stock_transactions`,
+   `stock_transaction_lines`, `stock_balances` teenon sync ki push list
+   mein hain, to OFFLINE par kiya gaya adjustment agle sync par khud
+   cloud par pohanch jata hai.
+
+   SIRF ADMIN. Yeh ek hi baar mein poori inventory badal sakta hai, is
+   liye manager ko bhi nahi diya — server bhi yehi pehra lagata hai
+   (`stock-adjust` -> Auth::isAdmin()), sirf button chhupana kaafi nahi.
+   ============================================================ */
+(function(){
+  var btn=document.getElementById('adjustBtn'); if(!btn)return;
+  if(!(window.APP_USER&&APP_USER.admin))return;      /* admin hi dekhe */
+  btn.style.display='';
+
+  function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function num(n){return Number(n||0).toLocaleString(undefined,{maximumFractionDigits:3})}
+
+  btn.onclick=function(){
+    var items=[];
+    try{ items=(RestaurantStore.getState().inventoryItems||[]).slice(); }catch(e){}
+    if(!items.length){toast('No inventory items yet');return}
+
+    /* Jo naya number daala gaya — item id -> qty. Khali = koi tabdeeli nahi. */
+    var edits={};
+
+    var ov=document.createElement('div'); ov.className='modal show';
+    ov.innerHTML='<div class="dialog" style="width:min(680px,96vw);max-height:92vh">'
+      +'<div class="dialog-head"><div><h3>Adjust Stock</h3>'
+      +'<p>Jo ginti aap ne ki hai wohi number likh dein. Yeh adjustment stock history mein darj hoti hai aur agle sync par online bhi pohanch jati hai.</p></div>'
+      +'<button class="close" data-x>&times;</button></div>'
+      +'<div class="dialog-body" style="overflow:auto">'
+      +'<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:9px">'
+        +'<input id="aqSearch" placeholder="Search item..." style="flex:1;min-width:200px">'
+        +'<button class="btn" id="aqZero" type="button">Set all to zero</button>'
+        +'<button class="btn" id="aqUndo" type="button">Undo changes</button>'
+      +'</div>'
+      +'<div style="max-height:46vh;overflow:auto;border:1px solid var(--line)">'
+      +'<table class="table"><thead><tr><th>Item</th>'
+      +'<th style="text-align:right">On hand</th>'
+      +'<th style="width:150px;text-align:right">New quantity</th></tr></thead>'
+      +'<tbody id="aqRows"></tbody></table></div>'
+      +'<label style="display:block;margin-top:10px"><span>Reason</span>'
+      +'<input id="aqReason" placeholder="e.g. Physical count 24 Oct"></label>'
+      +'<div id="aqNote" style="margin-top:9px;padding:9px;background:#f5f9ff;border:1px solid #dbe7f5;'
+      +'color:#4f6781;font-size:11px;line-height:1.5">Koi tabdeeli nahi ki gayi.</div>'
+      +'</div>'
+      +'<div class="dialog-foot"><button class="btn" data-x>Cancel</button>'
+      +'<button class="btn primary" id="aqSave">Save adjustment</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(ev){
+      if(ev.target===ov||ev.target.closest('[data-x]'))ov.remove();
+    });
+
+    var $$1=function(s){return ov.querySelector(s)};
+
+    function changed(){
+      var out=[];
+      items.forEach(function(i){
+        if(!(i.id in edits))return;
+        var v=Number(edits[i.id]);
+        if(!isFinite(v)||v<0)return;
+        if(Math.abs(v-Number(i.stockQty||0))<0.000001)return;   /* wohi number = kuch nahi */
+        out.push({id:i.id,qty:v,name:i.name,from:Number(i.stockQty||0),unit:i.stockUnit||''});
+      });
+      return out;
+    }
+    function note(){
+      var c=changed();
+      $$1('#aqNote').innerHTML = c.length
+        ? '<b>'+c.length+'</b> item ka number badlega.'
+          + (c.filter(function(x){return x.qty===0}).length
+              ? ' Un mein se <b>'+c.filter(function(x){return x.qty===0}).length+'</b> sifar ho jayen ge.' : '')
+        : 'Koi tabdeeli nahi ki gayi.';
+    }
+    function draw(){
+      var q=($$1('#aqSearch').value||'').toLowerCase().trim();
+      var list=items.filter(function(i){return !q||String(i.name).toLowerCase().indexOf(q)>=0});
+      $$1('#aqRows').innerHTML=list.map(function(i){
+        var v=(i.id in edits)?edits[i.id]:'';
+        var ch=(i.id in edits)&&String(v)!==''&&Math.abs(Number(v)-Number(i.stockQty||0))>0.000001;
+        return '<tr'+(ch?' style="background:#fffbe6"':'')+'>'
+          +'<td>'+esc(i.name)+'</td>'
+          +'<td style="text-align:right">'+num(i.stockQty)+' '+esc(i.stockUnit||'')+'</td>'
+          +'<td style="text-align:right"><input data-aq="'+esc(i.id)+'" type="number" step="0.001" min="0"'
+          +' placeholder="'+num(i.stockQty)+'" value="'+esc(v)+'"'
+          +' style="width:135px;text-align:right"></td></tr>';
+      }).join('')||'<tr><td colspan="3" style="color:var(--muted)">Koi item nahi mila.</td></tr>';
+      note();
+    }
+
+    $$1('#aqSearch').oninput=draw;
+    $$1('#aqZero').onclick=function(){ items.forEach(function(i){edits[i.id]=0}); draw(); };
+    $$1('#aqUndo').onclick=function(){ edits={}; draw(); };
+    ov.addEventListener('input',function(ev){
+      var el=ev.target.closest('[data-aq]'); if(!el)return;
+      if(el.value==='') delete edits[el.getAttribute('data-aq')];
+      else edits[el.getAttribute('data-aq')]=el.value;
+      note();
+    });
+
+    $$1('#aqSave').onclick=function(){
+      var c=changed();
+      if(!c.length){toast('Pehle koi number badlein');return}
+      var zero=c.filter(function(x){return x.qty===0}).length;
+      var msg='Is se '+c.length+' item ka stock badlega'
+            + (zero? (', aur '+zero+' sifar ho jayega') : '')
+            + '.\n\nYeh stock history mein darj hoga aur agle sync par online bhi chala jayega.\n\nJari rakhein?';
+      if(!confirm(msg))return;
+      var r=DBApi.req('stock-adjust',{reason:$$1('#aqReason').value||'',
+              items:c.map(function(x){return {id:x.id,qty:x.qty}})});
+      if(!r||!r.ok){toast((r&&r.message)||'Could not save the adjustment');return}
+      toast(r.items+' item adjusted');
+      ov.remove();
+      setTimeout(function(){location.reload()},500);
+    };
+
+    draw();
+  };
+})();
+</script>
 <script src="shell.js" data-active="inventory"></script><div class="scrim" id="scrim"></div></body></html>
-<!-- build: V62 build 2026-08-26 -->
+<!-- build: V162 build 2026-10-24 -->

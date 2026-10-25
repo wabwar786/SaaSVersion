@@ -13,20 +13,43 @@ final class Pdf
 
     /**
      * @param array $lines  har line: [text, align(l|c|r|b), size]
-     *                      ya QR ke liye: ['@qr', 'c', moduleCount, matrix]
+     *   ya in mein se koi ek:
+     *     ['@qr',   'c', 0, matrix]            QR, beech mein
+     *     ['@rule', thickness]                 THOS baareek lakeer
+     *     ['@gap',  points]                    khali jagah
+     *     ['@band', bayan, dayan, size]        bhara hua kaala band, safed likhai
+     *     ['@boxstart'] ... ['@boxend']        beech ki lines ke gird frame
+     *     ['@img',  bitmap, heightPt]          1-bit tasveer (logo), beech mein
+     *     ['@qrleft', matrix, sidePt]          QR bayen, agli lines daayen
+     *     ['@qrend']                           QR ke bayen wala hissa khatam
+     *
+     * V163 — yeh saari nayi cheezein RECTANGLES se banti hain, wahi primitive
+     * jo QR pehle se use karta hai. Koi nayi dependency nahi, koi PDF image
+     * object nahi — thermal printer par rectangles hi sab se saaf chhapte hain.
      */
     public static function receipt(array $lines, float $width = 226.0): string
     {
         $margin = 12.0; $lh = 13.0;
 
-        /* Height pehle naapo — QR block kai lines ki jagah leta hai. */
+        /* Height pehle naapo — QR aur logo kai lines ki jagah lete hain. */
         $height = $margin * 2 + 16;
         foreach ($lines as $ln) {
-            $height += (($ln[0] ?? '') === '@qr') ? self::qrSide($width, $margin) + 8 : $lh;
+            $k = (string)($ln[0] ?? '');
+            if ($k === '@qr')          $height += self::qrSide($width, $margin) + 8;
+            elseif ($k === '@rule')    $height += 7;
+            elseif ($k === '@gap')     $height += (float)($ln[1] ?? 6);
+            elseif ($k === '@band')    $height += $lh + 10;
+            elseif ($k === '@img')     $height += (float)($ln[2] ?? 34) + 8;
+            elseif ($k === '@qrleft')  $height += 24;
+            elseif ($k === '@boxstart' || $k === '@boxend' || $k === '@qrend') { /* jagah nahi lete */ }
+            else                       $height += $lh;
         }
 
         $text = "BT\n"; $draw = '';
         $y = $height - $margin - 10;
+        $boxTop = null;     /* frame ka upari kinara */
+        $indent = 0.0;      /* @qrleft ke baad agli lines ka khiskao */
+        $qrBottom = null;
 
         foreach ($lines as $ln) {
             /* ---- QR ---- */
@@ -55,6 +78,119 @@ final class Pdf
                 continue;
             }
 
+            $k = (string)($ln[0] ?? '');
+
+            /* ---- THOS lakeer ----
+               Apni jagah leti hai: upar wali line ke descender se neeche,
+               aur agli line ke sar se upar. Seedha $y par daalne se yeh
+               theek agli line ke matn par se guzar jati thi. */
+            if ($k === '@rule') {
+                $th = (float)($ln[1] ?? 0.6);
+                $y -= 2;
+                $draw .= sprintf("0 g\n%.2f %.2f %.2f %.2f re f\n",
+                                 $margin, $y + $lh - 4, $width - 2*$margin, $th);
+                $y -= 5;
+                continue;
+            }
+
+            if ($k === '@gap') { $y -= (float)($ln[1] ?? 6); continue; }
+
+            /* ---- frame (item table ke gird) ---- */
+            if ($k === '@boxstart') { $boxTop = $y + $lh - 3; continue; }
+            if ($k === '@boxend') {
+                if ($boxTop !== null) {
+                    $bot = $y + $lh - 3;
+                    $x0 = $margin; $x1 = $width - $margin; $t2 = 0.6;
+                    $draw .= sprintf("0 g\n%.2f %.2f %.2f %.2f re f\n", $x0, $bot, $x1-$x0, $t2);
+                    $draw .= sprintf("%.2f %.2f %.2f %.2f re f\n", $x0, $boxTop, $x1-$x0, $t2);
+                    $draw .= sprintf("%.2f %.2f %.2f %.2f re f\n", $x0, $bot, $t2, $boxTop-$bot);
+                    $draw .= sprintf("%.2f %.2f %.2f %.2f re f\n", $x1-$t2, $bot, $t2, $boxTop-$bot);
+                    $boxTop = null;
+                }
+                continue;
+            }
+
+            /* ---- bhara hua band: safed likhai kaale par ---- */
+            if ($k === '@band') {
+                $tl   = (string)($ln[1] ?? '');
+                $tr   = (string)($ln[2] ?? '');
+                $size = (int)($ln[3] ?? 12);
+                $y -= 4;
+                $bh = $lh + 2;
+                $draw .= sprintf("0 g\n%.2f %.2f %.2f %.2f re f\n",
+                                 $margin, $y - 3, $width - 2*$margin, $bh);
+                $base = $y + 1;
+                $text .= sprintf("1 g\n/F2 %d Tf\n1 0 0 1 %.2f %.2f Tm\n(%s) Tj\n",
+                                 $size, $margin + 5, $base, self::esc($tl));
+                if ($tr !== '') {
+                    $wr = $size * self::CW * strlen($tr);
+                    $text .= sprintf("1 0 0 1 %.2f %.2f Tm\n(%s) Tj\n",
+                                     $width - $margin - 5 - $wr, $base, self::esc($tr));
+                }
+                $text .= "0 g\n";
+                $y -= $bh + 4;
+                continue;
+            }
+
+            /* ---- 1-bit tasveer (logo) ----
+               Har row ke lagatar kaale pixel EK rectangle ban jate hain
+               (run-length), warna ek logo hazaron rectangles bana deta. */
+            if ($k === '@img') {
+                $bm = $ln[1] ?? null;
+                $ph = (float)($ln[2] ?? 34);
+                if (!is_array($bm) || empty($bm['rows'])) continue;
+                $bw = (int)($bm['w'] ?? 0); $bh2 = (int)($bm['h'] ?? 0);
+                if ($bw < 1 || $bh2 < 1) continue;
+                $mod = min($ph / $bh2, ($width - 2*$margin) / $bw);
+                $iw  = $bw * $mod; $ih = $bh2 * $mod;
+                $x0  = ($width - $iw) / 2;
+                $y0  = $y - $ih + $lh;
+                $draw .= "0 g\n";
+                foreach ($bm['rows'] as $ry => $row) {
+                    $run = 0;
+                    for ($cx = 0; $cx <= $bw; $cx++) {
+                        $on = $cx < $bw ? (int)($row[$cx] ?? 0) : 0;
+                        if ($on) { $run++; continue; }
+                        if ($run) {
+                            $draw .= sprintf("%.2f %.2f %.2f %.2f re f\n",
+                                $x0 + ($cx - $run) * $mod,
+                                $y0 + ($bh2 - 1 - $ry) * $mod,
+                                $run * $mod + 0.12, $mod + 0.12);
+                            $run = 0;
+                        }
+                    }
+                }
+                $y -= $ih + 8;
+                continue;
+            }
+
+            /* ---- QR bayen taraf, raqamein daayen ---- */
+            if ($k === '@qrleft') {
+                $matrix = $ln[1] ?? null;
+                $side   = (float)($ln[2] ?? 84);
+                if (is_array($matrix) && $matrix) {
+                    $n = count($matrix); $mod = $side / $n;
+                    $x0 = $margin; $y0 = $y - $side + $lh;
+                    $draw .= "0 g\n";
+                    for ($r = 0; $r < $n; $r++)
+                        for ($c = 0; $c < $n; $c++)
+                            if (!empty($matrix[$r][$c]))
+                                $draw .= sprintf("%.2f %.2f %.2f %.2f re f\n",
+                                    $x0 + $c*$mod, $y0 + ($n-1-$r)*$mod, $mod+0.15, $mod+0.15);
+                    $indent   = $side + 10;
+                    $qrBottom = $y0;
+                }
+                continue;
+            }
+            if ($k === '@qrend') {
+                $indent = 0.0;
+                /* QR raqamon se lamba ho to agli cheez us ke NEECHE se — warna
+                   band QR par chadh jata hai. */
+                if ($qrBottom !== null && $y > $qrBottom - 8) $y = $qrBottom - 8;
+                $qrBottom = null;
+                continue;
+            }
+
             /* ---- text ---- */
             $t     = (string)($ln[0] ?? '');
             $align = (string)($ln[1] ?? 'l');
@@ -66,7 +202,8 @@ final class Pdf
                centered aur right-aligned lines hamesha thori bayen khisak
                jati thin - bill ki poori alignment isi se bigri hui thi. */
             $w = $size * self::CW * $len;
-            $x = $margin;
+            /* @qrleft ke baad wali lines QR ke daayen se shuru hoti hain. */
+            $x = $margin + $indent;
             if ($align === 'c') $x = max($margin, ($width - $w) / 2);
             if ($align === 'r') $x = max($margin, $width - $margin - $w);
             $text .= sprintf("%s %d Tf\n1 0 0 1 %.2f %.2f Tm\n(%s) Tj\n", $font, $size, $x, $y, self::esc($t));
@@ -116,3 +253,5 @@ final class Pdf
         return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $s);
     }
 }
+
+// build: V163 build 2026-10-25

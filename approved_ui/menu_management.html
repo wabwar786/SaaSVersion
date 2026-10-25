@@ -181,7 +181,13 @@
         '<td class="num">'+
           (x.mode==='none'?('<button class="btn sm" data-stock="'+esc(x.id)+'" '+
              'title="Isi naam ka inventory item bana kar jor do">Make stock item</button> '):'')+
-          '<button class="btn sm" data-edit="'+esc(x.id)+'">Edit</button></td>'+
+          '<button class="btn sm" data-edit="'+esc(x.id)+'">Edit</button> '+
+          /* V163 — DELETE. Is screen par item hatane ka koi rasta tha hi
+             nahi: banane ke baad sirf Inactive kiya ja sakta tha, aur wo
+             bhi item dialog ke andar se. Delete SOFT hai — purane bill
+             jaise ke waise chhapte hain. */
+          '<button class="btn sm danger" data-delitem="'+esc(x.id)+'" '+
+            'data-name="'+esc(x.name)+'">Delete</button></td>'+
       '</tr>';
     }).join('');
   }
@@ -202,6 +208,19 @@
                                  :'Is item ka stock pehle se set tha'));
       load(); return;
     }
+    /* V163 — item delete. Server ka faisla hi aakhri hai: menu item ka
+       delete SOFT hai (`deleted_at`), is liye purane bill bilkul waise
+       hi chhapte rehte hain — sirf aage bikna band ho jata hai. */
+    var db=e.target.closest('[data-delitem]');
+    if(db){
+      if(!window.DeleteKit){toast('Delete could not load - refresh the page');return}
+      window.DeleteKit.confirm({entity:'menu_item',id:db.getAttribute('data-delitem'),
+        name:db.getAttribute('data-name')||'',what:'Menu item',
+        title:'Delete this item?',
+        warning:'Sale Point par yeh item aage nazar nahi aayega. Purane bill waise ke waise rehte hain.'});
+      return;
+    }
+
     var b=e.target.closest('[data-edit]'); if(!b)return;
     ItemDialog.open({id:b.getAttribute('data-edit'),onSaved:function(){toast('Item saved');load();}});
   });
@@ -259,9 +278,10 @@
     ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;'+
       'max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.28)">'+
       '<div style="padding:15px 18px;border-bottom:1px solid #eee7df">'+
-        '<h3 style="margin:0;font-size:15.5px">Category order</h3>'+
+        '<h3 style="margin:0;font-size:15.5px">Categories</h3>'+
         '<p style="margin:4px 0 0;font-size:12px;color:#8a8278">Chhota number pehle aata hai. '+
-        'Barabar number waali categories naam ke hisaab se lagti hain.</p></div>'+
+        'Barabar number waali categories naam ke hisaab se lagti hain. '+
+        'Category hatane ke liye us ke saamne <b>&times;</b> dabayein.</p></div>'+
       '<div id="coBody" style="padding:12px 18px;overflow:auto;flex:1"></div>'+
       '<div style="padding:12px 18px;border-top:1px solid #eee7df;display:flex;gap:8px;justify-content:flex-end">'+
         '<button class="btn" id="coCancel">Cancel</button>'+
@@ -272,8 +292,25 @@
         '<input type="number" step="1" min="0" data-cid="'+esc(c.id)+'" value="'+
         (c.sort_order==null?99:Number(c.sort_order))+
         '" style="width:72px;padding:6px 8px;border:1px solid #e3dcd2;border-radius:8px;font-weight:700">'+
-        '<span style="font-size:13.5px">'+esc(c.name)+'</span></div>';
+        '<span style="font-size:13.5px;flex:1">'+esc(c.name)+'</span>'+
+        /* V163 — category hatane ka rasta. Server khud rok deta hai agar
+           category ke andar item maujood hon ("move or remove them
+           first"), is liye yahan dobara pehra lagane ki zaroorat nahi. */
+        '<button class="btn sm danger" data-delcat="'+esc(c.id)+'" '+
+          'data-name="'+esc(c.name)+'" title="Yeh category hata dein">&times;</button></div>';
     }).join('');
+
+    /* Delete ka click — dialog ke andar hi. DeleteKit apna popup khud
+       dikhati hai aur server ki wajah (agar inkar ho) bhi parhti hai. */
+    ov.addEventListener('click',function(e){
+      var d=e.target.closest('[data-delcat]'); if(!d)return;
+      if(!window.DeleteKit){toast('Delete could not load - refresh the page');return}
+      shut();
+      window.DeleteKit.confirm({entity:'menu_category',id:d.getAttribute('data-delcat'),
+        name:d.getAttribute('data-name')||'',what:'Menu category',
+        title:'Delete this category?',
+        warning:'Category ke andar koi item hua to server inkar kar dega - pehle un ko doosri category mein le jayein.'});
+    });
 
     function shut(){ ov.remove(); }
     ov.querySelector('#coCancel').onclick=shut;
@@ -307,4 +344,4 @@
 
 <!-- build: V149 build 2026-10-12 -->
 
-<!-- build: V149 build 2026-10-12 -->
+<!-- build: V163 build 2026-10-25 -->

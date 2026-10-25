@@ -292,8 +292,8 @@ if($uiDir==='approved_ui/retail'){
 $html=str_replace(
  ['href="shared.css"','src="shared_store.js"','src="live_store.js"','src="access_store.js"',
   'src="shell.js"','src="module.js"','src="module_config.js"','src="item_dialog.js"','src="stock_in.js"'],
- ['href="/shared.css?b=v24"','src="/shared_store.js?b=v24"','src="/live_store.js?b=v24"','src="/access_store.js?b=v24"',
-  'src="/shell.js?b=v24"','src="/module.js?b=v24"','src="/module_config.js?b=v24"','src="/item_dialog.js?b=v24"','src="/stock_in.js?b=v24"'],
+ ['href="/shared.css?b=v26"','src="/shared_store.js?b=v26"','src="/live_store.js?b=v26"','src="/access_store.js?b=v26"',
+  'src="/shell.js?b=v26"','src="/module.js?b=v26"','src="/module_config.js?b=v26"','src="/item_dialog.js?b=v26"','src="/stock_in.js?b=v26"'],
  $html
 );
 }
@@ -438,4 +438,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V154 build 2026-10-13
+// build: V163 build 2026-10-25
