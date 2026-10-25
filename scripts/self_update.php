@@ -18,52 +18,80 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 
 use Aio\Services\Sync;
+use Aio\Services\UpdateCheck;
 
 /* V84 — sealed build mein $argv maujood nahi hota. */
 $args = cli_args();
 $doDownload = isset($args['download']);
 
-if ((string)cfg('app.role') === 'cloud') {
-    echo "UPDATE_SKIPPED this is the cloud server\n";
-    return;
+/* ============================================================
+   V165 — YEH FUNCTION KAHIN DEFINE HI NAHI THA.
+
+   Neeche teen jaghon par `upderr(...)` bulaya jata hai — download
+   na ho sake, disk bhari ho, ya portal ZIP ki jagah error page bhej
+   de. Poore code mein is naam ka koi function maujood nahi tha, is
+   liye in teen soorton mein PHP wahin mar jata tha:
+
+       PHP Fatal error: Call to undefined function upderr()
+
+   Yani jo "UPDATE_FAILED ..." ka paigham user ko wajah batane ke
+   liye likha gaya tha, woh kabhi chhapta hi nahi tha. User ko sirf
+   ek fatal error nazar aata tha.
+
+   Ab: wajah `storage/logs/update.log` mein likhi jati hai aur neeche
+   wala paigham theek se chhapta hai.
+   ============================================================ */
+if (!function_exists('upderr')) {
+    function upderr(string $why): void
+    {
+        $f = dirname(__DIR__).'/storage/logs/update.log';
+        @mkdir(dirname($f), 0775, true);
+        @file_put_contents($f, date('Y-m-d H:i:s').'  '.$why."\n", FILE_APPEND);
+    }
 }
 
-$here = trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'));
-$cfg  = $GLOBALS['config']['sync'] ?? [];
-$base = (string)($cfg['cloud_api_url'] ?? '');
-if ($base === '' && !empty($GLOBALS['config']['app']['cloud_url'])) {
-    $base = rtrim((string)$GLOBALS['config']['app']['cloud_url'], '/').'/api.php';
+/* ============================================================
+   V165 — poochhne ka kaam ab UpdateCheck service karti hai.
+
+   Wajah: wahi sawal teen jaghon se poocha jata hai — yeh script
+   (launcher ke start par), sync loop (har 6 ghante, chalti dukan par),
+   aur POS ki patti. Teen copies rakhne ka matlab tha ke kal kisi ek
+   mein tabdeeli ho aur baqi do purani reh jayen.
+
+   Yahan sirf DOWNLOAD ka hissa reh gaya hai — kyunke download sirf
+   yahin se hota hai, aur sirf `--download` ke sath.
+   ============================================================ */
+$r     = UpdateCheck::probe();
+$here  = (string)($r['installed'] ?? '');
+$there = (string)($r['build'] ?? '');
+
+switch ((string)$r['state']) {
+    case 'skipped':
+        echo "UPDATE_SKIPPED ".(string)($r['message'] ?? '')."\n"; return;
+    case 'offline':
+        echo "UPDATE_OFFLINE could not reach the portal\n"; return;
+    case 'unknown':
+        echo "UPDATE_UNKNOWN portal did not report a build\n"; return;
+    case 'none':
+        echo "installed: $here\n";
+        echo "available: $there\n";
+        echo "UPDATE_NONE already up to date\n"; return;
 }
-if ($base === '') { echo "UPDATE_SKIPPED no cloud url configured\n"; return; }
-
-$ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
-$dirU = dirname(__DIR__).'/updates';
-@mkdir($dirU, 0775, true);
-@unlink($dirU.'/available.txt');
-@unlink($dirU.'/offline.txt');
-
-$raw = @file_get_contents($base.'?action=update-check', false, $ctx);
-if ($raw === false) {
-    /* Launcher ko batao ke masla "koi update nahi" nahi, balki portal
-       tak pohanch hi nahi hui — warna user ko ghalat tasalli milti hai. */
-    @file_put_contents($dirU.'/offline.txt', $base);
-    echo "UPDATE_OFFLINE could not reach the portal\n"; return;
-}
-
-$j = json_decode((string)$raw, true);
-$there = trim((string)($j['build'] ?? ''));
-if ($there === '') { echo "UPDATE_UNKNOWN portal did not report a build\n"; return; }
 
 echo "installed: $here\n";
 echo "available: $there\n";
-
-if ($here === $there) { echo "UPDATE_NONE already up to date\n"; return; }
 echo "UPDATE_AVAILABLE $there\n";
 
-$dir = $dirU;
-@file_put_contents($dir.'/available.txt', $there);
+$cfg = $GLOBALS['config']['sync'] ?? [];
+$dir = dirname(__DIR__).'/updates';
+$base = trim((string)($cfg['cloud_api_url'] ?? ''));
+if ($base === '' && !empty($GLOBALS['config']['app']['cloud_url'])) {
+    $base = rtrim((string)$GLOBALS['config']['app']['cloud_url'], '/').'/api.php';
+}
 
 if (!$doDownload) { echo "Run with --download to fetch it.\n"; return; }
+
+$ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
 
 /* Package sirf logged-in user ke liye milta hai, is liye sync token se
    maangte hain — wahi token jo har roz sync ke liye use hota hai. */
@@ -88,6 +116,6 @@ if ($n < 50000 || substr((string)@file_get_contents($tmp, false, null, 0, 2), 0,
 }
 @file_put_contents($dir.'/ready.txt', basename($tmp));
 echo "UPDATE_DOWNLOADED ".basename($tmp)." (".round($n/1048576,1)." MB)\n";
-echo "Close the software and run UPDATE.bat to apply it.\n";
+echo "Stop SmartPOS (tray icon -> Stop), then run UPDATE.bat to apply it.\n";
 
-// build: V75 build 2026-08-28
+// build: V165 build 2026-10-25

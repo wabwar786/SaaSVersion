@@ -1319,6 +1319,30 @@ case 'update-check':
  $v=trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'));
  ok(['build'=>$v,'build_id'=>trim((string)@file_get_contents(dirname(__DIR__).'/public/build-id.txt'))]);
 
+case 'update-status':
+ /* ============================================================
+    V165 — NAYE BUILD KI KHABAR POS KI SCREEN PAR.
+
+    MASLA: node pehle bhi poochta tha ke naya build hai ya nahi, magar
+    jawab SIRF launcher ki kaali window mein chhapta tha — aur woh bhi
+    sirf start ke waqt. V164 ke baad woh window tray mein chhup jati
+    hai, to paigham dekhne ka imkan aur kam ho gaya. Aur jo dukan
+    hafton computer band hi nahi karti, us par check kabhi chalta hi
+    nahi tha.
+
+    Ab: `update_notice.js` har safhe par yeh poochta hai, aur naya
+    build para ho to kone mein ek chhoti patti dikha deta hai.
+
+    YEH SIRF PARHTA HAI — na internet, na download, na install. Nishani
+    files pehle se maujood thin (`updates/available.txt` waghera); yahan
+    sirf unhein parh kar bataya ja raha hai. Is liye page load par koi
+    intezar nahi hota.
+
+    `needLogin()` is liye ke yeh batata hai ke computer par kaun sa
+    build chal raha hai — rahgeer ko batane ki koi wajah nahi. */
+ needLogin();
+ ok(\Aio\Services\UpdateCheck::status());
+
 case 'offline-package':
 /* ============================================================
    Do tarah se aaya ja sakta hai:

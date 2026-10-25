@@ -405,6 +405,32 @@ if(!in_array($name,$publicPages,true) && $uiDir!=='approved_ui/retail'){
   $tail.='<script src="/ui_action_modal.js?b=v15"></script>';
 }
 
+/* ============================================================
+   V165 — NAYE BUILD KI KHABAR POS KE ANDAR.
+
+   Pehle yeh khabar SIRF launcher ki kaali window mein chhapti thi, aur
+   woh bhi sirf start ke waqt. V164 ke baad woh window tray mein chhup
+   jati hai — aur jo banda saara din POS par kaam karta hai, woh us
+   window ko kabhi dekhta hi nahi.
+
+   YAHAN inject karne ki wajah: ek hi jagah se SAARE safhe cover ho
+   jate hain — restaurant, supermarket, aur POS bhi. Agar yeh kaam
+   `shell.js` se karte to POS chhoot jata (POS shell.js use nahi
+   karta), aur approved_ui ki files chhedni partin — jin ka SHA256
+   taala lagta hai.
+
+   TEEN SHARTEIN:
+     - PUBLIC safhe nahi (login, qr, pair): wahan koi malik nahi hota
+     - login kiya hua ho: build ka naam rahgeer ko batane ki wajah nahi
+     - `role=cloud` nahi: cloud server khud update nahi hota, wahan
+       UPDATE.bat jaisa kuch hai hi nahi — patti kabhi nahi dikhni
+       chahiye, aur fuzool poll bhi nahi hona chahiye
+   ============================================================ */
+if(!in_array($name,$publicPages,true) && Auth::user()
+   && (string)($GLOBALS['config']['app']['role'] ?? 'local') !== 'cloud'){
+  $tail.='<script src="/update_notice.js?b=v165"></script>';
+}
+
 // restaurant_pos.html ab khud poori tarah DB-driven hai (POS v20) — mirror ki zaroorat nahi.
 /* V72 — tablet page ab khud DB par hai; `order_taker_db.js` us purani
    screen ke liye tha jo hardcoded PRODUCTS use karti thi. Ab zaroorat
@@ -438,4 +464,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V163 build 2026-10-25
+// build: V165 build 2026-10-25

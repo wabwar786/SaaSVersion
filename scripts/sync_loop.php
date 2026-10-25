@@ -22,6 +22,7 @@
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Aio\Services\Sync;
+use Aio\Services\UpdateCheck;
 
 $cfg  = $GLOBALS['config']['sync'] ?? [];
 $secs = (int)($cfg['interval_seconds'] ?? 0);
@@ -56,6 +57,30 @@ while (true) {
     @file_put_contents($beat, (string)time());
 
     /* ============================================================
+       V165 — HAR 6 GHANTE: NAYA BUILD AAYA HAI YA NAHI?
+
+       Pehle yeh sawal sirf launcher poochta tha, start ke 45 second
+       baad. Jo dukan subah computer chala kar raat ko band karti hai,
+       us par theek chalta tha — magar jo hafton band hi nahi karti
+       (aur aksar nahi karti), us par check KABHI nahi chalta tha.
+
+       Yeh loop pehle se din raat chal raha hai, is liye sawal yahan
+       se poochna sab se sasta hai. `probeIfDue()` khud dekh leti hai
+       ke waqt hua hai ya nahi — aur agar khabar pehle hi mil chuki
+       ho to portal ko tang bhi nahi karti.
+
+       SIRF POOCHTA HAI. Download aur install dono aaj bhi insan ke
+       dabane par hote hain (V90 ka faisla).
+       ============================================================ */
+    try {
+        $u = UpdateCheck::probeIfDue();
+        if ($u !== null) fwrite(STDERR, '[sync-loop] update-check '.json_encode($u)."\n");
+    } catch (\Throwable $e) {
+        /* Update ki khabar na mil sake to sync ka kaam nahi rukna chahiye. */
+        fwrite(STDERR, '[sync-loop] update-check ERROR '.$e->getMessage()."\n");
+    }
+
+    /* ============================================================
        V155 — SONE KE DOURAN BHI KAAN KHULE.
 
        Pehle yahan `sleep($wait)` tha — ek hi dafa poore 60-120 second
@@ -86,4 +111,4 @@ while (true) {
     }
 }
 
-// build: V155 build 2026-10-15
+// build: V165 build 2026-10-25
