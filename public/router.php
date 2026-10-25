@@ -455,7 +455,7 @@ if($uiDir!=='approved_ui/retail' &&
                    'stock_transfer.html','stock_count.html','accounting.html',
                    'closing_history.html','activity_log.html','purchase_orders.html','backup_restore.html',
                    'online_orders.html','whatsapp_notifications.html'],true))
-  $tail.='<script src="/ops_db.js?b=v70"></script>';
+  $tail.='<script src="/ops_db.js?b=v167"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
 $posB=strripos($html,'</body>');
@@ -464,4 +464,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V166 build 2026-10-25
+// build: V167 build 2026-10-25

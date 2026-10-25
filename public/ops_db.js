@@ -79,9 +79,32 @@
       : '<button class="btn primary" id="shOpen">Open shift</button>';
 
     var top = open
-      ? '<div class="note" style="margin:12px">Shift <b>' + esc(open.shift) + '</b> is open since '
+      ? '<div class="note" style="margin:12px">Your shift <b>' + esc(open.shift) + '</b> is open since '
         + esc(open.opened) + ' &middot; opening float <b>' + money(open.opening) + '</b></div>'
-      : '<div class="note" style="margin:12px">No shift is open. Open one before taking payments.</div>';
+      : '<div class="note" style="margin:12px">You have no open shift. Open one before taking payments.</div>';
+
+    /* ============================================================
+       V167 — DOOSRE COUNTER ALAG SE.
+
+       Pehle yeh page KISI BHI khuli shift ko "aap ki shift" maan
+       leta tha. Malik admin hai, usay sab ki shifts nazar aati hain,
+       is liye apna account band karne ke baad bhi screen kehti rehti
+       thi "shift khuli hai" — aur Close ka button us doosre banday
+       ki shift band kar deta tha, malik ki ginti hui cash ke sath.
+
+       Ab un ki sirf KHABAR di jati hai. Band karna un ka apna kaam
+       hai (ya handover se). Yahan un par koi button nahi.
+       ============================================================ */
+    var oth = r.others_open || [];
+    if (oth.length) {
+      top += '<div class="note" style="margin:0 12px 12px;background:#fff6e5;border-color:#f0d9a8;color:#8a5a00">'
+           + '<b>' + oth.length + ' other till' + (oth.length === 1 ? ' is' : 's are') + ' still open:</b> '
+           + oth.map(function (x) {
+               return esc(x.cashier) + ' (' + esc(x.shift) + ', since ' + esc(x.opened) + ')';
+             }).join(' &middot; ')
+           + '<div style="margin-top:4px;font-size:11px">Yeh un ke apne account hain — unhein wahi band karenge.</div>'
+           + '</div>';
+    }
 
     /* `panel()` khud esc() karta hai — yahan pehle se likha `&amp;` dobara
        escape ho kar screen par "&amp;" ban jata tha. Saada "&" hi theek hai. */
@@ -641,4 +664,4 @@
   }
 })();
 
-/* build: V70 build 2026-08-27 */
+/* build: V167 build 2026-10-25 */

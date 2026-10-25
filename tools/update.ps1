@@ -40,6 +40,33 @@ $ProgressPreference    = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# ============================================================
+# V167 — UPDATE APNA LOG KHUD LIKHTI HAI.
+#
+# MASLA: update ke doran koi paigham ya error aata tha aur window
+# mein itni tezi se guzar jata ke customer usay likh hi nahi sakta
+# tha. Phir poochne par bhi koi nahi bata sakta ke hua kya tha.
+#
+# AB: shuru se aakhir tak sab kuch ek file mein bhi jata hai:
+#     storage\logs\update-<tareekh>.log
+#
+# `storage\` ko update KABHI replace nahi karta (keep list mein hai),
+# is liye yeh log update ke baad bhi salamat rehta hai. Aakhir mein
+# us ka poora pata screen par likh diya jata hai.
+#
+# Transcript har PowerShell host par nahi chalti (kuch purane
+# Windows par nahi), is liye nakaami par kaam rukta nahi — sirf log
+# nahi banta.
+# ============================================================
+$logDir = Join-Path $root 'storage\logs'
+try { New-Item -ItemType Directory -Force -Path $logDir | Out-Null } catch { }
+$updateLog = Join-Path $logDir ('update-' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.log')
+$logOn = $false
+try {
+  Start-Transcript -Path $updateLog -Force -ErrorAction Stop | Out-Null
+  $logOn = $true
+} catch { $logOn = $false }
+
 # ------------------------------------------------------------
 # V143 ka guard — helper file na mile to bhi chalte raho.
 # ------------------------------------------------------------
@@ -86,6 +113,9 @@ Write-Host ''
 Line
 Write-Host "       $product - UPDATE" -ForegroundColor Green
 Line
+# V167 — pata SHURU mein bhi, kyunke agar beech mein kuch toot jaye to
+# aakhir wali line kabhi chhapti hi nahi.
+if ($logOn) { Info "Log: $updateLog" } else { Warn 'This run is not being logged (transcript unavailable).' }
 Write-Host ''
 
 # ---------- PHP ----------
@@ -322,8 +352,14 @@ if ($newBuild -ne '' -and $newBuild -ne $installedBuild) {
 }
 Info 'Open the software with START_OFFLINE.bat'
 Info "Previous files are kept in backup\before-$stamp"
+if ($logOn) {
+  Info "A full log of this update is saved at:"
+  Info "  $updateLog"
+  Info 'Agar koi masla ho to yehi file bhej dein — sab kuch is mein hai.'
+}
 Line
 Write-Host ''
+try { if ($logOn) { Stop-Transcript | Out-Null } } catch { }
 exit 0
 
-# build: V145 build 2026-10-11
+# build: V167 build 2026-10-25

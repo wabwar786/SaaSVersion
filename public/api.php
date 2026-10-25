@@ -740,9 +740,13 @@ case 'backup-restore':needLogin();$d=body();
  catch(Throwable $e){fail($e->getMessage());}
 
 case 'shiftmgr-list':needLogin();Auth::requireModule('shift');
- $rows=OpsService::shiftList();
- $open=null;foreach($rows as $r){if($r['status']==='Open'){$open=$r;break;}}
- ok(['shifts'=>$rows,'open'=>$open]);
+ /* V167 — `open` ab SIRF is user ki apni khuli shift hai.
+    Pehle yahan list ki pehli OPEN row utha li jati thi — chahe wo kisi
+    aur cashier ki ho. Malik admin hai, usay sab ki shifts nazar aati
+    hain, is liye apna account band karne ke baad bhi screen "khuli
+    shift" dikhati rehti thi — aur us ka Close button DOOSRE banday ki
+    shift band karta tha. Tafseel OpsService::shiftOpenState() mein. */
+ ok(['shifts'=>OpsService::shiftList()]+OpsService::shiftOpenState());
 
 case 'shiftmgr-open':needLogin();Auth::requireModule('shift');$d=body();
  try{$r=OpsService::shiftOpen((float)($d['opening_cash']??0));}

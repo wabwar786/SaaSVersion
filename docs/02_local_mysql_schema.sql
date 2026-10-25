@@ -1835,7 +1835,7 @@ CREATE TABLE background_jobs (
     CONSTRAINT fk_bg_site FOREIGN KEY (site_id) REFERENCES sites(id)
 ) ENGINE=InnoDB;
 
-INSERT INTO schema_migrations(version, description)
+INSERT IGNORE INTO schema_migrations(version, description)
 VALUES ('V1', 'All-in-one platform core + Restaurant operational schema');
 
 -- Cloud-only commercial tables intentionally omitted from local DB.

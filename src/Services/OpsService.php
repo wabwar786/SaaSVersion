@@ -194,6 +194,61 @@ final class OpsService
         } catch (\Throwable $e) { return 0.0; }
     }
 
+    /* ============================================================
+       V167 — "ACCOUNT BAND KIYA, PHIR BHI KHULA DIKHA RAHA HAI".
+
+       MASLA: Shift page `shiftList()` ki pehli OPEN row ko "khuli
+       shift" maan leta tha — chahe wo KISI AUR cashier ki ho. Malik
+       admin hai, is liye usay sab ki shifts nazar aati hain. Natija:
+
+         - Malik apna account band karta hai (POS se ya yahin se)
+         - Screen par phir bhi "Shift ... is open" likha aata hai
+         - Aur "Close shift" ka button us DOOSRE banday ki shift
+           band kar deta — malik ki ginti hui cash ke sath. Yani
+           kisi aur ka account malik ke paise par band ho jata.
+
+       Ab saaf farq: `own` sirf is user ki apni khuli shift hai.
+       Baqi counter alag se ginn kar bata diye jate hain, taake
+       malik ko pata to rahe ke kahin aur till abhi khuli hai —
+       magar us par Close ka button na mile.
+       ============================================================ */
+    public static function shiftOpenState(): array
+    {
+        $uid = Auth::user()['id'] ?? '';
+        $p = DB::pdo();
+
+        $q = $p->prepare(
+            "SELECT id, shift_no, opened_at, opening_cash
+               FROM cashier_shifts
+              WHERE site_id=? AND cashier_user_id=? AND status='OPEN' AND deleted_at IS NULL
+              ORDER BY opened_at DESC LIMIT 1");
+        $q->execute([site_id(), $uid]);
+        $own = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $o = $p->prepare(
+            "SELECT cs.shift_no, cs.opened_at, COALESCE(u.full_name,'-') cashier
+               FROM cashier_shifts cs
+               LEFT JOIN users u ON u.id = cs.cashier_user_id
+              WHERE cs.site_id=? AND cs.status='OPEN' AND cs.deleted_at IS NULL
+                AND COALESCE(cs.cashier_user_id,'') <> ?
+              ORDER BY cs.opened_at");
+        $o->execute([site_id(), $uid]);
+
+        return [
+            'open' => $own ? [
+                'id'      => (string)$own['id'],
+                'shift'   => (string)$own['shift_no'],
+                'opened'  => substr((string)$own['opened_at'], 0, 16),
+                'opening' => (float)$own['opening_cash'],
+            ] : null,
+            'others_open' => array_map(fn($x) => [
+                'shift'   => (string)$x['shift_no'],
+                'cashier' => (string)$x['cashier'],
+                'opened'  => substr((string)$x['opened_at'], 0, 16),
+            ], $o->fetchAll(PDO::FETCH_ASSOC)),
+        ];
+    }
+
     public static function shiftOpen(float $openingCash): array
     {
         $p = DB::pdo();

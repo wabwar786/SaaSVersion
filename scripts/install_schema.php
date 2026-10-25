@@ -28,18 +28,60 @@ $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 
 // split on semicolon at end of line (schema is plain DDL)
 $stmts = preg_split('/;\s*\n/', $sql);
-$ok=0; $fail=0; $errs=[];
+
+/* ============================================================
+   V167 — "PEHLE SE MAUJOOD HAI" KOI KHARABI NAHI HAI.
+
+   Yeh script HAR UPDATE par chalti hai, aur dusri dafa chalne par
+   kuch cheezein pehle se bani hoti hain. Pehle woh "failed" ginn kar
+   screen par aise chhapti thin:
+
+     SCHEMA_INSTALLED ... statements_ok=95 failed=3
+       note: SQLSTATE[HY000]: General error: 1826 Duplicate FOREIGN KEY
+             constraint name 'fk_ii_default_location'
+       note: SQLSTATE[HY000]: ... 'fk_ii_supplier'
+       note: SQLSTATE[23000]: ... 1062 Duplicate entry 'V1' for PRIMARY
+
+   Customer ko yeh teen laal lakeeren har update par nazar aati thin
+   aur wo samajhta tha ke update kharab ho gayi — halanke matlab sirf
+   itna tha ke "yeh cheez pehle se maujood hai".
+
+   CREATE TABLE ko pehle se `IF NOT EXISTS` bana diya jata hai (upar).
+   Magar MySQL mein `ADD CONSTRAINT IF NOT EXISTS` hota hi nahi, is
+   liye FK ka ek hi raasta hai: koshish karo, aur "pehle se hai" wale
+   error ko ginti mein alag rakho.
+
+   AB: `already=` alag ginti, aur sirf WOH error chhapta hai jo waqai
+   anjaan ho. Ek bhi asli masla ab bhi chhupta nahi.
+   ============================================================ */
+$EXPECTED = [
+    1050,  // table already exists
+    1060,  // duplicate column name
+    1061,  // duplicate key name
+    1062,  // duplicate entry (seed row pehle se)
+    1091,  // can't DROP; doesn't exist
+    1826,  // duplicate FOREIGN KEY constraint name
+];
+
+$ok=0; $already=0; $fail=0; $errs=[];
 foreach ($stmts as $stmt) {
     $stmt = trim($stmt);
     if ($stmt==='' || str_starts_with($stmt,'--')) continue;
     try { $pdo->exec($stmt); $ok++; }
-    catch (\Throwable $e) { $fail++; if(count($errs)<5) $errs[]=substr($e->getMessage(),0,120); }
+    catch (\Throwable $e) {
+        $msg = $e->getMessage();
+        $code = 0;
+        /* PDO ka message: "SQLSTATE[HY000]: General error: 1826 Duplicate ..." */
+        if (preg_match('/SQLSTATE\[[^\]]+\]:[^:]*:\s*(\d+)/', $msg, $m)) $code = (int)$m[1];
+        if (in_array($code, $EXPECTED, true)) { $already++; continue; }
+        $fail++; if(count($errs)<5) $errs[]=substr($msg,0,160);
+    }
 }
 $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
 $db = $GLOBALS['config']['db']['database'];
 $n = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='".$db."'")->fetchColumn();
-echo "SCHEMA_INSTALLED db=$db statements_ok=$ok failed=$fail tables=$n\n";
-foreach ($errs as $e) echo "  note: $e\n";
+echo "SCHEMA_INSTALLED db=$db statements_ok=$ok already=$already failed=$fail tables=$n\n";
+foreach ($errs as $e) echo "  ERROR: $e\n";
 
-// build: V17.1 build 2026-08-25
+// build: V167 build 2026-10-25
