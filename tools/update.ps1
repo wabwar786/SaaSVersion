@@ -296,6 +296,55 @@ echo 'CACHE_CLEARED';
 
 # ---------- 3c) migrations ----------
 Step 5 'Updating the database...'
+
+# ============================================================
+# V169 — PEHLE DATABASE CHALAO.
+#
+# YEH WOH WAJAH THI JIS KE ERRORS CUSTOMER KO NAZAR AATE THAY.
+#
+# Upar step 3 par likha hai: "The software must be closed." Aur jab
+# software band hota hai to MariaDB bhi band ho jati hai — usay
+# launcher chalata hai (`start_offline.ps1` -> `resolve_mariadb.ps1`),
+# UPDATE.bat nahi.
+#
+# Natija: hidayat par amal karne wale customer ke saath yeh hota tha —
+# software band -> UPDATE.bat -> har migration ka yehi jawab:
+#
+#     FAIL install_schema    SQLSTATE[HY000] [2002] Connection refused
+#     FAIL migrate_platform  SQLSTATE[HY000] [2002] Connection refused
+#     ... (25 lakeeren)
+#     25 step(s) failed - the software may not work correctly.
+#
+# Nayi files to lag jatin, magar DATABASE ka hissa bilkul nahi chalta
+# tha — aur screen laal lakeeron se bhar jati thi. Agar us build mein
+# koi naya column aaya hota to software baad mein toot bhi sakta tha.
+#
+# Ab: migrations se pehle database khud chala liya jata hai. Agar hum
+# ne chalaya tha to kaam ke baad wapas band bhi kar dete hain — machine
+# ko usi halat mein chhorna hai jis mein mili thi.
+# ============================================================
+$dbScript      = Join-Path $root 'tools\resolve_mariadb.ps1'
+$dbStartedByUs = $false
+
+# Pehle dekho ke database PEHLE SE chal rahi hai ya nahi. Agar user ne
+# software chalte hue UPDATE.bat chalaya ho to wo chal rahi hogi — aur
+# us soorat mein hamara usay band karna chalte hue software ko tor deta.
+$dbWasUp = $false
+try {
+  $probe = New-Object System.Net.Sockets.TcpClient
+  $probe.Connect('127.0.0.1', 3307)
+  $dbWasUp = $probe.Connected
+  $probe.Close()
+} catch { $dbWasUp = $false }
+
+if ($dbWasUp) {
+  Info 'The local database is already running.'
+} elseif (Test-Path $dbScript) {
+  Info 'Starting the local database for this step...'
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dbScript | Out-Null
+  if ($LASTEXITCODE -eq 0) { $dbStartedByUs = $true; Good 'Database is up.' }
+  else { Warn 'The local database could not be started - the database step may fail.' }
+}
 # YEH WOH QADAM HAI JO PEHLE ADHOORA THA: sirf 5 migrations chalti thin,
 # cloud par 30+. Ab wahi ek fehrist dono taraf chalti hai.
 $runner = Join-Path $root 'scripts\run_migrations.php'
@@ -332,6 +381,13 @@ if (Test-Path $runner) {
     if (Test-Path (Join-Path $root "scripts\$m.php")) { Php(@("scripts/$m.php")) | Out-Null }
   }
   Good 'Database updated (older list).'
+}
+
+# V169 — jo database hum ne chalaya tha usay wapas band kar do. Machine
+# usi halat mein rehni chahiye jis mein mili thi; warna software band
+# hone ke bawajood MariaDB chalti reh jati.
+if ($dbStartedByUs -and (Test-Path $dbScript)) {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $dbScript -StopServer | Out-Null
 }
 
 # ---------- done ----------
