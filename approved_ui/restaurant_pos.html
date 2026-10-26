@@ -1753,7 +1753,21 @@ function voidApproval(line,ok){
 /* ================= PAYLOAD / KOT / CHARGE ================= */
 function payload(extra){
   var t=totals();
-  var d={bill_no:billNo,service_mode:mode,table_name:mode==='Dine In'?curTable:'',
+  /* ============================================================
+     V168 — RUKA HUA BILL APNI ID SE JATA HAI, SIRF NUMBER SE NAHI.
+
+     Pehle server ko sirf bill NUMBER bheja jata tha, aur wo us number
+     ko "aaj ki tareekh" mein dhoondta tha. Kal ka roka hua bill aaj
+     band karne par wo talash nakaam hoti, usi number par AAJ ka naya
+     order ban jata, payment us par lagti — aur KAL WALA ORDER KHULA
+     HI REH JATA. Yani bill band karne ke baad bhi Hold Bills mein
+     baitha rehta tha.
+
+     Ab `curHoldId` (wahi order jo resume kiya gaya) saath jata hai,
+     to server wahi ek order band karta hai — tareekh jo bhi ho.
+     ============================================================ */
+  var d={bill_no:billNo,order_id:curHoldId||'',
+    service_mode:mode,table_name:mode==='Dine In'?curTable:'',
     customer_id:curCustId||'walkin',customer_name:curCustName||'Walk-in Customer',customer_phone:curCustPhone||'',
     shift_id:(shift&&shift.id)||'',discount_amount:t.disc,
     /* V157 — raqam ke saath PERCENT bhi. Server isay `orders.discount_pct`

@@ -50,9 +50,36 @@ final class PosService {
                       WHERE order_id=? AND status='ACTIVE'");
     $tq->execute([$order]);
     $sub=(float)$tq->fetchColumn();
-    $tax=(float)($d['tax_amount']??0);
     $disc=(float)($d['discount_amount']??0);
     $svc=(float)($d['service_charge']??0);
+
+    /* ============================================================
+       V168 — HOLD KA TOTAL AB WAHI HISAAB SE BANTA HAI JO BILL KA.
+
+       Pehle yahan: grand = sub - disc + svc + tax  — tax HAMESHA
+       upar se joRa jata tha. Pakistan mein tax INCLUSIVE hota hai,
+       yani keemat mein pehle se shamil. Nateeja: 420 ka bill hold
+       karo to Hold Bills mein 477.93 likha aata tha. Discount wale
+       bill par farq aur bara lagta tha, is liye shikayat discount ki
+       shakal mein aati thi — halanke discount theek tha, TOTAL ghalat
+       tha.
+
+       Ab wahi `TaxMode::split()` jo `finalize()` istemal karti hai:
+         INCLUSIVE -> tax usi raqam ke andar se nikalta hai
+         EXCLUSIVE -> tax upar se lagta hai
+       Yani hold ka total aur bill ka total hamesha barabar.
+       ============================================================ */
+    $taxable = max(0.0, $sub - $disc + $svc);
+    $rate    = (float)($d['tax_rate'] ?? 0);
+    if ($rate > 0) {
+        $sp  = \Aio\Services\TaxMode::split($taxable, $rate);
+        $tax = $sp['tax'];
+        $grand = \Aio\Services\TaxMode::isInclusive() ? $taxable : ($taxable + $tax);
+    } else {
+        /* Purana POS rate nahi bhejta — wahi raasta jo finalize leta hai. */
+        $tax   = (float)($d['tax_amount'] ?? 0);
+        $grand = $taxable + $tax;
+    }
     /* V157 — PERCENT BHI MEHFOOZ.
        Pehle sirf `discount_amount` likha jata tha. Bill hold kar ke
        wapas kholne par cashier ka 10% gayab ho jata aur us ki jagah usi
@@ -60,16 +87,28 @@ final class PosService {
        jayen to wo raqam ghalat ho jati. Ab percent alag se likha jata
        hai, to unhold par "10%" hi wapas aata hai. */
     $dpct=(float)($d['discount_pct']??0);
+    /* `hold_status` ab waqai likha jata hai. Running Orders screen par
+       "Held" ka khana isay parhta tha magar likhta koi nahi tha — wo
+       ginti hamesha 0 rehti thi. */
     $p->prepare("UPDATE orders SET subtotal=?, tax_amount=?, discount_amount=?,
-                     discount_pct=?, service_charge=?, grand_total=?, updated_at=NOW(6)
+                     discount_pct=?, service_charge=?, grand_total=?,
+                     hold_status=1, updated_at=NOW(6)
                   WHERE id=?")
-      ->execute([$sub,$tax,$disc,$dpct,$svc,max(0,$sub-$disc+$svc+$tax),$order]);
+      ->execute([$sub,$tax,$disc,$dpct,$svc,max(0.0,$grand),$order]);
 
     /* Table `ensureOpenOrder` khud set karta hai (id ya naam se). */
 
     self::queueSync($p,'orders',$order,'UPDATE');
-    return ['order_id'=>$order,'held'=>$n,'total'=>max(0,$sub-$disc+$svc+$tax)];
+    return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),
+            'total'=>max(0.0,$grand)];
  }); }
+
+ /** Order ka asli bill number — guard number badal de to POS ko bata sakein. */
+ private static function billOf(PDO $p,string $order):string{
+    try{ $q=$p->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");
+         $q->execute([$order]); return (string)($q->fetchColumn()?:''); }
+    catch(\Throwable $e){ return ''; }
+ }
 
  public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}if(!$pending)return ['order_id'=>$order,'sent'=>0];$groups=[];$noPrinter=[];
  foreach($pending as $x){
@@ -107,17 +146,68 @@ final class PosService {
         hai, customer se extra kuch nahi liya jata.
         EXCLUSIVE: rate tax se pehle ka hai — tax upar se lagta hai.
         ============================================================ */
-        $taxable = $subtotal - $discount + $service;
+        /* ============================================================
+           V168 — DISCOUNT BILL SE BARA HO TO BILL SIFAR, MANFI NAHI.
+
+           Pehle sirf TAX ke hisaab par `max(0,...)` lagta tha, magar
+           `$taxable` khud manfi reh jata — aur `$grand` usi se banta
+           tha. Nateeja: 840 ke bill par 1,340 ka discount lagao to
+           bill -500 ka ban jata, aur usi raqam ki payment bhi likh di
+           jati. Ek aisi entry jo kisi report mein theek nahi baithti.
+
+           Discount bill se bara ho hi nahi sakta — wo bill ko sifar
+           tak le ja sakta hai, us se aage nahi.
+           ============================================================ */
+        $taxable = max(0.0, $subtotal - $discount + $service);
         $rate    = (float)($d['tax_rate'] ?? 0);
-        $sp      = \Aio\Services\TaxMode::split(max(0.0,$taxable), $rate);
+        $sp      = \Aio\Services\TaxMode::split($taxable, $rate);
         $inclusive = \Aio\Services\TaxMode::isInclusive();
         $tax     = $sp['tax'];
         /* Purana POS rate nahi bhejta — us soorat mein uska apna tax lo,
            warna wo build achanak bina tax ke bill banane lagta. */
         if ($rate <= 0) { $tax = (float)($d['tax_amount'] ?? 0); $inclusive = false; }
-        $grand = $inclusive ? $taxable : ($taxable + $tax);$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,(float)($d['discount_pct']??0),$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
+        $grand = $inclusive ? $taxable : ($taxable + $tax);$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,hold_status=0,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,(float)($d['discount_pct']??0),$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
   $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$items);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
  private static function ensureOpenOrder(PDO $p,array $d):string{
+    /* ============================================================
+       V168 — RUKAY HUE BILL KO US KI ID SE PAKRO, NUMBER SE NAHI.
+
+       DO ASLI KHARABIYAN YAHIN SE NIKALTI THIN:
+
+       1. BAND BILL DOBARA LIKHA JATA THA.
+          Neeche wali talash mein `order_status` ki koi shart nahi thi.
+          Yani agar kisi band (CLOSED) bill ke number par `pos-hold`
+          aa jaye, to yeh usi band bill ko laut deta aur us par nayi
+          items aur naya total likh diya jata. Customer 640 de kar ja
+          chuka hota aur kitab mein 2,740 likha ja chuka hota. Payment
+          wahi 640 rehti — din ka hisaab kabhi milta hi nahi.
+          (`pos_bill_guard()` yeh rokta hai, magar wo `pos-hold` par
+           lagaya hi nahi gaya tha.)
+
+       2. KAL KA ROKA HUA BILL AAJ BAND KARNE PAR DO ORDER BAN JATE.
+          Talash `business_date = aaj` par thi. Kal ka hold aaj nahi
+          milta, is liye USI NUMBER PAR AAJ KA NAYA ORDER ban jata,
+          payment us par lagti — aur KAL WALA ORDER KHULA HI REH JATA.
+          Wahi "bill band kiya, phir bhi Hold mein baitha hai".
+
+       ILAJ: jab POS kisi ruke hue bill par kaam kar raha ho to wo us
+       ka `order_id` bhejta hai. Id se pakra gaya order wahi ek order
+       rehta hai — chahe us ki tareekh kuch bhi ho. Aur number se
+       talash ab SIRF khule orders mein hoti hai.
+       ============================================================ */
+    $oid = trim((string)($d['order_id'] ?? ''));
+    if ($oid !== '' && preg_match('/^[0-9a-f-]{36}$/i', $oid)) {
+        $qo = $p->prepare("SELECT id FROM orders
+                            WHERE id=? AND site_id=? AND order_status='OPEN' LIMIT 1 FOR UPDATE");
+        $qo->execute([$oid, site_id()]);
+        if ($found = $qo->fetchColumn()) {
+            self::touchOrder($p, (string)$found, $d);
+            return (string)$found;
+        }
+        /* Id mili magar order khula nahi — us par aage kaam nahi hoga.
+           Neeche wala rasta naya bill bana dega. */
+    }
+
     /* V72 — TABLET table se kaam karta hai, bill number se nahi.
        Pehle yahan `$d['bill_no']` lazmi tha; khali aane par khali bill
        number wala order ban jata tha. Ab: bill_no na ho to us table ka
@@ -125,19 +215,48 @@ final class PosService {
     if (trim((string)($d['bill_no'] ?? '')) === '') {
         $tid = (string)($d['table_id'] ?? '');
         if ($tid !== '') {
-            $q0 = $p->prepare("SELECT bill_no FROM orders
+            /* V168 — table ka khula bill ab apni ID se pakRa jata hai.
+               Pehle sirf us ka NUMBER liya jata tha, aur neeche wali
+               talash "aaj ki tareekh" par hoti thi. Raat ka khula hua
+               table subah usi number par NAYA order bana deta, aur
+               raat wala order hamesha ke liye khula reh jata — wahi
+               "band kiya, phir bhi Hold mein hai" wala masla, magar
+               tablet/table ke raaste se. */
+            $q0 = $p->prepare("SELECT id FROM orders
                                 WHERE site_id=? AND table_id=? AND order_status='OPEN'
                                 ORDER BY created_at DESC LIMIT 1");
             $q0->execute([site_id(), $tid]);
-            $d['bill_no'] = (string)($q0->fetchColumn() ?: '');
+            if ($openId = $q0->fetchColumn()) {
+                self::touchOrder($p, (string)$openId, $d);
+                return (string)$openId;
+            }
         }
         if (trim((string)($d['bill_no'] ?? '')) === '') {
             $d['bill_no'] = PageData::billPrefix() . str_pad((string)PageData::nextBill(), 4, '0', STR_PAD_LEFT);
         }
     }
     $bill=ltrim((string)$d['bill_no'],'#');
-    $q=$p->prepare("SELECT id FROM orders WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1 FOR UPDATE");
-    $q->execute([site_id(),today(),$bill]);$id=$q->fetchColumn();
+    /* ============================================================
+       SIRF KHULA ORDER. Band (CLOSED) ya mansookh (VOID) bill par
+       dobara likhna sab se mehnga bug tha — paisa le liya gaya bill
+       chup chaap badal jata tha.
+
+       Aur agar us number par koi band bill pehle se maujood ho to
+       usi number par naya order banana bhi ghalat hai (ek number, do
+       bill). Aise mein naya number le liya jata hai — wahi kaam jo
+       `pos_bill_guard()` karta hai, magar ab HAR raaste par.
+       ============================================================ */
+    $q=$p->prepare("SELECT id,order_status FROM orders
+                     WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1 FOR UPDATE");
+    $q->execute([site_id(),today(),$bill]);
+    $hit=$q->fetch(\PDO::FETCH_ASSOC);
+    $id=null;
+    if($hit){
+        if(($hit['order_status']??'')==='OPEN') $id=$hit['id'];
+        else {
+            $bill = PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
+        }
+    }
     /* V94 — TABLE: id ya naam, dono chalein.
        Pehle sirf `table_name` dekha jata tha. Tablet aur QR ordering
        `table_id` bhejte hain (unke paas asli id hoti hai), is liye
@@ -166,12 +285,42 @@ final class PosService {
     }
     $mode=self::modeCode($d['service_mode']??'Dine In');
     if($id){
-        $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")->execute([$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,$id]);
+        self::touchOrder($p,(string)$id,$d);
         return$id;
     }
     $id=uuid();
     $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,current_user()['id']??null]);
     return$id;
+ }
+ /* ============================================================
+    V168 — khule order ka halat (table, customer, mode, shift) taza
+    karna. Pehle yeh seedha `ensureOpenOrder` ke andar likha tha; ab
+    do raste us tak aate hain (id se aur number se), is liye ek jagah.
+    ============================================================ */
+ private static function touchOrder(PDO $p,string $id,array $d):void{
+    $table=null;
+    $rawTable=trim((string)($d['table_id']??''));
+    if($rawTable!=='' && preg_match('/^[0-9a-f-]{36}$/i',$rawTable)){
+        $tq=$p->prepare("SELECT id FROM dining_tables WHERE id=? AND site_id=? LIMIT 1");
+        $tq->execute([$rawTable,site_id()]);
+        $table=$tq->fetchColumn()?:null;
+    }
+    if(!$table) $table=self::tableId($p,$d['table_name']??$d['table']??'');
+    $customer=null;
+    $rawCustomer=(string)($d['customer_id']??'');
+    if($rawCustomer && $rawCustomer!=='walkin'){
+        if(preg_match('/^[0-9a-f-]{36}$/i',$rawCustomer)){
+            $cq=$p->prepare("SELECT id FROM customers WHERE id=? AND tenant_id=? LIMIT 1");
+            $cq->execute([$rawCustomer,tenant_id()]);$customer=$cq->fetchColumn()?:null;
+        }
+        if(!$customer && !empty($d['customer_name'])){
+            $cq=$p->prepare("SELECT id FROM customers WHERE tenant_id=? AND full_name=? LIMIT 1");
+            $cq->execute([tenant_id(),$d['customer_name']]);$customer=$cq->fetchColumn()?:null;
+        }
+    }
+    $mode=self::modeCode($d['service_mode']??'Dine In');
+    $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")
+      ->execute([$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,$id]);
  }
  private static function resolveMenuId(PDO $p,array $i):string{
     $raw=(string)($i['menu_item_id']??$i['id']??'');

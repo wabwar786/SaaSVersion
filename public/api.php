@@ -964,6 +964,25 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  ok(['cancelled'=>$ord['bill_no']]);
 
 case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
+ /* ============================================================
+    V168 — HOLD PAR BHI WAHI PEHRA JO KOT AUR BILL PAR HAI.
+
+    `pos_bill_guard()` dekhta hai ke jis number par kaam ho raha hai
+    wo bill khula bhi hai ya nahi — band ho to naya number de deta
+    hai. Yeh pehra `pos-kot` aur `pos-finalize` par laga tha, magar
+    `pos-hold` par rehta hi gaya.
+
+    Us surakh se yeh hota tha: band ho chuke bill ke number par hold
+    aa jaye to usi BAND bill par nayi items aur naya total likh diya
+    jata. Customer 640 de kar ja chuka hota aur kitab mein 2,740
+    likha ja chuka hota — payment wahi 640, aur din ka hisaab kabhi
+    na milta.
+
+    `order_id` ho (ruka hua bill dobara khola gaya ho) to guard ki
+    zaroorat hi nahi — us soorat mein order apni id se pakra jata
+    hai, number se nahi.
+    ============================================================ */
+ if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
  try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(Throwable $e){fail($e->getMessage());}
  ok($r);
@@ -2720,7 +2739,16 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
  /* V77 — SHIFT KA GATE SERVER PAR.
     Pehle yeh sirf screen par tha; koi seedha API par bill bana sakta
     tha aur wo bill kisi shift se juda hi na hota. */
- try{Scope::requireOpenShift();}catch(Throwable $e){fail($e->getMessage(),409);}$d['bill_no']=pos_bill_guard($d);$id=PosService::finalize($d,$d['items']??[]);
+ try{Scope::requireOpenShift();}catch(Throwable $e){fail($e->getMessage(),409);}
+ /* V168 — ruka hua bill apni id se band hota hai (dekhen `pos-hold`).
+    Us soorat mein number badalne ka koi sawal hi nahi. */
+ if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ $id=PosService::finalize($d,$d['items']??[]);
+ /* Parchi par WAHI number jo order par waqai likha hai — guard ya id
+    ki wajah se badla ho to bhi. Pehle yahan request ka number chhapta
+    tha, jo order ke number se alag ho sakta tha. */
+ try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$id]);
+     if($bn=$bq->fetchColumn())$d['bill_no']=(string)$bn;}catch(Throwable $e){}
  /* V64 — FBR: bill band hone ke BAAD, print se PEHLE.
     submit() kabhi exception nahi phenkta. FBR band ho to bill phir bhi
     chhapega, us par "FBR: PENDING" likha aayega aur entry queue mein
@@ -2737,7 +2765,13 @@ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageDat
  Audit::log('SALE_CREATE','pos',['id'=>$id,'label'=>(string)$d['bill_no'],'new'=>(string)($resp['dashboard']['today_sales']??'')]);
  register_shutdown_function('sync_nudge');
  ok($resp);
-case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();$d['bill_no']=pos_bill_guard($d);$r=PosService::sendKot($d,$d['items']??[]);$r['bill_no']=$d['bill_no'];ok($r);
+case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();
+ /* V168 — ruka hua bill apni id se chalta hai; warna wahi purana pehra. */
+ if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ $r=PosService::sendKot($d,$d['items']??[]);
+ try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$r['order_id']??'']);
+     if($bn=$bq->fetchColumn())$d['bill_no']=(string)$bn;}catch(Throwable $e){}
+ $r['bill_no']=$d['bill_no'];ok($r);
 case 'customer-order':
 $d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();
 $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,opened_at,created_by_user_id,subtotal,grand_total) VALUES(?,?,?,?,?,'CUSTOMER_APP','DELIVERY','OPEN','UNPAID',NOW(6),?,0,0)")->execute([$oid,tenant_id(),site_id(),$bill,today(),current_user()['id']??null]);
