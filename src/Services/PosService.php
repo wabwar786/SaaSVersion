@@ -345,12 +345,39 @@ final class PosService {
  private static function upsertOrderItem(PDO $p,string $order,array $i):array{
     $mid=self::resolveMenuId($p,$i);
     $name=$i['name']??'';
-    $q=$p->prepare("SELECT id,sent_qty FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=? AND status='ACTIVE' LIMIT 1 FOR UPDATE");
-    $q->execute([$order,$mid,$name]);
+    $note=(string)($i['note']??'');
+    /* ============================================================
+       V170 — KITCHEN NOTE BHI PEHCHAN KA HISSA HAI.
+
+       POS par cart ki har line TEEN cheezon se banti hai: item, naam,
+       aur kitchen note. Yani "Chicken Karahi (spicy)" aur "Chicken
+       Karahi (mirch kam)" DO alag lines hain — jaisa hona chahiye,
+       kyunke kitchen ko dono alag banani hain.
+
+       Magar yahan talash sirf DO cheezon par thi — item aur naam.
+       Note ka koi zikr nahi. Nateeja: us ek hi row par dusri line aa
+       kar `qty=?` likh deti thi (jama nahi karti, BADAL deti thi).
+
+       Cart mein 3 lines  ->  database mein 1 row
+       Qty 3              ->  database mein 1
+
+       Yani bill hold kar ke wapas kholne par items ghayab, aur jo
+       bacha us ki ginti bhi kam. Aur yehi `upsertOrderItem` bill band
+       karte waqt bhi chalti hai — to customer se bhi kam paise liye
+       ja rahe thay.
+
+       `COALESCE(kitchen_note,'')` is liye ke purane rows mein yeh
+       khana NULL para ho sakta hai; khali note aur NULL ek hi cheez
+       hain.
+       ============================================================ */
+    $q=$p->prepare("SELECT id,sent_qty FROM order_items
+                     WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=?
+                       AND COALESCE(kitchen_note,'')=? AND status='ACTIVE'
+                     LIMIT 1 FOR UPDATE");
+    $q->execute([$order,$mid,$name,$note]);
     $old=$q->fetch();
     $qty=(float)$i['qty'];
     $rate=(float)($i['unit_price']??$i['unitPrice']??0);
-    $note=$i['note']??'';
     $m=$p->prepare("SELECT mi.name,mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.version_no,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");
     $m->execute([$mid]);$menu=$m->fetch();
     if(!$menu)throw new \RuntimeException('Menu item not found in database: '.$name);
