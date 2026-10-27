@@ -155,6 +155,12 @@ final class ReportService
                     SUM(o.subtotal) subtotal,
                     SUM(o.discount_amount) discount,
                     SUM(o.service_charge) service,
+                    /* V171 — delivery charge apna column. Pehle yeh raqam
+                       kahin nazar nahi aati thi: total mein shamil hoti
+                       thi magar us ka naam koi nahi tha, to malik ko pata
+                       hi nahi chalta tha ke mahine mein kitna kiraya
+                       wasool hua. */
+                    SUM(COALESCE(o.delivery_charge,0)) delivery,
                     SUM(o.tax_amount) tax,
                     SUM(o.grand_total) total
                FROM orders o
@@ -165,9 +171,10 @@ final class ReportService
         return self::shape('Sales summary',
             [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
              ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
-             ['k'=>'service','l'=>'Service','n'=>1],['k'=>'tax','l'=>'Tax','n'=>1],
+             ['k'=>'service','l'=>'Service','n'=>1],['k'=>'delivery','l'=>'Delivery','n'=>1],
+             ['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1]],
-            $rows, self::sum($rows, ['bills','subtotal','discount','service','tax','total']));
+            $rows, self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','total']));
     }
 
     private static function r_sales_by_item(string $f, string $t): array

@@ -474,6 +474,10 @@ textarea.inp{min-height:62px;resize:vertical}
       <div class="tr"><span class="lb">Discount <button class="ed" id="edDisc">Edit</button></span><span id="tDisc">- PKR 0</span></div>
       <div class="tr"><span class="lb">Service Charge <button class="ed" id="edSvc">Edit</button></span><span id="tSvc">PKR 0</span></div>
       <div class="tr"><span class="lb">Sales Tax <button class="ed" id="edTax">Edit</button></span><span id="tTax">PKR 0</span></div>
+      <!-- V171 — Delivery Charge. Sirf Home Delivery bill par nazar aata
+           hai (renderCart ise chhupa deta hai), aur TAX KE BAAD jurta
+           hai: tax sirf khane par banta hai. -->
+      <div class="tr hide" id="trDlv"><span class="lb">Delivery Charge <button class="ed" id="edDlv">Edit</button></span><span id="tDlv">PKR 0</span></div>
       <div class="gt"><span>Grand Total</span><b id="tGrand">PKR 0</b></div>
     </div>
     <div class="acts">
@@ -825,7 +829,11 @@ function applyRole(){
   }
 }
 var curTable='', curCustId='walkin', curCustName='Walk-in Customer', curCustPhone='';
-var SET={tax_cash:16,tax_card:8,service_charge:0};
+var SET={tax_cash:16,tax_card:8,service_charge:0,delivery_charge:0};
+/* V171 — is bill ka delivery charge (rupay, percent nahi). Home Delivery
+   chunte hi Settings wali default raqam yahan aa jati hai; cashier ise
+   bill par badal bhi sakta hai aur sifar bhi kar sakta hai. */
+var dlv=0;
 var payMethod='Cash';
 function taxPct(method){return /card|raast|easypaisa|jazzcash|bank|online/i.test(method||payMethod)?SET.tax_card:SET.tax_cash}
 
@@ -1573,6 +1581,23 @@ function newBillFlow(isEdit){
   }
   function step2(m){
     mode=m;
+    /* ============================================================
+       V171 — DEFAULT KIRAYA YAHAN LAGTA HAI, `done()` MEIN NAHI.
+
+       Pehle yeh `done()` mein tha. Magar `done()` tab chalta hai jab
+       cashier customer (ya table) bhi chun le — aur agar wo us qadam
+       par Esc dabā de to bill ka type HOME DELIVERY ho chuka hota aur
+       kiraya kahin se bhi nahi aata. Screen par lakeer nazar aati,
+       raqam sifar.
+
+       Bill ka type yahan tay hota hai, is liye kiraya bhi yahin.
+       Agar cashier pehle hi is bill par koi raqam daal chuka ho to
+       usay haath nahi lagate. Ruke hue bill ko wapas kholne par
+       `resumeHold()` is ke BAAD chalti hai aur asal raqam likh deti
+       hai — to purana bill apna hi kiraya wapas laata hai.
+       ============================================================ */
+    if(m==='Home Delivery'){ if(!(Number(dlv)>0)) dlv=Math.max(0,Number(SET.delivery_charge)||0); }
+    else dlv=0;
     var s2=ov.querySelector('#nbStep2'), s1=ov.querySelector('#nbStep1');
     if(m==='Takeaway'){ curTable='';curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';done();return }
     s1.classList.add('hide'); s2.classList.remove('hide');
@@ -1688,8 +1713,34 @@ function totals(){
     tax   = gross*r;
     grand = gross+tax;
   }
-  return {sub:sub,disc:d,svc:sv,tax:tax,net:net,grand:grand,inclusive:taxInclusive()};
+  /* ============================================================
+     V171 — DELIVERY CHARGE TAX KE BAAD JURTA HAI, PEHLE NAHI.
+
+     Malik ka faisla: tax sirf khane par banta hai. Is liye yeh
+     `gross` mein shamil NAHI — warna customer se kiraye par bhi tax
+     wasool hota. Server par `PosService::hold()` aur `finalize()`
+     mein bhi bilkul yehi tarteeb hai; teenon jagah ek jaisi na hon to
+     screen ka total aur bill ka total alag nikal aate hain.
+     ============================================================ */
+  var dc=isDelivery()?Math.max(0,Number(dlv)||0):0;
+  grand=grand+dc;
+  return {sub:sub,disc:d,svc:sv,tax:tax,net:net,dlv:dc,grand:grand,inclusive:taxInclusive()};
 }
+/* ============================================================
+   V171 — "Home Delivery" AUR "Delivery" EK HI CHEEZ HAIN.
+
+   Yeh do naam nahi, ek hi type hai jo raaste mein shakl badal leta
+   hai. POS ka button "Home Delivery" kehta hai; database mein
+   `modeCode()` usay `DELIVERY` likhta hai; aur hold khol-ne par
+   server `ucwords()` kar ke "Delivery" wapas bhejta hai.
+
+   Pehle yahan sirf "Home Delivery" dekha jata tha. Nateeja: ruka hua
+   delivery bill wapas kholte hi kiraya ginti se BAHAR ho jata —
+   screen par raqam nazar aati magar Grand Total mein shamil na hoti,
+   aur bill band karte waqt server ko 0 chala jata. Customer se
+   kiraya liya hi na jata.
+   ============================================================ */
+function isDelivery(){var m=String(mode||'');return m==='Home Delivery'||m==='Delivery'}
 function renderCart(){
   var c=$('#cart');
   if(!cart.length)c.innerHTML='<div class="cempty">Your cart is empty<br>item par click karke add please</div>';
@@ -1714,6 +1765,11 @@ function renderCart(){
   $('#tSvc').textContent=money(t.svc)+(svc.value&&svc.type==='percent'?' ('+svc.value+'%)':'');
   $('#tTax').textContent=money(t.tax)+' ('+orderTax+'% '+esc(payMethod)
     +(t.inclusive?', incl.':'')+')';
+  /* V171 — delivery charge ki lakeer sirf Home Delivery par. Dine In
+     aur Takeaway par cashier ko yeh nazar hi nahi aani chahiye. */
+  var dRow=$('#trDlv');
+  if(dRow)dRow.classList.toggle('hide',!isDelivery());
+  var dEl=$('#tDlv'); if(dEl)dEl.textContent=money(t.dlv);
   $('#tGrand').textContent=money(t.grand);
 
   $('#kotBtn').disabled=!cart.some(function(l){return l.qty-l.sentQty>0});
@@ -1775,7 +1831,12 @@ function payload(extra){
        usi raqam ka flat discount nahi (items badal jayen to wo raqam
        ghalat ho jati hai). Flat discount par yeh 0 jata hai. */
     discount_pct:(disc.type==='percent'?Number(disc.value)||0:0),
-    service_charge:t.svc,tax_amount:t.tax,tax_rate:orderTax,tax_mode:(SET.tax_mode||'INCLUSIVE'),
+    service_charge:t.svc,
+    /* V171 — `t.dlv` Home Delivery ke ilawa hamesha 0 hota hai, aur
+       server bhi bill ka type dobara khud dekh leta hai (`deliveryOf`).
+       Do pehre, taake Dine In bill par kiraya kisi soorat na lage. */
+    delivery_charge:t.dlv,
+    tax_amount:t.tax,tax_rate:orderTax,tax_mode:(SET.tax_mode||'INCLUSIVE'),
     items:cart.map(function(l){return {menu_item_id:l.id,base_name:l.name,name:l.name,qty:l.qty,unit_price:l.price,sent_qty:l.sentQty,note:l.note||''}})};
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
@@ -2076,6 +2137,10 @@ function slipHtml(kind,lines,info){
          likha jata hai, kyunke wo raqam subtotal ke ANDAR hai. */
       +(t.tax?('<tr><td>Tax '+orderTax+'%'+(t.inclusive?' incl.':'')
                +'</td><td class="r">'+amt(t.tax)+'</td></tr>'):'')
+      /* V171 — delivery charge TAX KE BAAD, kyunke wo tax ke baad jurta
+         hai. Customer ko parchi par wahi tarteeb dikhni chahiye jo
+         hisaab ki hai. 0 ho to lakeer chhapti hi nahi. */
+      +(t.dlv?'<tr><td>Delivery</td><td class="r">'+amt(t.dlv)+'</td></tr>':'')
       +(info?'<tr><td>Paid</td><td class="r">'+amt(info.rcv)+'</td></tr>'
         +'<tr><td>Change</td><td class="r">'+amt(Math.max(0,info.rcv-t.grand))+'</td></tr>':'')
       +'</table>';
@@ -2258,6 +2323,10 @@ function waSend(kind,lines,info){
 /* ================= NEW BILL / HOLDS / DUPLICATE ================= */
 function newBill(next,skipFlow){
   cart=[];disc={type:'flat',value:0};preQty={};
+  /* V171 — naya bill = naya kiraya. Pichle delivery bill ka charge
+     agle bill par nahi chipakna chahiye. Home Delivery chunte hi
+     Settings wali default raqam khud bhar jati hai (dekho `done()`). */
+  dlv=0;
   if(!next){var n=api('pos-next-bill');next=n.ok?n.next:1}
   billNo=String(next||1).padStart(4,'0');
   curTable='';curCustId='walkin';curCustName='Walk-in Customer';curCustPhone='';curHoldId='';
@@ -2394,16 +2463,25 @@ function resumeHold(h){
             sentQty:x.sentQty||0,note:x.note||''};
   });
   billNo=r.billNo;mode=r.mode||'Dine In';curTable=r.table||'';
+  /* V171 — server "Delivery" bhejta hai, POS ke button par "Home
+     Delivery" likha hai. Yahin ek naam par le aao, warna cashier ko
+     bill ka type doosre lafz mein nazar aata hai. */
+  if(mode==='Delivery')mode='Home Delivery';
   curCustId=r.cust||'walkin';curCustName=r.custName||'Walk-in Customer';
   curCustPhone=r.custPhone||'';
   /* Percent ho to percent, warna flat raqam. Dono soorat mein cashier
      usay baad mein badal bhi sakta hai — discount khud se nahi hatta. */
   var dp=Number(r.discountPct)||0, da=Number(r.discount)||0;
   disc = dp>0 ? {type:'percent',value:dp} : {type:'flat',value:da};
+  /* V171 — delivery charge bhi wapas, warna hold kiya hua delivery bill
+     kholte hi kiraya gayab ho jata aur bill us raqam se kam ban jata —
+     bilkul wohi ghalti jo pehle discount ke saath hoti thi. */
+  dlv = Math.max(0, Number(r.delivery)||0);
   billStarted=true;
   loadHolds();renderCtx();renderCart();
   toast('Bill #'+billNo+' resumed'+(curTable?(' — '+curTable):'')
-        +((dp>0||da>0)?(' · discount '+(dp>0?(dp+'%'):money(da))+' barqarar'):''));
+        +((dp>0||da>0)?(' · discount '+(dp>0?(dp+'%'):money(da))+' barqarar'):'')
+        +(dlv>0?(' · delivery '+money(dlv)):''));
   return true;
 }
 $('#holdsBtn').onclick=function(){
@@ -2528,6 +2606,35 @@ $('#edSvc').onclick=function(){
     svc={type:ov.querySelector('#st').value,value:Number(ov.querySelector('#sv').value||0)};
     ov.remove();renderCart();
   };
+};
+
+/* ============================================================
+   V171 — DELIVERY CHARGE EDIT.
+
+   Service Charge wale dialog se do farq, dono jaan boojh kar:
+     - yahan sirf RUPAY hain, percent ka option nahi (malik ka faisla)
+     - manager password nahi manga jata — cashier khud badal sakta hai
+   Sifar bhi chalta hai: kuch bill par kiraya maaf kar diya jata hai.
+   ============================================================ */
+$('#edDlv').onclick=function(){
+  if(!isDelivery()){toast('Delivery charge sirf Home Delivery bill par lagta hai');return}
+  var def=Math.max(0,Number(SET.delivery_charge)||0);
+  var ov=modal('<div class="dh"><h3>Delivery Charge</h3><p>Bill #'+esc(billNo)+' &middot; sirf is bill ke liye</p></div>'
+    +'<div class="db"><label class="f">Amount (PKR)</label>'
+    +'<input class="inp" id="dv" type="number" min="0" step="1" inputmode="decimal" value="'+Math.max(0,Number(dlv)||0)+'" style="font-size:16px;font-weight:800">'
+    +'<label class="f" style="margin-top:11px">Quick amount</label><div class="qv" style="grid-template-columns:repeat(5,1fr)">'
+    +[0,50,100,150,200].map(function(v){return '<button data-df="'+v+'">'+(v===0?'Free':v)+'</button>'}).join('')+'</div>'
+    +(def>0?('<div style="font-size:11px;color:var(--ink2);margin-top:9px">Settings ka default: '+money(def)+'</div>'):'')
+    +'</div>'
+    +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="ok">Apply</button></div>');
+  Array.prototype.forEach.call(ov.querySelectorAll('[data-df]'),function(b){b.onclick=function(){
+    ov.querySelector('#dv').value=b.dataset.df}});
+  var inp=ov.querySelector('#dv'); if(inp){inp.focus();inp.select();}
+  ov.querySelector('#ok').onclick=function(){
+    dlv=Math.max(0,Number(ov.querySelector('#dv').value||0));
+    ov.remove();renderCart();
+  };
+  if(inp)inp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();ov.querySelector('#ok').click()}};
 };
 $('#edTax').onclick=function(){
   var ov=modal('<div class="dh"><h3>Sales Tax</h3><p>The tax rate depends on the payment method (set in portal settings)</p></div>'
@@ -2805,6 +2912,10 @@ $('#sysBtn').onclick=function(){
     +'<div><label class="f">Cash Tax %</label><input class="inp" id="stCash" type="number" step="0.1" value="'+SET.tax_cash+'"></div>'
     +'<div><label class="f">Card / Online Tax %</label><input class="inp" id="stCard" type="number" step="0.1" value="'+SET.tax_card+'"></div>'
     +'<div class="full"><label class="f">Default Service Charge %</label><input class="inp" id="stSvc" type="number" step="0.1" value="'+SET.service_charge+'"></div>'
+    /* V171 — yeh RUPAY hai, percent nahi. Label par saaf likha hai
+       warna malik 150 likh kar 150% samajh baithta. */
+    +'<div class="full"><label class="f">Default Delivery Charge (PKR)</label><input class="inp" id="stDlv" type="number" min="0" step="1" value="'+(Number(SET.delivery_charge)||0)+'">'
+    +'<div style="font-size:10.5px;color:var(--ink2);margin-top:4px">Sirf Home Delivery bill par lagta hai. Tax is par nahi lagta. Cashier bill par badal sakta hai. 0 rakhein to band.</div></div>'
     +'</div><button class="tb pri" id="stSave" style="margin-top:9px;width:100%">Save Tax Settings</button></div>'
     +'<div class="box"><b style="font-size:11px">Cloud Sync</b><div id="syncBox" style="margin-top:6px"></div>'
     +'<button class="tb" id="sysSync" style="width:100%;margin-top:8px">Sync Now</button></div>'
@@ -2866,9 +2977,13 @@ $('#sysBtn').onclick=function(){
   ov.querySelector('#stSave').onclick=function(){
     this.disabled=true;this.textContent='Saving...';
     var r=api('pos-settings-save',{tax_cash:Number(ov.querySelector('#stCash').value||0),
-      tax_card:Number(ov.querySelector('#stCard').value||0),service_charge:Number(ov.querySelector('#stSvc').value||0)});
+      tax_card:Number(ov.querySelector('#stCard').value||0),service_charge:Number(ov.querySelector('#stSvc').value||0),
+      delivery_charge:Number(ov.querySelector('#stDlv').value||0)});
     if(!r.ok){this.disabled=false;this.textContent='Save Tax Settings';toast(r.message||'Failed');return}
     SET=r.settings;orderTax=taxPct(payMethod);svc={type:'percent',value:Number(SET.service_charge)||0};
+    /* Agar yeh bill abhi Home Delivery hai aur cashier ne is par koi
+       raqam nahi daali, to nayi default foran lag jaye. */
+    if(isDelivery()&&!(Number(dlv)>0))dlv=Math.max(0,Number(SET.delivery_charge)||0);
     ov.remove();renderCart();toast('Tax settings saved');
   };
 };

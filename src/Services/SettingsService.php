@@ -58,6 +58,11 @@ final class SettingsService
         'cash'           => 16.0,
         'card'           => 8.0,
         'service_charge' => 0.0,
+        /* V171 — Home Delivery ka default kiraya. KHABARDAR: baqi teen
+           PERCENT hain, yeh RUPAY hai. Is liye neeche "100 se zyada
+           nahi" wala pehra is par nahi lagta — 500 rupay ka delivery
+           charge bilkul mumkin hai. */
+        'delivery_charge' => 0.0,
     ];
 
     /** Jo keys site_settings mein rakhi jati hain (baqi asli tables mein). */
@@ -145,6 +150,7 @@ final class SettingsService
         $out['tax_cash']       = $tax['tax_cash'];
         $out['tax_card']       = $tax['tax_card'];
         $out['service_charge'] = $tax['service_charge'];
+        $out['delivery_charge']= $tax['delivery_charge'];
         /* Price mode bhi isi payload mein — Settings ka ek hi Save button
            ise bhi bhejta hai, aur jawab mein wapas isi se paint hota hai. */
         $out['tax_mode']       = TaxMode::current();
@@ -172,6 +178,7 @@ final class SettingsService
             'tax_cash'       => (float)$v['cash'],
             'tax_card'       => (float)$v['card'],
             'service_charge' => (float)$v['service_charge'],
+            'delivery_charge'=> (float)($v['delivery_charge'] ?? 0),
         ];
     }
 
@@ -219,6 +226,7 @@ final class SettingsService
             'cash'           => isset($legacy['tax_cash'])       ? max(0.0, (float)$legacy['tax_cash'])       : self::TAX_DEFAULTS['cash'],
             'card'           => isset($legacy['tax_card'])       ? max(0.0, (float)$legacy['tax_card'])       : self::TAX_DEFAULTS['card'],
             'service_charge' => isset($legacy['service_charge']) ? max(0.0, (float)$legacy['service_charge']) : self::TAX_DEFAULTS['service_charge'],
+            'delivery_charge'=> isset($legacy['delivery_charge']) ? max(0.0, (float)$legacy['delivery_charge']) : self::TAX_DEFAULTS['delivery_charge'],
         ];
         try { self::writeTaxGroup($v); self::retireLegacyTaxRows(); } catch (\Throwable $e) {}
         return $v;
@@ -227,8 +235,8 @@ final class SettingsService
     private static function writeTaxGroup(array $v): void
     {
         $p = DB::pdo();
-        foreach (['cash', 'card', 'service_charge'] as $k) {
-            self::putRaw($p, $k, (float)$v[$k], self::TAX_GROUP);
+        foreach (['cash', 'card', 'service_charge', 'delivery_charge'] as $k) {
+            self::putRaw($p, $k, (float)($v[$k] ?? 0), self::TAX_GROUP);
         }
     }
 
@@ -255,6 +263,9 @@ final class SettingsService
             'cash'           => array_key_exists('tax_cash', $d)       ? max(0.0, (float)$d['tax_cash'])       : (float)$cur['tax_cash'],
             'card'           => array_key_exists('tax_card', $d)       ? max(0.0, (float)$d['tax_card'])       : (float)$cur['tax_card'],
             'service_charge' => array_key_exists('service_charge', $d) ? max(0.0, (float)$d['service_charge']) : (float)$cur['service_charge'],
+            /* V171 — rupay, percent nahi. Is liye agli lakeer wale
+               pehre se bahar rakha gaya hai. */
+            'delivery_charge'=> array_key_exists('delivery_charge', $d) ? max(0.0, (float)$d['delivery_charge']) : (float)($cur['delivery_charge'] ?? 0),
         ];
         foreach (['cash' => 'Cash tax', 'card' => 'Card tax', 'service_charge' => 'Service charge'] as $k => $label) {
             if ($v[$k] > 100) throw new \RuntimeException($label.' cannot be more than 100%.');
@@ -265,6 +276,7 @@ final class SettingsService
             'tax_cash'       => $v['cash'],
             'tax_card'       => $v['card'],
             'service_charge' => $v['service_charge'],
+            'delivery_charge'=> $v['delivery_charge'],
         ];
     }
 

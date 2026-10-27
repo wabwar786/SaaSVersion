@@ -378,6 +378,10 @@ final class OpsService
         $head = $p->prepare("SELECT COUNT(*) bills, COALESCE(SUM(o.subtotal),0) subtotal,
                                     COALESCE(SUM(o.discount_amount),0) discount,
                                     COALESCE(SUM(o.service_charge),0) service,
+                                    /* V171 — shift band karte waqt kiraya
+                                       alag se nazar aaye; cash milana isi
+                                       se theek hota hai. */
+                                    COALESCE(SUM(COALESCE(o.delivery_charge,0)),0) delivery,
                                     COALESCE(SUM(o.tax_amount),0) tax,
                                     COALESCE(SUM(o.grand_total),0) total
                                FROM orders o WHERE $where");
@@ -461,6 +465,7 @@ final class OpsService
             'subtotal' => (float)($tot['subtotal'] ?? 0),
             'discount' => (float)($tot['discount'] ?? 0),
             'service'  => (float)($tot['service'] ?? 0),
+            'delivery' => (float)($tot['delivery'] ?? 0),   /* V171 */
             'tax'      => (float)($tot['tax'] ?? 0),
             'total'    => (float)($tot['total'] ?? 0),
             'categories' => array_values($cats),
@@ -478,6 +483,7 @@ final class OpsService
         $q = $p->prepare(
             "SELECT o.id, o.bill_no, o.service_mode, o.tax_amount, o.discount_amount,
                     COALESCE(o.discount_pct,0) AS discount_pct, o.service_charge,
+                    COALESCE(o.delivery_charge,0) AS delivery_charge,
                     COALESCE(dt.display_name,'') AS table_name,
                     COALESCE(c.id,'')   AS cust_id,
                     COALESCE(c.full_name,'') AS cust_name,
@@ -516,6 +522,10 @@ final class OpsService
             'discount'    => (float)($o['discount_amount'] ?? 0),
             'discountPct' => (float)($o['discount_pct'] ?? 0),
             'service'     => (float)($o['service_charge'] ?? 0),
+            /* V171 — delivery charge bhi wapas, warna hold kiya hua
+               delivery bill kholte hi kiraya gayab ho jata — bilkul wohi
+               ghalti jo upar discount ke saath hui thi. */
+            'delivery'    => (float)($o['delivery_charge'] ?? 0),
             'items'    => array_map(fn($x) => [
                 'id'       => (string)$x['menu_item_id'],
                 'name'     => (string)$x['name'],

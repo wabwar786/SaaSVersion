@@ -98,6 +98,11 @@ return [
        (customer ka tay-shuda discount). Dono default 0, purani rows par
        koi asar nahi. */
     ['script' => 'migrate_discounts',     'optional' => true, 'stage' => 'background'],
+    /* V171 — `orders.delivery_charge`. Home Delivery ka kiraya ab apni
+       jagah likha jata hai, khane ki keemat ya service charge mein
+       chhupaya nahi jata. Tax se bahar, default 0, purane bill ka total
+       nahi badalta. */
+    ['script' => 'migrate_delivery_charge', 'optional' => true, 'stage' => 'background'],
     /* V158 — `menu_items.sort_order`, taake POS par tarteeb restaurant
        ki marzi se ho (naam ke alphabet se nahi). Saath hi jin sites ne
        category ki tarteeb kabhi set nahi ki, un ki categories ko

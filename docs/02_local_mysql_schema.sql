@@ -820,6 +820,10 @@ CREATE TABLE orders (
     subtotal            DECIMAL(18,4) NOT NULL DEFAULT 0,
     discount_amount     DECIMAL(18,4) NOT NULL DEFAULT 0,
     service_charge      DECIMAL(18,4) NOT NULL DEFAULT 0,
+    /* V171 — Home Delivery ka kiraya. TAX SE BAHAR: tax sirf khane par
+       banta hai, yeh us ke baad jurta hai. Sirf Home Delivery bill par
+       sifar se zyada hota hai. */
+    delivery_charge     DECIMAL(18,4) NOT NULL DEFAULT 0,
     tax_amount          DECIMAL(18,4) NOT NULL DEFAULT 0,
     grand_total         DECIMAL(18,4) NOT NULL DEFAULT 0,
     paid_amount         DECIMAL(18,4) NOT NULL DEFAULT 0,

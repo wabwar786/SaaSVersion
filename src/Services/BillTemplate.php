@@ -174,6 +174,9 @@ final class BillTemplate
         if ((float)($o['discount_amount'] ?? 0) > 0) $L[] = self::row('Discount', '-'.self::money((float)$o['discount_amount']));
         if ((float)($o['service_charge']  ?? 0) > 0) $L[] = self::row('Service Charge', self::money((float)$o['service_charge']));
         if ((float)($o['tax_amount']      ?? 0) > 0) $L[] = self::row('Sales Tax', self::money((float)$o['tax_amount']));
+        /* V171 — delivery charge TAX KE BAAD, kyunke hisaab mein bhi wo
+           tax ke baad jurta hai. 0 ho to lakeer chhapti hi nahi. */
+        if ((float)($o['delivery_charge'] ?? 0) > 0) $L[] = self::row('Delivery Charge', self::money((float)$o['delivery_charge']));
         $L[] = self::rule('=');
         $L[] = self::row('TOTAL '.$cur, self::money((float)($o['grand_total'] ?? 0)), true);
         return $L;
@@ -332,6 +335,10 @@ final class BillTemplate
         if ((float)$r['discount'] > 0) self::put($L, self::rows('Discount', '-' . self::money((float)$r['discount'])));
         if ((float)$r['service']  > 0) self::put($L, self::rows('Service charge', self::money((float)$r['service'])));
         if ((float)$r['tax']      > 0) self::put($L, self::rows('Sales tax', self::money((float)$r['tax'])));
+        /* V171 — din bhar ka delivery kiraya alag se. `?? 0` is liye ke
+           V171 se PEHLE band hui shifts ka snapshot is khane ke baghair
+           mehfooz hua tha — purani report jaisi thi waisi hi rehti hai. */
+        if ((float)($r['delivery'] ?? 0) > 0) self::put($L, self::rows('Delivery charges', self::money((float)$r['delivery'])));
         $L[] = self::rule('=');
         $L[] = ['', 'l', 3];
         self::put($L, self::rows('TOTAL SALES', self::money((float)$r['total']), true));
@@ -575,6 +582,7 @@ final class BillTemplate
         $sub  = (float)($o['subtotal'] ?? 0);
         $disc = (float)($o['discount_amount'] ?? 0);
         $svc  = (float)($o['service_charge'] ?? 0);
+        $dlv  = (float)($o['delivery_charge'] ?? 0);   /* V171 */
         $tax  = (float)($o['tax_amount'] ?? 0);
         $paid = (float)($o['paid_amount'] ?? 0);
         $chg  = (float)($o['change_amount'] ?? 0);
@@ -583,6 +591,7 @@ final class BillTemplate
         if ($disc > 0) $L[] = self::roww('Discount', '-'.self::money($disc), $cw);
         if ($svc  > 0) $L[] = self::roww('Service charge', self::money($svc), $cw);
         if ($tax  > 0) $L[] = self::roww('Sales tax', self::money($tax), $cw);
+        if ($dlv  > 0) $L[] = self::roww('Delivery charge', self::money($dlv), $cw);   /* V171 */
         if ($paid > 0) $L[] = self::roww('Received', self::money($paid), $cw);
         if ($chg  > 0) $L[] = self::roww('Change', self::money($chg), $cw);
         if ($qrOn) $L[] = ['@qrend'];

@@ -224,7 +224,24 @@ final class FiscalService
      */
     private static function totalsMismatch(array $o, array $calc, int $lineCount): string
     {
-        $bill = round((float)($o['grand_total'] ?? 0), 2);
+        /* ============================================================
+           V171 — DELIVERY CHARGE FBR KO NAHI JATA (malik ka faisla).
+
+           Service charge FBR ko apni line bana kar jata hai (upar
+           `billLines()` mein), is liye wo bill ke total mein shamil
+           rehta hai aur yahan dono taraf barabar hota hai.
+
+           Delivery charge ka faisla ulta hai: wo FBR ko bhejna hi
+           nahi. Magar bill ke `grand_total` mein wo mojood hota hai —
+           customer se wasool jo hua. Agar yahan usay na nikalein to
+           har delivery bill ka total FBR ke total se bara nikle ga
+           aur HAR DELIVERY BILL PENDING par ruk jaye ga.
+
+           Is liye muqabla "khane ka total" se hota hai, bill ke poore
+           total se nahi.
+           ============================================================ */
+        $dlv  = round((float)($o['delivery_charge'] ?? 0), 2);
+        $bill = round((float)($o['grand_total'] ?? 0) - $dlv, 2);
         $sent = round((float)$calc['totals']['total'], 2);
         $tol  = 0.02 + 0.01 * $lineCount;
 

@@ -52,6 +52,9 @@ final class PosService {
     $sub=(float)$tq->fetchColumn();
     $disc=(float)($d['discount_amount']??0);
     $svc=(float)($d['service_charge']??0);
+    /* V171 — delivery charge. Sirf Home Delivery par; `deliveryOf()`
+       khud dekh leta hai ke bill ka type kya hai. */
+    $dlv=self::deliveryOf($d);
 
     /* ============================================================
        V168 — HOLD KA TOTAL AB WAHI HISAAB SE BANTA HAI JO BILL KA.
@@ -80,6 +83,13 @@ final class PosService {
         $tax   = (float)($d['tax_amount'] ?? 0);
         $grand = $taxable + $tax;
     }
+    /* V171 — DELIVERY CHARGE TAX KE BAAD JURTA HAI, PEHLE NAHI.
+       Malik ka faisla: tax sirf khane par banta hai. Is liye yeh
+       `taxable` mein nahi gaya, warna customer se charge par bhi tax
+       wasool hota. Yeh lakeer `finalize()` mein bhi bilkul isi jagah,
+       bilkul isi tarah hai — warna hold ka total aur bill ka total
+       alag ho jayen (V168 wala masla dobara). */
+    $grand = $grand + $dlv;
     /* V157 — PERCENT BHI MEHFOOZ.
        Pehle sirf `discount_amount` likha jata tha. Bill hold kar ke
        wapas kholne par cashier ka 10% gayab ho jata aur us ki jagah usi
@@ -91,10 +101,10 @@ final class PosService {
        "Held" ka khana isay parhta tha magar likhta koi nahi tha — wo
        ginti hamesha 0 rehti thi. */
     $p->prepare("UPDATE orders SET subtotal=?, tax_amount=?, discount_amount=?,
-                     discount_pct=?, service_charge=?, grand_total=?,
+                     discount_pct=?, service_charge=?, delivery_charge=?, grand_total=?,
                      hold_status=1, updated_at=NOW(6)
                   WHERE id=?")
-      ->execute([$sub,$tax,$disc,$dpct,$svc,max(0.0,$grand),$order]);
+      ->execute([$sub,$tax,$disc,$dpct,$svc,$dlv,max(0.0,$grand),$order]);
 
     /* Table `ensureOpenOrder` khud set karta hai (id ya naam se). */
 
@@ -166,7 +176,14 @@ final class PosService {
         /* Purana POS rate nahi bhejta — us soorat mein uska apna tax lo,
            warna wo build achanak bina tax ke bill banane lagta. */
         if ($rate <= 0) { $tax = (float)($d['tax_amount'] ?? 0); $inclusive = false; }
-        $grand = $inclusive ? $taxable : ($taxable + $tax);$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,hold_status=0,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,(float)($d['discount_pct']??0),$service,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
+        $grand = $inclusive ? $taxable : ($taxable + $tax);
+        /* V171 — DELIVERY CHARGE TAX KE BAAD. `hold()` mein bhi bilkul
+           yehi lakeer, bilkul isi jagah hai. Dono ek jaise na hon to
+           hold ka total aur bill ka total alag ho jayen — V168 wala
+           masla, jis ki shikayat "discount theek nahi" ki shakal mein
+           aati thi. */
+        $delivery = self::deliveryOf($d);
+        $grand    = $grand + $delivery;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,delivery_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,hold_status=0,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,(float)($d['discount_pct']??0),$service,$delivery,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
   $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$items);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
  private static function ensureOpenOrder(PDO $p,array $d):string{
     /* ============================================================
@@ -441,6 +458,25 @@ final class PosService {
  private static function cost(PDO $p,string $id):float{$q=$p->prepare("SELECT avg_cost_per_stock_unit FROM inventory_items WHERE id=?");$q->execute([$id]);return(float)$q->fetchColumn();}
  private static function tableId(PDO $p,string $name):?string{if(!$name)return null;$q=$p->prepare("SELECT id FROM dining_tables WHERE site_id=? AND display_name=? LIMIT 1");$q->execute([site_id(),$name]);return$q->fetchColumn()?:null;}
  private static function modeCode(string $m):string{$m=strtoupper(str_replace(' ','_',trim($m)));return $m==='HOME_DELIVERY'?'DELIVERY':($m==='DINE_IN'?'DINE_IN':($m==='TAKEAWAY'?'TAKEAWAY':'DELIVERY'));}
+ /* ============================================================
+    V171 — DELIVERY CHARGE SIRF HOME DELIVERY PAR.
+
+    Do pehre, dono zaroori:
+
+    1) BILL KA TYPE. Yahan `modeCode()` ISTEMAL NAHI karte — wo ek
+       anjaan mode ko bhi 'DELIVERY' bana deta hai (us ka default
+       yehi hai). Agar us par bharosa karte to kisi din ek ajeeb
+       mode aata aur Dine In bill par delivery charge lag jata.
+       Is liye seedha naam dekhte hain: sirf HOME_DELIVERY.
+
+    2) RAQAM KABHI MANFI NA HO. Manfi charge bill ghata deta — wahi
+       raasta jis se V168 wala -500 ka bill bana tha.
+    ============================================================ */
+ private static function deliveryOf(array $d):float{
+    $m=strtoupper(str_replace(' ','_',trim((string)($d['service_mode']??''))));
+    if($m!=='HOME_DELIVERY'&&$m!=='DELIVERY')return 0.0;
+    return max(0.0,(float)($d['delivery_charge']??0));
+ }
  private static function paymentCode(string $m):string{$x=strtoupper(str_replace([' ','/'],'_',trim($m)));return ['BANK_TRANSFER'=>'BANK','SPLIT_PAYMENT'=>'CASH'][$x]??$x;}
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }

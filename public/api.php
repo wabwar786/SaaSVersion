@@ -1278,7 +1278,7 @@ case 'bill-pdf':needLogin();
     function se bante hain - do alag copies nahi. */
  $bill=preg_replace('/[^0-9A-Za-z-]/','',(string)($_GET['bill']??''));if($bill==='')fail('A bill number is required');
  $p=DB::pdo();
- $oq=$p->prepare("SELECT o.id,o.bill_no,o.service_mode,o.grand_total,o.subtotal,o.discount_amount,o.service_charge,o.tax_amount,o.closed_at,o.created_at,o.fiscal_invoice_no,o.fiscal_status,dt.display_name tbl,c.full_name cust,c.phone cphone,u.full_name cashier FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN users u ON u.id=o.created_by_user_id WHERE o.site_id=? AND o.bill_no=? ORDER BY o.created_at DESC LIMIT 1");
+ $oq=$p->prepare("SELECT o.id,o.bill_no,o.service_mode,o.grand_total,o.subtotal,o.discount_amount,o.service_charge,COALESCE(o.delivery_charge,0) delivery_charge,o.tax_amount,o.closed_at,o.created_at,o.fiscal_invoice_no,o.fiscal_status,dt.display_name tbl,c.full_name cust,c.phone cphone,u.full_name cashier FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN users u ON u.id=o.created_by_user_id WHERE o.site_id=? AND o.bill_no=? ORDER BY o.created_at DESC LIMIT 1");
  $oq->execute([site_id(),$bill]);$o=$oq->fetch();if(!$o)fail('Bill not found',404);
  $iq=$p->prepare("SELECT oi.qty,oi.unit_price,oi.line_total,COALESCE(oi.item_name_snapshot,mi.name) nm FROM order_items oi LEFT JOIN menu_items mi ON mi.id=oi.menu_item_id WHERE oi.order_id=?");
  $iq->execute([$o['id']]);$items=$iq->fetchAll();
