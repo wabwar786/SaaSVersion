@@ -133,6 +133,13 @@ return [
        peeche kuch nahi hota tha — aur koi error kahin nazar nahi aata
        tha. Yeh script wahi milan har deploy par kar deti hai. */
     ['script' => 'check_retail_wiring',   'optional' => true, 'check' => true],
+    /* V172 — tooti hui stock wiring ka pehra. Asal customer par
+       Complete Payment par FK error aaya tha kyunke ek recipe aise
+       inventory item ki taraf ishara kar rahi thi jo mojood hi nahi
+       tha; bill band hi nahi hota tha. Bill ab band ho jata hai, magar
+       us item ka stock katna band ho jata hai — is liye har deploy par
+       saaf likh diya jata hai ke kaun si recipe theek karni hai. */
+    ['script' => 'check_stock_links',     'optional' => true, 'check' => true],
 ];
 
 // build: V154 build 2026-10-13

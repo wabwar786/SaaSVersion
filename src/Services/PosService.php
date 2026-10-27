@@ -421,7 +421,58 @@ final class PosService {
     $row=$p->prepare("SELECT * FROM order_items WHERE id=?");$row->execute([$id]);return$row->fetch();
  }
  private static function sendPendingInsideTx(PDO $p,string $order):void{$q=$p->prepare("SELECT oi.*,mi.category_id FROM order_items oi JOIN menu_items mi ON mi.id=oi.menu_item_id WHERE oi.order_id=? AND oi.qty>oi.sent_qty AND oi.status='ACTIVE'");$q->execute([$order]);$rows=$q->fetchAll();$groups=[];foreach($rows as $r){$pr=self::printerForMenu($p,$r['menu_item_id']);if(!$pr)continue;$groups[$pr['id']]['printer']=$pr;$groups[$pr['id']]['rows'][]=$r;}foreach($groups as $g){$kt=uuid();$ticket='KOT-'.strtoupper(substr(str_replace('-','',$kt),0,8));$p->prepare("INSERT INTO kitchen_tickets(id,tenant_id,site_id,order_id,ticket_no,printer_id,station_code,ticket_status,sent_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,'NEW',NOW(6),?)")->execute([$kt,tenant_id(),site_id(),$order,$ticket,$g['printer']['id'],$g['printer']['station_code'],current_user()['id']??null]);$lines=[];foreach($g['rows'] as $r){$pending=(float)$r['qty']-(float)$r['sent_qty'];$p->prepare("INSERT INTO kitchen_ticket_items(id,kitchen_ticket_id,order_item_id,qty_sent,item_status,note_snapshot) VALUES(?,?,?,?, 'NEW',?)")->execute([uuid(),$kt,$r['id'],$pending,$r['kitchen_note']]);$p->prepare("UPDATE order_items SET sent_qty=qty WHERE id=?")->execute([$r['id']]);$lines[]=$pending.' x '.$r['item_name_snapshot'];}$p->prepare("INSERT INTO printer_jobs(id,tenant_id,site_id,printer_id,job_type,reference_type,reference_id,payload_text,status) VALUES(?,?,?,?, 'KOT','KITCHEN_TICKET',?,?, 'PENDING')")->execute([uuid(),tenant_id(),site_id(),$g['printer']['id'],$kt,$ticket."\n".implode("\n",$lines)]);}}
- private static function postInventory(PDO $p,string $order,string $bill,array $items):void{$loc=self::defaultLocation($p);$moves=[];foreach($items as $i){$mid=self::resolveMenuId($p,$i);$m=$p->prepare("SELECT mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");$m->execute([$mid]);$x=$m->fetch();if(!$x)continue;$qty=(float)$i['qty'];$oi=$p->prepare("SELECT id FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=? LIMIT 1");$oi->execute([$order,$mid,$i['name']]);$oid=$oi->fetchColumn();if($x['consumption_type']==='DIRECT_INVENTORY'&&$x['direct_inventory_item_id'])$moves[]=(object)['item_id'=>$x['direct_inventory_item_id'],'location_id'=>$loc,'qty'=>-$qty*(float)$x['direct_inventory_qty'],'unit_cost'=>self::cost($p,$x['direct_inventory_item_id']),'source_order_item_id'=>$oid];elseif($x['consumption_type']==='RECIPE'&&$x['recipe_id']){$ri=$p->prepare("SELECT inventory_item_id,qty_per_yield,waste_pct FROM recipe_ingredients WHERE recipe_id=?");$ri->execute([$x['recipe_id']]);foreach($ri->fetchAll() as $r){$need=((float)$r['qty_per_yield']*$qty/max(.000001,(float)$x['yield_qty']))*(1+(float)$r['waste_pct']/100);$moves[]=(object)['item_id'=>$r['inventory_item_id'],'location_id'=>$loc,'qty'=>-$need,'unit_cost'=>self::cost($p,$r['inventory_item_id']),'source_order_item_id'=>$oid];}}}if($moves)InventoryService::postMovement($p,'SALE','ORDER',$order,$bill,$moves,current_user()['id']??null);}
+ private static function postInventory(PDO $p,string $order,string $bill,array $items):void{$loc=self::defaultLocation($p);$moves=[];foreach($items as $i){$mid=self::resolveMenuId($p,$i);$m=$p->prepare("SELECT mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");$m->execute([$mid]);$x=$m->fetch();if(!$x)continue;$qty=(float)$i['qty'];$oi=$p->prepare("SELECT id FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=? LIMIT 1");$oi->execute([$order,$mid,$i['name']]);$oid=$oi->fetchColumn();if($x['consumption_type']==='DIRECT_INVENTORY'&&$x['direct_inventory_item_id'])$moves[]=(object)['item_id'=>$x['direct_inventory_item_id'],'location_id'=>$loc,'qty'=>-$qty*(float)$x['direct_inventory_qty'],'unit_cost'=>self::cost($p,$x['direct_inventory_item_id']),'source_order_item_id'=>$oid];elseif($x['consumption_type']==='RECIPE'&&$x['recipe_id']){$ri=$p->prepare("SELECT inventory_item_id,qty_per_yield,waste_pct FROM recipe_ingredients WHERE recipe_id=?");$ri->execute([$x['recipe_id']]);foreach($ri->fetchAll() as $r){$need=((float)$r['qty_per_yield']*$qty/max(.000001,(float)$x['yield_qty']))*(1+(float)$r['waste_pct']/100);$moves[]=(object)['item_id'=>$r['inventory_item_id'],'location_id'=>$loc,'qty'=>-$need,'unit_cost'=>self::cost($p,$r['inventory_item_id']),'source_order_item_id'=>$oid];}}}if($moves)$moves=self::liveMoves($p,$moves,$bill);
+ if($moves)InventoryService::postMovement($p,'SALE','ORDER',$order,$bill,$moves,current_user()['id']??null);}
+ /* ============================================================
+    V172 — TOOTI HUI STOCK WIRING BILL KO NA ROKE.
+
+    Yeh error asal customer par aaya, Complete Payment dabate hi:
+
+        SQLSTATE[23000] 1452 ... stock_transaction_lines,
+        CONSTRAINT fk_stl_item ... REFERENCES inventory_items(id)
+
+    Matlab: kisi menu item ki recipe (ya us ka direct inventory link)
+    aise inventory item ki taraf ishara kar rahi thi jo us database
+    mein MOJOOD HI NAHI. Stock ki line likhte waqt database ne mana
+    kar diya, poora transaction ulat gaya, aur BILL BAND HI NA HUA —
+    customer counter par khara reh gaya.
+
+    Aisa kaise hota hai: recipe_ingredients par FK hai, to ek hi
+    database ke andar yeh ban nahi sakta. Magar cloud par rows SYNC
+    se aati hain — agar bachcha row (recipe ki line) pohanch jaye aur
+    us ka baap (inventory item) kisi wajah se chhoot jaye, to cloud
+    par yehi soorat ban jati hai.
+
+    FAISLA: stock ka hisaab ahem hai, magar GAHAK KI ADAYEGI ZYADA
+    ahem hai. Ab aisi line chup chaap chhanat di jati hai aur error
+    log mein likh di jati hai (malik ko nazar aaye aur wo recipe
+    theek kar le), bill band ho jata hai. Pehle ulta tha: stock bhi
+    nahi lagta tha AUR bill bhi nahi banta tha.
+
+    `deleted_at` yahan nahi dekha jata — band kiya hua inventory item
+    bhi mojood hota hai aur us ka stock katna chahiye. Sirf yeh dekha
+    jata hai ke row hai ya nahi.
+    ============================================================ */
+ private static function liveMoves(PDO $p,array $moves,string $bill):array{
+    $ids=[]; foreach($moves as $m){ $i=(string)($m->item_id??''); if($i!=='')$ids[$i]=1; }
+    if(!$ids)return [];
+    $in=implode(',',array_fill(0,count($ids),'?'));
+    $q=$p->prepare("SELECT id FROM inventory_items WHERE id IN ($in)");
+    $q->execute(array_keys($ids));
+    $live=[]; foreach($q->fetchAll(\PDO::FETCH_COLUMN) as $id)$live[(string)$id]=1;
+    $keep=[]; $lost=[];
+    foreach($moves as $m){
+        $i=(string)($m->item_id??'');
+        if($i!==''&&isset($live[$i]))$keep[]=$m; else $lost[$i]=1;
+    }
+    if($lost){
+        try{ ErrorLog::op('stock/missing-item',
+             'Bill '.$bill.': stock not deducted for '.count($lost).' ingredient(s) - '
+            .'the inventory item no longer exists. Check the recipe for the items on this bill. IDs: '
+            .implode(', ',array_slice(array_keys($lost),0,5)), 'ERROR'); }catch(\Throwable $e){}
+    }
+    return $keep;
+ }
   /**
   * Is item ka kitchen printer.
   *
