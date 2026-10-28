@@ -73,13 +73,31 @@ function shift_report(array $sh, ?string $until): array {
   $oq=$p->prepare("SELECT COUNT(*) c, COALESCE(SUM(o.grand_total),0) g, MIN(o.bill_no) f, MAX(o.bill_no) l
                      FROM orders o WHERE o.site_id=? AND o.order_status='CLOSED' AND $scope");
   $oq->execute(array_merge([site_id()],$scopeArgs));$o=$oq->fetch();
-  $eq=$p->prepare("SELECT COALESCE(SUM(CASE WHEN payment_method='CASH' THEN amount ELSE 0 END),0) cashx, COALESCE(SUM(amount),0) allx FROM expenses WHERE site_id=? AND status='APPROVED' AND created_at>=? AND created_at<=?");
+  $eq=$p->prepare("SELECT COALESCE(SUM(amount),0) allx FROM expenses WHERE site_id=? AND status='APPROVED' AND created_at>=? AND created_at<=?");
   $eq->execute([site_id(),$from,$to]);$e=$eq->fetch();
-  $cash=(float)($methods['CASH']['amount']??0);$expected=(float)$sh['opening_cash']+$cash-(float)$e['cashx'];
+  /* ============================================================
+     V173 — DARAZ KA HISAAB AB SIRF EK JAGAH HAI.
+
+     Yahan apna alag hisaab lagta tha, aur `OpsService::shiftExpected()`
+     ka apna. Dono alag natije dete thay:
+
+       POS ka "Close account"      -> opening + cash - kharcha   (theek)
+       Shift Management ka "Close" -> opening + cash             (galat)
+
+     Yani ek hi shift do darwazon se band karein to expected do alag
+     aate, aur jo parchi chhapti wo usi number ko dikhati jis raaste se
+     band hui thi. Cashier ko wahi "difference" nazar aata tha.
+
+     Ab dono `OpsService::tillPieces()` se lete hain — ek hi hisaab,
+     ek hi natija, chahe kisi bhi darwaze se band karein.
+     ============================================================ */
+  $till=\Aio\Services\OpsService::tillPieces((string)($sh['id']??''));
+  $cash=$till['cash']; $cashx=$till['expenses'];
+  $expected=round($till['opening']+$cash-$cashx,2);
   return ['shift_no'=>$sh['shift_no'],'opened_at'=>substr((string)$sh['opened_at'],0,16),'opening_cash'=>(float)$sh['opening_cash'],
           'orders'=>(int)$o['c'],'gross_sales'=>(float)$o['g'],'first_bill'=>$o['f'],'last_bill'=>$o['l'],
           'sales_total'=>$sales,'by_method'=>$methods,'cash_sales'=>$cash,
-          'cash_expenses'=>(float)$e['cashx'],'all_expenses'=>(float)$e['allx'],'expected_cash'=>$expected];
+          'cash_expenses'=>$cashx,'all_expenses'=>(float)$e['allx'],'expected_cash'=>$expected];
 }
 /* Bill number ab node ke prefix ke saath (offline: "L1-0007", cloud: "0007").
    Warna do nodes ke bill takra kar cloud par ek doosre ko mita dete the. */

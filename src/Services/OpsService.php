@@ -169,28 +169,141 @@ final class OpsService
     }
 
     /** Shift ke doran jama hui asli cash — counting se pehle. */
+    /* ============================================================
+       V173 — DARAZ KA HISAAB EK HI JAGAH SE BANTA HAI.
+
+       Shikayat: "shift closing ke waqt jo calculation hoti hai us mein
+       difference nahi aana chahiye."
+
+       Asal masla yeh tha ke do alag hisaab chal rahe thay:
+
+         - Parchi (khuli shift)  : opening + cash sale - kharcha
+         - `shiftExpected()`     : opening + cash sale        <- kharcha
+                                                                 ghataya hi
+                                                                 nahi jata tha
+
+       Nateeja: shift khuli ho to parchi 7,900 likhti, aur band karte hi
+       8,500 ho jata. Cashier ne theek 7,900 gine hote aur us par 600 ka
+       jhoota shortage par jata — theek utna hi jitna us ne daraz se
+       kharcha kiya hota.
+
+       Ab TEENON TUKRE EK HI JAGAH se aate hain (`tillPieces`), aur
+       expected bhi wahin se banta hai. Parchi ki teen lakeerein jama
+       karo to neeche wala number khud ba khud wahi banta hai.
+       ============================================================ */
     public static function shiftExpected(string $shiftId): float
     {
         try {
-            $q = DB::pdo()->prepare(
-                "SELECT cs.opening_cash
-                        + COALESCE((SELECT SUM(p.amount) FROM payments p
-                                     JOIN orders o ON o.id = p.order_id
-                                     JOIN payment_methods pm ON pm.id = p.payment_method_id
-                                    WHERE o.site_id = cs.site_id
-                                      AND p.status <> 'CANCELLED'
-                                      AND o.order_status <> 'VOID'
-                                      AND pm.method_type = 'CASH'
-                                      /* `payments` par `created_at` hai hi nahi — `paid_at` hai.
-                                         Aur agar payment shift se juri hui ho to wahi sab se
-                                         pukhta rabta hai, waqt ke muqable mein. */
-                                      AND (p.shift_id = cs.id
-                                           OR (p.shift_id IS NULL
-                                               AND p.paid_at >= cs.opened_at
-                                               AND (cs.closed_at IS NULL OR p.paid_at <= cs.closed_at)))),0) AS v
-                   FROM cashier_shifts cs WHERE cs.id = ? AND cs.site_id = ?");
-            $q->execute([$shiftId, site_id()]);
-            return (float)($q->fetchColumn() ?: 0);
+            $t = self::tillPieces($shiftId);
+            return round($t['opening'] + $t['cash'] - $t['expenses'], 2);
+        } catch (\Throwable $e) { return 0.0; }
+    }
+
+    /**
+     * Daraz ke teen tukre: subah ka float, cash sale, aur cash kharcha.
+     * Parchi aur `shiftExpected()` DONO yahin se lete hain — warna wohi
+     * purana farq dobara paida ho jata hai.
+     *
+     * @return array{opening:float,cash:float,expenses:float}
+     */
+    public static function tillPieces(string $shiftId): array
+    {
+        $p = DB::pdo();
+        $q = $p->prepare("SELECT opening_cash, opened_at, closed_at FROM cashier_shifts
+                           WHERE id=? AND site_id=? LIMIT 1");
+        $q->execute([$shiftId, site_id()]);
+        $sh = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$sh) return ['opening'=>0.0,'cash'=>0.0,'expenses'=>0.0];
+
+        $open  = (string)$sh['opened_at'];
+        $close = (string)($sh['closed_at'] ?: date('Y-m-d H:i:s'));
+        [$where, $args] = self::shiftBillWhere($shiftId, $open, $close);
+
+        return [
+            'opening'  => (float)$sh['opening_cash'],
+            'cash'     => self::cashSales($p, $where, $args),
+            'expenses' => self::cashExpenses($p, $shiftId, $open, $close),
+        ];
+    }
+
+    /* ============================================================
+       V173 — KAUN SE BILL IS SHIFT KE HAIN.
+
+       DO TABDEELIYAN:
+
+       1) SIRF POORE HUAY BILL. Pehle shart `order_status<>'VOID'` thi —
+          yani CANCEL aur HOLD wale bill bhi "sale" mein gin jate thay.
+          Asal data par yeh farq hai:
+              CLOSED    123,191   <- asal sale
+              CANCELLED  91,442   <- yeh bhi gini ja rahi thi
+              OPEN       20,245   <- aur yeh bhi
+          Malik ko raat ko qareeb dugni sale nazar aati thi.
+
+       2) BINA SHIFT WALA BILL SIRF EK SHIFT MEIN. Purane bills par
+          `shift_id` NULL hota hai, un ke liye waqt dekha jata hai. Magar
+          agar ek lambi shift (jaise 3 din wali) ke ANDAR koi chhoti
+          shift bhi chali ho, to wohi ek bill DONO ki report mein gin
+          jata tha — ek hi sale do dafa. Ab wo bill us shift ko milta
+          hai jo sab se BAAD mein khuli aur us waqt chal rahi thi, yani
+          sab se andar wali — baqi use nahi gintin.
+       ============================================================ */
+    private static function shiftBillWhere(string $shiftId, string $open, string $close): array
+    {
+        $where = "o.site_id=?
+                  AND o.order_status='CLOSED'
+                  AND (o.shift_id=?
+                       OR (o.shift_id IS NULL
+                           AND COALESCE(o.closed_at,o.created_at) BETWEEN ? AND ?
+                           AND NOT EXISTS (
+                                SELECT 1 FROM cashier_shifts s2
+                                 WHERE s2.site_id = o.site_id
+                                   AND s2.id <> ?
+                                   AND s2.deleted_at IS NULL
+                                   AND s2.opened_at > ?
+                                   AND s2.opened_at <= COALESCE(o.closed_at,o.created_at)
+                                   AND (s2.closed_at IS NULL
+                                        OR s2.closed_at >= COALESCE(o.closed_at,o.created_at)))))";
+        return [$where, [site_id(), $shiftId, $open, $close, $shiftId, $open]];
+    }
+
+    /* Daraz mein aane wali sale.
+       V173 — `COD` bhi yahan shamil hai: rider wapas aa kar naqd paisa
+       daraz mein hi daalta hai, is liye wo cash hai. Card, Raast,
+       Easypaisa, JazzCash, bank — in ka paisa daraz mein aata hi nahi,
+       wo parchi par "HOW IT WAS PAID" mein alag nazar aate hain. */
+    private static function cashSales(PDO $p, string $where, array $args): float
+    {
+        try {
+            $q = $p->prepare(
+                "SELECT COALESCE(SUM(pay.amount),0)
+                   FROM payments pay
+                   JOIN orders o ON o.id = pay.order_id
+                   JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                  WHERE $where AND pay.status<>'CANCELLED'
+                    AND pm.method_type IN ('CASH','COD')");
+            $q->execute($args);
+            return (float)$q->fetchColumn();
+        } catch (\Throwable $e) { return 0.0; }
+    }
+
+    /* Wo kharcha jo ISI shift mein DARAZ SE nikla.
+       V173 — pehle yahan sirf waqt dekha jata tha. `expenses` par
+       `payment_method` aur `shift_id` dono columns pehle se mojood thay
+       magar koi unhen parhta hi nahi tha. Nateeja: bank se gaya bijli ka
+       bill bhi daraz se ghata diya jata tha, aur doosri shift ka kharcha
+       bhi is shift par chars ho jata tha.
+       Purani rows par method khali ho sakta hai — un ko CASH hi mana
+       jata hai, jaisa pehle hota tha. */
+    private static function cashExpenses(PDO $p, string $shiftId, string $open, string $close): float
+    {
+        try {
+            $q = $p->prepare(
+                "SELECT COALESCE(SUM(e.amount),0) FROM expenses e
+                  WHERE e.site_id=? AND e.status<>'REJECTED' AND e.deleted_at IS NULL
+                    AND UPPER(COALESCE(NULLIF(e.payment_method,''),'CASH'))='CASH'
+                    AND (e.shift_id=? OR (e.shift_id IS NULL AND e.created_at BETWEEN ? AND ?))");
+            $q->execute([site_id(), $shiftId, $open, $close]);
+            return (float)$q->fetchColumn();
         } catch (\Throwable $e) { return 0.0; }
     }
 
@@ -276,8 +389,9 @@ final class OpsService
         if (!$s) throw new \RuntimeException('Shift not found.');
         if (strtoupper((string)$s['status']) !== 'OPEN') throw new \RuntimeException('This shift is already closed.');
 
-        $expected = self::shiftExpected($shiftId);
-        $var = round($counted - $expected, 2);
+        $till     = self::tillPieces($shiftId);
+        $expected = round($till['opening'] + $till['cash'] - $till['expenses'], 2);
+        $var      = round($counted - $expected, 2);
 
         $p->prepare("UPDATE cashier_shifts
                         SET closed_at=NOW(6), expected_cash=?, actual_cash=?, variance_amount=?,
@@ -325,7 +439,12 @@ final class OpsService
         $word = $var == 0 ? 'exactly balanced'
               : ($var > 0 ? ('over by ' . number_format(abs($var), 2))
                           : ('short by ' . number_format(abs($var), 2)));
+        /* V173 — teen tukre bhi wapas bhejte hain. Sirf "CASH SHORT 600"
+           keh dena ek bemani ilzaam hai; malik ko yeh nazar aana chahiye
+           ke number bana kaise: float + cash sale - kharcha. */
         return ['expected' => $expected, 'counted' => $counted, 'variance' => $var,
+                'opening'  => $till['opening'], 'cash_sales' => $till['cash'],
+                'cash_expenses' => $till['expenses'],
                 'message' => 'Shift ' . $s['shift_no'] . ' closed - cash ' . $word . '.'];
     }
 
@@ -368,12 +487,7 @@ final class OpsService
         $open  = (string)$sh['opened_at'];
         $close = (string)($sh['closed_at'] ?: date('Y-m-d H:i:s'));
 
-        /* Shift ke bills — shift_id se joro, aur jin par shift_id na ho
-           un ke liye waqt se. (Purane bills par shift_id NULL hai.) */
-        $where = "o.site_id=? AND o.order_status<>'VOID'
-                  AND (o.shift_id=? OR (o.shift_id IS NULL
-                       AND COALESCE(o.closed_at,o.created_at) BETWEEN ? AND ?))";
-        $args  = [site_id(), $shiftId, $open, $close];
+        [$where, $args] = self::shiftBillWhere($shiftId, $open, $close);
 
         $head = $p->prepare("SELECT COUNT(*) bills, COALESCE(SUM(o.subtotal),0) subtotal,
                                     COALESCE(SUM(o.discount_amount),0) discount,
@@ -424,28 +538,12 @@ final class OpsService
            waqt bharta hai), aur neeche "BALANCED 0" — jabke din bhar ki
            sale ho chuki hoti. Ab daraz ka asal hisaab parchi par banta
            hai: opening float + cash sales - cash kharcha. */
-        $cash = 0.0;
-        try {
-            $cq = $p->prepare(
-                "SELECT COALESCE(SUM(pay.amount),0)
-                   FROM payments pay
-                   JOIN orders o ON o.id = pay.order_id
-                   JOIN payment_methods pm ON pm.id = pay.payment_method_id
-                  WHERE $where AND pay.status<>'CANCELLED' AND pm.method_type='CASH'");
-            $cq->execute($args);
-            $cash = (float)$cq->fetchColumn();
-        } catch (\Throwable $e) {}
-
-        /* Expenses jo isi shift mein counter se nikle — cash count ka
-           hissa hain, is liye report par nazar aane chahiyen. */
-        $exp = 0.0;
-        try {
-            $eq = $p->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e
-                                WHERE e.site_id=? AND e.status<>'REJECTED' AND e.deleted_at IS NULL
-                                  AND e.created_at BETWEEN ? AND ?");
-            $eq->execute([site_id(), $open, $close]);
-            $exp = (float)$eq->fetchColumn();
-        } catch (\Throwable $e) {}
+        /* V173 — ab yeh dono wahin se aate hain jahan se `shiftExpected()`
+           leta hai. Pehle ek hi cheez do jagah ginni jati thi aur dono
+           ka natija alag hota tha — parchi par "Expected" us hisaab se
+           mail hi nahi khata tha jo usi parchi par upar likha hota. */
+        $cash = self::cashSales($p, $where, $args);
+        $exp  = self::cashExpenses($p, $shiftId, $open, $close);
 
         return [
             'shift'    => (string)$sh['shift_no'],
@@ -458,7 +556,15 @@ final class OpsService
             'closed'   => $sh['closed_at'] ? substr((string)$sh['closed_at'], 0, 16) : '',
             'opening'  => (float)$sh['opening_cash'],
             'cash_sales' => $cash,
-            'expected' => (float)$sh['expected_cash'],
+            /* V173 — khuli shift par `expected_cash` column abhi khali
+               hota hai (wo band karte waqt bharta hai). Pehle parchi
+               khud dobara hisaab lagati thi — aur usi se do alag natije
+               paida hote thay. Ab dono soorat mein number YAHIN banta
+               hai: band shift ka mehfooz number, khuli shift ka wahi
+               teen tukron wala hisaab. */
+            'expected' => $sh['closed_at']
+                            ? (float)$sh['expected_cash']
+                            : round((float)$sh['opening_cash'] + $cash - $exp, 2),
             'counted'  => (float)$sh['actual_cash'],
             'variance' => (float)$sh['variance_amount'],
             'bills'    => (int)($tot['bills'] ?? 0),

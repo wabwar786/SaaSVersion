@@ -372,7 +372,11 @@ final class BillTemplate
         if ($hasCash) self::put($L, self::rows('Cash sales', self::money($cash)));
         if ($exp > 0) self::put($L, self::rows('Less cash expenses', '-' . self::money($exp)));
 
-        $expected = $isOpen ? ((float)$r['opening'] + $cash - $exp) : (float)$r['expected'];
+        /* V173 — parchi ab apna hisaab nahi lagati. Number wahin se aata
+           hai jahan se `shiftExpected()` leta hai, warna ek hi parchi par
+           do alag natije chhap jate thay: upar "3,000 + 5,500 - 1,500"
+           aur neeche "Expected 8,500". */
+        $expected = (float)$r['expected'];
         self::put($L, self::rows('Expected in till', self::money($expected), true));
 
         if ($isOpen) {

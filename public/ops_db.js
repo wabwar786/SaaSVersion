@@ -158,9 +158,19 @@
       if (v === null) return;
       var res = req('shiftmgr-close', { id: open.id, counted: Number(v || 0) });
       if (!res.ok) { toast(res.message || 'Could not close shift', true); return; }
-      alert('Expected in till: ' + money(res.expected)
-          + '\nYou counted:     ' + money(res.counted)
-          + '\nDifference:      ' + (res.variance > 0 ? '+' : '') + money(res.variance));
+      /* V173 — poora hisaab dikhao, sirf natija nahi. "CASH SHORT 600"
+         apne aap mein ek bemani ilzaam hai; yeh nazar aana chahiye ke
+         number bana kaise hai. */
+      var v = Number(res.variance || 0);
+      alert('Opening float      ' + money(res.opening)
+          + '\nCash sales       + ' + money(res.cash_sales)
+          + '\nCash expenses    - ' + money(res.cash_expenses)
+          + '\n--------------------------------'
+          + '\nExpected in till   ' + money(res.expected)
+          + '\nYou counted        ' + money(res.counted)
+          + '\n--------------------------------'
+          + '\n' + (Math.abs(v) < 1 ? 'BALANCED' : (v > 0 ? 'CASH OVER' : 'CASH SHORT'))
+          + '           ' + (v > 0 ? '+' : '') + money(v));
       toast(res.message);
       /* Shift close hote hi closing report khud khul jati hai — cashier
          ko yaad rakhna na pare, aur raat ko counter par hamesha ek

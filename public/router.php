@@ -455,7 +455,7 @@ if($uiDir!=='approved_ui/retail' &&
                    'stock_transfer.html','stock_count.html','accounting.html',
                    'closing_history.html','activity_log.html','purchase_orders.html','backup_restore.html',
                    'online_orders.html','whatsapp_notifications.html'],true))
-  $tail.='<script src="/ops_db.js?b=v167"></script>';
+  $tail.='<script src="/ops_db.js?b=v173"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
 $posB=strripos($html,'</body>');

@@ -3084,20 +3084,42 @@ function openGate(){
     shift={id:r.id,shift_no:r.shift_no,counter:r.counter};ov.remove();renderStrip();toast('Shift '+r.shift_no+' opened ('+(r.counter||'')+')');newBillFlow();
   };
 }
-function repRows(r){
+/* `hide` = ginti se pehle wali soorat: sale to dikhao, magar daraz ka
+   jawab (expected) chhupa rakho — warna cashier gin-ne ke bajaye wahi
+   number likh deta hai. (V173) */
+function repRows(r,hide){
   function kv(a,b){return '<div class="kv"><span>'+a+'</span><b>'+b+'</b></div>'}
   var h=kv('Shift',esc(r.shift_no))+kv('Opened',esc(r.opened_at))+(r.closed_at?kv('Closed',esc(r.closed_at)):'');
   h+=kv('Opening Cash',money(r.opening_cash));
-  h+=kv('Orders',r.orders+(r.first_bill?(' (#'+esc(r.first_bill)+' - #'+esc(r.last_bill)+')'):''));
+  h+=kv('Bills (poore huay)',r.orders+(r.first_bill?(' (#'+esc(r.first_bill)+' - #'+esc(r.last_bill)+')'):''));
   h+=kv('Gross Sales',money(r.gross_sales));
   for(var k in (r.by_method||{}))h+=kv('&nbsp;&nbsp;'+esc(k),money(r.by_method[k].amount)+' ('+r.by_method[k].count+')');
   h+=kv('Cash Expenses','- '+money(r.cash_expenses));
-  h+=kv('<b style="color:var(--ink)">Expected Cash</b>','<b>'+money(r.expected_cash)+'</b>');
-  if(typeof r.actual_cash!=='undefined'){
+  if(!hide)h+=kv('<b style="color:var(--ink)">Expected Cash</b>','<b>'+money(r.expected_cash)+'</b>');
+  if(!hide&&typeof r.actual_cash!=='undefined'){
     h+=kv('Actual Counted',money(r.actual_cash));
     h+=kv('<b style="color:var(--ink)">Variance</b>','<b style="color:'+(Math.abs(r.variance)<1?'var(--ok)':'var(--brand)')+'">'+money(r.variance)+'</b>');
   }
   return h;
+}
+/* V173 — ginti likhte hi poora hisaab saamne khul jata hai. Cashier ko
+   yeh nazar aana chahiye ke number BANA KAISE hai, warna "CASH SHORT"
+   ek bemani ilzaam lagta hai. */
+function tillCalcHtml(r,counted){
+  var exp=Number(r.expected_cash)||0, v=counted-exp;
+  function ln(a,b,bold){return '<div class="kv"'+(bold?' style="border-top:1px solid var(--line);padding-top:6px"':'')
+    +'><span>'+a+'</span><b>'+b+'</b></div>'}
+  return '<div class="box" style="background:var(--soft)">'
+    + ln('Opening float',money(r.opening_cash))
+    + ln('Cash sales',money(r.cash_sales))
+    + ln('Less cash expenses','- '+money(r.cash_expenses))
+    + ln('<b>Daraz mein hone chahiyen</b>','<b>'+money(exp)+'</b>',true)
+    + ln('Aap ne gine',money(counted))
+    + '<div class="kv" style="border-top:2px solid var(--ink);padding-top:7px">'
+      + '<span><b>'+(Math.abs(v)<1?'BARABAR':(v>0?'CASH OVER':'CASH SHORT'))+'</b></span>'
+      + '<b style="color:'+(Math.abs(v)<1?'var(--ok)':'var(--brand)')+'">'
+      + (v>0?'+':'')+money(v)+'</b></div>'
+    + '</div>';
 }
 function closeShift(){
   var pr=api('shift-preview');
@@ -3113,9 +3135,29 @@ function closeShift(){
     toast(pr.message||'Failed');return;
   }
   var rep=pr.report;
-  var ov=modal('<div class="dh"><h3>Shift Closing &mdash; '+esc(rep.shift_no)+'</h3><p>Cash count karke actual amount enter please</p></div>'
-    +'<div class="db">'+repRows(rep)+'<div class="box"><label class="f">Actual Counted Cash (PKR)</label>'
-    +'<input class="inp" id="ac" type="number" value="'+Math.round(rep.expected_cash)+'" style="font-size:17px;font-weight:800">'
+  /* ============================================================
+     V173 — PEHLE GINO, PHIR HISAAB DEKHO.
+
+     Pehle yahan do kharabiyan thin:
+
+     1. `value="'+Math.round(rep.expected_cash)+'"` — ginti ka khana
+        pehle se bhara hua aata tha, usi raqam se jo hona chahiye thi.
+        Cashier sirf "Close" dabata aur farq hamesha sifar aata. Yani
+        ginti hoti hi nahi thi, aur asal kami kabhi pakri na jati.
+
+     2. "Expected Cash" ginti se PEHLE nazar aa jata tha — to cashier
+        ko gin-ne ki zaroorat hi na rehti, wohi number likh deta.
+
+     Ab khana KHALI aata hai aur expected chhupa rehta hai. Cashier
+     raqam likhta hai, phir neeche poora hisaab khud ba khud khul jata
+     hai: opening + cash sale - kharcha = expected, aur farq.
+     ============================================================ */
+  var ov=modal('<div class="dh"><h3>Shift Closing &mdash; '+esc(rep.shift_no)+'</h3><p>Pehle daraz ka cash ginein, phir yahan likhein</p></div>'
+    +'<div class="db">'+repRows(rep,true)
+    +'<div class="box"><label class="f">Daraz mein gine hue cash (PKR)</label>'
+    +'<input class="inp" id="ac" type="number" inputmode="decimal" placeholder="ginti ke baad likhein"'
+    +' style="font-size:17px;font-weight:800">'
+    +'<div id="acCalc" class="hide" style="margin-top:11px"></div>'
     +'<label class="f" style="margin-top:10px">Note</label><input class="inp" id="cn" placeholder="Optional"></div>'
     /* ---------- HANDOVER ----------
        Shift khatam karte waqt do sawal alag hain: bills kis ke zimme
@@ -3185,9 +3227,25 @@ function closeShift(){
       closeShift();
     }
   };
+  /* V173 — raqam likhte hi neeche hisaab khul jata hai, aur har harf par
+     taza hota rehta hai. Khali kar dein to dobara chhup jata hai. */
+  (function(){
+    var inp=ov.querySelector('#ac'), box=ov.querySelector('#acCalc');
+    if(!inp||!box)return;
+    function draw(){
+      var t=String(inp.value||'').trim();
+      if(t===''){ box.className='hide'; box.innerHTML=''; return; }
+      box.className=''; box.innerHTML=tillCalcHtml(rep,Number(t)||0);
+    }
+    inp.oninput=draw; inp.onchange=draw;
+    setTimeout(function(){ try{inp.focus()}catch(e){} },120);
+  })();
+
   ov.querySelector('#cb').onclick=function(){
+    var typed=String(ov.querySelector('#ac').value||'').trim();
+    if(typed===''){toast('Pehle daraz ka cash gin kar likhein');return}
     this.disabled=true;this.textContent='Closing...';
-    var r=api('shift-close',{actual_cash:Number(ov.querySelector('#ac').value||0),
+    var r=api('shift-close',{actual_cash:Number(typed||0),
       /* BUG THA: `#clrChk` is modal mein hai hi nahi. `null.checked`
          padhne par handler wahin mar jata tha — button "Closing..." par
          atak jata aur shift kabhi close na hoti. Khamosh crash. */
