@@ -555,6 +555,57 @@ final class Sync
                 unset($data['image_url']);
             }
 
+            /* ============================================================
+               V174 — BAND HO CHUKA BILL SYNC SE DOBARA NAHI KHULTA.
+
+               Shikayat: "bill close hone ke baad kabhi kabhi wapis Hold
+               mein aa jata hai."
+
+               Poore software mein `order_status='OPEN'` SIRF naya order
+               banate waqt likha jata hai — koi bhi code band bill ko
+               dobara nahi kholta. Magar SYNC row ko poora badal deta
+               hai, aur cloud push par last-write-wins lagta hi nahi:
+               jo row node bhejta hai, cloud bilkul waise hi likh deta
+               hai.
+
+               Nateeja yeh banta tha:
+                 - bill cloud par band hua (ya pehle sync ho kar band
+                   hua aur node ki apni copy khuli reh gayi)
+                 - node ne agle sync par apni PURANI khuli copy bheji
+                 - cloud ne CLOSED ko OPEN kar diya, hold_status 1 —
+                   aur bill dobara Hold Bills mein aa gaya
+
+               Chala kar dekha gaya: CLOSED -> OPEN, hold_status 0 -> 1,
+               node ki row 10 minute purani hone ke bawajood.
+
+               Qanoon ab yeh hai: bill ka safar sirf AAGE chalta hai.
+               OPEN -> CLOSED/CANCELLED/VOID. Jo bill yahan khatam ho
+               chuka, usay koi bahar se aane wali row dobara nahi khol
+               sakti. Aisi row chhorh di jati hai aur log mein darj ho
+               jati hai, taake nazar bhi aaye.
+
+               Poori row chhorhte hain, sirf status nahi — kyunke agar
+               node ki copy abhi khuli hai to us par naye items bhi lag
+               chuke ho sakte hain, aur wo band bill par likhna wohi
+               purana "band bill dobara likh diya" wala nuqsaan hai.
+               ============================================================ */
+            if ($table === 'orders'
+                && isset($data['order_status'])
+                && strtoupper(trim((string)$data['order_status'])) === 'OPEN') {
+                try {
+                    $sq = $pdo->prepare("SELECT order_status FROM orders WHERE id=? LIMIT 1");
+                    $sq->execute([$data['id']]);
+                    $localStatus = strtoupper(trim((string)($sq->fetchColumn() ?: '')));
+                    if ($localStatus !== '' && $localStatus !== 'OPEN') {
+                        $skipped++;
+                        self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'SKIPPED',
+                            'reason' => 'bill '.(string)($data['bill_no'] ?? '').' is already '
+                                        .$localStatus.' here - an OPEN copy cannot reopen it'];
+                        continue;
+                    }
+                } catch (\Throwable $e) { /* pehra na chale to purana amal */ }
+            }
+
             try {
                 // Last-write-wins: local copy nayi ho to chhoR do
                 if ($lastWriteWins && $ts && !empty($data[$ts])) {
@@ -573,14 +624,54 @@ final class Sync
                      - wahi id maujood  -> UPDATE by id
                      - nahi maujood     -> INSERT; koi doosri unique takra
                                            jaye to row REJECT + conflict log. */
-                $ex = $pdo->prepare("SELECT 1 FROM `$table` WHERE id=? LIMIT 1");
+                /* ============================================================
+                   V174 — EK BUSINESS KI ROW DOOSRE BUSINESS SE NA BADLE.
+
+                   Pehle row sirf `id` se dhoondi jati thi aur `UPDATE
+                   ... WHERE id=?` chalti thi — tenant ki koi shart nahi.
+                   Saath hi upar `tenant_id` zabardasti bhejne wale node
+                   ka laga diya jata hai. Dono mil kar yeh bante thay:
+
+                     agar kisi doosre business ki row ka id wohi nikla,
+                     to us ki row BADAL bhi jati aur us ka tenant_id bhi
+                     is business ka ho jata — yani doosre ka bill, menu
+                     ya customer is business mein chala aata.
+
+                   UUID random hote hain, is liye yeh ittefaqan nahi hota.
+                   Magar ek bohat aam shortcut se zaroor hota: kisi naye
+                   customer ke liye chalta hua offline folder COPY kar
+                   dena. Us soorat mein dono ke saare id bilkul ek jaise
+                   hote hain, aur cloud par dono businesses ek doosre ka
+                   data mitate rehte — bilkul khamoshi se.
+
+                   Ab row apne hi business ke andar dhoondi jati hai, aur
+                   UPDATE bhi usi shart ke sath chalti hai. Kisi doosre
+                   business ki row mile to usay HAATH NAHI LAGATE —
+                   conflict mein darj kar ke chhorh dete hain.
+                   ============================================================ */
+                $scoped = ($hasTenant && $forceTenantId !== null);
+                $ex = $pdo->prepare($scoped
+                        ? "SELECT tenant_id FROM `$table` WHERE id=? LIMIT 1"
+                        : "SELECT 1 FROM `$table` WHERE id=? LIMIT 1");
                 $ex->execute([$data['id']]);
-                if ($ex->fetchColumn()) {
+                $found = $ex->fetchColumn();
+                if ($scoped && $found !== false && (string)$found !== (string)$forceTenantId) {
+                    $conflicts++;
+                    self::$lastConflicts[] = ['table' => $table, 'id' => (string)$data['id'],
+                        'key' => isset($data['bill_no']) ? ('bill '.$data['bill_no']) : '',
+                        'error' => 'this id already belongs to another business - row not applied'];
+                    self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'CONFLICT',
+                        'reason' => 'this id already belongs to another business on the cloud'];
+                    continue;
+                }
+                if ($found !== false) {
                     $upd = array_diff_key($data, ['id' => 1]);
                     if ($upd) {
                         $set = implode(',', array_map(fn($k) => "`$k`=?", array_keys($upd)));
                         $args = array_values($upd); $args[] = $data['id'];
-                        $pdo->prepare("UPDATE `$table` SET $set WHERE id=?")->execute($args);
+                        $sql = "UPDATE `$table` SET $set WHERE id=?";
+                        if ($scoped) { $sql .= " AND tenant_id=?"; $args[] = $forceTenantId; }
+                        $pdo->prepare($sql)->execute($args);
                     }
                     $applied++;
                     self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'UPDATED', 'reason' => ''];

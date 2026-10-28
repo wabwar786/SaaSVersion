@@ -117,7 +117,29 @@ final class ReportService
     {
         [$w, $a] = Scope::orderWhere($alias);
         self::$scopeArgs = $a;
-        return "$alias.site_id = ? AND $alias.order_status <> 'VOID'
+        /* ============================================================
+           V174 — REPORT MEIN BHI SIRF POORE HUAY BILL.
+
+           V173 mein shift ki closing parchi se cancel aur hold wale
+           bill nikaal diye gaye thay. Magar YEH lakeer reh gayi thi —
+           aur yehi 25 reports chalati hai, un mein Sale Summary bhi
+           jo malik roz dekhta hai.
+
+           Purani shart `order_status <> 'VOID'` thi, yani CANCEL aur
+           HOLD wale bill bhi "sale" mein gin jate thay. Isi database
+           par farq itna tha:
+
+               report kehti thi   267,515
+               asal sale          172,731
+               -----------------------------
+               jhooti sale         94,784   (55% zyada)
+
+           Cancel aur void wale bill ab bhi nazar aate hain — un ki
+           apni report hai ("Void / cancelled bills"), jo alag shart
+           par chalti hai. Wo chhupaye nahi gaye, sirf SALE ki ginti
+           se bahar kiye gaye hain.
+           ============================================================ */
+        return "$alias.site_id = ? AND $alias.order_status = 'CLOSED'
                 AND DATE(COALESCE($alias.closed_at, $alias.created_at)) BETWEEN ? AND ?
                 AND $w";
     }
@@ -594,6 +616,10 @@ final class ReportService
     }
 
     /** Sirf void / cancelled bills — wajah aur user ke sath. */
+    /* V174 — is report ka naam hi Void / cancelled hai, magar yeh sirf
+       VOID dekhti thi: CANCEL kiye hue bill kahin nazar hi nahi aate
+       thay. Ab ke wo sale ki ginti se bahar ho chuke hain, un ka kahin
+       dikhna aur bhi zaroori hai — warna wo bas gayab ho jate. */
     private static function r_voids(string $f, string $t): array
     {
         $rows = self::q(
@@ -610,7 +636,7 @@ final class ReportService
                LEFT JOIN users u ON u.id = o.created_by_user_id
               WHERE o.site_id = ?
                 AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
-                AND o.order_status = 'VOID'
+                AND o.order_status IN ('VOID','CANCELLED')
               ORDER BY d DESC, o.bill_no DESC",
             [site_id(), $f, $t]);
 
