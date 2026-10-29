@@ -467,9 +467,31 @@ final class Auth {
         $mi = self::moduleIndustry($key);
         if ($mi !== null && $mi !== 'COMMON' && $mi !== self::tenantIndustry()) return false;
 
-        // 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai
+        /* 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai.
+
+           V175 — ALWAYS_ON YAHAN BHI. Yeh do pehre hain aur in ka qanoon
+           alag ho gaya tha:
+
+             gateByFeatures()  -> ALWAYS_ON girne nahi deta  (sidebar,
+                                  pos-boot, Users & Access)
+             canModule()       -> girne deta tha             (router ka
+                                  page gate)
+
+           Nateeja yeh nikla ke sidebar mein "Activate / Renew" NAZAR
+           AATA tha, aur dabane par router usay pehle allowed page par
+           bhej deta tha — POS par, jahan khali cart dekh kar New Bill
+           ka dialog khud khul jata. Customer ko lagta Renew ka button
+           hi kharab hai.
+
+           Aur masla theek us waqt hota tha jab customer WAQT PAR renew
+           karna chahta — expire hone ke BAAD router activate.html ko
+           publicPages mein daal deta hai aur yeh gate chalta hi nahi.
+           V149 ne yeh ALWAYS_ON gateByFeatures() par laga diya tha, is
+           jagah rah gaya. */
         $feat = self::tenantFeatures();
-        if ($feat !== null && !in_array($key, $feat, true)) return false;
+        if ($feat !== null
+            && !in_array($key, $feat, true)
+            && !in_array($key, \Aio\Services\ModuleGroups::ALWAYS_ON, true)) return false;
         // 2) User-level permission
         if (self::isAdmin()) return true;
         // V141 — session ki jami hui copy nahi, taza list.
@@ -528,4 +550,4 @@ final class Auth {
     }
 }
 
-// build: V151 build 2026-10-12
+// build: V175 build 2026-10-29

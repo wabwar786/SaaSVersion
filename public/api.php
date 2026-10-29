@@ -3183,6 +3183,12 @@ case 'sa-fbr-toggle':needSuper();$d=body();
  }
  $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='fbr')));
  if($on)$cur[]='fbr';
+ /* V175 — ALWAYS_ON YAHAN SE KABHI NA GIREIN.
+    Upar wali branch poori list `platform_modules` se khud banati hai.
+    Us lamhe jo kuch wahan na ho, wo is business par HAMESHA ke liye
+    band ho jata hai — chahe wo renewal ki screen hi kyun na ho. Do
+    demo business bilkul isi tarah `activate` se mehroom huay. */
+ foreach(\Aio\Services\ModuleGroups::ALWAYS_ON as $k)if(!in_array($k,$cur,true))$cur[]=$k;
  $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
    ->execute([json_encode(array_values($cur)),$tid]);
  \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'enabled':'band').' done');
@@ -3302,6 +3308,9 @@ case 'sa-owner-mobile-toggle':needSuper();
  }
  $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='owner_mobile')));
  if($on)$cur[]='owner_mobile';
+ /* V175 — ALWAYS_ON yahan se bhi kabhi na girein (wajah FBR wale
+    switch par likhi hai — yeh dono ek hi tareeqe par chalte hain). */
+ foreach(\Aio\Services\ModuleGroups::ALWAYS_ON as $k)if(!in_array($k,$cur,true))$cur[]=$k;
  $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
    ->execute([json_encode(array_values($cur)),$tid]);
  Audit::log($on?'OWNER_APP_ON':'OWNER_APP_OFF','platform',['label'=>$tid]);
@@ -3655,8 +3664,9 @@ case 'sa-licence-set':needSuper();$d=body();
     chalta tha: na validation, na grace, na suspend/activate. */
  $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $p=DB::pdo();
- $tq=$p->prepare("SELECT id,name FROM tenants WHERE id=? AND deleted_at IS NULL LIMIT 1");
+ $tq=$p->prepare("SELECT id,name,is_demo FROM tenants WHERE id=? AND deleted_at IS NULL LIMIT 1");
  $tq->execute([$tid]);$ten=$tq->fetch();if(!$ten)fail('Business not found',404);
+ $isDemo=(int)($ten['is_demo']??0)===1;
 
  $exp=trim((string)($d['expiry_date']??''));
  $add=(int)($d['add_months']??0);
@@ -3668,7 +3678,16 @@ case 'sa-licence-set':needSuper();$d=body();
    $exp=date('Y-m-d',strtotime($base.' +'.$add.' month'));
  }
  if($exp===''||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$exp))fail('Enter an expiry date as YYYY-MM-DD, or choose how many months to add');
- if($exp<date('Y-m-d'))fail('That expiry date is already in the past');
+ /* V175 — GUZRI HUI TAREEKH SIRF DEMO PAR.
+    Asli customer par guzri tareekh daalna hamesha ghalti hoti hai: wo
+    foran block ho jata hai aur usay khabar bhi nahi hoti. Magar expiry
+    ka nizam khud bhi test hona chahiye, aur ab tak us ke liye database
+    par seedhi SQL chalani parti thi — jo ek ghalat WHERE par har
+    customer band kar sakti thi.
+
+    Ab wo test is screen se ho sakta hai, magar SIRF us business par
+    jis par `tenants.is_demo = 1` hai. */
+ if($exp<date('Y-m-d') && !$isDemo)fail('That expiry date is already in the past. (A past date can only be set on a demo business.)');
 
  $status=strtoupper(trim((string)($d['status']??'ACTIVE')));
  if(!in_array($status,['ACTIVE','SUSPENDED'],true))$status='ACTIVE';
@@ -3931,4 +3950,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V163 build 2026-10-25
+// build: V175 build 2026-10-29

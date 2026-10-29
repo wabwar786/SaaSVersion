@@ -128,13 +128,24 @@ hain. Wahan purani shart `order_status <> 'VOID'` lagi hui thi.
 
 Isi database par, pichle 30 din:
 
-    report kehti thi    267,515
+    report kehti thi    213,416
     asal sale           172,731
     ----------------------------
-    jhooti sale          94,784      (55% zyada)
+    jhooti sale          40,685
 
-    kyunke:  CANCELLED  71 bill   93,741
-             OPEN       31 bill   40,685
+    kyunke:  OPEN (rokay hue) bill   31 bill   40,685
+
+    *** V175 KI TASHEEH ***
+    Yahan pehle likha tha: "CANCELLED 71 bill 93,741". WO GHALAT THA,
+    aur ghalti meri thi. Wo CANCELLED rows SOFTWARE ne nahi likhi
+    thin — meri apni test cleanup ki SQL ne likhi thin. Software kabhi
+    `CANCELLED` nahi likhta; hold cancel karne par bhi `VOID` likha
+    jata hai. Is liye aap ki asli report mein us 93,741 ka koi wujood
+    nahi tha.
+
+    Fix phir bhi durust hai aur usi tarah zaroori: report ab sirf
+    CLOSED bill ginti hai, aur rokay hue (OPEN) bill us se bahar hain —
+    yehi 40,685 wali asal kharabi thi.
 
 AB sirf poore huay (CLOSED) bill ginay jate hain.
 

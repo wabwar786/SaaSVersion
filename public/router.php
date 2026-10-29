@@ -205,6 +205,18 @@ if(!in_array($name,$publicPages,true)){
   $key=($isRetail && !in_array($name,$sharedPages,true))
        ? ($retailModule[$name]??null)
        : ($fileModule[$name]??null);
+  /* ============================================================
+     V175 — RENEW KA RAASTA KABHI BAND NA HO.
+
+     `Auth::canModule()` ab ALWAYS_ON ka lihaz karti hai, is liye yeh
+     lakeer asal fix nahi — yeh doosra taala hai. Renewal wo ek screen
+     hai jis ke band hone ka matlab yeh hai ke customer paisay dena
+     chahta ho to bhi na de sake. Us ka raasta kisi features ki list,
+     kisi role, ya kisi aainda ki ghalti par nahi chhorna.
+
+     Login ki shart phir bhi lagti hai (upar wali lakeer), sirf module
+     ka pehra hatta hai. */
+  if($name==='activate.html') $key=null;
   /* V78 — DASHBOARD par bhi ijazat check hoti hai.
      Pehle yahan `$key!=='dashboard'` tha, yani dashboard HAMESHA khula
      rehta tha. Cashier wahan se poore branch ki sale dekh sakta tha —
@@ -464,4 +476,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V167 build 2026-10-25
+// build: V175 build 2026-10-29
