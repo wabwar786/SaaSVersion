@@ -884,7 +884,16 @@ function boot(){
     $('#whoRole').textContent=BOOT.cashier.role;
     $('#avIni').textContent=BOOT.cashier.name.split(/\s+/).map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();
   }
-  if(BOOT.settings){SET=BOOT.settings;svc={type:'percent',value:Number(SET.service_charge)||0}}
+  /* V176 — SERVICE CHARGE HAMESHA SIFAR SE SHURU.
+
+     Pehle yahan `svc` Settings ki qadar se bhar diya jata tha. Malik
+     ka faisla yeh hai ke service charge wo KHUD us bill par lagaye
+     jis par lagana ho — is liye POS khulte waqt bhi sifar, aur har
+     naye bill par bhi sifar (dekho `newBill()`).
+
+     `SET` phir bhi bhara jata hai: us mein tax ke rate aur delivery
+     ki default raqam hoti hai, jin ka kaam waise hi chalta rahe. */
+  if(BOOT.settings){SET=BOOT.settings;}
   CAN=BOOT.can||{manage:false};
   applyBrand();
   applyRole();
@@ -916,7 +925,18 @@ function boot(){
      hatte hi timer mar jata tha. Ab background loop (60s) kaam karta hai;
      yahan sirf chip refresh hota hai. */
   if(!shift){openGate();return}
-  if(!cart.length&&!billStarted)newBillFlow();
+  /* ============================================================
+     V176 — POS KHULTE HI NEW BILL KA DIALOG NAHI KHULEGA.
+
+     Pehle yahan `if(!cart.length&&!billStarted)newBillFlow();` tha,
+     yani safha load hote hi cashier seedha dialog mein aa girta tha.
+     Jab bhi koi cheez safha dobara load karati (login, redirect,
+     refresh), dialog "apne aap" khulta nazar aata.
+
+     Ab dialog SIRF New Bill dabane par khulta hai. Jo cashier bina
+     bill shuru kiye item dabata hai, us ke liye raasta waise hi
+     mojood hai (`addItem()` -> "Choose the bill type first").
+     ============================================================ */
 }
 function fillTables(){}
 function fillCustomers(){}
@@ -2323,6 +2343,19 @@ function waSend(kind,lines,info){
 /* ================= NEW BILL / HOLDS / DUPLICATE ================= */
 function newBill(next,skipFlow){
   cart=[];disc={type:'flat',value:0};preQty={};
+  /* ============================================================
+     V176 — SERVICE CHARGE BHI NAYE BILL PAR SAAF.
+
+     Yeh lakeer yahan NAHI thi, aur yehi asal kharabi thi: cart,
+     discount, delivery, mode, payment — sab saaf hote thay, magar
+     `svc` jaise ka waisa reh jata tha. Nateeja yeh ke ek dafa kisi
+     ne haath se service charge laga diya, to wo HAR AGLE BILL par
+     chalta rehta tha — jab tak POS ka safha dobara load na ho.
+
+     Cashier ko lagta tha service charge "apne aap" lagna shuru ho
+     gaya hai. Ab naya bill hamesha sifar se shuru hota hai.
+     ============================================================ */
+  svc={type:'percent',value:0};
   /* V171 — naya bill = naya kiraya. Pichle delivery bill ka charge
      agle bill par nahi chipakna chahiye. Home Delivery chunte hi
      Settings wali default raqam khud bhar jati hai (dekho `done()`). */
@@ -2980,7 +3013,12 @@ $('#sysBtn').onclick=function(){
       tax_card:Number(ov.querySelector('#stCard').value||0),service_charge:Number(ov.querySelector('#stSvc').value||0),
       delivery_charge:Number(ov.querySelector('#stDlv').value||0)});
     if(!r.ok){this.disabled=false;this.textContent='Save Tax Settings';toast(r.message||'Failed');return}
-    SET=r.settings;orderTax=taxPct(payMethod);svc={type:'percent',value:Number(SET.service_charge)||0};
+    /* V176 — Settings mehfooz karne se service charge KHUD nahi lagta.
+       Pehle yahan `svc` Settings ki qadar par set ho jata tha, yani
+       Tax Settings save karte hi chalte hue bill par service charge
+       aa jata. Ab wo malik ke apne faisle se Edit par lagta hai.
+       Tax ka rate aur delivery ki default waise hi chalte hain. */
+    SET=r.settings;orderTax=taxPct(payMethod);
     /* Agar yeh bill abhi Home Delivery hai aur cashier ne is par koi
        raqam nahi daali, to nayi default foran lag jaye. */
     if(isDelivery()&&!(Number(dlv)>0))dlv=Math.max(0,Number(SET.delivery_charge)||0);
@@ -3582,4 +3620,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V163 build 2026-10-25 -->
+<!-- build: V176 build 2026-11-01 -->
