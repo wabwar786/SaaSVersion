@@ -240,6 +240,33 @@ final class ReportService
         /* Cashier sirf apne account dekhe; manager/malik sab. */
         [$sw, $sa] = Scope::shiftWhere('s');
 
+        /* ============================================================
+           V178 — TAREEKH KA FILTER BILLON PAR BHI.
+
+           Pehle yeh report us account ka POORA hisaab deti thi, chahe
+           us ke bill report ke arse se bahar ke hon. Asli data par
+           nateeja yeh nikla:
+
+               date wise     134 bill   198,436
+               account wise  282 bill   417,986
+
+           Farq is liye tha ke ek account 24 October ko khula tha aur
+           1 November tak chala — us ke NAU din ke bill 1-3 November
+           ki report mein aa gaye. Dono totalon ka muqabla hi nahi ho
+           sakta tha.
+
+           AB: wahi tareekh ki shart jo date-wise report par lagti
+           hai, yahan har bill par bhi lagti hai. Is liye DONO
+           REPORTS KA TOTAL BILKUL EK hota hai.
+
+           Account ab bhi EK HI LINE hai — 10 din chalne wala account
+           10 lineon mein nahi tootta. Bas us line par sirf un dinon
+           ke bill ginay jate hain jo chune gaye.
+
+           Jin accounts ka chune hue dinon mein koi kaam hi na hua, wo
+           fehrist mein nahi aate (HAVING) — warna khali lineon se
+           table bhar jata.
+           ============================================================ */
         $rows = self::q(
             "SELECT s.shift_no                                   account,
                     COALESCE(NULLIF(s.counter_name,''),'-')      counter,
@@ -247,32 +274,31 @@ final class ReportService
                     DATE_FORMAT(s.opened_at,'%d %b %H:%i')       opened,
                     IFNULL(DATE_FORMAT(s.closed_at,'%d %b %H:%i'),'chal raha hai') closed,
                     (DATEDIFF(DATE(COALESCE(s.closed_at,NOW())),DATE(s.opened_at))+1) days,
-                    (SELECT COUNT(*)                     FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') bills,
-                    (SELECT COALESCE(SUM(o.subtotal),0)  FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') subtotal,
-                    (SELECT COALESCE(SUM(o.discount_amount),0) FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') discount,
-                    (SELECT COALESCE(SUM(o.service_charge),0)  FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') service,
-                    (SELECT COALESCE(SUM(COALESCE(o.delivery_charge,0)),0) FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') delivery,
-                    (SELECT COALESCE(SUM(o.tax_amount),0) FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') tax,
-                    (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
-                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') sale,
-                    (SELECT COALESCE(SUM(e.amount),0)    FROM expenses e
-                      WHERE e.shift_id=s.id AND e.status <> 'REJECTED'
-                        AND e.deleted_at IS NULL) expenses
+                    (SELECT COALESCE(SUM(e.amount),0) FROM expenses e
+                      WHERE e.shift_id = s.id AND e.status <> 'REJECTED'
+                        AND e.deleted_at IS NULL
+                        AND DATE(e.expense_date) BETWEEN ? AND ?) expenses,
+                    COUNT(o.id)                                   bills,
+                    COALESCE(SUM(o.subtotal),0)                   subtotal,
+                    COALESCE(SUM(o.discount_amount),0)            discount,
+                    COALESCE(SUM(o.service_charge),0)             service,
+                    COALESCE(SUM(COALESCE(o.delivery_charge,0)),0) delivery,
+                    COALESCE(SUM(o.tax_amount),0)                 tax,
+                    COALESCE(SUM(o.grand_total),0)                sale
                FROM cashier_shifts s
                LEFT JOIN users u ON u.id = s.cashier_user_id
+               LEFT JOIN orders o
+                      ON o.shift_id = s.id
+                     AND o.order_status = 'CLOSED'
+                     AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
               WHERE s.site_id = ?
                 AND s.deleted_at IS NULL
-                AND DATE(s.opened_at) <= ?
-                AND (s.closed_at IS NULL OR DATE(s.closed_at) >= ?)
                 AND $sw
+              GROUP BY s.id, s.shift_no, s.counter_name, u.full_name,
+                       s.opened_at, s.closed_at
+             HAVING bills > 0 OR expenses > 0
               ORDER BY s.opened_at",
-            array_merge([site_id(), $t, $f], $sa));
+            array_merge([$f, $t, $f, $t, site_id()], $sa));
 
         foreach ($rows as &$r) { $r['net'] = round((float)$r['sale'] - (float)$r['expenses'], 2); }
         unset($r);
@@ -313,8 +339,10 @@ final class ReportService
              ['k'=>'expenses','l'=>'Kharche','n'=>1],['k'=>'net','l'=>'Net','n'=>1]],
             $rows,
             self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net']),
-            'Har account apni ek line — chahe wo kai din chala ho. '
-          . 'Account sirf bill par likhe hue account number se tay hota hai, waqt ke andaze se nahi.');
+            'Har account apni ek line — chahe wo kai din chala ho. Chuni hui '
+          . 'tareekhon ke bill hi ginay jate hain, is liye is ka total Sales '
+          . 'summary ke total ke barabar hota hai. Account sirf bill par likhe '
+          . 'hue account number se tay hota hai, waqt ke andaze se nahi.');
     }
 
     private static function r_sales_by_item(string $f, string $t): array
@@ -1404,4 +1432,4 @@ final class ReportService
     }
 }
 
-// build: V177 build 2026-11-03
+// build: V178 build 2026-11-03
