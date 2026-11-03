@@ -183,7 +183,27 @@ final class PageData {
                      LEFT JOIN payments py ON py.order_id=o.id
                      LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id
                      LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id
-                    ORDER BY o.closed_at DESC");$sb->execute($pick[1]);$shiftBills=[];foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>$n?:$x['bill_no'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'—','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
+                    ORDER BY o.closed_at DESC");$sb->execute($pick[1]);$shiftBills=[];
+  /* ============================================================
+     V177 — BILL NUMBER ASAL SHAKL MEIN, AUR TARTEEB NUMBER SE.
+
+     Pehle yahan bill number ginti mein badal diya jata tha
+     (`(int)preg_replace('/\D/','',...)`), yani `L41-0001` screen par
+     `410001` ban kar aata tha. Jis customer ke node par prefix lagta
+     hai, us ka cashier duplicate ki fehrist mein apna bill number
+     pehchan hi nahi pata tha.
+
+     Ab `billNo` wohi hai jo bill par chhapa hai. Ginti wali shakl
+     `seq` mein alag rakhi hai — sirf TARTEEB ke liye, kyunke
+     "0009" aur "0011" ko harf ke hisaab se nahi, number ke hisaab
+     se lagna chahiye.
+
+     `id` pehle bhi asal bill number tha aur reprint usi se chalta
+     hai (`bill-pdf&bill=`), is liye reprint par koi asar nahi.
+     ============================================================ */
+  foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',(string)$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>(string)$x['bill_no'],'seq'=>$n,'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
+  /* Tarteeb: bill number ke hisaab se barhte hue. */
+  usort($shiftBills, fn($a,$b) => ($a['seq'] <=> $b['seq']) ?: strcmp((string)$a['billNo'],(string)$b['billNo']));
   /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
      Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
      hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par
@@ -230,4 +250,4 @@ final class PageData {
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
 
-// build: V62 build 2026-08-26
+// build: V177 build 2026-11-03

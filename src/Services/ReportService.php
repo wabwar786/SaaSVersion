@@ -31,6 +31,7 @@ final class ReportService
     {
         return [
             ['id' => 'sales_summary',   'group' => 'Sales',     'name' => 'Sales summary',            'desc' => 'Day by day sales, tax, discount and net'],
+            ['id' => 'account_wise',    'group' => 'Sales',     'name' => 'Account wise sale',        'desc' => 'Har account number ki poori sale aur kharche — chahe account kai din chale'],
             ['id' => 'sales_by_item',   'group' => 'Sales',     'name' => 'Sales by item',            'desc' => 'Which items sell the most'],
             ['id' => 'sales_by_category','group'=> 'Sales',     'name' => 'Sales by category',        'desc' => 'Category share of sales'],
             ['id' => 'sales_by_hour',   'group' => 'Sales',     'name' => 'Sales by hour',            'desc' => 'Busiest hours of the day'],
@@ -197,6 +198,123 @@ final class ReportService
              ['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','total']));
+    }
+
+    /* ============================================================
+       V177 — ACCOUNT (TILL) WISE SALE.
+
+       KYUN BANI
+       Till subah 11 baje khulta hai aur agli raat 2 baje band hota
+       hai. Raat 12 bajte hi TAREEKH badal jati hai, is liye us ek
+       till ki sale DO tareekhon mein bat jati hai. Date-wise report
+       par us till ka apna total kahin nazar hi nahi aata — aadha
+       pichli tareekh mein, aadha agli tareekh mein doosre tillon ke
+       saath mila hua. Isi database par chala kar dekha tha:
+
+           31 Oct ki date-wise report :  2 bill,   8,000
+           01 Nov ki date-wise report :  4 bill,  14,607
+           us till ka asal total      :  4 bill,  14,000  <- kahin nahi
+
+       Yeh report us till ko EK hi line mein dikhati hai — chahe wo
+       10 din chale.
+
+       KAI TILL EK SAATH KHULE HON
+       Account sirf `orders.shift_id` se tay hota hai — wahi number
+       jo bill par likha gaya tha. Waqt ke hisaab se koi ANDAZA NAHI
+       lagaya jata. Yeh jaan-boojh kar hai: jab do cashier ek saath
+       apne apne till par bech rahe hon, to waqt ka andaza ek ki
+       sale doosre ke account mein daal sakta hai. Andaza na lagane
+       ka matlab yeh hai ke mixing MUMKIN HI NAHI.
+
+       Jin bills par account number laga hi nahi, wo chhupaye nahi
+       jate — aakhir mein "(bina account)" ki apni line mein aate
+       hain, taake total kabhi gum na ho.
+
+       TAREEKH KA RANGE sirf yeh chunta hai ke KAUN SE account
+       dikhane hain (jo us arse mein kahin bhi chale). Account chun
+       liya jaye to us ke SAARE bill ginay jate hain — chahe kisi
+       bhi tareekh ke hon. Yehi is report ka poora maqsad hai.
+       ============================================================ */
+    private static function r_account_wise(string $f, string $t): array
+    {
+        /* Cashier sirf apne account dekhe; manager/malik sab. */
+        [$sw, $sa] = Scope::shiftWhere('s');
+
+        $rows = self::q(
+            "SELECT s.shift_no                                   account,
+                    COALESCE(NULLIF(s.counter_name,''),'-')      counter,
+                    COALESCE(NULLIF(u.full_name,''),'-')         cashier,
+                    DATE_FORMAT(s.opened_at,'%d %b %H:%i')       opened,
+                    IFNULL(DATE_FORMAT(s.closed_at,'%d %b %H:%i'),'chal raha hai') closed,
+                    (DATEDIFF(DATE(COALESCE(s.closed_at,NOW())),DATE(s.opened_at))+1) days,
+                    (SELECT COUNT(*)                     FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') bills,
+                    (SELECT COALESCE(SUM(o.subtotal),0)  FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') subtotal,
+                    (SELECT COALESCE(SUM(o.discount_amount),0) FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') discount,
+                    (SELECT COALESCE(SUM(o.service_charge),0)  FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') service,
+                    (SELECT COALESCE(SUM(COALESCE(o.delivery_charge,0)),0) FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') delivery,
+                    (SELECT COALESCE(SUM(o.tax_amount),0) FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') tax,
+                    (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
+                      WHERE o.shift_id=s.id AND o.order_status='CLOSED') sale,
+                    (SELECT COALESCE(SUM(e.amount),0)    FROM expenses e
+                      WHERE e.shift_id=s.id AND e.status <> 'REJECTED'
+                        AND e.deleted_at IS NULL) expenses
+               FROM cashier_shifts s
+               LEFT JOIN users u ON u.id = s.cashier_user_id
+              WHERE s.site_id = ?
+                AND s.deleted_at IS NULL
+                AND DATE(s.opened_at) <= ?
+                AND (s.closed_at IS NULL OR DATE(s.closed_at) >= ?)
+                AND $sw
+              ORDER BY s.opened_at",
+            array_merge([site_id(), $t, $f], $sa));
+
+        foreach ($rows as &$r) { $r['net'] = round((float)$r['sale'] - (float)$r['expenses'], 2); }
+        unset($r);
+
+        /* Jin bills par account number hai hi nahi — alag line, taake
+           total kabhi gum na ho. Inhen tareekh se hi liya jata hai,
+           kyunke in ka koi account hai hi nahi. */
+        $orphan = self::q(
+            "SELECT COUNT(*) bills, COALESCE(SUM(o.subtotal),0) subtotal,
+                    COALESCE(SUM(o.discount_amount),0) discount,
+                    COALESCE(SUM(o.service_charge),0) service,
+                    COALESCE(SUM(COALESCE(o.delivery_charge,0)),0) delivery,
+                    COALESCE(SUM(o.tax_amount),0) tax,
+                    COALESCE(SUM(o.grand_total),0) sale
+               FROM orders o
+              WHERE o.shift_id IS NULL AND " . self::billWhere(),
+            [site_id(), $f, $t]);
+
+        if ($orphan && (int)$orphan[0]['bills'] > 0) {
+            $o = $orphan[0];
+            $rows[] = ['account'=>'(bina account)','counter'=>'-','cashier'=>'-',
+                       'opened'=>'-','closed'=>'-','days'=>'-',
+                       'bills'=>(int)$o['bills'],'subtotal'=>$o['subtotal'],
+                       'discount'=>$o['discount'],'service'=>$o['service'],
+                       'delivery'=>$o['delivery'],'tax'=>$o['tax'],
+                       'sale'=>$o['sale'],'expenses'=>0,
+                       'net'=>round((float)$o['sale'],2)];
+        }
+
+        return self::shape('Account wise sale',
+            [['k'=>'account','l'=>'Account'],['k'=>'counter','l'=>'Counter'],
+             ['k'=>'cashier','l'=>'Cashier'],['k'=>'opened','l'=>'Khula'],
+             ['k'=>'closed','l'=>'Band'],['k'=>'days','l'=>'Din','n'=>1],
+             ['k'=>'bills','l'=>'Bills','n'=>1],
+             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
+             ['k'=>'service','l'=>'Service','n'=>1],['k'=>'delivery','l'=>'Delivery','n'=>1],
+             ['k'=>'tax','l'=>'Tax','n'=>1],['k'=>'sale','l'=>'Sale','n'=>1],
+             ['k'=>'expenses','l'=>'Kharche','n'=>1],['k'=>'net','l'=>'Net','n'=>1]],
+            $rows,
+            self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net']),
+            'Har account apni ek line — chahe wo kai din chala ho. '
+          . 'Account sirf bill par likhe hue account number se tay hota hai, waqt ke andaze se nahi.');
     }
 
     private static function r_sales_by_item(string $f, string $t): array
@@ -1286,4 +1404,4 @@ final class ReportService
     }
 }
 
-// build: V67 build 2026-08-27
+// build: V177 build 2026-11-03

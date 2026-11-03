@@ -2522,7 +2522,28 @@ $('#holdsBtn').onclick=function(){
   var body=holds.length?holds.map(function(h,i){
     /* Cashier ke liye do cheezein sab se ahem: kitchen ko ja chuka hai
        ya nahi, aur kis ne liya. */
-    return '<div class="lrow"><div><b>Bill #'+esc(h.billNo)+' &middot; '+esc(h.table||h.mode)+'</b>'
+    /* ============================================================
+       V177 — MODE AUR TABLE DONO.
+
+       Pehle yahan `h.table||h.mode` tha — yani ek hi cheez. Table
+       mil jata to "Table 5" likha aata aur "Dine In" gayab, aur
+       table na milta to sirf "Dine In" likh kar chup ho jata.
+       Cashier ko kabhi pata hi nahi chalta tha ke yeh Dine In bill
+       kis table ka hai, ya table chuna hi nahi gaya.
+
+       Ab: mode hamesha, aur Dine In par table ka badge saath.
+       Table na chuna gaya ho to wo bhi saaf likha aata hai —
+       kyunke wahi bill baad mein "kis ka hai?" wala masla banta
+       hai. Takeaway/Delivery par table ka khana nahi aata.
+       ============================================================ */
+    var hTbl=(h.table||'').trim();
+    var hDine=String(h.mode||'').toLowerCase().indexOf('dine')===0;
+    return '<div class="lrow"><div><b>Bill #'+esc(h.billNo)+' &middot; '+esc(h.mode||'')+'</b>'
+      +(hDine?(hTbl
+          ?('<span style="background:var(--okbg);color:var(--ok);border-radius:5px;padding:1px 6px;'
+             +'font-size:10.5px;font-weight:800;margin-left:5px">'+esc(hTbl)+'</span>')
+          :('<span style="background:var(--warnbg);color:var(--warn);border-radius:5px;padding:1px 6px;'
+             +'font-size:10.5px;font-weight:800;margin-left:5px">table nahi chuna</span>')):'')
       +(h.sent?' <span style="color:var(--ok);font-size:10px;font-weight:800">KITCHEN</span>':'')
       +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)
       +(h.by?(' &middot; '+esc(h.by)):'')+' &middot; '+esc(h.at||'')+'</small></div>'
@@ -2547,19 +2568,37 @@ $('#holdsBtn').onclick=function(){
     if(resumeHold(holds[this.dataset.res])) ov.remove();
   }});
 };
+/* ============================================================
+   V177 — DUPLICATE KI FEHRIST: EK HI RENDERER.
+
+   Pehle yeh row DO jagah banti thi — ek bar shuru mein, aur ek bar
+   search ke andar. Dono alag likhi hui thin, is liye search wali
+   mein mode, customer aur payment the hi nahi. Ab ek function hai,
+   dono wahi bulate hain — aage koi bhi behtari dono jagah lagegi.
+
+   TABLE ka khana server pehle se bhejta hai (`shiftBills.table`);
+   bas dikhaya nahi ja raha tha. Sirf Dine In par aata hai.
+   ============================================================ */
+function dupRow(b,i){
+  var tbl=(b.table||'').trim();
+  var isDine=String(b.mode||'').toLowerCase().indexOf('dine')===0;
+  return '<div class="lrow"><div><b>Bill #'+esc(b.billNo)+' &middot; '+esc(b.mode)+'</b>'
+    +((isDine&&tbl)?('<span style="background:var(--okbg);color:var(--ok);border-radius:5px;'
+        +'padding:1px 6px;font-size:10.5px;font-weight:800;margin-left:5px">'+esc(tbl)+'</span>'):'')
+    +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)
+    +(b.payment?(' &middot; '+esc(b.payment)):'')+'</small></div>'
+    +'<button data-dup="'+i+'">Reprint</button></div>';
+}
 $('#dupBtn').onclick=function(){
   var bills=(BOOT.shiftBills||[]);
-  var body=bills.length?bills.map(function(b,i){
-    return '<div class="lrow"><div><b>Bill #'+esc(b.billNo)+' &middot; '+esc(b.mode)+'</b>'
-      +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)+' &middot; '+esc(b.payment||'')+'</small></div>'
-      +'<button data-dup="'+i+'">Reprint</button></div>';
-  }).join(''):'<div class="cempty">No closed bills today</div>';
+  var body=bills.length?bills.map(function(b,i){return dupRow(b,i)}).join('')
+                       :'<div class="cempty">No closed bills today</div>';
   /* V159 — "from today" ab sach nahi raha: yeh fehrist KHULE ACCOUNT ki
      hai. Account do din khula rahe to dono din ke bills yahan rehte
      hain, warna raat 12 bajte hi cashier apni hi shift ka bill dobara
      nahi nikaal sakta tha. */
   var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Khule account ke band bills &mdash; reprint</p></div>'
-    +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer" style="margin-bottom:10px">'
+    +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer / table" style="margin-bottom:10px">'
     +'<div id="dupList">'+body+'</div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   function bind(){
     /* ============================================================
@@ -2589,11 +2628,13 @@ $('#dupBtn').onclick=function(){
   bind();
   ov.querySelector('#dupQ').oninput=function(){
     var s=this.value.toLowerCase();
+    /* V177 — table se bhi dhoonda ja sake, aur row wahi dikhe jo
+       fehrist mein dikhti hai (`dupRow`). */
     var f=bills.map(function(b,i){return {b:b,i:i}}).filter(function(o){
-      return (String(o.b.billNo)+' '+o.b.customer).toLowerCase().indexOf(s)>=0});
-    ov.querySelector('#dupList').innerHTML=f.length?f.map(function(o){
-      return '<div class="lrow"><div><b>Bill #'+esc(o.b.billNo)+'</b><small>'+esc(o.b.time)+' &middot; '+money(o.b.amount)+'</small></div>'
-        +'<button data-dup="'+o.i+'">Reprint</button></div>'}).join(''):'<div class="cempty">No bill found</div>';
+      return (String(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(s)>=0});
+    ov.querySelector('#dupList').innerHTML=f.length
+      ?f.map(function(o){return dupRow(o.b,o.i)}).join('')
+      :'<div class="cempty">No bill found</div>';
     bind();
   };
 };
@@ -3620,4 +3661,4 @@ boot();
 </body>
 </html>
 
-<!-- build: V176 build 2026-11-01 -->
+<!-- build: V177 build 2026-11-03 -->
