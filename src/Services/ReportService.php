@@ -366,13 +366,53 @@ final class ReportService
             [['k'=>'account','l'=>'Account'],['k'=>'counter','l'=>'Counter'],
              ['k'=>'cashier','l'=>'Cashier'],['k'=>'opened','l'=>'Khula'],
              ['k'=>'closed','l'=>'Band'],['k'=>'days','l'=>'Din','n'=>1],
+             /* ============================================================
+                V180 — AHEM NUMBER PEHLE.
+
+                Malik ne bataya: "account wise report main total nahi aa
+                rhi hai". Chala kar dekha to baat yeh nikli:
+
+                  1366 ki screen par bina scroll sirf yahan tak nazar
+                  aata tha:  Account ... Din | Bills | Subtotal | Discount
+                  `Sale` TERHVAN column tha — screen se bahar.
+
+                  Aur upar wale tile bhi: Bills | Subtotal | Discount |
+                  Service — SALE ka tile tha hi nahi.
+
+                Wajah: `reports.html` tile banane ke liye PEHLE CHAAR
+                numeric column uthata hai (`nums.slice(0,4)`). Account
+                wise mein Sale SAATWAN numeric column tha.
+
+                Sales summary par yeh masla isi liye nahi aata ke us ke
+                sirf 8 column hain aur Total screen par aa jata hai.
+
+                HAL: `reports.html` ko haath nahi lagaya (us se saari 34
+                reports ke tile badal jate). Sirf ISI report ki columns
+                ki tarteeb badli — paise wale ahem column pehle:
+
+                    Bills | Sale | Kharche | Net | phir tafseel
+
+                Ab upar ke chaar tile wohi hain jo malik dekhna chahta
+                hai, aur Sale bina scroll nazar aata hai. Koi number
+                nahi badla, sirf tarteeb badli.
+                ============================================================ */
              ['k'=>'bills','l'=>'Bills','n'=>1],
+             ['k'=>'sale','l'=>'Sale','n'=>1],
+             ['k'=>'expenses','l'=>'Kharche','n'=>1],
+             ['k'=>'net','l'=>'Net','n'=>1],
              ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
              ['k'=>'service','l'=>'Service','n'=>1],['k'=>'delivery','l'=>'Delivery','n'=>1],
-             ['k'=>'tax','l'=>'Tax','n'=>1],['k'=>'sale','l'=>'Sale','n'=>1],
-             ['k'=>'expenses','l'=>'Kharche','n'=>1],['k'=>'net','l'=>'Net','n'=>1]],
+             ['k'=>'tax','l'=>'Tax','n'=>1]],
             $rows,
-            self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net']),
+            /* V180 — EK PAISY KA FARQ.
+               Aap ke total par Sale 283,630.11 tha magar Net 283,630.12.
+               Wajah: har line ka `net` alag alag round hota hai aur phir
+               wo GOL KIYE HUAY number jama kiye jate thay — 192 billon
+               par yeh paisa khisak jata hai. Ab Net ka total jama kiye
+               huay Sale mein se jama kiye huay Kharche nikaal kar banta
+               hai, yani hamesha theek. */
+            (function(array $t): array { $t['net'] = round($t['sale'] - $t['expenses'], 2); return $t; })(
+                self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net'])),
             'Har account apni ek line — chahe wo kai din chala ho. Chuni hui '
           . 'tareekhon ke bill hi ginay jate hain, is liye is ka total Sales '
           . 'summary ke total ke barabar hota hai. Account sirf bill par likhe '
