@@ -25,6 +25,12 @@
 .htile b{display:block;margin-top:5px;font-family:var(--display);font-weight:800;font-size:17px}
 .htile small{display:block;margin-top:3px;color:var(--faint);font-size:10.5px}
 .chart{height:230px;display:flex;align-items:flex-end;gap:9px;padding:8px 4px 0}
+/* V179 — chaubees khaane. Faasla kam, warna bars bal ki tarah patli ho jati hain. */
+.chart.h24{gap:3px}
+.chart.h24 .bar{max-width:18px;border-radius:4px 4px 0 0}
+.chart.h24 .bar-col span{font-size:9px}
+.bar.z{background:#e3e3e6;min-height:2px}
+.bar.z:hover{background:#cfcfd4}
 .bar-col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
 .bar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#f0663c,#e0301a);min-height:5px;transition:.5s;position:relative}
 .bar:hover{background:linear-gradient(180deg,#e0301a,#a81c0c)}
@@ -88,7 +94,7 @@
         <div class="kpi"><div class="lab">Net sales</div><div class="val" id="kNet">PKR 0</div><div class="sub" id="kOrders">0 orders</div><span class="trend up">▲ 12%</span></div>
         <div class="kpi info"><div class="lab">Running orders</div><div class="val" id="kRun">0</div><div class="sub"><span id="kPrep">0</span> preparing · <span id="kReady">0</span> ready</div></div>
         <div class="kpi warn"><div class="lab">Online waiting</div><div class="val" id="kOnline">0</div><div class="sub">Accept or reject</div></div>
-        <div class="kpi violet"><div class="lab">Gross profit</div><div class="val" id="kProfit">PKR 0</div><div class="sub">After food cost + expenses</div></div>
+        <div class="kpi violet"><div class="lab">Gross profit</div><div class="val" id="kProfit">PKR 0</div><div class="sub" id="kProfitSub">After food cost + expenses</div></div>
         <div class="kpi ok"><div class="lab">Occupied tables</div><div class="val" id="kTables">0 / 0</div><div class="sub"><span id="kRiders">0</span> riders on road</div></div>
         <div class="kpi cyan"><div class="lab">Low stock</div><div class="val" id="kLow">0</div><div class="sub">At or below reorder</div></div>
       </div>
@@ -171,14 +177,39 @@ function render(){
   $('#heroOnline').textContent=s.onlineNew; $('#heroReq').textContent=pending;
   $('#kNet').textContent=money(s.netSales); $('#kOrders').textContent=s.orders+' orders';
   $('#kRun').textContent=s.runningOrders; $('#kPrep').textContent=s.preparing; $('#kReady').textContent=s.ready;
-  $('#kOnline').textContent=s.onlineNew; $('#kProfit').textContent=money(profit);
+  /* V179 — GROSS PROFIT JHOOT NA BOLE.
+     Hisaab `netSales - foodCost - expenses` hai. Jis business mein kisi
+     item par recipe ya inventory link laga hi na ho, wahan foodCost
+     hamesha 0 rehta hai — to yeh tile POORI SALE ko "munafa" likh deta
+     tha. Asal customer par bilkul yehi hua: net sale 7,347 aur gross
+     profit bhi 7,347.
+     Ab server `costReady` bhejta hai. Lagat ka data na ho to number ki
+     jagah "—" aur saaf likha ke recipe/inventory link lagana hai. */
+  $('#kOnline').textContent=s.onlineNew;
+  var ready=(s.costReady!==false);
+  $('#kProfit').textContent=ready?money(profit):'—';
+  var pSub=$('#kProfitSub');
+  if(pSub)pSub.textContent=ready?'After food cost + expenses':'Food cost set nahi — recipe/inventory link lagayein';
   $('#kTables').textContent=s.occupiedTables+' / '+s.totalTables; $('#kRiders').textContent=s.ridersRoad; $('#kLow').textContent=low;
   $('#aDelay').textContent=s.delayed; $('#aOnline').textContent=s.onlineNew; $('#aLow').textContent=low; $('#aReq').textContent=pending;
   $('#qOnline').textContent=s.onlineNew+' waiting'; $('#qDelay').textContent=s.delayed+' delayed'; $('#qLow').textContent=low+' low';
   $('#mDine').textContent=money(s.dineIn); $('#mTake').textContent=money(s.takeaway); $('#mDeliv').textContent=money(s.delivery); $('#mOnline').textContent=money(s.online);
   $('#pCash').textContent=money(s.cash); $('#pCard').textContent=money(s.card); $('#pRaast').textContent=money(s.raast); $('#pWallet').textContent=money(s.walletBank);
-  var labels=['10','11','12','1','2','3','4','5','6'], max=Math.max.apply(null,s.hourly.concat([1]));
-  $('#chart').innerHTML=s.hourly.map(function(v,i){return '<div class="bar-col"><div class="bar" data-v="'+money(v)+'" style="height:'+Math.max(5,(v/max)*100)+'%"></div><span>'+labels[i]+'</span></div>'}).join('');
+  /* V179 — CHART POORE DIN KA.
+     Pehle yahan labels hard-coded thin: 10 se 6 baje tak, sirf nau
+     khaane. Restaurant raat 2 baje band hota hai, to shaam 6 ke baad ki
+     saari sale chart par nazar hi nahi aati thi aur chart ka jama upar
+     wale net sale se kabhi nahi milta tha.
+     Ab labels SERVER se aate hain (00-23). Purane server ke sath bhi
+     chalta rahe — labels na aayen to wohi purani qataar. */
+  var labels=(s.hourLabels&&s.hourLabels.length===s.hourly.length)?s.hourLabels:['10','11','12','1','2','3','4','5','6'];
+  var max=Math.max.apply(null,s.hourly.concat([1]));
+  var ch=$('#chart');
+  if(s.hourly.length>12)ch.classList.add('h24');else ch.classList.remove('h24');
+  /* Jis ghante mein kuch bika hi nahi us par bar nahi, sirf halki si lakeer —
+     warna chaubees khaanon mein har ghante par sale hone ka dhoka hota hai. */
+  ch.innerHTML=s.hourly.map(function(v,i){var z=!(Number(v)>0);
+    return '<div class="bar-col"><div class="bar'+(z?' z':'')+'" data-v="'+money(v)+'" style="height:'+(z?0:Math.max(5,(v/max)*100))+'%"></div><span>'+(labels[i]||'')+'</span></div>'}).join('');
   $('#bestRows').innerHTML=s.best.map(function(x){return '<tr><td class="t-main">'+x.name+'</td><td class="num">'+x.qty+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+x.cost+'%</td></tr>'}).join('');
   $('#lastSync').textContent='Updated '+new Date(s.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 }

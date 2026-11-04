@@ -77,17 +77,83 @@ final class PageData {
     ];
  }
 
+ /* ============================================================
+    V179 — DASHBOARD AUR REPORTS KA EK HI USOOL.
+
+    MASLA JO ASAL CUSTOMER PAR AAYA
+    Ek hi waqt, ek hi screen, do total:
+
+        dashboard  "net sales today"   4 bill   7,347.00
+        Sales summary (aaj ka row)     6 bill   8,032.30
+        Account wise sale (aaj)        6 bill   8,032.30
+
+    Wajah: dashboard `business_date` par chalta tha, yani bill kis
+    din KHULA. Reports `DATE(COALESCE(closed_at,created_at))` par
+    chalti hain, yani bill kis din BAND hua. Jo bill raat 8 baje
+    khula aur raat 12:40 par band hua, us ka business_date pichla
+    din hai — dashboard usay aaj ginta hi nahi tha, aur reports
+    usay aaj ginti thin.
+
+    AUR DASHBOARD KHUD APNE AAP SE ULAT THA
+    Usi screen par cash/card/raast ka hissa `payments.paid_at` par
+    chalta hai, yani band hone ke waqt par. To upar 7,347 likha
+    aata tha aur neeche adayegi 8,032.30. Malik ek screen par do
+    sach dekh raha tha.
+
+    FAISLA: wohi usool jo reports aur adayegi par pehle se laga hua
+    hai — SALE US DIN KI JIS DIN BILL BAND HUA. `business_date`
+    bill KHULNE ke waqt `date('Y-m-d')` se bhara jata hai
+    (PosService), is liye wo "business day" nahi, bas khulne ki
+    calendar tareekh hai — isi liye wo usool chhoda gaya.
+
+    DASHBOARD PEHLE JAISA LIVE HI HAI. Har baar `today()` par
+    hisaab hota hai, koi cache nahi, OPEN bill ab bhi sale mein
+    nahi ginte (shart `order_status='CLOSED'` waisi hi hai).
+
+    `stock_transactions.business_date` ko haath NAHI lagaya — wo
+    `postMovement` mein us waqt `today()` se bharti hai jab bill
+    band hota hai, yani wo pehle se band hone ke din par hai.
+    ============================================================ */
  public static function dashboard(): array { $p=DB::pdo();$date=today();
-  $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND business_date=? AND order_status='CLOSED'");$q->execute([site_id(),$date]);$a=$q->fetch();
+  $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'");$q->execute([site_id(),$date]);$a=$q->fetch();
   $cnt=function($sql,$args=[])use($p){$q=$p->prepare($sql);$q->execute($args);return (int)$q->fetchColumn();};
   $running=$cnt("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status<>'CLOSED'",[site_id()]);$preparing=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING')",[site_id()]);$ready=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status='READY'",[site_id()]);$delayed=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING') AND TIMESTAMPDIFF(MINUTE,sent_at,NOW())>=18",[site_id()]);$online=$cnt("SELECT COUNT(*) FROM online_order_details WHERE site_id=? AND acceptance_status='PENDING'",[site_id()]);$riders=$cnt("SELECT COUNT(*) FROM riders WHERE site_id=? AND status IN ('ON_DELIVERY','ON ROAD','ON_DELIVERY')",[site_id()]);$tables=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1",[site_id()]);$occ=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1 AND status='OCCUPIED'",[site_id()]);
   $pay=['cash'=>0,'card'=>0,'raast'=>0,'walletBank'=>0];$pq=$p->prepare("SELECT pm.code,pm.method_type,SUM(py.amount) amount FROM payments py JOIN payment_methods pm ON pm.id=py.payment_method_id WHERE py.site_id=? AND DATE(py.paid_at)=? AND py.status='COMPLETED' GROUP BY pm.code,pm.method_type");$pq->execute([site_id(),$date]);foreach($pq->fetchAll() as $x){$code=strtoupper($x['code']);$amt=(float)$x['amount'];if($code==='CASH')$pay['cash']+=$amt;elseif($code==='CARD')$pay['card']+=$amt;elseif($code==='RAAST')$pay['raast']+=$amt;else$pay['walletBank']+=$amt;}
-  $mix=['dineIn'=>0,'takeaway'=>0,'delivery'=>0,'online'=>0];$mq=$p->prepare("SELECT service_mode,SUM(grand_total) amount FROM orders WHERE site_id=? AND business_date=? AND order_status='CLOSED' GROUP BY service_mode");$mq->execute([site_id(),$date]);foreach($mq->fetchAll() as $x){$m=$x['service_mode'];if($m==='DINE_IN')$mix['dineIn']=(float)$x['amount'];elseif($m==='TAKEAWAY')$mix['takeaway']=(float)$x['amount'];else$mix['delivery']+=(float)$x['amount'];}$oq=$p->prepare("SELECT COALESCE(SUM(o.grand_total),0) FROM online_order_details d JOIN orders o ON o.id=d.order_id WHERE d.site_id=? AND o.business_date=?");$oq->execute([site_id(),$date]);$mix['online']=(float)$oq->fetchColumn();
-  $eq=$p->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE site_id=? AND expense_date=? AND status='APPROVED'");$eq->execute([site_id(),$date]);$expenses=(float)$eq->fetchColumn();$cq=$p->prepare("SELECT COALESCE(SUM(ABS(stl.value_change)),0) FROM stock_transaction_lines stl JOIN stock_transactions st ON st.id=stl.stock_transaction_id WHERE st.site_id=? AND st.business_date=? AND st.transaction_type='SALE'");$cq->execute([site_id(),$date]);$food=(float)$cq->fetchColumn();
+  $mix=['dineIn'=>0,'takeaway'=>0,'delivery'=>0,'online'=>0];$mq=$p->prepare("SELECT service_mode,SUM(grand_total) amount FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED' GROUP BY service_mode");$mq->execute([site_id(),$date]);foreach($mq->fetchAll() as $x){$m=$x['service_mode'];if($m==='DINE_IN')$mix['dineIn']=(float)$x['amount'];elseif($m==='TAKEAWAY')$mix['takeaway']=(float)$x['amount'];else$mix['delivery']+=(float)$x['amount'];}/* V179 — online wale tile par `order_status` ki shart hi nahi thi, is liye
+     OPEN aur VOID bill bhi "online sale" mein gin jate thay. Baqi teen
+     mode (Dine In / Takeaway / Delivery) hamesha sirf CLOSED ginte hain,
+     to chaaron ka jama net sale ke barabar hi nahi hota tha. */
+  $oq=$p->prepare("SELECT COALESCE(SUM(o.grand_total),0) FROM online_order_details d JOIN orders o ON o.id=d.order_id WHERE d.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'");$oq->execute([site_id(),$date]);$mix['online']=(float)$oq->fetchColumn();
+  /* V179 — kharche ki shart bhi barabar.
+     Pehle dashboard sirf `status='APPROVED'` ginta tha aur `deleted_at`
+     dekhta hi nahi tha. Shift ki closing parchi (OpsService::cashExpenses)
+     aur Account wise report dono `status<>'REJECTED' AND deleted_at IS NULL`
+     par chalti hain. Yani jo kharcha abhi PENDING tha wo closing parchi
+     par daraz se ghat jata tha magar dashboard ke "Gross profit" mein
+     nahi ghatta tha — aur MITAYA HUA kharcha dashboard phir bhi ginta
+     tha. Ab teenon ek hi shart par hain. */
+  $eq=$p->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE site_id=? AND expense_date=? AND status<>'REJECTED' AND deleted_at IS NULL");$eq->execute([site_id(),$date]);$expenses=(float)$eq->fetchColumn();$cq=$p->prepare("SELECT COALESCE(SUM(ABS(stl.value_change)),0) FROM stock_transaction_lines stl JOIN stock_transactions st ON st.id=stl.stock_transaction_id WHERE st.site_id=? AND st.business_date=? AND st.transaction_type='SALE'");$cq->execute([site_id(),$date]);$food=(float)$cq->fetchColumn();
   $sq=$p->prepare("SELECT shift_no,opening_cash FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$sq->execute([site_id()]);$shift=$sq->fetch()?:['shift_no'=>'—','opening_cash'=>0];
-  $hq=$p->prepare("SELECT HOUR(closed_at) h,SUM(grand_total) a FROM orders WHERE site_id=? AND business_date=? AND order_status='CLOSED' GROUP BY HOUR(closed_at)");$hq->execute([site_id(),$date]);$map=[];foreach($hq->fetchAll() as $x)$map[(int)$x['h']]=(float)$x['a'];$hourly=[];foreach(range(10,18) as $h)$hourly[]=$map[$h]??0;
-  $bq=$p->prepare("SELECT oi.item_name_snapshot name,SUM(oi.qty) qty,SUM(oi.line_total) sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED' GROUP BY oi.item_name_snapshot ORDER BY qty DESC LIMIT 8");$bq->execute([site_id(),$date]);$best=array_map(fn($x)=>['name'=>$x['name'],'qty'=>(float)$x['qty'],'sales'=>(float)$x['sales'],'cost'=>0],$bq->fetchAll());
-  return array_merge(['netSales'=>(float)$a['s'],'grossSales'=>(float)$a['gross'],'orders'=>(int)$a['c'],'runningOrders'=>$running,'preparing'=>$preparing,'ready'=>$ready,'delayed'=>$delayed,'onlineNew'=>$online,'ridersRoad'=>$riders,'occupiedTables'=>$occ,'totalTables'=>$tables,'expenses'=>$expenses,'foodCost'=>$food,'shift'=>$shift['shift_no'],'openingCash'=>(float)$shift['opening_cash'],'best'=>$best,'hourly'=>$hourly,'updatedAt'=>date(DATE_ATOM)],$pay,$mix); }
+  /* V179 — GHANTON KA CHART POORE DIN KA.
+     Pehle yahan `foreach(range(10,18))` tha — sirf subah 10 se shaam 6.
+     Restaurant raat 2 baje band hota hai, to shaam 6 ke baad ki saari
+     sale chart par nazar hi nahi aati thi, aur chart ka jama upar wale
+     net sale se kabhi nahi milta tha. Ab chaubees ghante, aur labels
+     bhi server se jate hain taake screen par koi andaza na lagana pare. */
+  $hq=$p->prepare("SELECT HOUR(COALESCE(closed_at,created_at)) h,SUM(grand_total) a FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED' GROUP BY h");$hq->execute([site_id(),$date]);$map=[];foreach($hq->fetchAll() as $x)$map[(int)$x['h']]=(float)$x['a'];$hourly=[];$hourLabels=[];foreach(range(0,23) as $h){$hourly[]=$map[$h]??0;$hourLabels[]=sprintf('%02d',$h);}
+  $bq=$p->prepare("SELECT oi.item_name_snapshot name,SUM(oi.qty) qty,SUM(oi.line_total) sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED' GROUP BY oi.item_name_snapshot ORDER BY qty DESC LIMIT 8");$bq->execute([site_id(),$date]);$best=array_map(fn($x)=>['name'=>$x['name'],'qty'=>(float)$x['qty'],'sales'=>(float)$x['sales'],'cost'=>0],$bq->fetchAll());
+  /* V179 — "GROSS PROFIT" JHOOT NA BOLE.
+     Screen par hisaab `netSales - foodCost - expenses` hai. Jis business
+     mein kisi menu item par recipe ya direct-inventory link laga hi na ho,
+     wahan `foodCost` hamesha 0 rehta hai, to "Gross profit" POORI SALE
+     ke barabar aa jata hai — aur malik usay munafa samajh leta hai.
+     (Asal customer par bilkul yehi hua: net sale 7,347 aur "gross profit"
+     bhi 7,347.)
+     Ab server batata hai ke lagat ka data mojood hai ya nahi; na ho to
+     screen number ki jagah "—" dikhati hai. Owner mobile app mein yehi
+     usool pehle se hai: "ghalat number se koi number behtar nahi". */
+  $costReady = ($food > 0) || ((int)$a['c'] === 0);
+  return array_merge(['netSales'=>(float)$a['s'],'grossSales'=>(float)$a['gross'],'orders'=>(int)$a['c'],'runningOrders'=>$running,'preparing'=>$preparing,'ready'=>$ready,'delayed'=>$delayed,'onlineNew'=>$online,'ridersRoad'=>$riders,'occupiedTables'=>$occ,'totalTables'=>$tables,'expenses'=>$expenses,'foodCost'=>$food,'shift'=>$shift['shift_no'],'openingCash'=>(float)$shift['opening_cash'],'best'=>$best,'hourly'=>$hourly,'hourLabels'=>$hourLabels,'costReady'=>$costReady,'updatedAt'=>date(DATE_ATOM)],$pay,$mix); }
  public static function posBoot(): array { $p=DB::pdo();$date=today();
   /* ============================================================
      V158 — DO BADLAV IS QUERY MEIN.

@@ -296,9 +296,43 @@ final class ReportService
                 AND $sw
               GROUP BY s.id, s.shift_no, s.counter_name, u.full_name,
                        s.opened_at, s.closed_at
-             HAVING bills > 0 OR expenses > 0
+             /* ============================================================
+                V179 — ACCOUNT KHULTE HI REPORT MEIN AA JAYE.
+
+                V178 mein yahan sirf `bills > 0 OR expenses > 0` tha. Is
+                ka natija asal customer par yeh nikla: aaj subah jo till
+                khola gaya aur jis par abhi pehla bill nahi bana, wo
+                report mein BILKUL NAZAR HI NAHI AATA — malik ko lagta
+                tha account khula hi nahi.
+
+                Ab chaar mein se koi ek baat kaafi hai:
+                  1. is arse mein us account ka koi bill ho, ya
+                  2. is arse mein us account ka koi kharcha ho, ya
+                  3. account ISI ARSE mein khula ho (chahe ek bill
+                     bhi na bana ho), ya
+                  4. account AB TAK CHAL RAHA ho aur arse ke khatam
+                     hone se pehle khula ho.
+
+                Chauthi shart ka ek faida muft mein milta hai: jo till
+                koi band karna BHOOL gaya ho, wo har report par 0 bill
+                ke saath nazar aata rahe ga.
+
+                TOTAL PAR KOI ASAR NAHI. Nayi lineen sirf sifar laati
+                hain, aur `bills`/`sale` mein sifar jama hota hai — is
+                liye Sales summary ke sath barabri (V178 ka kaam) waisi
+                hi qayam hai. Chaar arson par chala kar tasdeeq ki gayi.
+
+                `MAX()` jaan-boojh kar lagaya hai: group `s.id` par hai
+                (primary key), yani har group mein EK hi shift hai, to
+                MAX wohi qeemat lauta ta hai — aur yeh har sql_mode par
+                chalta hai, `ONLY_FULL_GROUP_BY` par bhi.
+                ============================================================ */
+             HAVING bills > 0
+                 OR expenses > 0
+                 OR MAX(DATE(s.opened_at)) BETWEEN ? AND ?
+                 OR (MAX(s.status) = 'OPEN' AND MAX(DATE(s.opened_at)) <= ?)
               ORDER BY s.opened_at",
-            array_merge([$f, $t, $f, $t, site_id()], $sa));
+            array_merge([$f, $t, $f, $t, site_id()], $sa, [$f, $t, $t]));
 
         foreach ($rows as &$r) { $r['net'] = round((float)$r['sale'] - (float)$r['expenses'], 2); }
         unset($r);

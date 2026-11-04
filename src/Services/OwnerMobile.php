@@ -109,6 +109,19 @@ final class OwnerMobile
 
     /* ============================================================
        AAJ
+
+       V179 — YAHAN KA USOOL BHI WOHI JO REPORTS KA HAI.
+       Pehle yeh poora app `orders.business_date` par chalta tha, yani
+       bill kis din KHULA. Reports aur dashboard `DATE(COALESCE(
+       closed_at,created_at))` par chalte hain, yani bill kis din BAND
+       hua. Natija: malik mobile par ek total dekhta tha aur counter
+       par khari report doosra. Jo bill raat 12 ke baad band hua, wo
+       mobile par pichle din mein tha.
+
+       Ab orders ki har query band hone ke din par hai. `stock_
+       transactions.business_date` ko haath nahi lagaya — wo `today()`
+       se us waqt bharta hai jab bill band hota hai, yani wo pehle se
+       isi usool par hai.
        ============================================================ */
     private static function today(): array
     {
@@ -121,7 +134,7 @@ final class OwnerMobile
                     COALESCE(SUM(discount_amount),0) disc,
                     COALESCE(SUM(guest_count),0) guests
                FROM orders
-              WHERE site_id=? AND business_date=? AND order_status='CLOSED'", [$sid, $d])[0]
+              WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'", [$sid, $d])[0]
             ?? ['bills'=>0,'net'=>0,'disc'=>0,'guests'=>0];
 
         /* ============================================================
@@ -136,7 +149,7 @@ final class OwnerMobile
             "SELECT COUNT(*) bills, COALESCE(SUM(grand_total),0) net,
                     COALESCE(SUM(guest_count),0) guests
                FROM orders
-              WHERE site_id=? AND business_date=? AND order_status='CLOSED'
+              WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'
                 AND TIME(COALESCE(closed_at,created_at)) <= TIME(NOW())", [$sid, $y])[0]
             ?? ['bills'=>0,'net'=>0,'guests'=>0];
 
@@ -146,7 +159,8 @@ final class OwnerMobile
                FROM payments py
                JOIN payment_methods pm ON pm.id=py.payment_method_id
                JOIN orders o ON o.id=py.order_id
-              WHERE py.site_id=? AND py.status='COMPLETED' AND o.business_date=?
+              WHERE py.site_id=? AND py.status='COMPLETED'
+                AND DATE(COALESCE(o.closed_at,o.created_at))=?
               GROUP BY pm.method_type", [$sid, $d]) as $r) {
             $t = strtoupper((string)$r['t']);
             if ($t === 'CASH')      $pay['cash']   += self::f($r['a']);
@@ -159,7 +173,7 @@ final class OwnerMobile
         $hours = [];
         foreach (self::q(
             "SELECT HOUR(closed_at) h, COALESCE(SUM(grand_total),0) a
-               FROM orders WHERE site_id=? AND business_date=? AND order_status='CLOSED'
+               FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'
               GROUP BY HOUR(closed_at) ORDER BY h", [$sid, $d]) as $r) {
             $hours[] = ['h' => (int)$r['h'], 'a' => self::f($r['a'])];
         }
@@ -168,7 +182,7 @@ final class OwnerMobile
         foreach (self::q(
             "SELECT oi.item_name_snapshot n, SUM(oi.qty) q, SUM(oi.line_total) a
                FROM order_items oi JOIN orders o ON o.id=oi.order_id
-              WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
               GROUP BY oi.item_name_snapshot ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
             $items[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
         }
@@ -178,7 +192,7 @@ final class OwnerMobile
             "SELECT COALESCE(u.full_name,'—') n, COUNT(*) bills,
                     COALESCE(SUM(o.grand_total),0) a
                FROM orders o LEFT JOIN users u ON u.id=o.created_by_user_id
-              WHERE o.site_id=? AND o.business_date=? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
               GROUP BY o.created_by_user_id, u.full_name ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
             $staff[] = ['n'=>(string)$r['n'],'bills'=>(int)$r['bills'],'a'=>self::f($r['a'])];
         }
@@ -190,7 +204,8 @@ final class OwnerMobile
               WHERE st.site_id=? AND st.business_date=? AND st.transaction_type='SALE'", [$sid, $d]));
         $exp = self::f(self::one(
             "SELECT COALESCE(SUM(amount),0) FROM expenses
-              WHERE site_id=? AND expense_date=? AND status='APPROVED'", [$sid, $d]));
+              WHERE site_id=? AND expense_date=? AND status<>'REJECTED'
+                AND deleted_at IS NULL", [$sid, $d]));
 
         /* Abhi kya chal raha hai */
         $live = [
@@ -238,7 +253,7 @@ final class OwnerMobile
 
         $sum = fn(string $a, string $b) => self::q(
             "SELECT COUNT(*) bills, COALESCE(SUM(grand_total),0) net
-               FROM orders WHERE site_id=? AND business_date BETWEEN ? AND ?
+               FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at)) BETWEEN ? AND ?
                 AND order_status='CLOSED'", [$sid, $a, $b])[0] ?? ['bills'=>0,'net'=>0];
 
         $cur  = $sum($from, $to);
@@ -246,9 +261,9 @@ final class OwnerMobile
 
         $daily = [];
         foreach (self::q(
-            "SELECT business_date d, COALESCE(SUM(grand_total),0) a
-               FROM orders WHERE site_id=? AND business_date BETWEEN ? AND ?
-                AND order_status='CLOSED' GROUP BY business_date ORDER BY business_date",
+            "SELECT DATE(COALESCE(closed_at,created_at)) d, COALESCE(SUM(grand_total),0) a
+               FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at)) BETWEEN ? AND ?
+                AND order_status='CLOSED' GROUP BY d ORDER BY d",
             [$sid, $from, $to]) as $r) {
             $daily[] = ['d'=>(string)$r['d'],'a'=>self::f($r['a'])];
         }
@@ -256,7 +271,7 @@ final class OwnerMobile
         $mode = ['dine'=>0.0,'take'=>0.0,'deliver'=>0.0];
         foreach (self::q(
             "SELECT service_mode m, COALESCE(SUM(grand_total),0) a
-               FROM orders WHERE site_id=? AND business_date BETWEEN ? AND ?
+               FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at)) BETWEEN ? AND ?
                 AND order_status='CLOSED' GROUP BY service_mode", [$sid, $from, $to]) as $r) {
             $m = strtoupper((string)$r['m']);
             if ($m === 'DINE_IN')        $mode['dine']    += self::f($r['a']);
@@ -271,7 +286,7 @@ final class OwnerMobile
                JOIN orders o ON o.id=oi.order_id
                LEFT JOIN menu_items mi ON mi.id=oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id=mi.category_id
-              WHERE o.site_id=? AND o.business_date BETWEEN ? AND ? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED'
               GROUP BY mc.name ORDER BY a DESC LIMIT 8", [$sid, $from, $to]) as $r) {
             $cats[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
         }
@@ -308,7 +323,7 @@ final class OwnerMobile
                JOIN menu_items mi ON mi.id=oi.menu_item_id
                LEFT JOIN inventory_items di ON di.id=mi.direct_inventory_item_id
                LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1
-              WHERE o.site_id=? AND o.business_date BETWEEN ? AND ? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED'
               GROUP BY mi.id, mi.name, mi.base_price, mi.consumption_type,
                        mi.direct_inventory_item_id, mi.direct_inventory_qty,
                        di.avg_cost_per_stock_unit, r.id, r.yield_qty
@@ -330,10 +345,11 @@ final class OwnerMobile
             [$sid, $from, $to]));
         $exp = self::f(self::one(
             "SELECT COALESCE(SUM(amount),0) FROM expenses
-              WHERE site_id=? AND expense_date BETWEEN ? AND ? AND status='APPROVED'", [$sid, $from, $to]));
+              WHERE site_id=? AND expense_date BETWEEN ? AND ? AND status<>'REJECTED'
+                AND deleted_at IS NULL", [$sid, $from, $to]));
         $void = self::q(
             "SELECT COUNT(*) n, COALESCE(SUM(grand_total),0) a FROM orders
-              WHERE site_id=? AND business_date BETWEEN ? AND ? AND order_status='VOID'",
+              WHERE site_id=? AND DATE(COALESCE(closed_at,created_at)) BETWEEN ? AND ? AND order_status='VOID'",
             [$sid, $from, $to])[0] ?? ['n'=>0,'a'=>0];
 
         $net = self::f($cur['net']);
