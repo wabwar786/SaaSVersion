@@ -149,7 +149,9 @@ final class BillTemplate
     {
         $L = [];
         $when = date('d M Y  H:i', strtotime((string)($o['closed_at'] ?: $o['created_at'])));
-        $L[] = self::row('Bill # '.(string)$o['bill_no'], $when);
+        /* V181 — gahak ke bill par bhi seedha sada number (7), database mein
+           poora number (L206-0007) hi rehta hai. */
+        $L[] = self::row('Bill # '.bill_show((string)$o['bill_no']), $when);
         $modes = ['DINE_IN' => 'Dine In', 'TAKEAWAY' => 'Takeaway', 'TAKE_AWAY' => 'Takeaway',
                   'DELIVERY' => 'Delivery', 'QR' => 'QR Order'];
         $mode  = $modes[strtoupper((string)$o['service_mode'])] ?? (string)$o['service_mode'];
@@ -289,12 +291,40 @@ final class BillTemplate
            par size 8 sab se pehle dhundla hota hai
          • sar-nama par business date */
 
-    public static function shiftReport(array $r, array $ctx): array
+    /* ============================================================
+       V181 — CLOSING PAR DO ALAG PARCHIYAN.
+
+       Malik ki baat: "closing per sale report saperate and closing
+       sheet saperate print nikly."
+
+       Pehle sab kuch EK hi parchi par tha — category wise sale,
+       totals, adayegi ka tor-por, daraz ka hisaab, tracked stock,
+       dastkhat. Cashier ko daraz ka kagaz chahiye hota hai aur malik
+       ko sale ka; dono ko doosre ka hissa bhi phaarna parta tha.
+
+       AB:
+         $part='sale'  ->  SALE REPORT   (category wise sale, totals,
+                                          adayegi, tracked stock)
+         $part='cash'  ->  CLOSING SHEET (total sale ki ek line, daraz
+                                          ka poora hisaab, ginti,
+                                          variance, dastkhat)
+
+       `$part` NA BHEJA JAYE TO BILKUL PURANI POORI PARCHI. Is liye
+       Shift Management, Closing History aur har purana reprint jaisa
+       tha waisa hi chalta rahe ga — un mein se kisi ne `part` bheja
+       hi nahi.
+       ============================================================ */
+    public static function shiftReport(array $r, array $ctx, string $part = 'all'): array
     {
         $isOpen = ((string)($r['closed'] ?? '') === '');
 
+        $part     = in_array($part, ['sale', 'cash'], true) ? $part : 'all';
+        $wantSale = ($part !== 'cash');   /* sale ka hissa */
+        $wantCash = ($part !== 'sale');   /* daraz ka hissa */
+
         $L = self::head([], $ctx, true);
-        $L[] = ['DAILY CLOSING', 'c', 11];
+        $L[] = [$part === 'sale' ? 'SALE REPORT'
+                                 : ($part === 'cash' ? 'CLOSING SHEET' : 'DAILY CLOSING'), 'c', 11];
         if (!empty($r['date'])) {
             $d = strtotime((string)$r['date']);
             if ($d) $L[] = [date('d M Y', $d), 'c', 9];
@@ -308,7 +338,7 @@ final class BillTemplate
         $L[] = self::rule();
 
         /* ---- category ke hisab se sale ---- */
-        if (!empty($r['categories'])) {
+        if ($wantSale && !empty($r['categories'])) {
             $L[] = ['SALES BY CATEGORY', 'b', self::SZ];
             $L[] = self::rule();
             $n = count($r['categories']);
@@ -324,12 +354,15 @@ final class BillTemplate
                 if ($i < $n - 1) $L[] = ['', 'l', 4];
             }
             $L[] = self::rule();
-        } else {
+        } elseif ($wantSale) {
             $L[] = ['No sales in this shift.', 'c', 8];
             $L[] = self::rule();
         }
 
-        /* ---- totals ---- */
+        /* ---- totals ----
+           CLOSING SHEET par sirf TOTAL SALES ki ek line jati hai: us
+           kagaz ka maqsad daraz ka hisaab hai, tor-por nahi. */
+        if ($wantSale) {
         self::put($L, self::rows('Bills', (string)(int)$r['bills']));
         self::put($L, self::rows('Subtotal', self::money((float)$r['subtotal'])));
         if ((float)$r['discount'] > 0) self::put($L, self::rows('Discount', '-' . self::money((float)$r['discount'])));
@@ -341,12 +374,13 @@ final class BillTemplate
         if ((float)($r['delivery'] ?? 0) > 0) self::put($L, self::rows('Delivery charges', self::money((float)$r['delivery'])));
         $L[] = self::rule('=');
         $L[] = ['', 'l', 3];
+        } /* if ($wantSale) — totals ka tor-por */
         self::put($L, self::rows('TOTAL SALES', self::money((float)$r['total']), true));
         $L[] = ['', 'l', 3];
         $L[] = self::rule();
 
         /* ---- payment mix ---- */
-        if (!empty($r['payments'])) {
+        if ($wantSale && !empty($r['payments'])) {
             $L[] = ['HOW IT WAS PAID', 'b', self::SZ];
             foreach ($r['payments'] as $p) {
                 self::put($L, self::rows((string)$p['method'], self::money((float)$p['amount'])));
@@ -361,6 +395,7 @@ final class BillTemplate
            jabke din bhar ki sale ho chuki hoti. Ab khuli shift par daraz
            ka asal hisaab chhapta hai aur saaf likha hota hai ke ginti
            abhi hui hi nahi. */
+        if ($wantCash) {
         $L[] = ['CASH IN TILL', 'b', self::SZ];
         /* Purani band shifts ka snapshot V162 se pehle ka hai — us mein
            `cash_sales` hai hi nahi. Us soorat mein yeh line chhapti hi
@@ -392,6 +427,7 @@ final class BillTemplate
                                      ($var > 0 ? '+' : '') . self::money($var), true));
             $L[] = ['', 'l', 3];
         }
+        } /* if ($wantCash) — daraz ka hisaab */
 
         /* Tracked inventory — sirf wo items jinpar tracking on hai.
            Malik ko raat ko yeh dekhna hota hai ke qeemti cheez kitni
@@ -400,7 +436,7 @@ final class BillTemplate
            Pehle teenon number EK line par thunse hote thay aur PAIMANA
            likha hi nahi jata tha — "opening 2399.5" se yeh pata hi nahi
            chalta tha ke gram hain, kilo ya pcs. */
-        if (!empty($r['tracked'])) {
+        if ($wantSale && !empty($r['tracked'])) {
             $L[] = self::rule();
             $L[] = ['TRACKED STOCK', 'b', self::SZ];
             foreach ($r['tracked'] as $t) {
@@ -536,7 +572,7 @@ final class BillTemplate
                   'DELIVERY' => 'DELIVERY', 'QR' => 'QR ORDER'];
         $mode  = $modes[strtoupper((string)$o['service_mode'])] ?? strtoupper((string)$o['service_mode']);
         $when  = date('d-m-Y  H:i', strtotime((string)($o['closed_at'] ?: $o['created_at'])));
-        $L[] = self::row('Invoice  '.(string)$o['bill_no'], $mode, false);
+        $L[] = self::row('Invoice  '.bill_show((string)$o['bill_no']), $mode, false);
         $right = (string)($o['cashier'] ?? '');
         if (!empty($o['tbl'])) $right = trim((string)$o['tbl'].($right !== '' ? ' / '.$right : ''));
         $L[] = self::row($when, $right, false);

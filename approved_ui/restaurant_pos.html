@@ -551,6 +551,33 @@ function money(n){return 'PKR '+Math.round(Number(n)||0).toLocaleString()}
    PAYABLE ke band par ek dafa likhi jati hai — wahin customer dekhta hai. */
 function amt(n){return Math.round(Number(n)||0).toLocaleString()}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+/* ============================================================
+   V181 — BILL NUMBER SCREEN PAR SEEDHA SADA: 1, 2, 3.
+
+   Database mein bill number `L206-0007` hi rehta hai. `L206-` us
+   offline PC ka node code hai, aur wo isi liye laga tha ke do PC ek
+   hi din "7" na bana dein — `orders` par UNIQUE (site_id,
+   business_date, bill_no) lagi hui hai.
+
+   KHAS BAAT: yeh sirf DIKHANE ke liye hai. Server ko HAMESHA asli
+   number (`billNo`) hi jata hai. Agar yahan se kata hua number
+   server ko chala jata to `pos_bill_guard()` us par dobara prefix
+   lagata — "L206-7" — aur wo ek BILKUL NAYA bill ban jata.
+   Is liye: dikhane mein billShow(), bhejne mein billNo.
+
+       L206-0007 -> 7      0001 -> 1      7 -> 7
+   Jo number is saanche mein na ho, wo jaisa hai waisa hi dikhta hai.
+   ============================================================ */
+function billShow(b){
+  b=String(b==null?'':b).trim();
+  if(!b)return '';
+  /* chaar ya zyada hindsay lazmi — "ON-123456-42" aur "APP-1" jaise
+     number is saanche mein na phansein (dekhein bill_show() in PHP). */
+  var m=/^[A-Za-z][A-Za-z0-9]{0,3}-(\d{4,})$/.exec(b);
+  if(m)return String(parseInt(m[1],10));
+  if(/^\d+$/.test(b))return String(parseInt(b,10));
+  return b;
+}
 function toast(m){var t=$('#toast');t.textContent=m;t.className='toast on';clearTimeout(t._t);t._t=setTimeout(function(){t.className='toast'},2600)}
 function qfmt(q){return (Number(q)%1)?Number(q).toFixed(3).replace(/0+$/,'').replace(/\.$/,''):String(q)}
 
@@ -983,7 +1010,7 @@ function renderStrip(){
     +(shift?'<span class="sb"><span class="dot g"></span>Shift '+esc(shift.shift_no)+'<a href="#" class="dn" id="sClose">Close</a></span>'
            :'<span class="sb"><span class="dot r"></span>Shift closed<a href="#" id="sOpen">Open</a></span>')
     +'<span class="sb">&#127869; '+n+' items</span>'
-    +'<span class="sb">&#129534; <b>Bill #'+billNo+'</b></span>'
+    +'<span class="sb">&#129534; <b>Bill #'+billShow(billNo)+'</b></span>'
     +'<span id="ctx" class="ctx"></span>'
     /* V77 — yeh DUPLICATE tha. V75 mein maine header par "+ New Bill" daala
      magar yeh strip wala bhi chhora — "New Bill" do jagah nazar aane laga.
@@ -1498,7 +1525,7 @@ function imageModal(id){
 /* ============ NEW BILL FLOW (mode -> table / customer) ============ */
 function newBillFlow(isEdit){
   var chosen=isEdit?mode:null;
-  var ov=modal('<div class="dh"><h3>'+(isEdit?'Change Bill Context':'New Bill #'+billNo)+'</h3><p>Choose the bill type</p></div>'
+  var ov=modal('<div class="dh"><h3>'+(isEdit?'Change Bill Context':'New Bill #'+billShow(billNo))+'</h3><p>Choose the bill type</p></div>'
     +'<div class="db"><div id="nbStep1">'
       +'<div class="nbmodes">'
       +'<button class="nbm" data-m="Dine In"><b>&#127869; Dine In</b><small>Table par serve</small></button>'
@@ -1887,7 +1914,7 @@ $('#chargeBtn').onclick=function(){
   if(!shift){openGate();return}
   var pay='Cash'; payMethod=pay; orderTax=taxPct(pay);
   var t=totals();
-  var ov=modal('<div class="dh"><h3>Payment &mdash; Bill #'+billNo+'</h3><p>'+esc(mode)+' &middot; '+cart.length+' line(s)</p></div>'
+  var ov=modal('<div class="dh"><h3>Payment &mdash; Bill #'+billShow(billNo)+'</h3><p>'+esc(mode)+' &middot; '+cart.length+' line(s)</p></div>'
     +'<div class="db"><div class="ptot"><span>TOTAL AMOUNT</span><b id="ptotAmt">'+money(t.grand)+'</b>'
     +'<small id="ptotSub">Subtotal '+money(t.sub)+'</small></div>'
     +'<label class="f">Payment Method</label><div class="pmg">'
@@ -2020,7 +2047,7 @@ function slipHtml(kind,lines,info){
     head='<div class="kotType">'+esc(((info&&info.mode)||mode).toUpperCase())
       +((info&&info.table)||curTable?(' - '+esc((info&&info.table)||curTable)):'')+'</div>'
       +'<div class="kotTag">'+(isRunning?'RUNNING ORDER':'NEW ORDER')+'</div>'
-      +'<div class="c">Bill #'+esc((info&&info.billNo)||billNo)+'</div>'
+      +'<div class="c">Bill #'+esc(billShow((info&&info.billNo)||billNo))+'</div>'
       +'<div class="c">'+esc(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))
       +' &middot; '+esc(new Date().toLocaleDateString())+'</div><hr>';
   }else{
@@ -2059,7 +2086,7 @@ function slipHtml(kind,lines,info){
       +'<div class="doc">'+(ST.ntn?'SALES TAX INVOICE':'SALES INVOICE')+'</div>'
       +'<div class="srule"></div>'
       +'<table class="binfo">'
-        +'<tr><td>Invoice '+esc((info&&info.billNo)||billNo)+'</td>'
+        +'<tr><td>Invoice '+esc(billShow((info&&info.billNo)||billNo))+'</td>'
           +'<td class="r">'+esc(String((info&&info.mode)||mode).toUpperCase())+'</td></tr>'
         +'<tr><td>'+esc((info&&info.at)||new Date().toLocaleString())+'</td>'
           +'<td class="r">'+bInfoR+'</td></tr>'
@@ -2395,7 +2422,7 @@ function loadHolds(){
 function cancelHold(h,done){
   var sent=!!h.sent;
   var ov=modal('<div class="dh"><h3>Cancel this bill?</h3>'
-    +'<p>Bill #'+esc(h.billNo)+' &middot; '+esc(h.table||h.mode||'')+'</p></div>'
+    +'<p>Bill #'+esc(billShow(h.billNo))+' &middot; '+esc(h.table||h.mode||'')+'</p></div>'
     +'<div class="db">'
       +'<div class="kv"><span>Items</span><b>'+(h.lines||0)+'</b></div>'
       +'<div class="kv"><span>Amount</span><b>'+money(h.total||0)+'</b></div>'
@@ -2421,7 +2448,7 @@ function cancelHold(h,done){
     var r=api('pos-hold-cancel',{id:h.id,reason:(ov.querySelector('#chReason')||{}).value||'',password:pw});
     this.disabled=false;this.textContent='Cancel bill';
     if(!r||!r.ok){toast((r&&r.message)||'Could not cancel');return}
-    ov.remove(); toast('Bill #'+esc(h.billNo)+' cancelled');
+    ov.remove(); toast('Bill #'+esc(billShow(h.billNo))+' cancelled');
     if(curHoldId===h.id){ curHoldId=''; cart=[]; }
     /* ============================================================
        V158 — CANCEL KE BAAD SCREEN HAMESHA DOBARA BANTI HAI.
@@ -2510,10 +2537,33 @@ function resumeHold(h){
      kholte hi kiraya gayab ho jata aur bill us raqam se kam ban jata —
      bilkul wohi ghalti jo pehle discount ke saath hoti thi. */
   dlv = Math.max(0, Number(r.delivery)||0);
+  /* ============================================================
+     V181 — SERVICE CHARGE BHI WAPAS.
+
+     Server `holdBillItems()` mein yeh qadar PEHLE SE bhej raha tha
+     (`'service' => $o['service_charge']`), magar yahan us ko kabhi
+     parha hi nahi gaya. Nateeja: service charge laga kar bill hold
+     karo aur dobara kholo — charge gayab, bill us raqam se kam.
+     Bilkul wohi ghalti jo pehle discount ke saath thi (V157) aur
+     delivery ke saath (V171).
+
+     Flat raqam ke tor par wapas aata hai kyunke database mein sirf
+     RAQAM mehfooz hoti hai, percent nahi (`orders` mein
+     `service_charge` hai, `service_pct` koi column hai hi nahi) —
+     wohi raasta jo discount ke flat waale roop ka hai. Cashier usay
+     `Service Charge > Edit` se badal sakta hai.
+
+     V176 PAR KOI ASAR NAHI: wahan NAYE bill par service charge sifar
+     karna tha (pichle bill ka charge chipak jata tha). Yeh raasta
+     alag hai — yeh USI bill ka apna mehfooz charge wapas la raha
+     hai jo cashier ne khud us par lagaya tha. */
+  var sv = Math.max(0, Number(r.service)||0);
+  svc = {type:'flat', value:sv};
   billStarted=true;
   loadHolds();renderCtx();renderCart();
-  toast('Bill #'+billNo+' resumed'+(curTable?(' — '+curTable):'')
+  toast('Bill #'+billShow(billNo)+' resumed'+(curTable?(' — '+curTable):'')
         +((dp>0||da>0)?(' · discount '+(dp>0?(dp+'%'):money(da))+' barqarar'):'')
+        +(sv>0?(' · service '+money(sv)+' barqarar'):'')
         +(dlv>0?(' · delivery '+money(dlv)):''));
   return true;
 }
@@ -2538,7 +2588,7 @@ $('#holdsBtn').onclick=function(){
        ============================================================ */
     var hTbl=(h.table||'').trim();
     var hDine=String(h.mode||'').toLowerCase().indexOf('dine')===0;
-    return '<div class="lrow"><div><b>Bill #'+esc(h.billNo)+' &middot; '+esc(h.mode||'')+'</b>'
+    return '<div class="lrow"><div><b>Bill #'+esc(billShow(h.billNo))+' &middot; '+esc(h.mode||'')+'</b>'
       +(hDine?(hTbl
           ?('<span style="background:var(--okbg);color:var(--ok);border-radius:5px;padding:1px 6px;'
              +'font-size:10.5px;font-weight:800;margin-left:5px">'+esc(hTbl)+'</span>')
@@ -2582,7 +2632,7 @@ $('#holdsBtn').onclick=function(){
 function dupRow(b,i){
   var tbl=(b.table||'').trim();
   var isDine=String(b.mode||'').toLowerCase().indexOf('dine')===0;
-  return '<div class="lrow"><div><b>Bill #'+esc(b.billNo)+' &middot; '+esc(b.mode)+'</b>'
+  return '<div class="lrow"><div><b>Bill #'+esc(billShow(b.billNo))+' &middot; '+esc(b.mode)+'</b>'
     +((isDine&&tbl)?('<span style="background:var(--okbg);color:var(--ok);border-radius:5px;'
         +'padding:1px 6px;font-size:10.5px;font-weight:800;margin-left:5px">'+esc(tbl)+'</span>'):'')
     +'<small>'+esc(b.time)+' &middot; '+esc(b.customer)+' &middot; '+money(b.amount)
@@ -2631,7 +2681,7 @@ $('#dupBtn').onclick=function(){
     /* V177 — table se bhi dhoonda ja sake, aur row wahi dikhe jo
        fehrist mein dikhti hai (`dupRow`). */
     var f=bills.map(function(b,i){return {b:b,i:i}}).filter(function(o){
-      return (String(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(s)>=0});
+      return (String(o.b.billNo)+' '+billShow(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(s)>=0});
     ov.querySelector('#dupList').innerHTML=f.length
       ?f.map(function(o){return dupRow(o.b,o.i)}).join('')
       :'<div class="cempty">No bill found</div>';
@@ -2693,7 +2743,7 @@ $('#edSvc').onclick=function(){
 $('#edDlv').onclick=function(){
   if(!isDelivery()){toast('Delivery charge sirf Home Delivery bill par lagta hai');return}
   var def=Math.max(0,Number(SET.delivery_charge)||0);
-  var ov=modal('<div class="dh"><h3>Delivery Charge</h3><p>Bill #'+esc(billNo)+' &middot; sirf is bill ke liye</p></div>'
+  var ov=modal('<div class="dh"><h3>Delivery Charge</h3><p>Bill #'+esc(billShow(billNo))+' &middot; sirf is bill ke liye</p></div>'
     +'<div class="db"><label class="f">Amount (PKR)</label>'
     +'<input class="inp" id="dv" type="number" min="0" step="1" inputmode="decimal" value="'+Math.max(0,Number(dlv)||0)+'" style="font-size:16px;font-weight:800">'
     +'<label class="f" style="margin-top:11px">Quick amount</label><div class="qv" style="grid-template-columns:repeat(5,1fr)">'
@@ -3160,7 +3210,8 @@ function openGate(){
       }
       return;
     }
-    shift={id:r.id,shift_no:r.shift_no,counter:r.counter};ov.remove();renderStrip();toast('Shift '+r.shift_no+' opened ('+(r.counter||'')+')');newBillFlow();
+    /* V181 — patti par account ka seedha number (server `account` bhejta hai). */
+    shift={id:r.id,shift_no:(r.account||r.shift_no),counter:r.counter};ov.remove();renderStrip();toast('Shift '+(r.account||r.shift_no)+' opened ('+(r.counter||'')+')');newBillFlow();
   };
 }
 /* `hide` = ginti se pehle wali soorat: sale to dikhao, magar daraz ka
@@ -3335,11 +3386,11 @@ function closeShift(){
     /* Account band hote hi us shift ki poori report khud chhap jati hai —
        cashier ko Print dhoondna na pare, aur malik ko har shift ka kagaz
        mile. Dialog phir bhi khulta hai (dobara print ya transfer ke liye). */
+    /* V181 — chhapne ka kaam ab SIRF showReport() karta hai, aur wo
+       DO parchiyan nikalta hai (SALE REPORT + CLOSING SHEET).
+       Yahan se apna window.open hata diya gaya: pehle yeh aur
+       showReport dono khol rahe thay, yani ek hi parchi do baar. */
     showReport(r.report);
-    try{
-      var sid=r.report&&(r.report.shift_id||r.report.id);
-      if(sid) window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid),'_blank');
-    }catch(e){}
   };
 }
 /* ---- Shift transfer: cash handover with record ---- */
@@ -3373,7 +3424,21 @@ function transferShift(rep){
 function showReport(rep,transferred){
   var ov=modal('<div class="dh"><h3>Shift Report</h3><p>Cashier reconciliation summary</p></div>'
     +'<div class="db" id="repBody">'+repRows(rep)+'</div>'
-    +'<div class="df"><button class="sec" id="prn">Print report</button><button class="go" id="dn">Done</button></div>',false,true);
+    +'<div class="df"><button class="sec" id="prn">Print sale report</button>'
+    +'<button class="sec" id="prnC">Print closing sheet</button>'
+    +'<button class="go" id="dn">Done</button></div>',false,true);
+
+  /* V181 — do alag kagaz:
+       SALE REPORT    malik ke liye — category wise sale, totals, adayegi
+       CLOSING SHEET  cashier ke liye — daraz ka hisaab, ginti, dastkhat
+     `part` na bheja jaye to purani poori parchi hi banti hai, is liye
+     Shift Management aur Closing History ka reprint jaisa tha waisa. */
+  function repPdf(part){
+    var sid=rep&&(rep.shift_id||rep.id);
+    if(!sid){ printNode(ov.querySelector('#repBody')); return; }
+    window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid)
+                +(part?('&part='+part):''),'_blank');
+  }
 
   /* V76 — Print ab wahi 80mm CLOSING REPORT khol deta hai jo Shift
      Management page kholta hai: category-wise sale, har category ke
@@ -3382,21 +3447,19 @@ function showReport(rep,transferred){
      Pehle yahan `printNode(#repBody)` tha — yani screen ke wohi chand
      rows chhap jate the (Gross Sales / Cash / Expected / Variance).
      Malik ke liye wo report thi hi nahi, sirf ek hisab tha. */
-  ov.querySelector('#prn').onclick=function(){
-    var sid=rep&&(rep.shift_id||rep.id);
-    if(sid){ window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid),'_blank'); return; }
-    /* Purane build se aaya hua report (shift_id ke baghair) — screen
-       wala fallback, taake print bilkul na ruke. */
-    printNode(ov.querySelector('#repBody'));
-  };
+  ov.querySelector('#prn').onclick =function(){ repPdf('sale'); };
+  ov.querySelector('#prnC').onclick=function(){ repPdf('cash'); };
   ov.querySelector('#dn').onclick=function(){ov.remove();openGate()};
 
   /* Shift band hote hi report khud khul jaye — cashier ko yaad rakhna
      na pare, aur raat ko counter par hamesha ek kaghaz nikle. */
   var sid0=rep&&(rep.shift_id||rep.id);
-  if(sid0)setTimeout(function(){
-    window.open('/api.php?action=shiftmgr-report-pdf&id='+encodeURIComponent(sid0),'_blank');
-  },350);
+  if(sid0){
+    /* Dono kagaz khud nikal jate hain. Doosra thori der baad — browser
+       ek hi lamhe mein do pop-up kholne par doosri ko rok deta hai. */
+    setTimeout(function(){ repPdf('sale'); }, 350);
+    setTimeout(function(){ repPdf('cash'); }, 1300);
+  }
 }
 
 /* ================= MODAL / WIRING ================= */

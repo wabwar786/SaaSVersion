@@ -144,7 +144,7 @@ final class OpsService
            Asli do cashiers se test karne par hi pakri gayi. */
         [$scopeW, $scopeA] = Scope::shiftWhere('cs');
         $q = DB::pdo()->prepare(
-            "SELECT cs.id, cs.shift_no, cs.business_date, cs.status,
+            "SELECT cs.id, cs.shift_no, cs.shift_seq, cs.business_date, cs.status,
                     cs.opened_at, cs.closed_at,
                     cs.opening_cash, cs.expected_cash, cs.actual_cash, cs.variance_amount,
                     COALESCE(u.full_name,'-') AS cashier
@@ -155,7 +155,7 @@ final class OpsService
         $q->execute(array_merge([site_id()], $scopeA));
         return array_map(fn($x) => [
             'id'       => $x['id'],
-            'shift'    => (string)$x['shift_no'],
+            'shift'    => acct_show($x['shift_seq'] ?? null, (string)$x['shift_no']),
             'date'     => (string)$x['business_date'],
             'cashier'  => (string)$x['cashier'],
             'opened'   => substr((string)$x['opened_at'], 0, 16),
@@ -331,7 +331,7 @@ final class OpsService
         $p = DB::pdo();
 
         $q = $p->prepare(
-            "SELECT id, shift_no, opened_at, opening_cash
+            "SELECT id, shift_no, shift_seq, opened_at, opening_cash
                FROM cashier_shifts
               WHERE site_id=? AND cashier_user_id=? AND status='OPEN' AND deleted_at IS NULL
               ORDER BY opened_at DESC LIMIT 1");
@@ -339,7 +339,7 @@ final class OpsService
         $own = $q->fetch(PDO::FETCH_ASSOC) ?: null;
 
         $o = $p->prepare(
-            "SELECT cs.shift_no, cs.opened_at, COALESCE(u.full_name,'-') cashier
+            "SELECT cs.shift_no, cs.shift_seq, cs.opened_at, COALESCE(u.full_name,'-') cashier
                FROM cashier_shifts cs
                LEFT JOIN users u ON u.id = cs.cashier_user_id
               WHERE cs.site_id=? AND cs.status='OPEN' AND cs.deleted_at IS NULL
@@ -350,12 +350,12 @@ final class OpsService
         return [
             'open' => $own ? [
                 'id'      => (string)$own['id'],
-                'shift'   => (string)$own['shift_no'],
+                'shift'   => acct_show($own['shift_seq'] ?? null, (string)$own['shift_no']),
                 'opened'  => substr((string)$own['opened_at'], 0, 16),
                 'opening' => (float)$own['opening_cash'],
             ] : null,
             'others_open' => array_map(fn($x) => [
-                'shift'   => (string)$x['shift_no'],
+                'shift'   => acct_show($x['shift_seq'] ?? null, (string)$x['shift_no']),
                 'cashier' => (string)$x['cashier'],
                 'opened'  => substr((string)$x['opened_at'], 0, 16),
             ], $o->fetchAll(PDO::FETCH_ASSOC)),
@@ -373,11 +373,15 @@ final class OpsService
 
         $no = 'SH-' . date('ymd-His');
         $id = uuid();
-        $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,
+        /* V181 — screen par dikhne wala seedha number. `shift_no` waisa hi. */
+        $seq = next_acct_seq($p, site_id());
+        $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,shift_seq,business_date,
                         cashier_user_id,opened_at,opening_cash,status)
-                     VALUES(?,?,?,?,CURDATE(),?,NOW(6),?,'OPEN')")
-          ->execute([$id, tenant_id(), site_id(), $no, $uid, max(0, $openingCash)]);
-        return ['id' => $id, 'shift_no' => $no, 'message' => 'Shift ' . $no . ' opened.'];
+                     VALUES(?,?,?,?,?,CURDATE(),?,NOW(6),?,'OPEN')")
+          ->execute([$id, tenant_id(), site_id(), $no, $seq, $uid, max(0, $openingCash)]);
+        $label = acct_show($seq, $no);
+        return ['id' => $id, 'shift_no' => $no, 'shift_seq' => $seq,
+                'account' => $label, 'message' => 'Shift ' . $label . ' opened.'];
     }
 
     public static function shiftClose(string $shiftId, float $counted, string $note = ''): array
@@ -546,7 +550,7 @@ final class OpsService
         $exp  = self::cashExpenses($p, $shiftId, $open, $close);
 
         return [
-            'shift'    => (string)$sh['shift_no'],
+            'shift'    => acct_show($sh['shift_seq'] ?? null, (string)$sh['shift_no']),
             'counter'  => (string)($sh['counter_name'] ?? ''),
             'note'     => (string)($sh['close_note'] ?? ''),
             'expenses' => $exp,
@@ -725,7 +729,7 @@ final class OpsService
         $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f['to'] ?? ''))
               ? (string)$f['to'] : date('Y-m-d');
 
-        $sql = "SELECT cs.id, cs.shift_no, cs.closing_ref, cs.business_date,
+        $sql = "SELECT cs.id, cs.shift_no, cs.shift_seq, cs.closing_ref, cs.business_date,
                        cs.opened_at, cs.closed_at, cs.counter_name,
                        cs.opening_cash, cs.expected_cash, cs.actual_cash, cs.variance_amount,
                        cs.invoice_count, cs.gross_sales, cs.discount_total,
@@ -752,8 +756,8 @@ final class OpsService
                 'can_see_all' => Scope::isManagement(),
                 'rows' => array_map(fn($x) => [
                     'id'       => $x['id'],
-                    'ref'      => (string)($x['closing_ref'] ?: $x['shift_no']),
-                    'shift'    => (string)$x['shift_no'],
+                    'ref'      => (string)($x['closing_ref'] ?: acct_show($x['shift_seq'] ?? null, (string)$x['shift_no'])),
+                    'shift'    => acct_show($x['shift_seq'] ?? null, (string)$x['shift_no']),
                     'date'     => (string)$x['business_date'],
                     'counter'  => (string)($x['counter_name'] ?? ''),
                     'cashier'  => (string)$x['cashier'],

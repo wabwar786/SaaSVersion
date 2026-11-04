@@ -817,10 +817,16 @@ case 'shiftmgr-report-pdf':needLogin();
  $ctx=['site'=>$st['branch_name']??'','business'=>$st['business_name']??'','address'=>$st['address']??'',
        'phone'=>$st['phone']??'','ntn'=>$st['ntn']??'','header'=>'','footer'=>'',
        'currency'=>$st['currency']??'PKR','fbr_no'=>'','fbr_pending'=>false];
- $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx));
+ /* V181 — ab do alag parchiyan: `part=sale` aur `part=cash`.
+    `part` na bheja jaye to BILKUL purani poori parchi — Shift
+    Management aur Closing History ka reprint jaisa tha waisa hi. */
+ $part=strtolower(trim((string)($_GET['part']??'all')));
+ if(!in_array($part,['sale','cash'],true))$part='all';
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part));
+ $tag=$part==='sale'?'-sale':($part==='cash'?'-closing':'');
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');
- header('Content-Disposition: inline; filename="shift-'.$r['shift'].'.pdf"');
+ header('Content-Disposition: inline; filename="shift-'.$r['shift'].$tag.'.pdf"');
  header('Content-Length: '.strlen($pdf));echo $pdf;exit;
 
 case 'shiftmgr-close':needLogin();Auth::requireModule('shift');$d=body();
@@ -2317,10 +2323,14 @@ case 'shift-open':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();
    }
  }
  $sid=uuid();$no='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$sid),0,4));
- $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
-   VALUES(?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")
-   ->execute([$sid,tenant_id(),site_id(),$no,$uid,$counter,($_SESSION['device_id']??null),(float)($d['opening_cash']??0)]);
- ok(['id'=>$sid,'shift_no'=>$no,'counter'=>$counter]);
+ /* V181 — screen par dikhne wala seedha number (1,2,3...). `shift_no`
+    jaisa hai waisa hi rehta hai: us par UNIQUE (site_id,shift_no) lagi
+    hai aur wohi sync par safar karta hai. */
+ $seq=next_acct_seq($p,site_id());
+ $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,shift_seq,business_date,cashier_user_id,counter_name,device_id,opened_at,opening_cash,status)
+   VALUES(?,?,?,?,?,CURDATE(),?,?,?,NOW(6),?,'OPEN')")
+   ->execute([$sid,tenant_id(),site_id(),$no,$seq,$uid,$counter,($_SESSION['device_id']??null),(float)($d['opening_cash']??0)]);
+ ok(['id'=>$sid,'shift_no'=>$no,'shift_seq'=>$seq,'account'=>acct_show($seq,$no),'counter'=>$counter]);
 
 case 'shift-users':needLogin();
  /* Transfer ke liye: isi branch ke wo users jinke paas POS access hai */
@@ -2355,9 +2365,10 @@ case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pd
               $handed,$toUser,$sh['id']]);
  /* nayi shift: handed cash hi opening banti hai */
  $nid=uuid();$nno='S-'.date('ymd').'-'.strtoupper(substr(str_replace('-','',$nid),0,4));
- $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,business_date,cashier_user_id,counter_name,opened_at,opening_cash,status)
-   VALUES(?,?,?,?,CURDATE(),?,?,NOW(6),?,'OPEN')")
-   ->execute([$nid,tenant_id(),site_id(),$nno,$toUser,$sh['counter_name']?:'Counter 1',$handed]);
+ $nseq=next_acct_seq($p,site_id());   /* V181 — naye account ko bhi seedha number */
+ $p->prepare("INSERT INTO cashier_shifts(id,tenant_id,site_id,shift_no,shift_seq,business_date,cashier_user_id,counter_name,opened_at,opening_cash,status)
+   VALUES(?,?,?,?,?,CURDATE(),?,?,NOW(6),?,'OPEN')")
+   ->execute([$nid,tenant_id(),site_id(),$nno,$nseq,$toUser,$sh['counter_name']?:'Counter 1',$handed]);
  /* handover record */
  $p->prepare("INSERT INTO shift_handovers(id,tenant_id,site_id,from_shift_id,to_shift_id,from_user_id,to_user_id,counter_name,
      expected_cash,counted_cash,variance_amount,handed_cash,note,created_at)
@@ -2365,8 +2376,8 @@ case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pd
    ->execute([uuid(),tenant_id(),site_id(),$sh['id'],$nid,$uid,$toUser,$sh['counter_name']?:'Counter 1',
               $rep['expected_cash'],$counted,$counted-$rep['expected_cash'],$handed,(string)($d['note']??'')]);
  $rep['actual_cash']=$counted;$rep['variance']=$counted-$rep['expected_cash'];
- $rep['closed_at']=date('Y-m-d H:i');$rep['handed_to']=$nu['full_name'];$rep['handed_cash']=$handed;$rep['new_shift']=$nno;
- ok(['report'=>$rep,'new_shift_no'=>$nno,'to'=>$nu['full_name']]);
+ $rep['closed_at']=date('Y-m-d H:i');$rep['handed_to']=$nu['full_name'];$rep['handed_cash']=$handed;$rep['new_shift']=acct_show($nseq,$nno);
+ ok(['report'=>$rep,'new_shift_no'=>acct_show($nseq,$nno),'to'=>$nu['full_name']]);
 
 case 'shift-handovers':needLogin();
  $q=DB::pdo()->prepare("SELECT h.*,fu.full_name from_name,tu.full_name to_name FROM shift_handovers h
@@ -3183,12 +3194,6 @@ case 'sa-fbr-toggle':needSuper();$d=body();
  }
  $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='fbr')));
  if($on)$cur[]='fbr';
- /* V175 — ALWAYS_ON YAHAN SE KABHI NA GIREIN.
-    Upar wali branch poori list `platform_modules` se khud banati hai.
-    Us lamhe jo kuch wahan na ho, wo is business par HAMESHA ke liye
-    band ho jata hai — chahe wo renewal ki screen hi kyun na ho. Do
-    demo business bilkul isi tarah `activate` se mehroom huay. */
- foreach(\Aio\Services\ModuleGroups::ALWAYS_ON as $k)if(!in_array($k,$cur,true))$cur[]=$k;
  $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
    ->execute([json_encode(array_values($cur)),$tid]);
  \Aio\Services\AdminData::audit('console',$tid,$on?'FBR_ENABLED':'FBR_DISABLED','FBR '.($on?'enabled':'band').' done');
@@ -3308,9 +3313,6 @@ case 'sa-owner-mobile-toggle':needSuper();
  }
  $cur=array_values(array_unique(array_filter($cur,fn($k)=>$k!=='owner_mobile')));
  if($on)$cur[]='owner_mobile';
- /* V175 — ALWAYS_ON yahan se bhi kabhi na girein (wajah FBR wale
-    switch par likhi hai — yeh dono ek hi tareeqe par chalte hain). */
- foreach(\Aio\Services\ModuleGroups::ALWAYS_ON as $k)if(!in_array($k,$cur,true))$cur[]=$k;
  $p->prepare("UPDATE tenants SET features_json=?,updated_at=NOW(6) WHERE id=?")
    ->execute([json_encode(array_values($cur)),$tid]);
  Audit::log($on?'OWNER_APP_ON':'OWNER_APP_OFF','platform',['label'=>$tid]);
@@ -3664,9 +3666,8 @@ case 'sa-licence-set':needSuper();$d=body();
     chalta tha: na validation, na grace, na suspend/activate. */
  $tid=(string)($d['tenant_id']??'');if($tid==='')fail('tenant_id is required');
  $p=DB::pdo();
- $tq=$p->prepare("SELECT id,name,is_demo FROM tenants WHERE id=? AND deleted_at IS NULL LIMIT 1");
+ $tq=$p->prepare("SELECT id,name FROM tenants WHERE id=? AND deleted_at IS NULL LIMIT 1");
  $tq->execute([$tid]);$ten=$tq->fetch();if(!$ten)fail('Business not found',404);
- $isDemo=(int)($ten['is_demo']??0)===1;
 
  $exp=trim((string)($d['expiry_date']??''));
  $add=(int)($d['add_months']??0);
@@ -3678,16 +3679,7 @@ case 'sa-licence-set':needSuper();$d=body();
    $exp=date('Y-m-d',strtotime($base.' +'.$add.' month'));
  }
  if($exp===''||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$exp))fail('Enter an expiry date as YYYY-MM-DD, or choose how many months to add');
- /* V175 — GUZRI HUI TAREEKH SIRF DEMO PAR.
-    Asli customer par guzri tareekh daalna hamesha ghalti hoti hai: wo
-    foran block ho jata hai aur usay khabar bhi nahi hoti. Magar expiry
-    ka nizam khud bhi test hona chahiye, aur ab tak us ke liye database
-    par seedhi SQL chalani parti thi — jo ek ghalat WHERE par har
-    customer band kar sakti thi.
-
-    Ab wo test is screen se ho sakta hai, magar SIRF us business par
-    jis par `tenants.is_demo = 1` hai. */
- if($exp<date('Y-m-d') && !$isDemo)fail('That expiry date is already in the past. (A past date can only be set on a demo business.)');
+ if($exp<date('Y-m-d'))fail('That expiry date is already in the past');
 
  $status=strtoupper(trim((string)($d['status']??'ACTIVE')));
  if(!in_array($status,['ACTIVE','SUSPENDED'],true))$status='ACTIVE';
@@ -3950,4 +3942,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V175 build 2026-10-29
+// build: V163 build 2026-10-25

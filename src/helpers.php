@@ -142,4 +142,76 @@ function cli_arg(string $name, string $default = ''): string
     return (string)($a[strtolower($name)] ?? $default);
 }
 
-// build: V148 build 2026-10-12
+/* ============================================================
+   V181 — SCREEN PAR NUMBER SEEDHA SADA: 1, 2, 3.
+
+   Malik ki baat: "bill number aur account number 1,2,3 mein hone
+   chahiyen, aur user ko yeh na lage ke database mein kuch aur ja
+   raha hai."
+
+   DATABASE MEIN KUCH NAHI BADLA. Yeh sirf DIKHANE ka tareeqa hai.
+   Wajah saaf hai:
+
+       orders         par UNIQUE (site_id, business_date, bill_no)
+       cashier_shifts par UNIQUE (site_id, shift_no)
+
+   Bill number `L206-0007` hai, aur `L206-` us offline PC ka node
+   code hai. Yeh prefix isi liye laga tha ke do offline PC ek hi
+   din "7" na bana dein — warna cloud par sync ke waqt ek bill
+   doosre ko mita deta. Is liye database mein number jaisa hai
+   waisa hi rehta hai, aur screen par sirf wo hissa chhapta hai jo
+   cashier aur gahak ke kaam ka hai.
+
+   `bill_show()`:
+       L206-0007  ->  7
+       0001       ->  1
+       7          ->  7
+   Jo number is saanche mein na ho (purana ya haath se likha hua),
+   wo JAISA HAI WAISA hi dikhta hai — kuch gum nahi hota.
+   ============================================================ */
+function bill_show($billNo): string
+{
+    $b = trim((string)$billNo);
+    if ($b === '') return '';
+    /* node ka prefix: "L206-0007".
+       CHAAR ya us se zyada hindsay LAZMI hain — bill number hamesha
+       `str_pad(...,4,'0')` se banta hai. Yeh shart is liye hai ke
+       doosri qism ke number is saanche mein na phans jayen:
+           ON-123456-42  (customer app ka bill)  -> waisa hi
+           APP-1                                  -> waisa hi
+       Sirf wohi number kata jata hai jo POS ne khud is shakl mein
+       banaya ho. */
+    if (preg_match('/^[A-Za-z][A-Za-z0-9]{0,3}-(\d{4,})$/', $b, $m)) {
+        return (string)(int)$m[1];
+    }
+    /* bina prefix, sirf number: "0001" */
+    if (preg_match('/^\d+$/', $b)) {
+        return (string)(int)$b;
+    }
+    return $b;
+}
+
+/* Account (shift) ka number. `cashier_shifts.shift_seq` har site par
+   1 se chalta hai (V181 ki migration purani shifts ko bhi opened_at
+   ki tarteeb se number de deti hai). Kisi wajah se seq na mile to
+   purana poora naam dikh jata hai — khana khali nahi rehta. */
+function acct_show($seq, $shiftNo = ''): string
+{
+    $n = (int)$seq;
+    if ($n > 0) return (string)$n;
+    return trim((string)$shiftNo);
+}
+
+/* Agla account number is site ke liye. Column na ho (purana node jahan
+   migration abhi nahi chali) to NULL — screen par purana poora naam
+   dikh jata hai aur account khulna rukta nahi. */
+function next_acct_seq(\PDO $p, string $siteId): ?int
+{
+    try {
+        $q = $p->prepare("SELECT COALESCE(MAX(shift_seq),0)+1 FROM cashier_shifts WHERE site_id=?");
+        $q->execute([$siteId]);
+        return (int)$q->fetchColumn();
+    } catch (\Throwable $e) { return null; }
+}
+
+// build: V181 build 2026-11-04

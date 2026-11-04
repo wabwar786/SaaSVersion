@@ -98,6 +98,13 @@ return [
        (customer ka tay-shuda discount). Dono default 0, purani rows par
        koi asar nahi. */
     ['script' => 'migrate_discounts',     'optional' => true, 'stage' => 'background'],
+    /* V181 — account ka seedha sada number (`cashier_shifts.shift_seq`).
+       Sirf DIKHANE ke liye: `shift_no` jaisa hai waisa hi rehta hai,
+       kyunke us par UNIQUE (site_id, shift_no) lagi hui hai aur wohi
+       sync par safar karta hai. Script purani shifts ko bhi opened_at
+       ki tarteeb se ginti de deti hai, taake number beech se shuru na
+       ho. Idempotent. */
+    ['script' => 'migrate_shift_seq',     'optional' => true, 'stage' => 'background'],
     /* V171 — `orders.delivery_charge`. Home Delivery ka kiraya ab apni
        jagah likha jata hai, khane ki keemat ya service charge mein
        chhupaya nahi jata. Tax se bahar, default 0, purane bill ka total
@@ -109,12 +116,6 @@ return [
        1,2,3... de deta hai — nazar aane wali tarteeb badalti nahi, bas
        screen par badalne ke qabil ho jati hai. */
     ['script' => 'migrate_menu_sort',     'optional' => true, 'stage' => 'background'],
-    /* V175 — purani `features_json` liston mein `activate`/`dashboard`
-       daal deti hai. In ke baghair RENEW ki screen band ho jati thi
-       (router page ko POS par wapas bhej deta tha). Code ab in ko girne
-       nahi deta; yeh script sirf purana data theek karti hai taake
-       Super Admin ki Features screen bhi wohi sach dikhaye. */
-    ['script' => 'migrate_always_on',     'optional' => true, 'stage' => 'background'],
     /* V149 — licence ka pehra. Yeh script likhi gayi thi, documented
        bhi thi, magar sirf `windows_bootstrap.ps1` (pehli install) mein
        chalti thi — yani grace period khatam hone par kabhi kuch hota hi
@@ -148,4 +149,4 @@ return [
     ['script' => 'check_stock_links',     'optional' => true, 'check' => true],
 ];
 
-// build: V175 build 2026-10-29
+// build: V154 build 2026-10-13

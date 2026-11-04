@@ -133,7 +133,8 @@ final class PageData {
      nahi ghatta tha — aur MITAYA HUA kharcha dashboard phir bhi ginta
      tha. Ab teenon ek hi shart par hain. */
   $eq=$p->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE site_id=? AND expense_date=? AND status<>'REJECTED' AND deleted_at IS NULL");$eq->execute([site_id(),$date]);$expenses=(float)$eq->fetchColumn();$cq=$p->prepare("SELECT COALESCE(SUM(ABS(stl.value_change)),0) FROM stock_transaction_lines stl JOIN stock_transactions st ON st.id=stl.stock_transaction_id WHERE st.site_id=? AND st.business_date=? AND st.transaction_type='SALE'");$cq->execute([site_id(),$date]);$food=(float)$cq->fetchColumn();
-  $sq=$p->prepare("SELECT shift_no,opening_cash FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$sq->execute([site_id()]);$shift=$sq->fetch()?:['shift_no'=>'—','opening_cash'=>0];
+  /* V181 — dashboard par bhi account ka seedha number. */
+  $sq=$p->prepare("SELECT shift_no,shift_seq,opening_cash FROM cashier_shifts WHERE site_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$sq->execute([site_id()]);$shift=$sq->fetch()?:['shift_no'=>'—','shift_seq'=>null,'opening_cash'=>0];$shift['shift_no']=acct_show($shift['shift_seq']??null,(string)$shift['shift_no']);
   /* V179 — GHANTON KA CHART POORE DIN KA.
      Pehle yahan `foreach(range(10,18))` tha — sirf subah 10 se shaam 6.
      Restaurant raat 2 baje band hota hai, to shaam 6 ke baad ki saari
@@ -216,10 +217,12 @@ final class PageData {
 
      Ab wahi shart yahan bhi: sirf MERI khuli shift.
      ============================================================ */
-  $sh=$p->prepare("SELECT id,shift_no FROM cashier_shifts
+  /* V181 — POS ki patti par bhi account ka seedha number. */
+  $sh=$p->prepare("SELECT id,shift_no,shift_seq FROM cashier_shifts
                     WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
                     ORDER BY opened_at DESC LIMIT 1");
   $sh->execute([site_id(), current_user()['id'] ?? '']);$shift=$sh->fetch()?:null;
+  if($shift)$shift['shift_no']=acct_show($shift['shift_seq']??null,(string)$shift['shift_no']);
   /* PEHLE 50 bills chunein, PHIR unki tafseel.
      Ek hi query paanch tables join kar ke phir sort karti thi — 6,000
      orders par MySQL ko 2,895 rows join karni partin, sirf 50 dikhane ke

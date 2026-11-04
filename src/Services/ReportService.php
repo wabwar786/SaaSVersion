@@ -94,6 +94,25 @@ final class ReportService
             throw new \RuntimeException('Unknown report: ' . $id);
         }
         $out = self::$m($from, $to);
+        /* ============================================================
+           V181 — REPORTS PAR BHI BILL NUMBER SEEDHA SADA.
+
+           Jis bhi report mein `bill_no` ka khana ho, us par screen par
+           `7` chhapta hai — database mein `L206-0007` hi rehta hai.
+           Yeh EK hi jagah hai, is liye koi report peeche nahi rehti
+           aur har jagah number ek jaisa dikhta hai.
+
+           CSV aur PDF isi `rows` se bante hain, to wahan bhi wohi
+           number jata hai jo screen par hai.
+           ============================================================ */
+        if (!empty($out['rows']) && is_array($out['rows'])) {
+            foreach ($out['rows'] as &$__r) {
+                if (is_array($__r) && array_key_exists('bill_no', $__r)) {
+                    $__r['bill_no'] = bill_show((string)$__r['bill_no']);
+                }
+            }
+            unset($__r);
+        }
         $out['from'] = $from;
         $out['to']   = $to;
         return $out;
@@ -268,7 +287,10 @@ final class ReportService
            table bhar jata.
            ============================================================ */
         $rows = self::q(
-            "SELECT s.shift_no                                   account,
+            /* V181 — account ka seedha number (1,2,3). `shift_no` database
+               mein jaisa hai waisa hi; yeh sirf dikhane ke liye hai. Jis
+               purani row ko abhi number na mila ho, us par poora naam. */
+            "SELECT COALESCE(NULLIF(CAST(s.shift_seq AS CHAR),''),s.shift_no) account,
                     COALESCE(NULLIF(s.counter_name,''),'-')      counter,
                     COALESCE(NULLIF(u.full_name,''),'-')         cashier,
                     DATE_FORMAT(s.opened_at,'%d %b %H:%i')       opened,
@@ -294,7 +316,7 @@ final class ReportService
               WHERE s.site_id = ?
                 AND s.deleted_at IS NULL
                 AND $sw
-              GROUP BY s.id, s.shift_no, s.counter_name, u.full_name,
+              GROUP BY s.id, s.shift_no, s.shift_seq, s.counter_name, u.full_name,
                        s.opened_at, s.closed_at
              /* ============================================================
                 V179 — ACCOUNT KHULTE HI REPORT MEIN AA JAYE.
