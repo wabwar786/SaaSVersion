@@ -218,7 +218,18 @@ final class PageData {
      Ab wahi shart yahan bhi: sirf MERI khuli shift.
      ============================================================ */
   /* V181 — POS ki patti par bhi account ka seedha number. */
-  $sh=$p->prepare("SELECT id,shift_no,shift_seq FROM cashier_shifts
+  /* ============================================================
+     V182 — `opened_at` BHI UTHAO.
+
+     Yeh khana yahan se parha hi nahi jata tha, magar neeche
+     `$pick` mein `$shift['opened_at']` istemal hota hai. Nateeja do
+     cheezein thin:
+       1. Har POS load par PHP warning: Undefined array key "opened_at"
+       2. Shart `closed_at >= NULL` kabhi sach nahi hoti, is liye wo
+          bill jin par account likha hi nahi gaya (tablet/QR ka order)
+          Duplicate Bill ki fehrist mein KABHI nazar nahi aate thay.
+     ============================================================ */
+  $sh=$p->prepare("SELECT id,shift_no,shift_seq,opened_at FROM cashier_shifts
                     WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
                     ORDER BY opened_at DESC LIMIT 1");
   $sh->execute([site_id(), current_user()['id'] ?? '']);$shift=$sh->fetch()?:null;
@@ -240,7 +251,7 @@ final class PageData {
        [site_id(), $shift['id'], $shift['opened_at']]]
     : ["WHERE site_id=? AND business_date=? AND order_status='CLOSED'",
        [site_id(), $date]];
-  $sb=$p->prepare("SELECT o.bill_no,o.closed_at,o.service_mode,o.grand_total,
+  $sb=$p->prepare("SELECT o.bill_no,o.business_date,o.closed_at,o.service_mode,o.grand_total,
                           dt.display_name table_name,c.full_name customer_name,
                           pm.name payment_name,fi.provider_invoice_no fbr_no
                      FROM (SELECT id FROM orders
@@ -270,9 +281,29 @@ final class PageData {
      `id` pehle bhi asal bill number tha aur reprint usi se chalta
      hai (`bill-pdf&bill=`), is liye reprint par koi asar nahi.
      ============================================================ */
-  foreach($sb->fetchAll() as $x){$n=(int)preg_replace('/\D/','',(string)$x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>(string)$x['bill_no'],'seq'=>$n,'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
+  /* V182 — tarteeb ka number SIRF aakhri '-' ke baad se. V177 mein yahan
+     poore bill number ke hindsay ginay jate thay, to `L206-0009` ka number
+     2060009 ban jata aur wo bill fehrist mein bilkul ghalat jagah par
+     chala jata tha. Jin customers ke bill par prefix nahi, un par koi
+     farq nahi parta. */
+  $billSeq=function($b){$p2=explode('-',(string)$b);return (int)preg_replace('/\D/','',(string)end($p2));};
+  foreach($sb->fetchAll() as $x){$n=$billSeq($x['bill_no']);$shiftBills[]=['id'=>$x['bill_no'],'billNo'=>(string)$x['bill_no'],'seq'=>$n,'day'=>(string)$x['business_date'],'time'=>$x['closed_at']?date('h:i A',strtotime($x['closed_at'])):'','mode'=>self::modeLabel($x['service_mode']),'table'=>$x['table_name']?:'','customer'=>$x['customer_name']?:'Walk-in','amount'=>(float)$x['grand_total'],'payment'=>$x['payment_name']?:'','fbrNo'=>$x['fbr_no']?:''];}
   /* Tarteeb: bill number ke hisaab se barhte hue. */
-  usort($shiftBills, fn($a,$b) => ($a['seq'] <=> $b['seq']) ?: strcmp((string)$a['billNo'],(string)$b['billNo']));
+  /* ============================================================
+     V182 — TARTEEB: PEHLE DIN, PHIR NUMBER.
+
+     Bill number HAR RAAT 1 se dobara shuru hota hai (`nextBill()`
+     sirf `business_date = aaj` dekhta hai). Ek till subah 11 baje
+     khul kar agli raat 2 baje band hota hai, to usi EK account mein
+     pehle din ke 1..50 aur agle din ke 1,2,3 dono hote hain.
+
+     Sirf number par tarteeb lagao to agle din ka "1" pehle din ke
+     "1" ke sath ja chipakta hai aur fehrist be-tarteeb lagti hai.
+     Ab pehle TAREEKH, phir number — yani bill usi tarteeb mein jis
+     mein bane thay.
+     ============================================================ */
+  usort($shiftBills, fn($a,$b) => (strcmp((string)$a['day'],(string)$b['day']))
+      ?: ($a['seq'] <=> $b['seq']) ?: strcmp((string)$a['billNo'],(string)$b['billNo']));
   /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
      Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
      hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par

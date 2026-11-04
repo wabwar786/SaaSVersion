@@ -659,9 +659,59 @@ final class OpsService
      *
      * Ab dono ek hi jagah se: khule orders.
      */
+    /* ============================================================
+       V182 — HOLD BILLS SIRF USI ACCOUNT KE JO ABHI KHULA HAI.
+
+       MALIK NE PAKRA: Hold Bills mein 22 OCTOBER ka bill baitha tha,
+       aur doosre cashier (Mueed Abbasi) ke account ka bill bhi, jabke
+       counter par Mubeen ka account khula tha.
+
+       WAJAH: yahan shart sirf itni thi —
+           WHERE site_id=? AND order_status='OPEN'
+       Na account ki shart, na tareekh ki. Yani site ka HAR khula bill,
+       HAMESHA ke liye.
+
+       YEH SIRF BADSOORTI NAHI THI. Aisa purana bill koi bhi RESUME kar
+       ke apne account mein band kar sakta tha — aur `touchOrder()` us
+       par NAYA `shift_id` likh deta hai. Nateeja: 22 October ka bill
+       aaj ke account ki sale ban jata, aur doosre cashier ka bill is
+       cashier ke khaate mein chala jata. Bilkul wohi "sale mix" jis se
+       bachna sab se ahem hai.
+
+       AB: wohi usool jo Duplicate Bill ki fehrist par pehle se laga
+       hua hai — is waqt KHULE account ke bill, aur wo bina-account
+       wale bill jo yeh account khulne ke BAAD bane (tablet/QR ka
+       order, jin par `shift_id` likha hi nahi jata).
+
+       TAREEKH KI KOI SHART JAAN BOOJH KAR NAHI: ek till subah 11 baje
+       khul kar agli raat 2 baje band hota hai. Us ka raat 12 ke baad
+       ka hold bhi USI account ka hai.
+
+       ACCOUNT KHULA HI NA HO -> khali fehrist. POS waise bhi bina
+       account ke bill banane nahi deta.
+
+       JO PURANE KHULE BILL REH GAYE HON wo gum nahi hote: malik unhein
+       Operations > Orders Management par dekh sakta hai aur wahin se
+       manager password ke saath Void kar sakta hai. Us screen ko haath
+       nahi lagaya gaya.
+       ============================================================ */
     public static function holdBills(): array
     {
         [$w, $a] = Scope::orderWhere('o');
+        try {
+            /* Is waqt is user ka apna khula account */
+            $cs = DB::pdo()->prepare(
+                "SELECT id, opened_at FROM cashier_shifts
+                  WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                    AND deleted_at IS NULL
+                  ORDER BY opened_at DESC LIMIT 1");
+            $cs->execute([site_id(), Scope::userId()]);
+            $sh = $cs->fetch(PDO::FETCH_ASSOC);
+            if (!$sh) return [];          /* account khula hi nahi */
+            $shiftW = "(o.shift_id = ? OR (o.shift_id IS NULL
+                        AND COALESCE(o.opened_at,o.created_at) >= ?))";
+            $shiftA = [$sh['id'], $sh['opened_at']];
+        } catch (\Throwable $e) { return []; }
         try {
             $q = DB::pdo()->prepare(
                 "SELECT o.id, o.bill_no, o.service_mode,
@@ -685,10 +735,30 @@ final class OpsService
                    LEFT JOIN customers c      ON c.id = o.customer_id
                    LEFT JOIN users u          ON u.id = o.created_by_user_id
                   WHERE o.site_id = ? AND o.order_status = 'OPEN'
+                    AND $shiftW
                     AND $w
-                  ORDER BY COALESCE(o.opened_at,o.created_at) DESC
+                  /* ============================================================
+                     V182 — TARTEEB: PEHLE DIN, PHIR BILL NUMBER.
+
+                     Pehle yahan waqt ke hisaab se ULTI tarteeb thi (naya
+                     bill sab se oopar). Malik ne kaha number tarteeb se
+                     aane chahiyen — Duplicate Bill par V177 mein yeh ho
+                     chuka tha, Hold Bills reh gayi thi.
+
+                     Pehle TAREEKH, phir number: bill number har raat 1 se
+                     dobara shuru hota hai, aur ek till raat 12 ke paar
+                     chalta hai. Sirf number par tarteeb lagate to agle
+                     din ka 'ek' pehle din ke 'ek' ke sath ja chipakta.
+                     ============================================================ */
+                  ORDER BY o.business_date,
+                           /* SIRF aakhri '-' ke baad wale hindsay. `L206-0009`
+                              par poore number ke hindsay ginte to 2060009
+                              ban jata aur bill sab se aakhir mein chala jata. */
+                           CAST(NULLIF(REGEXP_REPLACE(
+                                SUBSTRING_INDEX(o.bill_no,'-',-1),'[^0-9]',''),'') AS UNSIGNED),
+                           o.bill_no
                   LIMIT 100");
-            $q->execute(array_merge([site_id()], $a));
+            $q->execute(array_merge([site_id()], $shiftA, $a));
             $rows = $q->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) { return []; }
 
