@@ -260,7 +260,50 @@ final class ReportService
         [$sw, $sa] = Scope::shiftWhere('s');
 
         /* ============================================================
-           V178 — TAREEKH KA FILTER BILLON PAR BHI.
+           V183 — TAREEKH AB ACCOUNT KE KHULNE PAR LAGTI HAI,
+                  BILLON PAR NAHI.
+
+           Malik ki baat: "agar main start date 7/11/2026 aur end date
+           7/11/2026 rakhoon to mujhe sirf EK account dikhna chahiye jo
+           7/11/2026 ko shuru hua. Pichli date wala nahi dikhna chahiye."
+
+           Pehle (V178) ulta tha: account koi bhi ho, bas us ke wo bill
+           ginay jate thay jo chuni hui tareekhon mein band huay. Is liye
+           7 Nov ki report par 1 Nov aur 5 Nov ke khule account bhi aa
+           jate thay.
+
+           AB:
+             • Fehrist mein sirf wo account jo CHUNI HUI TAREEKHON MEIN
+               KHULE  (`DATE(s.opened_at) BETWEEN ? AND ?`).
+             • Us account ka POORA hisaab — us ke SAARE bill aur SAARE
+               kharche, chahe wo agle din ke hon. Yehi account ka asal
+               hisaab hai: ek till subah 11 baje khul kar agli raat 2
+               baje band hota hai, us ki raat 12 ke baad wali sale bhi
+               usi account ki hai.
+
+           >>> IS KA EK NATIJA SAAF SAMAJH LEIN <<<
+           Ab is report ka total `Sales summary` ke total ke BARABAR
+           NAHI hota, aur yeh jaan-boojh kar hai:
+
+             • Jo account pehle khula tha magar us ke bill aaj band
+               huay — wo bill ab is report mein nahi hain (us ka
+               account aaj khula hi nahi).
+             • Jo account aaj khula hai aur kal tak chalega — us ke
+               KAL wale bill bhi abhi is report mein hain.
+
+           Do reports ab do alag sawalon ka jawab hain:
+             Sales summary   -> is DIN kitni sale hui
+             Account wise    -> is din KHULE ACCOUNT ne kul kitna kamaya
+           Screen par neeche wala note yehi baat likhta hai, taake koi
+           dono ke total ka muqabla kar ke pareshan na ho.
+
+           `HAVING` ki ab zarurat nahi: jo account arse mein khula, wo
+           khud hi fehrist mein hai — chahe us par ek bhi bill na bana
+           ho (V179 wali baat waise hi qayam hai).
+           ============================================================
+
+           PURANA FAISLA (V178) — record ke liye:
+           TAREEKH KA FILTER BILLON PAR BHI.
 
            Pehle yeh report us account ka POORA hisaab deti thi, chahe
            us ke bill report ke arse se bahar ke hon. Asli data par
@@ -296,10 +339,10 @@ final class ReportService
                     DATE_FORMAT(s.opened_at,'%d %b %H:%i')       opened,
                     IFNULL(DATE_FORMAT(s.closed_at,'%d %b %H:%i'),'chal raha hai') closed,
                     (DATEDIFF(DATE(COALESCE(s.closed_at,NOW())),DATE(s.opened_at))+1) days,
+                    /* V183 — account ka POORA kharcha, tareekh ki shart nahi. */
                     (SELECT COALESCE(SUM(e.amount),0) FROM expenses e
                       WHERE e.shift_id = s.id AND e.status <> 'REJECTED'
-                        AND e.deleted_at IS NULL
-                        AND DATE(e.expense_date) BETWEEN ? AND ?) expenses,
+                        AND e.deleted_at IS NULL) expenses,
                     COUNT(o.id)                                   bills,
                     COALESCE(SUM(o.subtotal),0)                   subtotal,
                     COALESCE(SUM(o.discount_amount),0)            discount,
@@ -309,17 +352,27 @@ final class ReportService
                     COALESCE(SUM(o.grand_total),0)                sale
                FROM cashier_shifts s
                LEFT JOIN users u ON u.id = s.cashier_user_id
+               /* V183 — account ke SAARE band bill, tareekh ki shart nahi.
+                  Tareekh ab neeche WHERE mein account ke KHULNE par lagti hai. */
                LEFT JOIN orders o
                       ON o.shift_id = s.id
                      AND o.order_status = 'CLOSED'
-                     AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
               WHERE s.site_id = ?
                 AND s.deleted_at IS NULL
+                AND DATE(s.opened_at) BETWEEN ? AND ?
                 AND $sw
               GROUP BY s.id, s.shift_no, s.shift_seq, s.counter_name, u.full_name,
                        s.opened_at, s.closed_at
              /* ============================================================
-                V179 — ACCOUNT KHULTE HI REPORT MEIN AA JAYE.
+                V183 — `HAVING` ab hai hi nahi.
+
+                Jo account chuni hui tareekhon mein khula, wo khud hi
+                fehrist mein hai — chahe us par ek bhi bill na bana ho.
+                Yani V179 wali baat -- account khulte hi report mein aa
+                jaye -- ab shart ki mohtaj nahi, khud ba khud qayam hai.
+
+                PURANA FAISLA (V179) — record ke liye:
+                ACCOUNT KHULTE HI REPORT MEIN AA JAYE.
 
                 V178 mein yahan sirf `bills > 0 OR expenses > 0` tha. Is
                 ka natija asal customer par yeh nikla: aaj subah jo till
@@ -349,19 +402,16 @@ final class ReportService
                 MAX wohi qeemat lauta ta hai — aur yeh har sql_mode par
                 chalta hai, `ONLY_FULL_GROUP_BY` par bhi.
                 ============================================================ */
-             HAVING bills > 0
-                 OR expenses > 0
-                 OR MAX(DATE(s.opened_at)) BETWEEN ? AND ?
-                 OR (MAX(s.status) = 'OPEN' AND MAX(DATE(s.opened_at)) <= ?)
               ORDER BY s.opened_at",
-            array_merge([$f, $t, $f, $t, site_id()], $sa, [$f, $t, $t]));
+            array_merge([site_id(), $f, $t], $sa));
 
         foreach ($rows as &$r) { $r['net'] = round((float)$r['sale'] - (float)$r['expenses'], 2); }
         unset($r);
 
-        /* Jin bills par account number hai hi nahi — alag line, taake
-           total kabhi gum na ho. Inhen tareekh se hi liya jata hai,
-           kyunke in ka koi account hai hi nahi. */
+        /* Jin billon par account number hai hi nahi (tablet/QR ka order) —
+           un ki apni alag line. In ka koi account hai hi nahi, is liye
+           inhen BILL KI TAREEKH se liya jata hai — yeh is report mein
+           wahi ek jagah hai jahan tareekh bill par lagti hai. */
         $orphan = self::q(
             "SELECT COUNT(*) bills, COALESCE(SUM(o.subtotal),0) subtotal,
                     COALESCE(SUM(o.discount_amount),0) discount,
@@ -435,10 +485,14 @@ final class ReportService
                hai, yani hamesha theek. */
             (function(array $t): array { $t['net'] = round($t['sale'] - $t['expenses'], 2); return $t; })(
                 self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net'])),
-            'Har account apni ek line — chahe wo kai din chala ho. Chuni hui '
-          . 'tareekhon ke bill hi ginay jate hain, is liye is ka total Sales '
-          . 'summary ke total ke barabar hota hai. Account sirf bill par likhe '
-          . 'hue account number se tay hota hai, waqt ke andaze se nahi.');
+            'Fehrist mein sirf wo account hain jo CHUNI HUI TAREEKHON MEIN KHULE. '
+          . 'Har account apni ek line, aur us par us ka POORA hisaab — saare bill '
+          . 'aur kharche, chahe wo agle din ke hon (ek till raat 12 ke paar bhi '
+          . 'chalta hai). Is liye is report ka total Sales summary ke total se '
+          . 'alag ho sakta hai: Sales summary batati hai is DIN kitni sale hui, '
+          . 'aur yeh report batati hai is din KHULE ACCOUNT ne kul kitna kamaya. '
+          . 'Account sirf bill par likhe hue account number se tay hota hai, '
+          . 'waqt ke andaze se nahi.');
     }
 
     private static function r_sales_by_item(string $f, string $t): array

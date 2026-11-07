@@ -92,17 +92,55 @@
        thi "shift khuli hai" — aur Close ka button us doosre banday
        ki shift band kar deta tha, malik ki ginti hui cash ke sath.
 
-       Ab un ki sirf KHABAR di jati hai. Band karna un ka apna kaam
-       hai (ya handover se). Yahan un par koi button nahi.
+       Ab un ki sirf KHABAR di jati hai, aur Close ka button SIRF apni
+       shift par lagta hai.
+       ============================================================
+
+       V183 — ADMIN KISI BHI WAQT KOI BHI ACCOUNT BAND KAR SAKE.
+
+       V167 ne ghalti se band hone se to bacha liya, magar us ke saath
+       "jaan boojh kar band karna" wala raasta banaya hi nahi gaya. Us
+       ki qeemat asal customer par nazar aayi: ek till 1 November se
+       chaar din khula para raha, aur ek aur till par ek bhi bill nahi
+       bana magar wo khula hi raha — malik ke paas unhein band karne ka
+       koi tareeqa tha hi nahi.
+
+       Ab har khule account par apna Close ka button hai, magar:
+         • sirf Admin/Manager ko (`r.can_close`, server se aata hai)
+         • pehle expected cash dikhta hai, phir counted maanga jata hai
+         • jis till par pichle 10 minute mein bill bana ho us par
+           saaf warning — us waqt band karna cashier ko phansa deta hai
+         • `close_note` mein khud likha jata hai ke kis ne band kiya,
+           taake baad mein pata rahe ke cashier ne khud band nahi kiya
+
+       Asal rok server par hai; yeh screen sirf dikhati hai.
        ============================================================ */
     var oth = r.others_open || [];
     if (oth.length) {
+      var canClose = !!r.can_close;
       top += '<div class="note" style="margin:0 12px 12px;background:#fff6e5;border-color:#f0d9a8;color:#8a5a00">'
-           + '<b>' + oth.length + ' other till' + (oth.length === 1 ? ' is' : 's are') + ' still open:</b> '
+           + '<b>' + oth.length + ' aur till khula para hai' + (oth.length === 1 ? '' : ' (' + oth.length + ')') + ':</b>'
            + oth.map(function (x) {
-               return esc(x.cashier) + ' (' + esc(x.shift) + ', since ' + esc(x.opened) + ')';
-             }).join(' &middot; ')
-           + '<div style="margin-top:4px;font-size:11px">Yeh un ke apne account hain — unhein wahi band karenge.</div>'
+               /* Apna purana till band karne ke liye admin hona zaroori nahi. */
+               var canThis = canClose || !!x.mine;
+               return '<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+                    + '<span>' + esc(x.cashier) + ' (' + esc(x.shift) + ', since ' + esc(x.opened) + ')'
+                    + (x.mine ? ' <b>&mdash; aap ka apna purana till</b>' : '')
+                    + (x.busy ? ' <b style="color:#a3222d">&mdash; abhi kaam ho raha hai</b>' : '')
+                    + '</span>'
+                    + (canThis
+                        ? '<button class="btn sm" data-shclose="' + esc(x.id) + '"'
+                          + ' data-shname="' + esc(x.shift) + '"'
+                          + ' data-shwho="' + esc(x.cashier) + '"'
+                          + ' data-shbusy="' + (x.busy ? '1' : '') + '">Close this till</button>'
+                        : '')
+                    + '</div>';
+             }).join('')
+           + '<div style="margin-top:6px;font-size:11px">'
+           + (canClose
+               ? 'Admin ke tor par aap inhein kisi bhi waqt band kar sakte hain. Jo till aap ka apna na ho, us ki parchi par likha jayega ke aap ne band kiya.'
+               : 'Apna purana till aap khud band kar sakte hain. Doosron ke till admin band karega.')
+           + '</div>'
            + '</div>';
     }
 
@@ -133,8 +171,58 @@
 
     host().addEventListener('click', function (e) {
       var b = e.target.closest('[data-shrep]');
-      if (!b) return;
-      window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
+      if (b) {
+        window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
+        return;
+      }
+
+      /* ---- V183 — doosre ka khula account admin band kare ---- */
+      var c = e.target.closest('[data-shclose]');
+      if (!c) return;
+      var id   = c.getAttribute('data-shclose');
+      var name = c.getAttribute('data-shname') || '';
+      var who  = c.getAttribute('data-shwho') || '';
+      var busy = c.getAttribute('data-shbusy') === '1';
+
+      if (busy && !confirm(
+            'Is till par pichle 10 minute mein bill bana hai — ' + who + ' abhi kaam kar raha hai.\n\n'
+          + 'Abhi band karne se us ka chalta hua bill phans sakta hai.\n\nPhir bhi band karein?')) return;
+
+      if (!confirm('Account ' + name + ' (' + who + ') band karna hai?\n\n'
+                 + 'Closing parchi par likha jayega ke aap ne band kiya.')) return;
+
+      /* Expected PEHLE dikhao, phir counted maango — wahi usool jo apni
+         shift par hai. Ulta karein to ginti karne wala expected dekh kar
+         wahi likh deta hai aur farq kabhi pakra nahi jata. */
+      var exp = req('shiftmgr-expected&id=' + encodeURIComponent(id));
+      var expected = (exp && exp.ok) ? Number(exp.expected || 0) : null;
+      var msg = 'Till mein maujood cash gin kar total likhein (PKR).';
+      if (expected !== null) msg = 'Expected in till: ' + money(expected) + '\n\n' + msg;
+      var v = prompt(msg, '');
+      if (v === null) return;
+
+      var res = req('shiftmgr-close', {
+        id: id,
+        counted: Number(v || 0),
+        note: 'Closed by admin'
+      });
+      if (!res.ok) { toast(res.message || 'Could not close this till', true); return; }
+
+      var d = Number(res.variance || 0);
+      alert('Account ' + name + ' (' + who + ')'
+          + '\n--------------------------------'
+          + '\nOpening float      ' + money(res.opening)
+          + '\nCash sales       + ' + money(res.cash_sales)
+          + '\nCash expenses    - ' + money(res.cash_expenses)
+          + '\n--------------------------------'
+          + '\nExpected in till   ' + money(res.expected)
+          + '\nYou counted        ' + money(res.counted)
+          + '\n--------------------------------'
+          + '\n' + (Math.abs(d) < 1 ? 'BALANCED' : (d > 0 ? 'CASH OVER' : 'CASH SHORT'))
+          + '           ' + (d > 0 ? '+' : '') + money(d));
+      window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(id), '_blank');
+      toast(res.message || 'Till closed');
+      shiftPage();
     });
 
     var ob = document.getElementById('shOpen');

@@ -339,13 +339,45 @@ final class OpsService
         $own = $q->fetch(PDO::FETCH_ASSOC) ?: null;
 
         $o = $p->prepare(
-            "SELECT cs.shift_no, cs.shift_seq, cs.opened_at, COALESCE(u.full_name,'-') cashier
+            /* ============================================================
+               V183 — DOOSRE KE KHULE ACCOUNT KA `id` BHI BHEJO.
+
+               Pehle yahan sirf naam aur waqt jata tha, is liye screen un
+               par sirf ek peela note dikha sakti thi — band karne ka koi
+               raasta nahi tha. Malik ki baat: "mere paas admin mein hona
+               chahiye ke kisi bhi waqt account band kar sakoon."
+
+               `busy` bhi saath jata hai: us till ka aakhri bill 10 minute
+               ke andar bana ho to abhi us par kaam ho raha hai, aur usay
+               band karna cashier ko beech manjhdhar mein phansa dega.
+               Screen par is ki saaf warning aati hai.
+               ============================================================ */
+            /* V183 — "doosre" ka matlab: AAP KI MOJOODA SHIFT KE ILAWA
+               HAR KHULA TILL — chahe wo aap ka apna purana till ho.
+
+               Pehle yahan shart `cashier_user_id <> me` thi, yani SIRF
+               doosre banday ke till. Is se malik ke APNE bhoole huay
+               till kahin nazar hi nahi aate thay: screen sirf us ka
+               sab se naya account "aap ki shift" dikhati thi aur baqi
+               khamoshi se khule pare rehte thay — na fehrist mein, na
+               band karne ka koi raasta. Asal customer par aisa hi ek
+               till mila jis par ek bhi bill nahi tha aur wo khula hi
+               raha.
+
+               Ab shart `cs.id <> meri mojooda shift` hai. Apna purana
+               till bhi nazar aata hai aur band ho sakta hai — apna till
+               band karne ke liye admin hona zaroori nahi. */
+            "SELECT cs.id, cs.shift_no, cs.shift_seq, cs.opened_at,
+                    COALESCE(u.full_name,'-') cashier,
+                    (COALESCE(cs.cashier_user_id,'') = ?) mine,
+                    (SELECT MAX(COALESCE(o.closed_at,o.created_at)) FROM orders o
+                      WHERE o.shift_id = cs.id AND o.order_status='CLOSED') last_bill
                FROM cashier_shifts cs
                LEFT JOIN users u ON u.id = cs.cashier_user_id
               WHERE cs.site_id=? AND cs.status='OPEN' AND cs.deleted_at IS NULL
-                AND COALESCE(cs.cashier_user_id,'') <> ?
+                AND cs.id <> ?
               ORDER BY cs.opened_at");
-        $o->execute([site_id(), $uid]);
+        $o->execute([$uid, site_id(), (string)($own['id'] ?? '')]);
 
         return [
             'open' => $own ? [
@@ -354,11 +386,22 @@ final class OpsService
                 'opened'  => substr((string)$own['opened_at'], 0, 16),
                 'opening' => (float)$own['opening_cash'],
             ] : null,
-            'others_open' => array_map(fn($x) => [
-                'shift'   => acct_show($x['shift_seq'] ?? null, (string)$x['shift_no']),
-                'cashier' => (string)$x['cashier'],
-                'opened'  => substr((string)$x['opened_at'], 0, 16),
-            ], $o->fetchAll(PDO::FETCH_ASSOC)),
+            /* V183 — sirf Admin/Manager hi doosre ka account band kar sakta
+               hai. Cashier ko button nazar hi nahi aata. Asal rok server
+               par hai (api.php -> shiftmgr-close), screen sirf dikhati hai. */
+            'can_close'   => Auth::isManager(),
+            'others_open' => array_map(function ($x) {
+                $lb = (string)($x['last_bill'] ?? '');
+                return [
+                    'id'      => (string)$x['id'],
+                    'shift'   => acct_show($x['shift_seq'] ?? null, (string)$x['shift_no']),
+                    'cashier' => (string)$x['cashier'],
+                    'opened'  => substr((string)$x['opened_at'], 0, 16),
+                    'mine'    => (bool)$x['mine'],   /* apna purana till */
+                    'busy'    => ($lb !== '' && strtotime($lb) >= time() - 600),
+                    'last'    => $lb !== '' ? substr($lb, 0, 16) : '',
+                ];
+            }, $o->fetchAll(PDO::FETCH_ASSOC)),
         ];
     }
 
@@ -387,11 +430,37 @@ final class OpsService
     public static function shiftClose(string $shiftId, float $counted, string $note = ''): array
     {
         $p = DB::pdo();
-        $q = $p->prepare("SELECT shift_no,status FROM cashier_shifts WHERE id=? AND site_id=? LIMIT 1");
+        $q = $p->prepare("SELECT shift_no,status,cashier_user_id FROM cashier_shifts WHERE id=? AND site_id=? LIMIT 1");
         $q->execute([$shiftId, site_id()]);
         $s = $q->fetch(PDO::FETCH_ASSOC);
         if (!$s) throw new \RuntimeException('Shift not found.');
         if (strtoupper((string)$s['status']) !== 'OPEN') throw new \RuntimeException('This shift is already closed.');
+
+        /* ============================================================
+           V183 — DOOSRE KA ACCOUNT SIRF ADMIN/MANAGER BAND KARE.
+
+           Yahan koi shart thi hi nahi: jis ke paas `shift` module hai wo
+           request bana kar KISI KA BHI till band kar sakta tha. Screen
+           par button nahi tha, is liye nazar nahi aaya — magar rok screen
+           par rakhna rok nahi hoti. Ab asal faisla yahan hota hai.
+
+           Aur jab koi DOOSRE ka account band kare to closing parchi par
+           us ka naam khud likha jata hai, taake baad mein saaf rahe ke
+           cashier ne khud band nahi kiya tha.
+           ============================================================ */
+        $me    = (string)(current_user()['id'] ?? '');
+        $owner = (string)($s['cashier_user_id'] ?? '');
+        $mine  = ($owner !== '' && $owner === $me);
+        if (!$mine && !Auth::isManager()) {
+            throw new \RuntimeException('Only an Admin or Manager can close someone else\'s till.');
+        }
+        if (!$mine) {
+            $byName = trim((string)(current_user()['full_name'] ?? '')) ?: 'admin';
+            $stamp  = 'Closed by ' . $byName;
+            $note   = ($note !== '' && stripos($note, 'Closed by') === false)
+                    ? $stamp . ' — ' . $note
+                    : $stamp;
+        }
 
         $till     = self::tillPieces($shiftId);
         $expected = round($till['opening'] + $till['cash'] - $till['expenses'], 2);
