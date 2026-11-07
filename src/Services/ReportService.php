@@ -31,7 +31,7 @@ final class ReportService
     {
         return [
             ['id' => 'sales_summary',   'group' => 'Sales',     'name' => 'Sales summary',            'desc' => 'Day by day sales, tax, discount and net'],
-            ['id' => 'account_wise',    'group' => 'Sales',     'name' => 'Account wise sale',        'desc' => 'Har account number ki poori sale aur kharche — chahe account kai din chale'],
+            ['id' => 'account_wise',    'group' => 'Sales',     'name' => 'Account wise sale',        'desc' => 'Full sales and expenses for each account number, even if the account ran for several days'],
             ['id' => 'sales_by_item',   'group' => 'Sales',     'name' => 'Sales by item',            'desc' => 'Which items sell the most'],
             ['id' => 'sales_by_category','group'=> 'Sales',     'name' => 'Sales by category',        'desc' => 'Category share of sales'],
             ['id' => 'sales_by_hour',   'group' => 'Sales',     'name' => 'Sales by hour',            'desc' => 'Busiest hours of the day'],
@@ -49,8 +49,8 @@ final class ReportService
                level set ho AUR wo us se neeche gir chuke hon;
                `tracked_inventory` sirf tracked items. Poora godam, uski
                ginti aur uski maliyat kahin nazar nahi aati thi. */
-            ['id' => 'stock_on_hand',   'group' => 'Inventory', 'name' => 'Current stock',            'desc' => 'Har item ka mojooda stock aur uski maliyat'],
-            ['id' => 'stock_ledger',    'group' => 'Inventory', 'name' => 'Opening / closing stock',  'desc' => 'Opening, aaj ki kharidari, aaj ki sale, closing aur current'],
+            ['id' => 'stock_on_hand',   'group' => 'Inventory', 'name' => 'Current stock',            'desc' => 'Current stock of every item and its value'],
+            ['id' => 'stock_ledger',    'group' => 'Inventory', 'name' => 'Opening / closing stock',  'desc' => 'Opening, purchases, sales, closing and current'],
             ['id' => 'stock_movement',  'group' => 'Inventory', 'name' => 'Stock movement',           'desc' => 'What came in and what went out'],
             ['id' => 'tracked_inventory','group' => 'Inventory', 'name' => 'Tracked inventory',        'desc' => 'Only the items you chose to watch closely'],
             ['id' => 'low_stock',       'group' => 'Inventory', 'name' => 'Low stock',                'desc' => 'Items at or below their minimum level'],
@@ -60,9 +60,9 @@ final class ReportService
             ['id' => 'purchases',       'group' => 'Inventory', 'name' => 'Purchases',                'desc' => 'Goods received by supplier'],
 
             /* ---- V98: jo reports customer maang raha tha aur maujood nahi thin ---- */
-            ['id' => 'invoice_detail',  'group' => 'Sales',     'name' => 'Order / invoice detail',   'desc' => 'Har bill ka poora record — item, tax, discount, payment'],
+            ['id' => 'invoice_detail',  'group' => 'Sales',     'name' => 'Order / invoice detail',   'desc' => 'The complete record of every bill: items, tax, discount, payment'],
             ['id' => 'waiter_sales',    'group' => 'Operations','name' => 'Sales by waiter',          'desc' => 'Sales, covers and average bill per waiter'],
-            ['id' => 'discounts',       'group' => 'Operations','name' => 'Discounts',                'desc' => 'Kis ne kitni chhoot di — user-wise'],
+            ['id' => 'discounts',       'group' => 'Operations','name' => 'Discounts',                'desc' => 'How much discount each user gave'],
             ['id' => 'voids',           'group' => 'Operations','name' => 'Void / cancelled bills',   'desc' => 'Every void bill with its reason and user'],
             ['id' => 'shift_closing',   'group' => 'Operations','name' => 'Shift / day closing',      'desc' => 'Opening, sale, payments, expenses, variance'],
             ['id' => 'wastage',         'group' => 'Inventory', 'name' => 'Wastage / write-off',      'desc' => 'Damaged and wasted stock, with its value'],
@@ -436,10 +436,42 @@ final class ReportService
 
         return self::shape('Account wise sale',
             [['k'=>'account','l'=>'Account'],['k'=>'counter','l'=>'Counter'],
-             ['k'=>'cashier','l'=>'Cashier'],['k'=>'opened','l'=>'Khula'],
-             ['k'=>'closed','l'=>'Band'],['k'=>'days','l'=>'Din','n'=>1],
+             ['k'=>'cashier','l'=>'Cashier'],['k'=>'opened','l'=>'Opened'],
+             ['k'=>'closed','l'=>'Closed'],['k'=>'days','l'=>'Days','n'=>1],
              /* ============================================================
-                V180 — AHEM NUMBER PEHLE.
+                V184 — COLUMN AB QUDRATI TARTEEB MEIN.
+
+                Malik ki baat: "iska sequence theek nahi hai. normally
+                asa hota: sale 1000, service 50, discount 30, tax 20,
+                gross 1040."
+
+                Bilkul theek — V180 mein nateeja (Sale/Net) apne hisson
+                se PEHLE aa gaya tha. Ab wapas qudrati tarteeb:
+
+                  Subtotal - Discount + Service + Delivery + Tax = Total
+                  Total - Expenses = Net
+
+                `sale` ka LABEL ab "Total" hai (key wahi `sale` hai, kuch
+                nahi tootta) — Sales summary mein bhi yehi lafz hai, to
+                do reports milana aasan ho jata hai.
+
+                >>> MAGAR V180 WALA MASLA WAPAS NA AA JAYE <<<
+
+                V180 ki asal shikayat thi "account wise report main total
+                nahi aa rhi hai". Wajah: `reports.html` upar ke chaar tile
+                PEHLE CHAAR numeric column se banata hai. Qudrati tarteeb
+                mein wo Bills | Subtotal | Discount | Service ban jate —
+                aur Total ka tile phir ghayab.
+
+                HAL: column par ikhtiyari `kpi` nishan. `reports.html` ab
+                PEHLE nishan wale column dekhta hai; jis report mein
+                nishan na ho wahan bilkul pehle jaisa (pehle chaar
+                numeric). Yani baqi 33 reports par koi farq nahi.
+
+                Tile ab: Bills | Total | Expenses | Net.
+                ============================================================ */
+             /* ============================================================
+                V180 — AHEM NUMBER PEHLE.  (ab V184 se badal gaya, upar dekhein)
 
                 Malik ne bataya: "account wise report main total nahi aa
                 rhi hai". Chala kar dekha to baat yeh nikli:
@@ -468,13 +500,33 @@ final class ReportService
                 hai, aur Sale bina scroll nazar aata hai. Koi number
                 nahi badla, sirf tarteeb badli.
                 ============================================================ */
-             ['k'=>'bills','l'=>'Bills','n'=>1],
-             ['k'=>'sale','l'=>'Sale','n'=>1],
-             ['k'=>'expenses','l'=>'Kharche','n'=>1],
-             ['k'=>'net','l'=>'Net','n'=>1],
-             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
-             ['k'=>'service','l'=>'Service','n'=>1],['k'=>'delivery','l'=>'Delivery','n'=>1],
-             ['k'=>'tax','l'=>'Tax','n'=>1]],
+             ['k'=>'bills','l'=>'Bills','n'=>1,'kpi'=>1],
+             /* hisse pehle, nateeja baad mein */
+             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1],
+             ['k'=>'service','l'=>'Service','n'=>1],
+             ['k'=>'delivery','l'=>'Delivery','n'=>1],
+             /* ============================================================
+                V184 — TAX KA LABEL BUSINESS KE USOOL KE MUTABIQ.
+
+                Tarteeb theek karte waqt yeh pakra gaya: jis business mein
+                qeemat ke ANDAR tax hota hai (TaxMode INCLUSIVE), wahan
+                `grand_total` mein tax JAMA NAHI hota — wo pehle se
+                subtotal ke andar hai. Imtihaan ne khud dikha diya:
+
+                    subtotal 3,400 · tax 468.97 · grand_total 3,400
+                    (yani 2,931.03 + 16% = 3,400)
+
+                Agar column par sirf "Tax" likha rahe to malik jama kar ke
+                3,868.97 nikalega aur report jhooti lagegi. Is liye ab
+                label khud bata deta hai, aur neeche ka note us business ka
+                SAHIH formula likhta hai. Jahan tax bahar se lagta hai
+                (EXCLUSIVE) wahan bilkul pehle jaisa.
+                ============================================================ */
+             ['k'=>'tax','l'=>\Aio\Services\TaxMode::isInclusive()?'Tax (incl.)':'Tax','n'=>1],
+             ['k'=>'sale','l'=>'Total','n'=>1,'kpi'=>1],
+             ['k'=>'expenses','l'=>'Expenses','n'=>1,'kpi'=>1],
+             ['k'=>'net','l'=>'Net','n'=>1,'kpi'=>1]],
             $rows,
             /* V180 — EK PAISY KA FARQ.
                Aap ke total par Sale 283,630.11 tha magar Net 283,630.12.
@@ -485,14 +537,21 @@ final class ReportService
                hai, yani hamesha theek. */
             (function(array $t): array { $t['net'] = round($t['sale'] - $t['expenses'], 2); return $t; })(
                 self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','sale','expenses','net'])),
-            'Fehrist mein sirf wo account hain jo CHUNI HUI TAREEKHON MEIN KHULE. '
-          . 'Har account apni ek line, aur us par us ka POORA hisaab — saare bill '
-          . 'aur kharche, chahe wo agle din ke hon (ek till raat 12 ke paar bhi '
-          . 'chalta hai). Is liye is report ka total Sales summary ke total se '
-          . 'alag ho sakta hai: Sales summary batati hai is DIN kitni sale hui, '
-          . 'aur yeh report batati hai is din KHULE ACCOUNT ne kul kitna kamaya. '
-          . 'Account sirf bill par likhe hue account number se tay hota hai, '
-          . 'waqt ke andaze se nahi.');
+            'This list shows only the accounts that were OPENED within the '
+          . 'selected dates. Each account gets one line carrying its FULL '
+          . 'figures — every bill and every expense, even those from the next '
+          . 'day (a till opened at 11am may close at 2am). That is why this '
+          . 'total can differ from the Sales summary total: Sales summary '
+          . 'answers "how much was sold on this day", while this report '
+          . 'answers "how much did the accounts opened on this day earn in '
+          . 'total". An account is decided only by the account number printed '
+          . 'on the bill, never by guessing from the time. '
+          . (\Aio\Services\TaxMode::isInclusive()
+              ? 'Subtotal - Discount + Service + Delivery = Total. Tax is already '
+              . 'inside your prices, so it is shown for information only and is '
+              . 'NOT added again. Total - Expenses = Net.'
+              : 'Subtotal - Discount + Service + Delivery + Tax = Total, '
+              . 'and Total - Expenses = Net.'));
     }
 
     private static function r_sales_by_item(string $f, string $t): array
@@ -863,7 +922,7 @@ final class ReportService
              ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1],['k'=>'fbr_no','l'=>'FBR no.']],
             $rows, self::sum($rows, ['items','subtotal','discount','tax','total']),
-            'Ek hi jagah par har bill ka poora record.');
+            'The complete record of every bill, all in one place.');
     }
 
     /** Waiter-wise sale. */
@@ -904,7 +963,7 @@ final class ReportService
             [site_id(), $f, $t]);
 
         return self::shape('Discounts',
-            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'given_by','l'=>'Di kis ne'],
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'given_by','l'=>'Given by'],
              ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
              ['k'=>'pct','l'=>'%','n'=>1],['k'=>'total','l'=>'Bill total','n'=>1]],
             $rows, self::sum($rows, ['subtotal','discount','total']),
@@ -937,8 +996,8 @@ final class ReportService
             [site_id(), $f, $t]);
 
         return self::shape('Void / cancelled bills',
-            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'by_user','l'=>'Kis ne'],
-             ['k'=>'reason','l'=>'Wajah'],['k'=>'items','l'=>'Items','n'=>1],
+            [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'by_user','l'=>'By user'],
+             ['k'=>'reason','l'=>'Reason'],['k'=>'items','l'=>'Items','n'=>1],
              ['k'=>'total','l'=>'Amount','n'=>1]],
             $rows, self::sum($rows, ['items','total']),
             'Voids without a reason, or many voids by one user — both are worth checking.');
@@ -998,8 +1057,8 @@ final class ReportService
 
         return self::shape('Wastage / write-off',
             [['k'=>'d','l'=>'Date'],['k'=>'ref','l'=>'Reference'],['k'=>'item','l'=>'Item'],
-             ['k'=>'reason','l'=>'Wajah'],['k'=>'qty','l'=>'Qty','n'=>1],
-             ['k'=>'value','l'=>'Value','n'=>1],['k'=>'by_user','l'=>'Kis ne'],
+             ['k'=>'reason','l'=>'Reason'],['k'=>'qty','l'=>'Qty','n'=>1],
+             ['k'=>'value','l'=>'Value','n'=>1],['k'=>'by_user','l'=>'By user'],
              ['k'=>'status','l'=>'Status']],
             $rows, self::sum($rows, ['qty','value']),
             'This comes straight out of profit — watch the monthly trend.');
@@ -1049,7 +1108,7 @@ final class ReportService
             [['k'=>'customer','l'=>'Customer'],['k'=>'phone','l'=>'Phone'],
              ['k'=>'visits','l'=>'Visits','n'=>1],['k'=>'total','l'=>'Sale','n'=>1],
              ['k'=>'avg_bill','l'=>'Avg bill','n'=>1],['k'=>'last_visit','l'=>'Last visit'],
-             ['k'=>'outstanding','l'=>'Baqaya','n'=>1]],
+             ['k'=>'outstanding','l'=>'Outstanding','n'=>1]],
             $rows, self::sum($rows, ['visits','total','outstanding']),
             'Only bills with a customer attached — walk-ins are not included.');
     }
@@ -1077,7 +1136,7 @@ final class ReportService
         return self::shape('FBR reconciliation',
             [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'POS bill'],
              ['k'=>'fbr_no','l'=>'FBR invoice'],['k'=>'fbr_status','l'=>'Status'],
-             ['k'=>'verdict','l'=>'Nateeja'],['k'=>'tax','l'=>'Tax','n'=>1],
+             ['k'=>'verdict','l'=>'Result'],['k'=>'tax','l'=>'Tax','n'=>1],
              ['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['tax','total']),
             'Retry any bill showing "Did not reach FBR" from the Tax screen.');
@@ -1102,7 +1161,7 @@ final class ReportService
 
         return self::shape('FBR daily / monthly summary',
             [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
-             ['k'=>'sent','l'=>'FBR bheje','n'=>1],['k'=>'not_sent','l'=>'Reh gaye','n'=>1],
+             ['k'=>'sent','l'=>'FBR sent','n'=>1],['k'=>'not_sent','l'=>'Not sent','n'=>1],
              ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'sales_tax','l'=>'Sales tax','n'=>1],
              ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1]],
             $rows, self::sum($rows, ['bills','sent','not_sent','taxable','sales_tax','zero_rated','total']),
@@ -1127,7 +1186,7 @@ final class ReportService
             [site_id(), $f, $t]);
 
         return self::shape('Audit / activity log',
-            [['k'=>'at','l'=>'Kab'],['k'=>'user','l'=>'User'],['k'=>'role','l'=>'Role'],
+            [['k'=>'at','l'=>'Date & time'],['k'=>'user','l'=>'User'],['k'=>'role','l'=>'Role'],
              ['k'=>'action','l'=>'Action'],['k'=>'module','l'=>'Module'],
              ['k'=>'detail','l'=>'Detail'],['k'=>'ip','l'=>'IP']],
             $rows, [],
@@ -1449,11 +1508,11 @@ final class ReportService
                Har item ki apni line poori maloomat deti hai; neeche
                jama karne ki zaroorat hai hi nahi. */
             $out, [],
-            'Yeh sab QUANTITY hai, raqam nahi - har item apni unit mein (KG, L, pcs). '
-            .'Rozana ka opening/closing dekhne ke liye upar "Today" chunein. '
-            .'Closing hamesha asal stock hai. Wastage, stock count ya manfi stock-in '
-            .'(durusti) waale din Opening + Purchased - Sold us se thora alag ho sakta hai '
-            .'- farq wahi wastage/count/durusti hota hai.');
+            'These are QUANTITIES, not amounts - each item in its own unit (KG, L, pcs). '
+            .'For a single day\'s opening/closing, pick "Today" above. '
+            .'Closing is always the real stock. On days with wastage, a stock count or a '
+            .'negative stock-in (correction), Opening + Purchased - Sold can differ a '
+            .'little from it - that difference is exactly the wastage/count/correction.');
     }
 
     private static function r_low_stock(string $f, string $t): array

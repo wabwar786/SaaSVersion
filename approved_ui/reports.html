@@ -229,7 +229,19 @@
       return c.n && rep.totals && rep.totals[c.k]!==undefined;
     });
     if(!rep.totals||!nums.length){$('#repKpis').style.display='none';return}
-    var pick=nums.slice(0,4);
+    /* V184 — REPORT KHUD BATA SAKTI HAI KE TILE KIS KE BANEIN.
+
+       Pehle tile hamesha PEHLE CHAAR numeric column ke bante thay, is
+       liye tile ki tarteeb column ki tarteeb se bandhi hui thi. Account
+       wise par column qudrati tarteeb mein laaye gaye (Subtotal ->
+       Discount -> ... -> Total) to `Total` ka tile ghayab ho jata — wohi
+       shikayat jo V180 mein aayi thi ("total nahi aa rhi").
+
+       Ab column par ikhtiyari `kpi` nishan lag sakta hai. Jis report mein
+       nishan ho us ke tile usi se, warna BILKUL PEHLE JAISA. Yani baqi 33
+       reports par koi farq nahi parta. */
+    var flagged=nums.filter(function(c){return c.kpi});
+    var pick=(flagged.length?flagged:nums).slice(0,4);
     var tones=['','ok','info','warn'];
     $('#repKpis').innerHTML=pick.map(function(c,i){
       return '<div class="kpi '+tones[i%4]+'"><div class="lab">'+esc(c.l)+'</div>'
@@ -244,7 +256,11 @@
   /* Pehla numeric column ka chart — rakam ka andaza foran ho jata hai.
      10 se ziada rows par chart bekaar lagta hai, is liye top 10. */
   function chart(rep){
-    var col=rep.columns.filter(function(c){return c.n})[0];
+    /* V184 — chart bhi wahi `kpi` nishan dekhta hai (warna pehle jaisa):
+       qudrati tarteeb mein pehla numeric `Bills` hota, aur billon ka
+       chart kisi kaam ka nahi — paise ka chart chahiye. */
+    var marked=rep.columns.filter(function(c){return c.n&&c.kpi&&c.k!=='bills'});
+    var col=marked.length?marked[0]:rep.columns.filter(function(c){return c.n})[0];
     if(!col||rep.rows.length<2||rep.rows.length>40)return '';
     var rows=rep.rows.slice().sort(function(a,b){return (+b[col.k]||0)-(+a[col.k]||0)}).slice(0,10);
     var max=Math.max.apply(null,rows.map(function(r){return Math.abs(+r[col.k]||0)}))||1;
