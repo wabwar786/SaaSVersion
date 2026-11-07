@@ -181,15 +181,33 @@ JO MAIN NAHI KAR SAKA:
     Aap ke apne customer ke data par chala kar dekhna.
 
 
+############################################################
+ 3) EK CHHOTI SAFAI — ops_db.js ka `?b=` number
+############################################################
+
+`public\ops_db.js` `<script src="/ops_db.js?b=v173">` se load hoti
+hai. Is project ka apna usool yehi hai: "JS/CSS `?b=` se bust hote
+hain" — yani jab bhi JS badle, yeh number bhi badalna chahiye taake
+browser purani copy na chalaye. V183 mein ops_db.js badli magar yeh
+v173 hi reh gaya tha. Ab v183.
+
+IMANDARI SE: maine pehle socha ke YEHI wajah hai ke aap ko button
+nazar nahi aaya. Chala kar dekha to GHALAT nikla — offline PC wale
+server par browser nayi file khud le leta hai. Yani yeh safai
+zaroori to hai (baqi har JS par version ka number lagta hai), magar
+aap ke masle ki wajah yeh nahi thi. Wajah neeche likhi hai.
+
+
 ------------------------------------------------------------
  KYA BADLA
 ------------------------------------------------------------
-TEEN FILES (README aur screenshot ke ilawa):
+CHAAR FILES (README aur screenshot ke ilawa):
 
     VERSION
     src\Services\ReportService.php   (account wise ka naya usool)
     src\Services\OpsService.php      (khule till + server ki rok)
     public\ops_db.js                 (Close this till ka button)
+    public\router.php                (ops_db.js ka ?b= number)
 
 KOI UI FILE NAHI BADLI — APPROVED_UI_SHA256.json bhi nahi badla
 (70 files ke hash milaa kar dekhe, sab waise ke waise).
@@ -201,8 +219,22 @@ POS ka billing raasta, dashboard aur baqi 33 reports nahi badlin.
  LAGANE KA TAREEQA
 ============================================================
 
+>>> PEHLE YEH PARHEIN — "Close ka option nahi aaya" <<<
+
+Aap ne 07 Nov ko screenshot bheja jis mein peele khane mein likha
+tha: "Yeh un ke apne account hain — unhein wahi band karenge."
+
+Yeh V183 se PEHLE wala jumla hai. V183 is jumle ko hata deta hai.
+Yani us PC/portal par V183 laga hi nahi tha. Neeche ke qadam poore
+karne ke BAAD hi button nazar aayega.
+
+Lagane ke baad tasdeeq ka sab se tez tareeqa: usi peele khane mein
+ab likha hona chahiye "1 aur till khula para hai:" aur us ke saath
+"Close this till" ka button.
+
+
 PART B — SERVER (Railway)
-    Chaar files chadha dein. Koi migration nahi.
+    Paanch files chadha dein. Koi migration nahi.
 
 PART A — OFFLINE PC
     `src\` aur `public\` ki files sealed package ke andar hoti
@@ -215,6 +247,7 @@ STEP A1 — YE PURANI FILES DELETE KAREIN (apni source copy mein)
     src\Services\ReportService.php
     src\Services\OpsService.php
     public\ops_db.js
+    public\router.php
 
 STEP A2 — EXTRACT
     SaaSVersion_V183.zip extract karein
@@ -228,6 +261,7 @@ STEP A3 — VERIFY (Ctrl+F)
       src\Services\OpsService.php     DOOSRE KA ACCOUNT SIRF ADMIN
       src\Services\OpsService.php     AAP KI MOJOODA SHIFT KE ILAWA
       public\ops_db.js                ADMIN KISI BHI WAQT KOI BHI
+      public\router.php               ops_db.js?b=v183
 
 STEP A4 — CHALA KAR DEKHEIN
     1. Reports -> Account wise sale, From 07/11 To 07/11

@@ -205,18 +205,6 @@ if(!in_array($name,$publicPages,true)){
   $key=($isRetail && !in_array($name,$sharedPages,true))
        ? ($retailModule[$name]??null)
        : ($fileModule[$name]??null);
-  /* ============================================================
-     V175 — RENEW KA RAASTA KABHI BAND NA HO.
-
-     `Auth::canModule()` ab ALWAYS_ON ka lihaz karti hai, is liye yeh
-     lakeer asal fix nahi — yeh doosra taala hai. Renewal wo ek screen
-     hai jis ke band hone ka matlab yeh hai ke customer paisay dena
-     chahta ho to bhi na de sake. Us ka raasta kisi features ki list,
-     kisi role, ya kisi aainda ki ghalti par nahi chhorna.
-
-     Login ki shart phir bhi lagti hai (upar wali lakeer), sirf module
-     ka pehra hatta hai. */
-  if($name==='activate.html') $key=null;
   /* V78 — DASHBOARD par bhi ijazat check hoti hai.
      Pehle yahan `$key!=='dashboard'` tha, yani dashboard HAMESHA khula
      rehta tha. Cashier wahan se poore branch ki sale dekh sakta tha —
@@ -467,7 +455,12 @@ if($uiDir!=='approved_ui/retail' &&
                    'stock_transfer.html','stock_count.html','accounting.html',
                    'closing_history.html','activity_log.html','purchase_orders.html','backup_restore.html',
                    'online_orders.html','whatsapp_notifications.html'],true))
-  $tail.='<script src="/ops_db.js?b=v173"></script>';
+  /* V183 — `?b=` BUMP KARNA ZAROORI HAI JAB BHI ops_db.js BADLE.
+     JS `Cache-Control: public, max-age=3600` ke saath jati hai, is liye
+     browser purani copy hi chalata rehta hai jab tak URL na badle. V183
+     mein ops_db.js badli (Close this till ka button) magar yeh v173 hi
+     raha — nateeja: update lagne ke BAAD bhi screen purani hi dikhti. */
+  $tail.='<script src="/ops_db.js?b=v183"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
 $posB=strripos($html,'</body>');
@@ -476,4 +469,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V175 build 2026-10-29
+// build: V167 build 2026-10-25
