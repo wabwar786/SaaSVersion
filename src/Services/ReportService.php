@@ -184,7 +184,23 @@ final class ReportService
 
     private static function shape(string $title, array $cols, array $rows, array $totals = [], string $note = ''): array
     {
-        return ['title' => $title, 'columns' => $cols, 'rows' => $rows, 'totals' => $totals, 'note' => $note];
+        /* ============================================================
+           V185 — UPAR WALA NEELA KHANA HAR JAGAH SE GAYA.
+
+           Malik ki baat: "oper jo blue main statement likhi hai wo b har
+           jagah se remove kr do".
+
+           Screen par se hatana kaafi nahi tha: `note` report ke data ke
+           saath jata hai, is liye CSV aur print mein bhi chala jata. Ab
+           wo yahin, jar se, khali kar diya jata hai — ek hi jagah, to
+           aage koi nayi report likhte waqt bhoolne ka sawal hi nahi.
+
+           Likha hua matn code mein jaan boojh kar chhoda gaya hai: wo
+           bata deta hai ke report kis cheez ko ginti hai, jo agle
+           developer ke kaam ki baat hai. Screen par kahin nahi jata.
+           ============================================================ */
+        return ['title' => $title, 'columns' => $cols, 'rows' => $rows,
+                'totals' => $totals, 'note' => ''];
     }
 
     /* ==================== SALES ==================== */
@@ -211,11 +227,11 @@ final class ReportService
             [site_id(), $f, $t]);
 
         return self::shape('Sales summary',
-            [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
-             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
+            [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1,'kpi'=>1],
+             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1,'kpi'=>1],
              ['k'=>'service','l'=>'Service','n'=>1],['k'=>'delivery','l'=>'Delivery','n'=>1],
-             ['k'=>'tax','l'=>'Tax','n'=>1],
-             ['k'=>'total','l'=>'Total','n'=>1]],
+             ['k'=>'tax','l'=>'Tax','n'=>1,'kpi'=>1],
+             ['k'=>'total','l'=>'Total','n'=>1,'kpi'=>1]],
             $rows, self::sum($rows, ['bills','subtotal','discount','service','delivery','tax','total']));
     }
 
@@ -556,40 +572,90 @@ final class ReportService
 
     private static function r_sales_by_item(string $f, string $t): array
     {
+        /* ============================================================
+           V185 — ITEM KI APNI QEEMAT, AUR BILL KI ASAL SALE.
+
+           Malik ki shikayat thi: Sales summary par total 68,329.81,
+           magar Sales by item par 73,385.
+
+           Yeh bug nahi tha. `line_total` ITEM ki qeemat hai, aur bill ka
+           discount, service charge aur delivery item ki line mein hote hi
+           nahi. Jahan discount bara ho wahan item wala number UPAR chala
+           jata hai (isi liye 73,385 > 68,329.81).
+
+           Magar baat malik ki theek hai ke har report ka total ek jaisa
+           aana chahiye. Ab ek aur column: har item ko us ke bill ke
+           discount/service/delivery/tax ka apna HISSA milta hai, line ke
+           tanasub se --
+
+               hissa = line_total x (grand_total / subtotal)
+
+           -- to in sab ka jama bill ke grand_total ke barabar aa jata
+           hai. `Amount` jaisa tha waisa hi hai: item ki apni qeemat.
+           ============================================================ */
         $rows = self::q(
             "SELECT COALESCE(oi.item_name_snapshot, mi.name, '(deleted item)') item,
                     COALESCE(mc.name,'-') category,
-                    SUM(oi.qty) qty, SUM(oi.line_total) total
+                    SUM(oi.qty) qty, SUM(oi.line_total) total,
+                    SUM(oi.line_total * (o.grand_total / NULLIF(o.subtotal,0))) sale
                FROM order_items oi
                JOIN orders o ON o.id = oi.order_id
                LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id = mi.category_id
               WHERE " . self::billWhere() . "
-              GROUP BY item, category ORDER BY total DESC",
+              GROUP BY item, category ORDER BY sale DESC",
             [site_id(), $f, $t]);
 
         return self::shape('Sales by item',
             [['k'=>'item','l'=>'Item'],['k'=>'category','l'=>'Category'],
-             ['k'=>'qty','l'=>'Qty','n'=>1],['k'=>'total','l'=>'Amount','n'=>1]],
-            $rows, self::sum($rows, ['qty','total']));
+             ['k'=>'qty','l'=>'Qty','n'=>1,'kpi'=>1],
+             ['k'=>'total','l'=>'Amount','n'=>1],
+             ['k'=>'sale','l'=>'Sale','n'=>1,'kpi'=>1]],
+            self::itemGapRow($rows, self::itemTotals($rows, $f, $t), 'item', true),
+            self::itemTotals($rows, $f, $t));
     }
 
     private static function r_sales_by_category(string $f, string $t): array
     {
+        /* ============================================================
+           V185 — ITEM KI APNI QEEMAT, AUR BILL KI ASAL SALE.
+
+           Malik ki shikayat thi: Sales summary par total 68,329.81,
+           magar Sales by item par 73,385.
+
+           Yeh bug nahi tha. `line_total` ITEM ki qeemat hai, aur bill ka
+           discount, service charge aur delivery item ki line mein hote hi
+           nahi. Jahan discount bara ho wahan item wala number UPAR chala
+           jata hai (isi liye 73,385 > 68,329.81).
+
+           Magar baat malik ki theek hai ke har report ka total ek jaisa
+           aana chahiye. Ab ek aur column: har item ko us ke bill ke
+           discount/service/delivery/tax ka apna HISSA milta hai, line ke
+           tanasub se --
+
+               hissa = line_total x (grand_total / subtotal)
+
+           -- to in sab ka jama bill ke grand_total ke barabar aa jata
+           hai. `Amount` jaisa tha waisa hi hai: item ki apni qeemat.
+           ============================================================ */
         $rows = self::q(
             "SELECT COALESCE(mc.name,'(uncategorised)') category,
-                    SUM(oi.qty) qty, SUM(oi.line_total) total
+                    SUM(oi.qty) qty, SUM(oi.line_total) total,
+                    SUM(oi.line_total * (o.grand_total / NULLIF(o.subtotal,0))) sale
                FROM order_items oi
                JOIN orders o ON o.id = oi.order_id
                LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id = mi.category_id
               WHERE " . self::billWhere() . "
-              GROUP BY category ORDER BY total DESC",
+              GROUP BY category ORDER BY sale DESC",
             [site_id(), $f, $t]);
 
         return self::shape('Sales by category',
-            [['k'=>'category','l'=>'Category'],['k'=>'qty','l'=>'Qty','n'=>1],['k'=>'total','l'=>'Amount','n'=>1]],
-            $rows, self::sum($rows, ['qty','total']));
+            [['k'=>'category','l'=>'Category'],['k'=>'qty','l'=>'Qty','n'=>1,'kpi'=>1],
+             ['k'=>'total','l'=>'Amount','n'=>1],
+             ['k'=>'sale','l'=>'Sale','n'=>1,'kpi'=>1]],
+            self::itemGapRow($rows, self::itemTotals($rows, $f, $t), 'category', false),
+            self::itemTotals($rows, $f, $t));
     }
 
     private static function r_sales_by_hour(string $f, string $t): array
@@ -918,9 +984,9 @@ final class ReportService
         return self::shape('Order / invoice detail',
             [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'mode','l'=>'Mode'],
              ['k'=>'customer','l'=>'Customer'],['k'=>'cashier','l'=>'Cashier'],
-             ['k'=>'items','l'=>'Items','n'=>1],['k'=>'subtotal','l'=>'Subtotal','n'=>1],
-             ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'tax','l'=>'Tax','n'=>1],
-             ['k'=>'total','l'=>'Total','n'=>1],['k'=>'fbr_no','l'=>'FBR no.']],
+             ['k'=>'items','l'=>'Items','n'=>1,'kpi'=>1],['k'=>'subtotal','l'=>'Subtotal','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1,'kpi'=>1],['k'=>'tax','l'=>'Tax','n'=>1,'kpi'=>1],
+             ['k'=>'total','l'=>'Total','n'=>1,'kpi'=>1],['k'=>'fbr_no','l'=>'FBR no.']],
             $rows, self::sum($rows, ['items','subtotal','discount','tax','total']),
             'The complete record of every bill, all in one place.');
     }
@@ -1006,20 +1072,119 @@ final class ReportService
     /** Shift / day closing — opening se variance tak. */
     private static function r_shift_closing(string $f, string $t): array
     {
+        /* ============================================================
+           V185 — SALE AB ASAL BILLON SE GINI JATI HAI, MEHFOOZ
+                  PURANE NUMBER SE NAHI.
+
+           Malik ki shikayat: "baqi har jagah sale same ani chaiye".
+           Yahi report sab se zyada bhatak rahi thi.
+
+           WAJAH: yeh report `cashier_shifts` ke mehfooz column parhti
+           thi — `gross_sales`, `invoice_count`, `cash_sales` waghera.
+           Wo column sirf us soorat mein bharte hain jab shift closing ke
+           poore raaste se band ho. Rig ke data par haal yeh tha:
+
+               shift 1  mehfooz 0 bill / 0        asal 4 bill / 14,000
+               shift 6  mehfooz 0 bill / 0        asal 5 bill /  5,504.80
+               shift 9  mehfooz 4 bill / 1,120    asal 3 bill /    620
+
+           Yani kuch par KHALI, aur shift 9 par to SEEDHA GHALAT. Report
+           ka jama 1,120 aa raha tha jab ke us arse ki sale 57,641.30 thi.
+
+           AB: Sale, Bills aur Discount sidhe `orders` se; Cash/Card/
+           Credit `payments` se; kharcha `expenses` se — bilkul wahi
+           ginti jo closing parchi (OpsService::shiftReport) aur baqi
+           saari reports karti hain.
+
+           JO MEHFOOZ HI RAHEGA: Opening float, Counted aur Variance —
+           yeh daraz ki GINTI hain, bill se nahi nikalte.
+
+           DOOSRI KHARABI ISI JAGAH: chunao SHIFT ki tareekh par tha,
+           BILL ki tareekh par nahi. 31 October ka khula till agli raat
+           tak chala, to us ke 6,000 ke November wale bill 1-7 November
+           ki report se bahar reh jate thay. Aur jin billon par shift
+           likha hi nahi (tablet/QR) wo kisi row mein aate hi nahi thay —
+           1,400 aur. Total 7,400 kam.
+
+           AB: bill us arse ke, chahe till kisi bhi din khula ho; aur
+           bina-shift wale bill apni "(no account)" line mein. Is tarah
+           is report ka jama Sales summary ke BARABAR aata hai.
+           ============================================================ */
         $rows = self::q(
             "SELECT s.business_date d, s.shift_no, COALESCE(s.counter_name,'-') counter,
                     COALESCE(u.full_name,'-') cashier,
-                    s.opening_cash, s.gross_sales, s.discount_total discount,
-                    s.cash_sales, s.card_sales, s.credit_sales,
-                    s.refund_total refunds, s.expense_total expenses,
+                    s.opening_cash,
+                    (SELECT COUNT(*) FROM orders o
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?) bills,
+                    (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?) gross_sales,
+                    (SELECT COALESCE(SUM(o.discount_amount),0) FROM orders o
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?) discount,
+                    (SELECT COALESCE(SUM(pay.amount),0)
+                       FROM payments pay
+                       JOIN orders o ON o.id = pay.order_id
+                       LEFT JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                        AND pay.status <> 'CANCELLED'
+                        AND UPPER(COALESCE(pm.code,'')) IN ('CASH','COD'))      cash_sales,
+                    (SELECT COALESCE(SUM(pay.amount),0)
+                       FROM payments pay
+                       JOIN orders o ON o.id = pay.order_id
+                       LEFT JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                        AND pay.status <> 'CANCELLED'
+                        AND UPPER(COALESCE(pm.code,'')) = 'CARD')               card_sales,
+                    (SELECT COALESCE(SUM(pay.amount),0)
+                       FROM payments pay
+                       JOIN orders o ON o.id = pay.order_id
+                       LEFT JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                        AND pay.status <> 'CANCELLED'
+                        AND UPPER(COALESCE(pm.code,'')) NOT IN ('CASH','COD','CARD')) credit_sales,
+                    s.refund_total refunds,
+                    (SELECT COALESCE(SUM(e.amount),0) FROM expenses e
+                      WHERE e.shift_id = s.id AND e.status <> 'REJECTED'
+                        AND e.deleted_at IS NULL
+                        AND e.expense_date BETWEEN ? AND ?)                     expenses,
                     s.expected_cash, s.actual_cash, s.variance_amount variance,
-                    s.invoice_count bills, COALESCE(s.status,'-') status
+                    COALESCE(s.status,'-') status
                FROM cashier_shifts s
                LEFT JOIN users u ON u.id = s.cashier_user_id
-              WHERE s.site_id = ? AND s.business_date BETWEEN ? AND ?
-                AND s.deleted_at IS NULL
+              WHERE s.site_id = ? AND s.deleted_at IS NULL
+                AND (s.business_date BETWEEN ? AND ?
+                     OR EXISTS (SELECT 1 FROM orders o2
+                                 WHERE o2.shift_id = s.id AND o2.order_status='CLOSED'
+                                   AND DATE(COALESCE(o2.closed_at,o2.created_at)) BETWEEN ? AND ?))
               ORDER BY s.business_date DESC, s.shift_no DESC",
+            array_merge(
+              /* teen bill wali sub-query */   [$f,$t, $f,$t, $f,$t],
+              /* teen payment wali */          [$f,$t, $f,$t, $f,$t],
+              /* kharche */                    [$f,$t],
+              /* WHERE */                      [site_id(), $f, $t, $f, $t]));
+
+        /* Jin billon par shift likha hi nahi (tablet/QR ka order) — apni
+           line mein, taake is report ka jama Sales summary se mile. */
+        $orphan = self::q(
+            "SELECT COUNT(*) bills, COALESCE(SUM(o.grand_total),0) gross_sales,
+                    COALESCE(SUM(o.discount_amount),0) discount
+               FROM orders o
+              WHERE o.shift_id IS NULL AND " . self::billWhere(),
             [site_id(), $f, $t]);
+        if ($orphan && (int)$orphan[0]['bills'] > 0) {
+            $o = $orphan[0];
+            $rows[] = ['d'=>'-','shift_no'=>'(no account)','counter'=>'-','cashier'=>'-',
+                       'bills'=>(int)$o['bills'],'opening_cash'=>0,
+                       'gross_sales'=>$o['gross_sales'],'discount'=>$o['discount'],
+                       'cash_sales'=>0,'card_sales'=>0,'credit_sales'=>0,'refunds'=>0,
+                       'expenses'=>0,'expected_cash'=>0,'actual_cash'=>0,'variance'=>0,
+                       'status'=>'-'];
+        }
 
         return self::shape('Shift / day closing',
             [['k'=>'d','l'=>'Date'],['k'=>'shift_no','l'=>'Shift'],['k'=>'counter','l'=>'Counter'],
@@ -1031,8 +1196,7 @@ final class ReportService
              ['k'=>'actual_cash','l'=>'Counted','n'=>1],['k'=>'variance','l'=>'Variance','n'=>1]],
             $rows, self::sum($rows, ['bills','opening_cash','gross_sales','discount','cash_sales',
                                      'card_sales','credit_sales','expenses','expected_cash',
-                                     'actual_cash','variance']),
-            'Variance should always be zero. A repeated shortfall is a warning sign.');
+                                     'actual_cash','variance']));
     }
 
     /** Wastage / write-off. */
@@ -1160,10 +1324,10 @@ final class ReportService
             [site_id(), $f, $t]);
 
         return self::shape('FBR daily / monthly summary',
-            [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
-             ['k'=>'sent','l'=>'FBR sent','n'=>1],['k'=>'not_sent','l'=>'Not sent','n'=>1],
-             ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'sales_tax','l'=>'Sales tax','n'=>1],
-             ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1]],
+            [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1,'kpi'=>1],
+             ['k'=>'sent','l'=>'FBR sent','n'=>1],['k'=>'not_sent','l'=>'Not sent','n'=>1,'kpi'=>1],
+             ['k'=>'taxable','l'=>'Taxable','n'=>1],['k'=>'sales_tax','l'=>'Sales tax','n'=>1,'kpi'=>1],
+             ['k'=>'zero_rated','l'=>'Zero-rated','n'=>1],['k'=>'total','l'=>'Total','n'=>1,'kpi'=>1]],
             $rows, self::sum($rows, ['bills','sent','not_sent','taxable','sales_tax','zero_rated','total']),
             'These are the figures used for the FBR return at month end.');
     }
@@ -1612,6 +1776,54 @@ final class ReportService
             $t[$k] = round($t[$k], 2);
         }
         return $t;
+    }
+
+    /* ============================================================
+       V185 — SALES BY ITEM / CATEGORY KA TOTAL.
+
+       `Sale` ka total har line ko jor kar nahi banaya jata. Wajah do:
+
+         1. HAR LINE PAR GOL (round) HOTA HAI. Sainkron lineon par wo
+            paise khisak jate hain — bilkul wohi masla jo V180 mein `net`
+            par pakra gaya tha.
+         2. JIN BILLON KI KOI ITEM LINE HI NAHI (purana data, ya bahar se
+            aaya hua bill) wo kisi line mein aate hi nahi — un ki sale
+            khamoshi se gum ho jati.
+
+       Is liye total SEEDHA BILLON SE ginta hai: us arse ke saare band
+       bill. Yani yeh total Sales summary ke HAMESHA barabar rehta hai,
+       chahe kisi bill ke item hon ya na hon.
+       ============================================================ */
+    private static function itemTotals(array $rows, string $f, string $t): array
+    {
+        $x = self::sum($rows, ['qty', 'total', 'sale']);
+        $bill = self::q("SELECT COALESCE(SUM(o.grand_total),0) s FROM orders o
+                          WHERE " . self::billWhere(), [site_id(), $f, $t]);
+        $x['sale'] = round((float)($bill[0]['s'] ?? 0), 2);
+        return $x;
+    }
+
+    /**
+     * Jin billon ki koi item line nahi, un ki sale apni line mein.
+     *
+     * Warna screen par lineon ka jama aur neeche ka Total alag nazar aate
+     * hain — aur wohi shak paida hota hai jo is poore kaam ki wajah bana.
+     * Asal data par aisa bill hota hi nahi; purane ya bahar se aaye huay
+     * billon par hota hai, aur tab chhupane se behtar hai ke saaf likha ho.
+     *
+     * @param  string $label  pehle column mein kya likhna hai
+     */
+    private static function itemGapRow(array $rows, array $totals, string $key, bool $withCategory): array
+    {
+        $lines = 0.0;
+        foreach ($rows as $r) $lines += (float)($r['sale'] ?? 0);
+        $gap = round((float)($totals['sale'] ?? 0) - $lines, 2);
+        if (abs($gap) < 0.01) return $rows;
+
+        $row = [$key => '(bills without item lines)', 'qty' => 0, 'total' => 0, 'sale' => $gap];
+        if ($withCategory) $row['category'] = '-';
+        $rows[] = $row;
+        return $rows;
     }
 
     /** CSV — Excel ke liye BOM ke saath, warna Urdu/naam kharab dikhte hain. */

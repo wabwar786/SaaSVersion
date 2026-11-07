@@ -278,7 +278,13 @@
   }
 
   function draw(rep){
-    if(rep.note){$('#repNote').textContent=rep.note;$('#repNote').style.display=''}
+    /* V185 — UPAR WALA NEELA KHANA HAT GAYA.
+       Malik ki baat: "oper jo blue main statement likhi hai wo b har
+       jagah se remove kr do". Report ab sirf number dikhati hai.
+       `repNote` ka khana HTML mein maujood hai magar kabhi bharta nahi —
+       is tarah koi aur cheez us par tikki ho to nahi tootti. */
+    $('#repNote').textContent='';
+    $('#repNote').style.display='none';
     kpis(rep);
 
     var b=biz();
