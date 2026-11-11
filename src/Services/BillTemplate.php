@@ -45,9 +45,24 @@ final class BillTemplate
        chaurai, is liye raqamein kabhi dayen kinare par nahi aati thin.
        AB: har column-aligned line SIRF size 9 par. */
     private const SZ = 9;
-    private static function w(): int { return \Aio\Services\Pdf::cols(self::SZ); }
 
-    private static function rule(string $c = '-'): array { return [str_repeat($c, self::w()), 'l', self::SZ]; }
+    /* ============================================================
+       V186 — CLOSING KI PARCHI KA FONT BARA, HASHIYA KHATAM.
+
+       Malik ki baat: "closing sheet main font size increase kr do aur
+       margin khatm kr do... 2 reports nikalti hain aik per bhee readable
+       nahi hai."
+
+       Customer ke BILL par koi farq nahi: default wahi 9 aur 12pt hain jo
+       pehle thay, aur `render()` har bill se pehle inhen wapas laga deta
+       hai. Sirf `shiftReport()` apne liye bara size aur chhota hashiya
+       maangta hai.
+       ============================================================ */
+    private static int   $sz = self::SZ;   /* is waqt ka font size */
+    private static float $mg = 12.0;       /* is waqt ka hashiya   */
+    private static function w(): int { return \Aio\Services\Pdf::cols(self::$sz, 226.0, self::$mg); }
+
+    private static function rule(string $c = '-'): array { return [str_repeat($c, self::w()), 'l', self::$sz]; }
 
     /** Bayen naam, dayen raqam — ek hi line par, beech mein spaces. */
     /** Bayen naam, dayen raqam — hamesha size 9, warna column bigar jata hai. */
@@ -62,7 +77,7 @@ final class BillTemplate
         if (strlen($left) > $room) $left = substr($left, 0, max(1, $room - 1)) . '.';
         $pad = $W - strlen($left) - strlen($right);
         if ($pad < 1) $pad = 1;
-        return [$left . str_repeat(' ', $pad) . $right, $bold ? 'b' : 'l', self::SZ];
+        return [$left . str_repeat(' ', $pad) . $right, $bold ? 'b' : 'l', self::$sz];
     }
 
     /** Lamba naam kaat kar agli line par le jao (kinare se bahar na jaye). */
@@ -91,6 +106,9 @@ final class BillTemplate
      */
     public static function render(string $template, array $o, array $items, array $ctx): array
     {
+        /* V186 — bill hamesha purane paimane par, chahe isi request mein
+           pehle closing ki parchi bani ho. */
+        self::$sz = self::SZ; self::$mg = 12.0;
         $template = in_array($template, self::IDS, true) ? $template : 'classic';
         return match ($template) {
             'compact' => self::compact($o, $items, $ctx),
@@ -238,10 +256,10 @@ final class BillTemplate
         $last  = $pre . array_pop($parts);
 
         $out = [];
-        foreach ($parts as $p) $out[] = [$pre . $p, $bold ? 'b' : 'l', self::SZ];
+        foreach ($parts as $p) $out[] = [$pre . $p, $bold ? 'b' : 'l', self::$sz];
 
         if (strlen($last) + strlen($right) + 1 > $W) {
-            $out[] = [$last, $bold ? 'b' : 'l', self::SZ];
+            $out[] = [$last, $bold ? 'b' : 'l', self::$sz];
             $out[] = [str_repeat(' ', max(1, $W - strlen($right))) . $right, $bold ? 'b' : 'l', self::SZ];
         } else {
             $out[] = [$last . str_repeat(' ', $W - strlen($last) - strlen($right)) . $right,
@@ -314,8 +332,14 @@ final class BillTemplate
        tha waisa hi chalta rahe ga — un mein se kisi ne `part` bheja
        hi nahi.
        ============================================================ */
-    public static function shiftReport(array $r, array $ctx, string $part = 'all'): array
+    public static function shiftReport(array $r, array $ctx, string $part = 'all',
+                                       int $sz = 11, float $margin = 4.0): array
     {
+        /* Har doosra size isi nisbat se barhta hai, warna sirf chand
+           lakeerein barhtin aur parchi be-tarteeb lagti. */
+        self::$sz = max(6, $sz);
+        self::$mg = max(0.0, $margin);
+        $S = fn(int $n): int => max(5, (int)round($n * (self::$sz / 9)));
         $isOpen = ((string)($r['closed'] ?? '') === '');
 
         $part     = in_array($part, ['sale', 'cash'], true) ? $part : 'all';
@@ -324,10 +348,10 @@ final class BillTemplate
 
         $L = self::head([], $ctx, true);
         $L[] = [$part === 'sale' ? 'SALE REPORT'
-                                 : ($part === 'cash' ? 'CLOSING SHEET' : 'DAILY CLOSING'), 'c', 11];
+                                 : ($part === 'cash' ? 'CLOSING SHEET' : 'DAILY CLOSING'), 'c', $S(11)];
         if (!empty($r['date'])) {
             $d = strtotime((string)$r['date']);
-            if ($d) $L[] = [date('d M Y', $d), 'c', 9];
+            if ($d) $L[] = [date('d M Y', $d), 'c', $S(9)];
         }
         $L[] = self::rule();
         self::put($L, self::rows('Shift', (string)$r['shift']));
@@ -339,23 +363,32 @@ final class BillTemplate
 
         /* ---- category ke hisab se sale ---- */
         if ($wantSale && !empty($r['categories'])) {
-            $L[] = ['SALES BY CATEGORY', 'b', self::SZ];
+            $L[] = ['SALES BY CATEGORY', 'b', self::$sz];
             $L[] = self::rule();
             $n = count($r['categories']);
             foreach (array_values($r['categories']) as $i => $c) {
                 self::put($L, self::rows(strtoupper((string)$c['name']),
                                          self::money((float)$c['amount']), true));
                 foreach ($c['items'] as $it) {
-                    self::put($L, self::rows('  ' . self::qty((float)$it['qty']) . ' x ' . (string)$it['name'],
-                                             self::money((float)$it['amount']), false, 4));
+                    /* V186 — bara font = ek line mein kam harf. `rows()`
+                       lamba naam tor kar raqam ko AGLI line par bhej deta
+                       tha; parchi tooti hui lagti thi:
+
+                           1 x CHICKEN TIKKA BOTI MASALA
+                                                     420
+
+                       `row()` naam ko kaat deta hai aur raqam hamesha usi
+                       line par, seedhi qatar mein rehti hai. */
+                    $L[] = self::row('  ' . self::qty((float)$it['qty']) . ' x ' . (string)$it['name'],
+                                     self::money((float)$it['amount']));
                 }
                 /* Aakhri category ke baad khali line nahi — us ke neeche
                    waise bhi lakeer hai, do khali jagah roll zaya karti hai. */
-                if ($i < $n - 1) $L[] = ['', 'l', 4];
+                if ($i < $n - 1) $L[] = ['', 'l', $S(4)];
             }
             $L[] = self::rule();
         } elseif ($wantSale) {
-            $L[] = ['No sales in this shift.', 'c', 8];
+            $L[] = ['No sales in this shift.', 'c', $S(8)];
             $L[] = self::rule();
         }
 
@@ -373,15 +406,15 @@ final class BillTemplate
            mehfooz hua tha — purani report jaisi thi waisi hi rehti hai. */
         if ((float)($r['delivery'] ?? 0) > 0) self::put($L, self::rows('Delivery charges', self::money((float)$r['delivery'])));
         $L[] = self::rule('=');
-        $L[] = ['', 'l', 3];
+        $L[] = ['', 'l', $S(3)];
         } /* if ($wantSale) — totals ka tor-por */
         self::put($L, self::rows('TOTAL SALES', self::money((float)$r['total']), true));
-        $L[] = ['', 'l', 3];
+        $L[] = ['', 'l', $S(3)];
         $L[] = self::rule();
 
         /* ---- payment mix ---- */
         if ($wantSale && !empty($r['payments'])) {
-            $L[] = ['HOW IT WAS PAID', 'b', self::SZ];
+            $L[] = ['HOW IT WAS PAID', 'b', self::$sz];
             foreach ($r['payments'] as $p) {
                 self::put($L, self::rows((string)$p['method'], self::money((float)$p['amount'])));
             }
@@ -396,7 +429,7 @@ final class BillTemplate
            ka asal hisaab chhapta hai aur saaf likha hota hai ke ginti
            abhi hui hi nahi. */
         if ($wantCash) {
-        $L[] = ['CASH IN TILL', 'b', self::SZ];
+        $L[] = ['CASH IN TILL', 'b', self::$sz];
         /* Purani band shifts ka snapshot V162 se pehle ka hai — us mein
            `cash_sales` hai hi nahi. Us soorat mein yeh line chhapti hi
            nahi; purani report jaisi thi waisi hi rehti hai. */
@@ -416,16 +449,16 @@ final class BillTemplate
 
         if ($isOpen) {
             $L[] = self::rule();
-            $L[] = ['Shift is still open', 'c', 8];
-            $L[] = ['Cash is counted at closing', 'c', 8];
+            $L[] = ['Shift is still open', 'c', $S(8)];
+            $L[] = ['Cash is counted at closing', 'c', $S(8)];
         } else {
             self::put($L, self::rows('Counted', self::money((float)$r['counted'])));
             $var = (float)$r['variance'];
             $L[] = self::rule('=');
-            $L[] = ['', 'l', 3];
+            $L[] = ['', 'l', $S(3)];
             self::put($L, self::rows($var == 0 ? 'BALANCED' : ($var > 0 ? 'CASH OVER' : 'CASH SHORT'),
                                      ($var > 0 ? '+' : '') . self::money($var), true));
-            $L[] = ['', 'l', 3];
+            $L[] = ['', 'l', $S(3)];
         }
         } /* if ($wantCash) — daraz ka hisaab */
 
@@ -438,16 +471,16 @@ final class BillTemplate
            chalta tha ke gram hain, kilo ya pcs. */
         if ($wantSale && !empty($r['tracked'])) {
             $L[] = self::rule();
-            $L[] = ['TRACKED STOCK', 'b', self::SZ];
+            $L[] = ['TRACKED STOCK', 'b', self::$sz];
             foreach ($r['tracked'] as $t) {
                 $op = (float)$t['opening']; $so = (float)$t['sold']; $le = (float)$t['remaining'];
                 [$div, $u] = self::paimana([$op, $so, $le], (string)($t['unit'] ?? ''));
                 $su = $u !== '' ? ' ' . $u : '';
-                $L[] = [(string)$t['name'], 'b', self::SZ];
+                $L[] = [(string)$t['name'], 'b', self::$sz];
                 self::put($L, self::rows('  opening', self::qty($op / $div) . $su));
                 self::put($L, self::rows('  sold',    self::qty($so / $div) . $su));
                 self::put($L, self::rows('  left',    self::qty($le / $div) . $su));
-                $L[] = ['', 'l', 3];
+                $L[] = ['', 'l', $S(3)];
             }
         }
 

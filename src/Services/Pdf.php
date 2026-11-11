@@ -27,9 +27,14 @@ final class Pdf
      * jo QR pehle se use karta hai. Koi nayi dependency nahi, koi PDF image
      * object nahi — thermal printer par rectangles hi sab se saaf chhapte hain.
      */
-    public static function receipt(array $lines, float $width = 226.0): string
+    /**
+     * @param float $margin Kinare ki khali jagah (pt). Closing ki parchi
+     *                      chhoti rakhti hai taake matn bara aa sake.
+     * @param float $lh     Do lineon ka faasla (pt) — font se bara ho.
+     */
+    public static function receipt(array $lines, float $width = 226.0,
+                                   float $margin = 12.0, float $lh = 13.0): string
     {
-        $margin = 12.0; $lh = 13.0;
 
         /* Height pehle naapo — QR aur logo kai lines ki jagah lete hain. */
         $height = $margin * 2 + 16;
@@ -212,14 +217,48 @@ final class Pdf
         $text .= "ET";
         $stream = $draw . $text;
 
+        /* ============================================================
+           V186 — PARCHI KA FONT AB PDF KE ANDAR HI.
+
+           Pehle PDF ke apne Courier / Courier-Bold istemal hote thay. Wo
+           PDF mein shamil NAHI hote: har PC ka reader apni Courier dikhata
+           hai aur har thermal printer apni. Isi liye shakal har jagah alag
+           aur patli-dhundli aati thi.
+
+           Ab Liberation Mono PDF ke andar hi chala jata hai — har PC, har
+           printer par bilkul ek jaisi aur mote, saaf harf.
+
+           QATAREIN NAHI TOOTIN: Liberation Mono ki chaurai Courier ke
+           barabar hai — 600/1000 per harf, yani wahi `self::CW = 0.6`. Is
+           liye `row()` ki space-padding jaisi thi waisi hi theek baithti
+           hai. Yeh ittefaq nahi, isi wajah se yeh font chuna gaya.
+           ============================================================ */
+        [$ttfR, $ttfB] = ReceiptFont::ttf();
+        $wid = '[' . rtrim(str_repeat(ReceiptFont::WIDTH . ' ', 95)) . ']';   /* 32..126 */
+
         $objs = [];
         $objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
         $objs[2] = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
         $objs[3] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ".sprintf('%.2f %.2f', $width, $height)."] "
                  . "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>";
         $objs[4] = "<< /Length ".strlen($stream)." >>\nstream\n".$stream."\nendstream";
-        $objs[5] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>";
-        $objs[6] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>";
+        $objs[5] = "<< /Type /Font /Subtype /TrueType /BaseFont /LiberationMono "
+                 . "/FirstChar 32 /LastChar 126 /Widths $wid "
+                 . "/Encoding /WinAnsiEncoding /FontDescriptor 7 0 R >>";
+        $objs[6] = "<< /Type /Font /Subtype /TrueType /BaseFont /LiberationMono-Bold "
+                 . "/FirstChar 32 /LastChar 126 /Widths $wid "
+                 . "/Encoding /WinAnsiEncoding /FontDescriptor 8 0 R >>";
+        /* Flags 33 = FixedPitch (1) + Nonsymbolic (32) */
+        $objs[7] = "<< /Type /FontDescriptor /FontName /LiberationMono /Flags 33 "
+                 . "/FontBBox ".ReceiptFont::BBOX." /ItalicAngle 0 /Ascent ".ReceiptFont::ASCENT
+                 . " /Descent ".ReceiptFont::DESCENT." /CapHeight ".ReceiptFont::CAPHEIGHT
+                 . " /StemV 80 /FontFile2 9 0 R >>";
+        $objs[8] = "<< /Type /FontDescriptor /FontName /LiberationMono-Bold /Flags 33 "
+                 . "/FontBBox ".ReceiptFont::BBOX." /ItalicAngle 0 /Ascent ".ReceiptFont::ASCENT
+                 . " /Descent ".ReceiptFont::DESCENT." /CapHeight ".ReceiptFont::CAPHEIGHT
+                 . " /StemV 140 /FontFile2 10 0 R >>";
+        $objs[9]  = "<< /Length ".strlen($ttfR)." /Length1 ".strlen($ttfR)." >>\nstream\n".$ttfR."\nendstream";
+        $objs[10] = "<< /Length ".strlen($ttfB)." /Length1 ".strlen($ttfB)." >>\nstream\n".$ttfB."\nendstream";
 
         $pdf = "%PDF-1.4\n";
         $offsets = [];
