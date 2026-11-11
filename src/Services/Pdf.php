@@ -32,29 +32,103 @@ final class Pdf
      *                      chhoti rakhti hai taake matn bara aa sake.
      * @param float $lh     Do lineon ka faasla (pt) — font se bara ho.
      */
+    /**
+     * @param float $maxH Ek safhe ki sab se ziada lambai (pt). Is se lambi
+     *                    parchi KAI SAFHON mein tooth jati hai.
+     */
     public static function receipt(array $lines, float $width = 226.0,
-                                   float $margin = 12.0, float $lh = 13.0): string
+                                   float $margin = 12.0, float $lh = 13.0,
+                                   float $maxH = 780.0): string
     {
+        /* ============================================================
+           V188 — LAMBI PARCHI AB KAI SAFHON MEIN.
 
-        /* Height pehle naapo — QR aur logo kai lines ki jagah lete hain. */
-        $height = $margin * 2 + 16;
-        foreach ($lines as $ln) {
+           Malik ne closing ki parchi bheji: 128 lineen, sab PDF ke andar
+           maujood, ek bhi line safhe se bahar nahi — magar printer se
+           sirf SALAD/RAITA tak nikli, aage kuch nahi.
+
+           WAJAH PDF MEIN NAHI, PRINTER MEIN THI. Parchi EK safha thi,
+           1954pt = 689mm lamba. Thermal driver ka apna "page length"
+           hota hai — un ke printer par 279mm. Us se aage ka hissa driver
+           khamoshi se phenk deta hai:
+
+               safha           1954pt  (689mm)
+               driver ki hadd   791pt  (279mm)  -> kaat y = 1163 par
+               SALAD/RAITA                         y = 1075
+
+           Ab parchi `$maxH` se lambi ho to kai safhon mein tooth jati
+           hai. Thermal roll par safhe ek ke baad ek bah kar nikalte hain
+           — kagaz par koi khala nahi aata — aur har driver par poori
+           chhapti hai, chahe jitni lambi ho.
+
+           CHHOTI PARCHI JAISI THI WAISI HI: jo `$maxH` ke andar aa jaye
+           wo pehle ki tarah EK hi safha rehti hai, bilkul utni hi lambi
+           jitna us ka matn. Customer ka bill kabhi tootta nahi.
+           ============================================================ */
+
+        /* ---- 1) har line ki apni oonchai ---- */
+        $hOf = function (array $ln) use ($width, $margin, $lh): float {
             $k = (string)($ln[0] ?? '');
-            if ($k === '@qr')          $height += self::qrSide($width, $margin) + 8;
-            elseif ($k === '@rule')    $height += 7;
-            elseif ($k === '@gap')     $height += (float)($ln[1] ?? 6);
-            elseif ($k === '@band')    $height += $lh + 10;
-            elseif ($k === '@img')     $height += (float)($ln[2] ?? 34) + 8;
-            elseif ($k === '@qrleft')  $height += 24;
-            elseif ($k === '@boxstart' || $k === '@boxend' || $k === '@qrend') { /* jagah nahi lete */ }
-            else                       $height += $lh;
+            if ($k === '@qr')          return self::qrSide($width, $margin) + 8;
+            if ($k === '@rule')        return 7;
+            if ($k === '@gap')         return (float)($ln[1] ?? 6);
+            if ($k === '@band')        return $lh + 10;
+            if ($k === '@img')         return (float)($ln[2] ?? 34) + 8;
+            if ($k === '@qrleft')      return 24;
+            if ($k === '@boxstart' || $k === '@boxend' || $k === '@qrend') return 0;
+            return $lh;
+        };
+
+        $chrome = $margin * 2 + 16;          /* upar-neeche ki khali jagah */
+        $total  = $chrome;
+        foreach ($lines as $ln) $total += $hOf($ln);
+
+        /* ---- 2) safhon mein baanto ---- */
+        $pages = [];
+        if ($total <= $maxH) {
+            $pages[] = ['lines' => $lines, 'h' => $total];   /* pehle jaisa */
+        } else {
+            $cur = []; $acc = $chrome;
+            foreach ($lines as $ln) {
+                $h = $hOf($ln);
+                if ($cur && $acc + $h > $maxH) {
+                    $pages[] = ['lines' => $cur, 'h' => $maxH];
+                    $cur = []; $acc = $chrome;
+                }
+                $cur[] = $ln; $acc += $h;
+            }
+            if ($cur) $pages[] = ['lines' => $cur, 'h' => $acc];
         }
 
+        /* ---- 3) har safhe ka apna content stream ---- */
+        $streams = [];
+        $n = count($pages);
+        foreach ($pages as $i => $pg) {
+            $streams[] = self::page($pg['lines'], $width, $margin, $lh, $pg['h'],
+                                    $i + 1, $n);
+        }
+        return self::assemble($streams, $pages, $width);
+    }
+
+    /** Ek safhe ka content stream. */
+    private static function page(array $lines, float $width, float $margin,
+                                 float $lh, float $height, int $pageNo, int $pages): string
+    {
         $text = "BT\n"; $draw = '';
         $y = $height - $margin - 10;
         $boxTop = null;     /* frame ka upari kinara */
         $indent = 0.0;      /* @qrleft ke baad agli lines ka khiskao */
         $qrBottom = null;
+
+        /* Doosre safhe se aage: upar chhota sa nishan, taake dekhne wale ko
+           pata rahe ke parchi aage bhi hai aur koi hissa gum nahi hua. */
+        if ($pages > 1 && $pageNo > 1) {
+            $tag = sprintf('- %d / %d -', $pageNo, $pages);
+            $w8  = 8 * self::CW * strlen($tag);
+            $text .= sprintf("/F1 8 Tf\n1 0 0 1 %.2f %.2f Tm\n(%s) Tj\n",
+                             max($margin, ($width - $w8) / 2), $y, self::esc($tag));
+            $y -= $lh;
+        }
 
         foreach ($lines as $ln) {
             /* ---- QR ---- */
@@ -215,8 +289,12 @@ final class Pdf
             $y -= $lh;
         }
         $text .= "ET";
-        $stream = $draw . $text;
+        return $draw . $text;
+    }
 
+    /** Safhon ko ek PDF mein joro — font sab safhe mil kar istemal karte hain. */
+    private static function assemble(array $streams, array $pages, float $width): string
+    {
         /* ============================================================
            V186 — PARCHI KA FONT AB PDF KE ANDAR HI.
 
@@ -237,11 +315,23 @@ final class Pdf
         $wid = '[' . rtrim(str_repeat(ReceiptFont::WIDTH . ' ', 95)) . ']';   /* 32..126 */
 
         $objs = [];
+        /* Object ki tarteeb:
+             1 catalog · 2 pages · 5,6 font · 7,8 descriptor · 9,10 font file
+             11.. har safhe ka /Page aur us ka content, jore mein.          */
+        $first = 11;
+        $kids = [];
+        foreach ($streams as $i => $_) $kids[] = ($first + $i * 2) . ' 0 R';
+
         $objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-        $objs[2] = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
-        $objs[3] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ".sprintf('%.2f %.2f', $width, $height)."] "
-                 . "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>";
-        $objs[4] = "<< /Length ".strlen($stream)." >>\nstream\n".$stream."\nendstream";
+        $objs[2] = "<< /Type /Pages /Kids [".implode(' ', $kids)."] /Count ".count($streams)." >>";
+        foreach ($streams as $i => $st) {
+            $pn = $first + $i * 2;      /* page object */
+            $cn = $pn + 1;              /* content     */
+            $objs[$pn] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+                       . sprintf('%.2f %.2f', $width, (float)$pages[$i]['h']) . "] "
+                       . "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents $cn 0 R >>";
+            $objs[$cn] = "<< /Length ".strlen($st)." >>\nstream\n".$st."\nendstream";
+        }
         $objs[5] = "<< /Type /Font /Subtype /TrueType /BaseFont /LiberationMono "
                  . "/FirstChar 32 /LastChar 126 /Widths $wid "
                  . "/Encoding /WinAnsiEncoding /FontDescriptor 7 0 R >>";
@@ -260,6 +350,22 @@ final class Pdf
         $objs[9]  = "<< /Length ".strlen($ttfR)." /Length1 ".strlen($ttfR)." >>\nstream\n".$ttfR."\nendstream";
         $objs[10] = "<< /Length ".strlen($ttfB)." /Length1 ".strlen($ttfB)." >>\nstream\n".$ttfB."\nendstream";
 
+        /* ============================================================
+           V188 — xref ab asli object numbers par banta hai.
+
+           Pehle yeh maan liya jata tha ke object 1 se N tak lagatar hain:
+           `$n = count($objs) + 1` aur phir seedha har object ki offset
+           likh di jati thi. Jab tak ek hi safha tha, yeh sach tha.
+
+           Ab safhe 11, 13, 15 ... par hain aur 3-4 khali reh gaye hain.
+           Purane tareeqe se xref ki qatar khisak jati aur PDF ya to
+           kharab hoti ya reader us ki marammat kar ke kholta — kuch
+           printer aise PDF chupchap phenk dete hain.
+
+           Ab: sab object number ki tarteeb se, gaps ke liye "free"
+           entry, aur /Size sab se bare number se ek zyada.
+           ============================================================ */
+        ksort($objs);
         $pdf = "%PDF-1.4\n";
         $offsets = [];
         foreach ($objs as $num => $body) {
@@ -267,9 +373,14 @@ final class Pdf
             $pdf .= $num." 0 obj\n".$body."\nendobj\n";
         }
         $xref = strlen($pdf);
-        $n = count($objs) + 1;
+        $max  = max(array_keys($objs));
+        $n    = $max + 1;
         $pdf .= "xref\n0 $n\n0000000000 65535 f \n";
-        foreach ($objs as $num => $_) $pdf .= sprintf("%010d 00000 n \n", $offsets[$num]);
+        for ($i = 1; $i <= $max; $i++) {
+            $pdf .= isset($offsets[$i])
+                  ? sprintf("%010d 00000 n \n", $offsets[$i])
+                  : "0000000000 65535 f \n";          /* khali jagah */
+        }
         $pdf .= "trailer\n<< /Size $n /Root 1 0 R >>\nstartxref\n$xref\n%%EOF";
         return $pdf;
     }

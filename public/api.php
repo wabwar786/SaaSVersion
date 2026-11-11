@@ -829,7 +829,10 @@ case 'shiftmgr-report-pdf':needLogin();
     wala raasta yeh nahi bhejta (wo asli parchi hai); Shift Management aur
     Closing History ke "Print report" bhejte hain. */
  $dup=($_GET['dup']??'')==='1';
- $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,11,4.0,$dup),226.0,4.0,15.0);
+ /* V188 — 780pt (~275mm) se lambi parchi kai safhon mein tooth jati hai.
+    Un ke thermal driver ki hadd 279mm hai; is se neeche rakha taake
+    driver ke apne kinaron ki jagah bhi bach jaye. */
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,11,4.0,$dup),226.0,4.0,15.0,780.0);
  $tag=$part==='sale'?'-sale':($part==='cash'?'-closing':'');
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');
