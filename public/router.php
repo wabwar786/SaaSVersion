@@ -460,7 +460,7 @@ if($uiDir!=='approved_ui/retail' &&
      browser purani copy hi chalata rehta hai jab tak URL na badle. V183
      mein ops_db.js badli (Close this till ka button) magar yeh v173 hi
      raha — nateeja: update lagne ke BAAD bhi screen purani hi dikhti. */
-  $tail.='<script src="/ops_db.js?b=v183"></script>';
+  $tail.='<script src="/ops_db.js?b=v187"></script>';
 
 // AAKHRI closing body tag par inject karo (pehla nahi) — wahi asli document end hai.
 $posB=strripos($html,'</body>');

@@ -172,7 +172,10 @@
     host().addEventListener('click', function (e) {
       var b = e.target.closest('[data-shrep]');
       if (b) {
-        window.open('/api.php?action=shiftmgr-report-pdf&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
+        /* V187 — yeh dobara chhapi ja rahi hai, is liye `dup=1`: parchi
+           par DUPLICATE ka band lagega. Asli parchi wo hai jo shift band
+           hote hi khud nikalti hai (neeche wale do raaste). */
+        window.open('/api.php?action=shiftmgr-report-pdf&dup=1&id=' + encodeURIComponent(b.getAttribute('data-shrep')), '_blank');
         return;
       }
 
@@ -492,7 +495,8 @@
     host().addEventListener('click', function (e) {
       var b = e.target.closest('[data-chprint]');
       if (!b) return;
-      window.open('/api.php?action=shiftmgr-report-pdf&id='
+      /* V187 — purani shift ka reprint: hamesha DUPLICATE. */
+      window.open('/api.php?action=shiftmgr-report-pdf&dup=1&id='
         + encodeURIComponent(b.getAttribute('data-chprint')), '_blank');
     });
   }

@@ -332,8 +332,12 @@ final class BillTemplate
        tha waisa hi chalta rahe ga — un mein se kisi ne `part` bheja
        hi nahi.
        ============================================================ */
+    /**
+     * @param bool $dup Dobara nikali ja rahi parchi — upar DUPLICATE ka band.
+     */
     public static function shiftReport(array $r, array $ctx, string $part = 'all',
-                                       int $sz = 11, float $margin = 4.0): array
+                                       int $sz = 11, float $margin = 4.0,
+                                       bool $dup = false): array
     {
         /* Har doosra size isi nisbat se barhta hai, warna sirf chand
            lakeerein barhtin aur parchi be-tarteeb lagti. */
@@ -347,6 +351,22 @@ final class BillTemplate
         $wantCash = ($part !== 'sale');   /* daraz ka hissa */
 
         $L = self::head([], $ctx, true);
+        /* ============================================================
+           V187 — DOBARA NIKALI GAYI PARCHI PAR SAAF NISHAN.
+
+           Shift Management aur Closing History ke "Print report" se
+           nikalne wali parchi pehli nahi, DOOSRI hoti hai. Dekhne mein wo
+           asli jaisi thi — do kagaz saath rakh kar yeh batana mumkin nahi
+           tha ke kaun sa asli hai. Daraz ke hisaab mein yeh khatarnak hai.
+
+           Ab us par kaale band mein safed "DUPLICATE" chhapta hai.
+
+           ASLI parchi par nishan NAHI lagta: shift band hote hi jo kagaz
+           khud nikalta hai wohi asli hai. Farq yahan se aata hai ke
+           `shiftmgr-report-pdf` ko `dup=1` bheja gaya ya nahi — band
+           karne wala raasta nahi bhejta, dobara chhapne wale bhejte hain.
+           ============================================================ */
+        if ($dup) $L[] = ['@band', 'DUPLICATE', '', $S(11)];
         $L[] = [$part === 'sale' ? 'SALE REPORT'
                                  : ($part === 'cash' ? 'CLOSING SHEET' : 'DAILY CLOSING'), 'c', $S(11)];
         if (!empty($r['date'])) {

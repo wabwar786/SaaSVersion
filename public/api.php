@@ -825,7 +825,11 @@ case 'shiftmgr-report-pdf':needLogin();
  /* V186 — closing ki parchi: font 11, hashiya 4pt, line ka faasla 15pt.
     Customer ke bill par koi farq nahi — wo `Pdf::receipt()` ke purane
     default (9 / 12 / 13) par hi chhapta hai. */
- $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,11,4.0),226.0,4.0,15.0);
+ /* V187 — `dup=1` aaye to parchi par DUPLICATE ka band. Shift band karne
+    wala raasta yeh nahi bhejta (wo asli parchi hai); Shift Management aur
+    Closing History ke "Print report" bhejte hain. */
+ $dup=($_GET['dup']??'')==='1';
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,11,4.0,$dup),226.0,4.0,15.0);
  $tag=$part==='sale'?'-sale':($part==='cash'?'-closing':'');
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');

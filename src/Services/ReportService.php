@@ -971,24 +971,56 @@ final class ReportService
                     COALESCE(c.full_name,'Walk-in') customer,
                     COALESCE(u.full_name,'-') cashier,
                     (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) items,
-                    o.subtotal, o.discount_amount discount, o.tax_amount tax, o.grand_total total,
+                    o.subtotal, o.discount_amount discount,
+                    o.service_charge service, COALESCE(o.delivery_charge,0) delivery,
+                    o.tax_amount tax, o.grand_total total,
                     COALESCE(o.fiscal_invoice_no,'-') fbr_no,
                     COALESCE(o.order_status,'-') status
                FROM orders o
                LEFT JOIN users u ON u.id = o.created_by_user_id
                LEFT JOIN customers c ON c.id = o.customer_id
               WHERE " . self::billWhere() . "
-              ORDER BY d DESC, o.bill_no DESC",
+              ORDER BY d,
+                       CAST(NULLIF(REGEXP_REPLACE(
+                            SUBSTRING_INDEX(o.bill_no,'-',-1), '[^0-9]', ''), '')
+                            AS UNSIGNED),
+                       o.bill_no",
             [site_id(), $f, $t]);
 
+        /* ============================================================
+           V187 — TARTEEB DURUST.
+
+           DO KHARABIYAN THIN:
+
+           1) RAQAM KA HISAAB NAZAR HI NAHI AATA THA. Column yeh thay:
+                 Subtotal | Discount | Tax | Total
+              Service charge aur delivery ka koi column nahi tha, is liye
+              line jorne par milti hi nahi thi:
+                 1,000 - 30 + 20 = 990,  magar Total 1,040 likha hota
+              (farq service charge ka tha, jo kahin dikhta hi nahi tha).
+              Ab wohi qudrati tarteeb jo V184 mein account wise par lagi:
+                 Subtotal - Discount + Service + Delivery + Tax = Total
+
+           2) LINEIN ULTI AUR GHALAT TARTEEB MEIN. `ORDER BY d DESC,
+              bill_no DESC` — bill_no matn hai, number nahi. Jin billon
+              par node ka prefix hota hai (`L206-0009`) wo alag jagah
+              chale jate thay, aur online billon (`ON-...`) ke beech mein
+              ghus jate. Ab wahi usool jo V182 mein hold/duplicate ki
+              fehrist par laga: PEHLE TAREEKH, PHIR BILL KA NUMBER —
+              dono barhti hui tarteeb mein, jaise khaata parha jata hai.
+           ============================================================ */
         return self::shape('Order / invoice detail',
             [['k'=>'d','l'=>'Date'],['k'=>'bill_no','l'=>'Bill'],['k'=>'mode','l'=>'Mode'],
              ['k'=>'customer','l'=>'Customer'],['k'=>'cashier','l'=>'Cashier'],
-             ['k'=>'items','l'=>'Items','n'=>1,'kpi'=>1],['k'=>'subtotal','l'=>'Subtotal','n'=>1],
-             ['k'=>'discount','l'=>'Discount','n'=>1,'kpi'=>1],['k'=>'tax','l'=>'Tax','n'=>1,'kpi'=>1],
-             ['k'=>'total','l'=>'Total','n'=>1,'kpi'=>1],['k'=>'fbr_no','l'=>'FBR no.']],
-            $rows, self::sum($rows, ['items','subtotal','discount','tax','total']),
-            'The complete record of every bill, all in one place.');
+             ['k'=>'items','l'=>'Items','n'=>1,'kpi'=>1],
+             ['k'=>'subtotal','l'=>'Subtotal','n'=>1],
+             ['k'=>'discount','l'=>'Discount','n'=>1,'kpi'=>1],
+             ['k'=>'service','l'=>'Service','n'=>1],
+             ['k'=>'delivery','l'=>'Delivery','n'=>1],
+             ['k'=>'tax','l'=>\Aio\Services\TaxMode::isInclusive()?'Tax (incl.)':'Tax','n'=>1,'kpi'=>1],
+             ['k'=>'total','l'=>'Total','n'=>1,'kpi'=>1],
+             ['k'=>'fbr_no','l'=>'FBR no.']],
+            $rows, self::sum($rows, ['items','subtotal','discount','service','delivery','tax','total']));
     }
 
     /** Waiter-wise sale. */
