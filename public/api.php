@@ -656,6 +656,27 @@ case 'purchase-receive':needLogin();
 case 'store-save-state':needLogin();$d=body();$p=DB::pdo();foreach($d['menuCategories']??[] as $c){$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$c['name']]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,is_active) VALUES(?,?,?,?,1)")->execute([$cid,tenant_id(),site_id(),$c['name']]);}$station=strtoupper($c['printer']??'MAIN');$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND UPPER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$station]);$pid=$pr->fetchColumn();if($pid){$p->prepare("DELETE FROM menu_category_printer_routes WHERE category_id=?")->execute([$cid]);$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,print_rule,is_active) VALUES(?,?,?,?,?,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}}ok(['state'=>PageData::storeState()]);
 case 'recipe-save':needLogin();Auth::requireModule('recipe');$d=body();$p=DB::pdo();$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$cq->execute([site_id(),$d['category']]);$cid=$cq->fetchColumn();if(!$cid)fail('Menu category not found.');$menuId=$d['id']??'';if($menuId&&!preg_match('/^[0-9a-f-]{36}$/i',$menuId))$menuId='';$ingredients=[];foreach($d['ingredients']??[] as $x){$iid=(string)($x['itemId']??'');if(!preg_match('/^[0-9a-f-]{36}$/i',$iid)&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$iid=$iq->fetchColumn()?:'';}if($iid)$ingredients[]=['item_id'=>$iid,'qty'=>(float)$x['qty'],'waste_pct'=>(float)($x['wastePct']??0)];}$id=RecipeService::save(['menu_item_id'=>$menuId,'category_id'=>$cid,'code'=>'','name'=>$d['menuName'],'description'=>'','consumption_type'=>$d['mode']==='direct'?'DIRECT_INVENTORY':'RECIPE','direct_inventory_item_id'=>(function()use($p,$d){$iid=$d['inventoryItemId']??null;if($iid&&preg_match('/^[0-9a-f-]{36}$/i',(string)$iid))return$iid;if(!empty($d['inventoryItemName'])){$q=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$d['inventoryItemName']]);return$q->fetchColumn()?:null;}return null;})(),'direct_inventory_qty'=>$d['directQty']??null,'base_price'=>0,'yield_qty'=>$d['yieldQty']??1],$ingredients);$state=PageData::storeState();$recipe=null;foreach($state['recipes'] as $r)if($r['id']===$id)$recipe=$r;ok(['recipe'=>$recipe?:['id'=>$id]+$d,'state'=>$state]);
 case 'pos-next-bill':needLogin();ok(['next'=>pos_bill_no((int)PageData::nextBill())]);
+
+case 'pos-bills-on':needLogin();Auth::requireModule('pos');
+ /* ============================================================
+    V189 — DUPLICATE BILL MEIN TAREEKH KA OPTION.
+
+    Duplicate ki fehrist sirf CHALTE account ke bill dikhati thi, aur
+    wo bhi POS ke safhe ke load hote waqt ek dafa. Kal ka bill dobara
+    chhapna ho to koi raasta hi nahi tha — cashier ko Reports kholni
+    parti thi.
+
+    Ab tareekh chun kar us din ke band bill mangwaye ja sakte hain.
+    Bil-default aaj ki tareekh.
+
+    PEHRA WAISA KA WAISA: `Scope::orderWhere()` wahi hai jo baqi har
+    jagah — cashier sirf apne bill dekhta hai, manager sab. Aur site
+    ki shart lagi hui hai, to kisi doosre business ka bill kisi soorat
+    nahi aa sakta.
+    ============================================================ */
+ $d0=preg_replace('/[^0-9\-]/','',(string)($_GET['date']??''));
+ if($d0===''||!preg_match('/^\d{4}-\d{2}-\d{2}$/',$d0)) $d0=date('Y-m-d');
+ ok(['date'=>$d0,'bills'=>PageData::billsOn($d0)]);
 case 'pos-diagnostics':needLogin();$p=DB::pdo();$out=['tenant_id'=>tenant_id(),'site_id'=>site_id(),'role'=>cfg('app.role')];
 $sq=$p->prepare("SELECT name FROM sites WHERE id=?");$sq->execute([site_id()]);$out['site_name']=$sq->fetchColumn()?:'(site row missing!)';
 $c=function($sql,$a)use($p){$q=$p->prepare($sql);$q->execute($a);return (int)$q->fetchColumn();};
@@ -832,7 +853,10 @@ case 'shiftmgr-report-pdf':needLogin();
  /* V188 — 780pt (~275mm) se lambi parchi kai safhon mein tooth jati hai.
     Un ke thermal driver ki hadd 279mm hai; is se neeche rakha taake
     driver ke apne kinaron ki jagah bhi bach jaye. */
- $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,11,4.0,$dup),226.0,4.0,15.0,780.0);
+ /* V189 — font 11 se 10 (malik: "font size ziada large ho gya tha, thora
+    chota krna hai"). Line ka faasla bhi usi nisbat se 15 -> 14.
+    Ek line mein ab 36 harf (11 par 33 thay), to item ke naam kam katenge. */
+ $pdf=\Aio\Services\Pdf::receipt(BillTemplate::shiftReport($r,$ctx,$part,10,4.0,$dup),226.0,4.0,14.0,780.0);
  $tag=$part==='sale'?'-sale':($part==='cash'?'-closing':'');
  while(ob_get_level())ob_end_clean();
  header('Content-Type: application/pdf');

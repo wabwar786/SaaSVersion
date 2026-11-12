@@ -1890,6 +1890,72 @@ function payload(extra){
 }
 function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}}
 
+/* ============================================================
+   V189 — ACCOUNT KAHIN AUR SE BAND HO JAYE TO POS KHUD SAMBHAL LE.
+
+   POS ka safha ghanton khula rehta hai. Is darmiyan account band ho
+   sakta hai — cashier khud band kare, ya V183 ke baad ADMIN doosri
+   screen se. POS ko iska pata hi nahi chalta tha: wo purana
+   `shift_id` bhejta rehta aur naye bill BAND account par likhe jate.
+   Bill DB mein hota, magar Hold Bills aur Duplicate — dono CHALTE
+   account ko dekhte hain — is liye kahin nazar na aata.
+
+   Ab server har hold/bill ke jawab mein ASLI shift bhejta hai. Yahan
+   us se milaya jata hai; farq ho to POS apna account durust kar leta
+   hai aur cashier ko saaf bata deta hai.
+   ============================================================ */
+/* ============================================================
+   V190 — PARCHI SE PEHLE BILL MEHFOOZ HO JATA HAI.
+
+   Pehle "Preview / Print" seedha kagaz nikal deta tha aur database
+   mein kuch likha hi nahi jata tha. Chala kar dekha:
+
+       item cart mein              ->  DB mein kuch nahi
+       service 300 + discount 50   ->  DB mein kuch nahi
+       Preview / Print ke baad     ->  DB mein kuch nahi
+       Hold / + New Bill ke baad   ->  svc 300 · disc 50 · total 1,950
+
+   Yani jo kagaz customer ke haath mein ja chuka hota tha, us ki raqam
+   system mein kahin mehfooz nahi hoti thi. Us darmiyan software band
+   ho jaye, bijli jaye, ya cashier bill chhor kar aage nikal jaye — wo
+   bill kahin nahi hota.
+
+   Ab parchi se pehle wahi `pos-hold` chalta hai jo "+ New Bill" par
+   chalta hai. Bill KHULA hi rehta hai, kitchen ko kuch nahi jata, cart
+   bhi saaf nahi hota — sirf kagaz aur database barabar ho jate hain.
+
+   `curHoldId` yaad rakha jata hai, to dobara print karne par wohi
+   order update hota hai; naya bill nahi banta.
+   ============================================================ */
+function saveNow(){
+  if(!cart.length) return true;
+  var r=api('pos-hold',payload());
+  if(!r||!r.ok){ toast((r&&r.message)||'Bill mehfooz nahi hua — dobara koshish karein'); return false; }
+  syncBill(r); syncShift(r);
+  if(r.order_id) curHoldId=r.order_id;
+  loadHolds();
+  return true;
+}
+
+function syncShift(r){
+  if(!r||!r.shift_id) return;
+  if(shift && shift.id === r.shift_id) return;
+  var old = shift && shift.shift_seq;
+  try{
+    /* pos-boot ka jawab `{ok, boot:{...}}` ki shakl mein aata hai —
+       shift us `boot` ke andar hai, upar nahi. */
+    var b = api('pos-boot'), nb = b && b.ok && (b.boot || b);
+    if(nb && nb.shift){
+      shift = nb.shift;
+      var el=document.querySelector('[data-shiftno]'); if(el)el.textContent=shift.shift_seq||shift.shift_no;
+      toast('Account badal gaya tha (pehle '+(old||'-')+', ab '+(shift.shift_seq||shift.shift_no)+') — naya bill isi par ja raha hai');
+      loadHolds();
+      return;
+    }
+  }catch(e){}
+  toast('Account badal gaya hai — safha dobara load karein');
+}
+
 function sendKot(autoPrint){
   if(!shift){openGate();return}
   /* DELTA: sirf wo qty jo pehle kitchen NahI gayi */
@@ -1900,7 +1966,8 @@ function sendKot(autoPrint){
   var wasRunning=cart.some(function(l){return l.sentQty>0});
   var r=api('pos-kot',payload());
   if(!r.ok){toast(r.message||'KOT could not be saved — it did not reach the kitchen');return}
-  syncBill(r);
+  syncBill(r); syncShift(r);   /* V190 — account kahin aur se band ho gaya ho to yahin pata chale */
+  if(r.order_id) curHoldId=r.order_id;
   cart.forEach(function(l){l.sentQty=l.qty});
   renderCart();
   var kinfo={running:wasRunning};
@@ -1928,8 +1995,9 @@ $('#chargeBtn').onclick=function(){
     +'</div>'
     +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="doPay">Complete Payment</button></div>');
   ov.querySelector('#cmHold').onclick=function(){ov.remove();holdCurrent()};
-  ov.querySelector('#cmPrev').onclick=function(){slipPreview('BILL',cart.slice())};
-  ov.querySelector('#cmWa').onclick=function(){waSend('BILL',cart.slice())};
+  /* V190 — parchi se PEHLE bill mehfooz. Dekho `saveNow()`. */
+  ov.querySelector('#cmPrev').onclick=function(){if(saveNow())slipPreview('BILL',cart.slice())};
+  ov.querySelector('#cmWa').onclick=function(){if(saveNow())waSend('BILL',cart.slice())};
   function refreshTot(){
     orderTax=taxPct(pay); t=totals(); renderCart();
     ov.querySelector('#ptotAmt').textContent=money(t.grand);
@@ -2496,6 +2564,7 @@ function holdCurrent(silent){
   if(!cart.length){if(!silent)toast('Your cart is empty');return false}
   var r=api('pos-hold',payload());
   if(!r||!r.ok){toast((r&&r.message)||'Hold failed');return false}
+  syncShift(r);          /* V189 — account kahin aur se band ho gaya ho to yahin pata chal jaye */
   loadHolds();newBill();
   if(!silent)toast('Bill put on hold');
   return true;
@@ -2647,8 +2716,26 @@ $('#dupBtn').onclick=function(){
      hai. Account do din khula rahe to dono din ke bills yahan rehte
      hain, warna raat 12 bajte hi cashier apni hi shift ka bill dobara
      nahi nikaal sakta tha. */
-  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Khule account ke band bills &mdash; reprint</p></div>'
-    +'<div class="db"><input class="inp" id="dupQ" placeholder="Search bill no / customer / table" style="margin-bottom:10px">'
+  /* ============================================================
+     V189 — TAREEKH KA OPTION.
+
+     Fehrist sirf chalte account ki hoti thi, aur wo bhi safha load
+     hote waqt ek dafa banti thi. Kal ka bill dobara chhapna ho to
+     koi raasta hi nahi tha — Reports kholni parti thi.
+
+     Ab upar tareekh ka khana hai, bil-default AAJ. Tareekh badalte hi
+     us din ke band bill server se aate hain (`pos-bills-on`), usi
+     pehre ke saath jo baqi har jagah hai: cashier apne bill, manager
+     sab, aur site ki shart — doosre business ka bill kisi soorat nahi.
+     ============================================================ */
+  var today=new Date(); var iso=function(d){return d.getFullYear()+'-'+
+    String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+  var ov=modal('<div class="dh"><h3>Duplicate Bill</h3><p>Band bills &mdash; reprint</p></div>'
+    +'<div class="db">'
+    +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+      +'<input class="inp" id="dupDate" type="date" value="'+iso(today)+'" style="max-width:170px">'
+      +'<input class="inp" id="dupQ" placeholder="Search bill no / customer / table">'
+    +'</div>'
     +'<div id="dupList">'+body+'</div></div><div class="df"><button class="sec" data-x>Close</button></div>',true);
   function bind(){
     /* ============================================================
@@ -2676,17 +2763,30 @@ $('#dupBtn').onclick=function(){
     }});
   }
   bind();
-  ov.querySelector('#dupQ').oninput=function(){
-    var s=this.value.toLowerCase();
-    /* V177 — table se bhi dhoonda ja sake, aur row wahi dikhe jo
-       fehrist mein dikhti hai (`dupRow`). */
+  /* Tareekh badlo -> us din ke bill. Aaj par wapas aao to wahi fehrist
+     jo safhe ke saath aayi thi (ek request bach jati hai). */
+  ov.querySelector('#dupDate').onchange=function(){
+    var d=this.value||iso(today);
+    if(d===iso(today)){ bills=(BOOT.shiftBills||[]); paint(); return; }
+    var r=api('pos-bills-on&date='+encodeURIComponent(d));
+    bills=(r&&r.ok&&r.bills)?r.bills:[];
+    if(!r||!r.ok) toast((r&&r.message)||'Bills nahi mil sake');
+    paint();
+  };
+  function paint(){
+    var q=(ov.querySelector('#dupQ').value||'').toLowerCase();
     var f=bills.map(function(b,i){return {b:b,i:i}}).filter(function(o){
-      return (String(o.b.billNo)+' '+billShow(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(s)>=0});
+      return !q || (String(o.b.billNo)+' '+billShow(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(q)>=0});
     ov.querySelector('#dupList').innerHTML=f.length
       ?f.map(function(o){return dupRow(o.b,o.i)}).join('')
       :'<div class="cempty">No bill found</div>';
     bind();
-  };
+  }
+  /* V177 — table se bhi dhoonda ja sake, aur row wahi dikhe jo fehrist
+     mein dikhti hai (`dupRow`). Dhoondna aur tareekh dono ab ek hi
+     `paint()` se guzarte hain, warna tareekh badalne ke baad likha hua
+     search purani fehrist par lag jata. */
+  ov.querySelector('#dupQ').oninput=paint;
 };
 
 /* ================= DISCOUNT / SERVICE / TAX ================= */

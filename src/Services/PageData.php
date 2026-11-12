@@ -311,6 +311,53 @@ final class PageData {
      file se seedha aata hai. */
   $build=trim((string)@file_get_contents(\dirname(__DIR__,2).'/VERSION'));
   return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'build'=>$build,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
+ /**
+  * V189 — kisi bhi ek din ke BAND bill, duplicate ki fehrist ke liye.
+  *
+  * `posBoot()` wali fehrist chalte account ki hoti hai aur safha load
+  * hote waqt ek dafa banti hai. Yeh us se alag hai: cashier tareekh chun
+  * kar us din ke bill mangwa sakta hai, taake kal ka bill dobara chhapne
+  * ke liye Reports kholni na pare.
+  *
+  * Pehra wahi: `Scope::orderWhere()` (cashier apne, manager sab) aur
+  * site ki shart — kisi doosre business ka bill kisi soorat nahi aata.
+  *
+  * @return array<int,array<string,mixed>>
+  */
+ public static function billsOn(string $day): array
+ {
+    [$w, $a] = \Aio\Services\Scope::orderWhere('o');
+    $q = DB::pdo()->prepare(
+        "SELECT o.bill_no,o.business_date,o.closed_at,o.service_mode,o.grand_total,
+                dt.display_name table_name, c.full_name customer_name,
+                pm.name payment_name, fi.provider_invoice_no fbr_no
+           FROM orders o
+           LEFT JOIN dining_tables dt ON dt.id=o.table_id
+           LEFT JOIN customers c ON c.id=o.customer_id
+           LEFT JOIN payments py ON py.order_id=o.id
+           LEFT JOIN payment_methods pm ON pm.id=py.payment_method_id
+           LEFT JOIN fiscal_invoices fi ON fi.order_id=o.id
+          WHERE o.site_id=? AND o.order_status='CLOSED'
+            AND DATE(COALESCE(o.closed_at,o.created_at)) = ?
+            AND $w
+          ORDER BY CAST(NULLIF(REGEXP_REPLACE(
+                        SUBSTRING_INDEX(o.bill_no,'-',-1),'[^0-9]',''),'') AS UNSIGNED),
+                   o.bill_no
+          LIMIT 300");
+    $q->execute(array_merge([site_id(), $day], $a));
+    $out = [];
+    foreach ($q->fetchAll(\PDO::FETCH_ASSOC) as $x) {
+        $out[] = ['id'=>$x['bill_no'],'billNo'=>(string)$x['bill_no'],
+                  'day'=>(string)$x['business_date'],
+                  'time'=>$x['closed_at'] ? date('h:i A', strtotime($x['closed_at'])) : '',
+                  'mode'=>self::modeLabel($x['service_mode']),
+                  'table'=>$x['table_name'] ?: '', 'customer'=>$x['customer_name'] ?: 'Walk-in',
+                  'amount'=>(float)$x['grand_total'], 'payment'=>$x['payment_name'] ?: '',
+                  'fbrNo'=>$x['fbr_no'] ?: ''];
+    }
+    return $out;
+ }
+
  /** Har node ka apna bill prefix (offline package config se; cloud par khali).
   *  Is ke baghair offline aur online dono aaj ke din 0001 banate the aur
   *  cloud par unique (site,date,bill_no) takra kar ek doosre ko mita dete the. */

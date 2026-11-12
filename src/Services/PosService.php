@@ -11,8 +11,44 @@ final class PosService {
      */
     private static function shiftFor(\PDO $p, array $d): ?string
     {
+        /* ============================================================
+           V189 — BAND HO CHUKE ACCOUNT PAR BILL NAHI LIKHA JAYEGA.
+
+           Pehle client ka bheja hua `shift_id` bina dekhe maan liya jata
+           tha. POS ka safha ghanton khula rehta hai, aur account kahin
+           aur se band ho sakta hai — cashier khud band kare, ya ab V183
+           ke baad ADMIN doosri screen se band kar de.
+
+           Us soorat mein POS purana `shift_id` bhejta rehta tha aur naye
+           bill BAND account par likhe jate thay. Nateeja wahi jo malik ne
+           pakra: "bill add howa aur auto khatam ho gaya, na duplicate
+           mein hai na hold mein." Bill database mein salamat hota tha,
+           magar Hold Bills aur Duplicate dono CHALTE account ko dekhte
+           hain — is liye wo kahin nazar nahi aata tha. Aur us ki sale
+           band account ke khaate mein chali jati thi.
+
+           Chala kar dekha:
+               POS ke paas account 600  ->  account band, 601 khula
+               POS ab bhi 600 bhejta raha
+               bill 0004 -> BAND account 600 par
+               POS reload -> hold 0, duplicate 0, DB mein 3 bill pare
+
+           AB: jo shift_id aaye wo pehle parkha jata hai. Khula ho to
+           wohi; band ya ghayab ho to CHALTA account istemal hota hai.
+           `hold()` aur `finalize()` apne jawab mein asli shift bhejte
+           hain, to POS khud ko durust kar leta hai (dekho `syncShift()`).
+           ============================================================ */
         $given = trim((string)($d['shift_id'] ?? ''));
-        if ($given !== '') return $given;
+        if ($given !== '') {
+            try {
+                $q = $p->prepare("SELECT id FROM cashier_shifts
+                                   WHERE id=? AND site_id=? AND status='OPEN'
+                                     AND deleted_at IS NULL LIMIT 1");
+                $q->execute([$given, site_id()]);
+                if ($q->fetchColumn()) return $given;
+            } catch (\Throwable $e) { return $given; }
+            /* Band ya ghayab — neeche chalta account dhoonda jayega. */
+        }
         try {
             $q = $p->prepare("SELECT id FROM cashier_shifts
                                WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
@@ -32,15 +68,29 @@ final class PosService {
     }
 
  /**
-  * V72 — HOLD: bill khula rakho, kitchen ko kuch mat bhejo.
-  * Tablet ka order taker items punch karta hai aur bill table par
-  * "hold" rehta hai; kitchen tab jata hai jab wo Send dabata hai.
-  * Pehle hold ka koi server-side rasta tha hi nahi.
+  * V190 — BILL KA HISAAB LIKHNE KI EK HI JAGAH.
+  *
+  * Yeh hissa pehle sirf `hold()` ke andar tha. `sendKot()` sirf items
+  * likhta tha aur raqam ko haath hi nahi lagata tha — service charge,
+  * discount, delivery aur TOTAL sab sifar pare rehte thay:
+  *
+  *     Send to Kitchen ke baad : svc 0 · disc 0 · total 0 · items 1
+  *     Hold ke baad            : svc 300 · disc 50 · total 1,950
+  *
+  * Nateeja: kitchen bhejne ke baad agar bill chhor diya jaye (software
+  * band ho jaye, ya cashier aage nikal jaye) to database mein wo bill
+  * SIFAR ka khara reh jata tha. Hold Bills mein "PKR 0" wala purana
+  * masla bhi yehi tha. Aur jo kagaz customer ke paas gaya us par 1,950
+  * likha hota tha — system aur parchi alag alag.
+  *
+  * Ab dono raaste yehi ek method istemal karte hain, to aage chal kar
+  * un ka hisaab alag ho hi nahi sakta (V168 wala sabaq).
+  *
+  * @param  int $hold `orders.hold_status` — hold par 1, KOT par 0.
+  * @return float grand total
   */
- public static function hold(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){
-    $order=self::ensureOpenOrder($p,$d);
-    $n=0; foreach($items as $i){ self::upsertOrderItem($p,$order,$i); $n++; }
-
+ private static function writeTotals(PDO $p, string $order, array $d, int $hold): float
+ {
     /* V94 — TOTALS BHI BHARO.
        Pehle hold sirf items likhta tha; `subtotal` aur `grand_total`
        sifar pare rehte. Counter par tablet ka bill "PKR 0" dikhta tha,
@@ -105,11 +155,33 @@ final class PosService {
                      hold_status=1, updated_at=NOW(6)
                   WHERE id=?")
       ->execute([$sub,$tax,$disc,$dpct,$svc,$dlv,max(0.0,$grand),$order]);
+    $p->prepare("UPDATE orders SET subtotal=?, tax_amount=?, discount_amount=?,
+                     discount_pct=?, service_charge=?, delivery_charge=?, grand_total=?,
+                     hold_status=?, updated_at=NOW(6)
+                  WHERE id=?")
+      ->execute([$sub,$tax,$disc,$dpct,$svc,$dlv,max(0.0,$grand),$hold,$order]);
+    return max(0.0, $grand);
+ }
+
+ /**
+  * V72 — HOLD: bill khula rakho, kitchen ko kuch mat bhejo.
+  * Tablet ka order taker items punch karta hai aur bill table par
+  * "hold" rehta hai; kitchen tab jata hai jab wo Send dabata hai.
+  * Pehle hold ka koi server-side rasta tha hi nahi.
+  */
+ public static function hold(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){
+    $order=self::ensureOpenOrder($p,$d);
+    $n=0; foreach($items as $i){ self::upsertOrderItem($p,$order,$i); $n++; }
+
+    $grand = self::writeTotals($p, $order, $d, 1);
 
     /* Table `ensureOpenOrder` khud set karta hai (id ya naam se). */
 
     self::queueSync($p,'orders',$order,'UPDATE');
+    /* V189 — asli shift wapas bhejo. POS us se khud ko durust kar leta
+       hai jab account kahin aur se band ho chuka ho. */
     return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),
+            'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
             'total'=>max(0.0,$grand)];
  }); }
 
@@ -120,7 +192,15 @@ final class PosService {
     catch(\Throwable $e){ return ''; }
  }
 
- public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}if(!$pending)return ['order_id'=>$order,'sent'=>0];$groups=[];$noPrinter=[];
+ public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
+    /* V190 — KOT par bhi poora hisaab likho, sirf items nahi.
+       Pehle yahan raqam ko haath hi nahi lagta tha: kitchen bhejne ke
+       baad bill DB mein svc 0 / disc 0 / total 0 ka khara rehta tha.
+       Ab wahi ek method jo hold istemal karta hai — `hold_status` 0,
+       kyunki yeh bill ruka hua nahi, chal raha hai. */
+    self::writeTotals($p,$order,$d,0);
+    if(!$pending)return ['order_id'=>$order,'sent'=>0,'bill_no'=>self::billOf($p,$order),
+                         'shift_id'=>(string)(self::shiftFor($p,$d) ?? '')];$groups=[];$noPrinter=[];
  foreach($pending as $x){
    $pr=self::printerForMenu($p,$x['row']['menu_item_id']);
    /* Printer bilkul hi na ho (abhi tak koi nahi banaya) to item ko
@@ -139,6 +219,10 @@ final class PosService {
  }
  self::queueSync($p,'orders',$order,'UPDATE');
  return ['order_id'=>$order,'sent'=>$sent,
+         /* V190 — POS ko asli bill number aur asli account bhi batao,
+            taake wo khud ko durust kar sake (dekho `syncShift`). */
+         'bill_no'=>self::billOf($p,$order),
+         'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
          'no_printer'=>count($noPrinter),
          'message'=>$noPrinter
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '

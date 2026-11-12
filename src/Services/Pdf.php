@@ -88,11 +88,22 @@ final class Pdf
         if ($total <= $maxH) {
             $pages[] = ['lines' => $lines, 'h' => $total];   /* pehle jaisa */
         } else {
+            /* V189 — HAR SAFHA APNE MATN JITNA LAMBA, `$maxH` JITNA NAHI.
+
+               V188 mein bhara hua safha poora `$maxH` (780pt) ka likha
+               jata tha, chahe us ka matn 700pt par khatam ho jaye. Roll
+               par wo bacha hua hissa KHALI KAGAZ ban kar nikalta tha —
+               har safhe ke aakhir mein. Malik ki shikayat: "page end
+               hone par bohat ziada space blank chhorta hai."
+
+               Ab har safhe ki lambai us ke apne matn se banti hai. Hadd
+               wahi rehti hai (koi safha `$maxH` se lamba nahi hota), bas
+               khali jagah nahi bachti. */
             $cur = []; $acc = $chrome;
             foreach ($lines as $ln) {
                 $h = $hOf($ln);
                 if ($cur && $acc + $h > $maxH) {
-                    $pages[] = ['lines' => $cur, 'h' => $maxH];
+                    $pages[] = ['lines' => $cur, 'h' => $acc];
                     $cur = []; $acc = $chrome;
                 }
                 $cur[] = $ln; $acc += $h;
