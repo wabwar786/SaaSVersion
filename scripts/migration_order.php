@@ -105,6 +105,7 @@ return [
        ki tarteeb se ginti de deti hai, taake number beech se shuru na
        ho. Idempotent. */
     ['script' => 'migrate_shift_seq',     'optional' => true, 'stage' => 'background'],
+    ['script' => 'migrate_retail_v193',   'optional' => true, 'stage' => 'background'],   // V193 customer bills index
     /* V171 — `orders.delivery_charge`. Home Delivery ka kiraya ab apni
        jagah likha jata hai, khane ki keemat ya service charge mein
        chhupaya nahi jata. Tax se bahar, default 0, purane bill ka total

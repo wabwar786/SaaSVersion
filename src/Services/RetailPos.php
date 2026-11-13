@@ -256,6 +256,14 @@ final class RetailPos
     {
         return DB::tx(function (PDO $pdo) use ($clean, $tot, $method, $cash, $card, $change, $customerId, $priceLevel, $user, $counter) {
 
+            /* V193 — BILL NUMBER KI QATAR. Branch (sites) ki row par lock:
+               ek waqt mein ek hi counter agla number leta hai. Pehle sab
+               counter ek sath "aakhri + 1" parh lete, takrate, aur dobara
+               koshish karte; 9 lakh bills wale database par 6 counter ek
+               sath chalane se 60 mein se 4 bill "database problem" de gaye.
+               Lock sirf is transaction tak (~30-100 ms) rehta hai. */
+            $pdo->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
+
             /* Credit limit — bill banane se PEHLE. Limit 0 = koi had nahi. */
             $custName = 'Walk-in Customer';
             if ($customerId) {
@@ -378,18 +386,67 @@ final class RetailPos
      * harfon se dhoondta hai (index par chalta hai — `%q%` nahi).
      * Pehle Duplicate Bill sirf aakhri 100 bill dikha sakta tha.
      */
-    public static function sales(int $limit = 100, string $q = ''): array
+    public static function sales(int $limit = 100, string $q = '', string $date = ''): array
     {
         $limit = \max(1, \min(500, $limit));
         $sql = "SELECT * FROM rtl_sales WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL";
         $args = [tenant_id(), site_id()];
+        /* V193 — ek din ke bills (Duplicate bill ki date). sold_at par
+           range, taake (tenant_id, sold_at) wala index kaam aaye. */
+        if (\preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $sql .= " AND sold_at >= ? AND sold_at < ? + INTERVAL 1 DAY";
+            $args[] = $date . ' 00:00:00'; $args[] = $date . ' 00:00:00';
+        }
         $q = \trim($q);
         if ($q !== '') {
-            $num = \preg_replace('/\D/', '', $q);
-            $sql .= " AND (bill_no LIKE ? OR bill_no = ? OR customer_name LIKE ?)";
-            $args[] = \strtoupper($q) . '%';
-            $args[] = $num !== '' ? 'INV-' . $num : '';
-            $args[] = $q . '%';
+            /* V193 — teen alag raaste, har ek apne index par. Pehle teeno
+               ek OR mein the; lakhon bills par MariaDB poora table parhta.
+               Aur "10" likhne par INV-1001 nahi milta tha (sirf poora number). */
+            if (\ctype_digit($q)) {
+                $sql .= " AND bill_no LIKE ?";            // 1001 / 10 -> INV-10...
+                $args[] = 'INV-' . $q . '%';
+            } elseif (\preg_match('/^inv-?\d*$/i', $q)) {
+                $sql .= " AND bill_no LIKE ?";
+                $args[] = 'INV-' . \preg_replace('/\D/', '', $q) . '%';
+            } else {
+                /* V193 — naam se: pehle customers mein dhoondo (chhoti
+                   table), phir un ke bills customer_id index se. Pehle
+                   `customer_name LIKE` poore rtl_sales par chalta tha —
+                   9 lakh bills par jo naam na mile us par 6-11 second, aur
+                   counter us dauran ruka rehta. Walk-in bills ka koi
+                   customer nahi hota; unhein bill number ya date se dhoondein. */
+                $cq = DB::pdo()->prepare(
+                    "SELECT id FROM customers WHERE tenant_id=? AND deleted_at IS NULL
+                        AND (full_name LIKE ? OR phone LIKE ?) LIMIT 50");
+                $cq->execute([tenant_id(), $q . '%', $q . '%']);
+                $ids = $cq->fetchAll(PDO::FETCH_COLUMN);
+                if (!$ids) return [];
+                /* Do qadam: (1) sirf bill ids — ix_rs_cust_sold index se, rows
+                   parhe baghair; (2) phir woh chand bills primary key se. */
+                $in = \implode(',', \array_fill(0, \count($ids), '?'));
+                $w  = "tenant_id=? AND site_id=? AND customer_id IN ($in)";
+                $a2 = \array_merge([tenant_id(), site_id()], $ids);
+                if (\preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                    $w .= " AND sold_at >= ? AND sold_at < ? + INTERVAL 1 DAY";
+                    $a2[] = $date . ' 00:00:00'; $a2[] = $date . ' 00:00:00';
+                }
+                /* FORCE INDEX: warna MariaDB sold_at wala index chun kar lakhon
+                   bills ulte parhta hai (2 s). Index na bana ho (migration
+                   nakaam) to baghair hint ke — dheema magar sahi. */
+                try {
+                    $iq = DB::pdo()->prepare("SELECT id FROM rtl_sales FORCE INDEX(ix_rs_cust_sold) WHERE $w ORDER BY sold_at DESC LIMIT " . $limit);
+                    $iq->execute($a2);
+                } catch (\PDOException $e) {
+                    $iq = DB::pdo()->prepare("SELECT id FROM rtl_sales WHERE $w ORDER BY sold_at DESC LIMIT " . $limit);
+                    $iq->execute($a2);
+                }
+                $sid = $iq->fetchAll(PDO::FETCH_COLUMN);
+                if (!$sid) return [];
+                $st = DB::pdo()->prepare("SELECT * FROM rtl_sales WHERE id IN (" .
+                    \implode(',', \array_fill(0, \count($sid), '?')) . ") AND deleted_at IS NULL ORDER BY sold_at DESC");
+                $st->execute($sid);
+                return $st->fetchAll(PDO::FETCH_ASSOC);
+            }
         }
         $sql .= " ORDER BY sold_at DESC LIMIT " . $limit;
         $st = DB::pdo()->prepare($sql);
@@ -506,12 +563,19 @@ final class RetailPos
 
     /* ================= held bills ================= */
 
-    public static function heldBills(): array
+    /**
+     * V193 — counter diya ho to SIRF us counter ke held bills. Pehle har
+     * counter ko sab ke held bills dikhte the; Counter 2 par F5 / Alt+1
+     * dabane se Counter 1 ka bill khul jata tha.
+     */
+    public static function heldBills(string $counter = ''): array
     {
-        $q = DB::pdo()->prepare(
-            "SELECT * FROM rtl_held_bills WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL
-              ORDER BY created_at DESC");
-        $q->execute([tenant_id(), site_id()]);
+        $sql = "SELECT * FROM rtl_held_bills WHERE tenant_id=? AND site_id=? AND deleted_at IS NULL";
+        $args = [tenant_id(), site_id()];
+        $counter = \trim($counter);
+        if ($counter !== '') { $sql .= " AND counter_name=?"; $args[] = $counter; }
+        $q = DB::pdo()->prepare($sql . " ORDER BY created_at DESC");
+        $q->execute($args);
         $rows = $q->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['cart'] = \json_decode((string)$r['cart_json'], true) ?: [];
@@ -551,6 +615,33 @@ final class RetailPos
     {
         DB::pdo()->prepare("UPDATE rtl_held_bills SET deleted_at=NOW(6) WHERE id=? AND tenant_id=?")
                  ->execute([$id, tenant_id()]);
+    }
+
+    /**
+     * V193 — held bill wapas lena ek hi qadam mein: jo counter pehle
+     * pohnche usi ko milta hai. `deleted_at IS NULL` wali shart ki wajah se
+     * doosra counter 0 rows paata hai aur usay saaf message milta hai.
+     * Pehle dono counter list se cart utha lete the — ek bill do dafa bikta.
+     */
+    public static function claimHold(string $id): array
+    {
+        return DB::tx(function (PDO $pdo) use ($id) {
+            $q = $pdo->prepare("SELECT * FROM rtl_held_bills WHERE id=? AND tenant_id=? AND site_id=? FOR UPDATE");
+            $q->execute([$id, tenant_id(), site_id()]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$r) throw new \RuntimeException('Held bill not found');
+            if ($r['deleted_at'] !== null) {
+                throw new \RuntimeException('This bill was already recalled. Refresh the held list.');
+            }
+            $pdo->prepare("UPDATE rtl_held_bills SET deleted_at=NOW(6) WHERE id=? AND tenant_id=? AND deleted_at IS NULL")
+                ->execute([$id, tenant_id()]);
+            $r['cart'] = \json_decode((string)$r['cart_json'], true) ?: [];
+            unset($r['cart_json']);
+            $r['total'] = (float)$r['total'];
+            $r['customer'] = (string)$r['customer_name'];
+            $r['lines'] = (int)$r['line_count'];
+            return $r;
+        });
     }
 
     /* ================= khata ================= */
@@ -665,4 +756,4 @@ final class RetailPos
     }
 }
 
-// build: V191 build 2026-11-13
+// build: V193 build 2026-11-13

@@ -20,6 +20,7 @@
  *     0  SCHEMA_OK       — sab theek, server chala do
  *    20  SCHEMA_EMPTY    — database bilkul khali hai (nayi/khali datadir)
  *    21  SCHEMA_PARTIAL  — kuch tables hain, kuch nahi (adhoori setup)
+ *    22  SCHEMA_STALE    — tables hain magar naye columns nahi (purana version)  (V193)
  *     1  SCHEMA_NO_DB    — database se baat hi nahi ho rahi
  *
  * 20 aur 21 dono par launcher setup (install_schema + migrations)
@@ -73,7 +74,28 @@ if ($missing) {
     exit(21);
 }
 
+/* V193 — PURANA SCHEMA. Tables sab hain magar kisi purane version ne
+   banaye the, aur baad ke columns nahi. Asal waqia: restaurant V155 ka
+   database, us par retail V192 chalaya — `tenants.region_profile` aur
+   `cashier_shifts.shift_seq` ghaib the. Nateeja: login ke baad restaurant
+   ka design, aur har bill "database problem". Launcher 22 par poori
+   migrations list chalata hai (sirf jo kam hai woh banti hai). */
+$mustCols = [
+    ['tenants', 'industry_code'], ['tenants', 'region_profile'],
+    ['cashier_shifts', 'shift_seq'], ['rtl_sales', 'bill_no'], ['rtl_held_bills', 'cart_json'],
+];
+$cq = $pdo->prepare("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND table_name=? AND column_name=?");
+$stale = [];
+foreach ($mustCols as [$t, $c]) {
+    $cq->execute([$db, $t, $c]);
+    if (!(int)$cq->fetchColumn()) $stale[] = "$t.$c";
+}
+if ($stale) {
+    echo "SCHEMA_STALE database={$db} missing=" . implode(',', $stale) . "\n";
+    exit(22);
+}
+
 echo "SCHEMA_OK database={$db} tables={$total}\n";
 exit(0);
 
-// build: V155 build 2026-10-15
+// build: V193 build 2026-11-13

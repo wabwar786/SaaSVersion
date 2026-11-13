@@ -105,6 +105,12 @@ final class RetailShift
         return self::current($pdo) ?: self::open($counter, 0.0, $pdo);
     }
 
+    /** V193 — database ka waqt, microseconds samet (bills ka sold_at bhi yahi hai). */
+    private static function dbNow(PDO $pdo): string
+    {
+        return (string)$pdo->query("SELECT NOW(6)")->fetchColumn();
+    }
+
     /** Ek shift ka poora hisaab — asal bills, returns aur khate se. */
     public static function summary(array $s): array
     {
@@ -112,7 +118,11 @@ final class RetailShift
         $tid  = tenant_id();
         $uid  = (string)$s['cashier_user_id'];
         $from = (string)$s['opened_at'];
-        $to   = $s['closed_at'] ? (string)$s['closed_at'] : \date('Y-m-d H:i:s.u');
+        /* V193 — waqt DATABASE se. PHP ka date('...u') microseconds hamesha
+           000000 deta hai; is liye usi second mein bane bill (12:52:04.4)
+           12:52:04.000000 ki had se bahar reh jate aur kisi shift ke cash
+           mein nahi gine jaate the. */
+        $to   = $s['closed_at'] ? (string)$s['closed_at'] : self::dbNow($pdo);
 
         $q = $pdo->prepare(
             "SELECT COUNT(*) bills,
@@ -183,7 +193,7 @@ final class RetailShift
                 throw new \RuntimeException('Only the cashier or a manager can close this shift');
             }
 
-            $now = \date('Y-m-d H:i:s.u');
+            $now = self::dbNow($p);   /* V193 — DB ka NOW(6), dekhein summary() */
             $s['closed_at'] = $now;
             $sum = self::summary($s);
             $var = \round($counted - $sum['expected'], 2);
@@ -253,4 +263,4 @@ final class RetailShift
     }
 }
 
-// build: V191 build 2026-11-13
+// build: V193 build 2026-11-13

@@ -172,7 +172,9 @@
       return cache.customers;
     }
     if (key === 'held_bills') {
-      var h = quiet('rpos-held');
+      /* V193 — sirf isi counter ke held bills (doosre counter ka bill
+         Alt+1 / F5 se yahan na khul jaye). */
+      var h = quiet('rpos-held&counter=' + encodeURIComponent(S.counter || ''));
       return h ? h.rows : [];
     }
     if (key === 'sales') {
@@ -292,13 +294,16 @@
   /* V191 — payment se pehle server ka hisaab (kuch save nahi hota). */
   S.quote = function (payload) { return api('rpos-quote', payload).quote; };
   /* V191 — Duplicate bill: server par dhoondo (pehle sirf aakhri 100). */
-  S.searchSales = function (q) {
-    var r = quiet('rpos-sales&limit=60&q=' + encodeURIComponent(q || ''));
+  S.searchSales = function (q, date) {
+    var r = quiet('rpos-sales&limit=60&q=' + encodeURIComponent(q || '') +
+                  (date ? '&date=' + encodeURIComponent(date) : ''));
     return r ? r.rows.map(normalizeSale) : [];
   };
   S.reprint = function (id, reason) { return api('rpos-reprint', { id: id, reason: reason || '' }).sale; };
   S.holdBill = function (payload) { return api('rpos-hold', payload).id; };
   S.releaseHold = function (id) { return api('rpos-hold-release', { id: id }); };
+  /* V193 — held bill ko server par "claim" karo: sirf ek counter utha sakta hai. */
+  S.claimHold = function (id) { return api('rpos-hold-claim', { id: id }).held; };
 })();
 
-// build: V192 build 2026-11-13
+// build: V193 build 2026-11-13

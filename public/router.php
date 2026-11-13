@@ -277,7 +277,7 @@ if($uiDir==='approved_ui/retail'){
      har change deploy ke baad bhi purana hi chalta rehta tha (max-age
      3600). Nayi file banate waqt YAHAN likhna lazmi hai. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|doc\.js|doc_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r8"', $html);
+                     '$1="/retail/$2?b=r9"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -471,4 +471,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V167 build 2026-10-25
+// build: V193 build 2026-11-13

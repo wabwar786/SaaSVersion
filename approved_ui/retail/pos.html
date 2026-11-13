@@ -332,7 +332,10 @@ html,body{height:100%;overflow:hidden}
     <p>Reprint an earlier bill &middot; every copy is counted</p></div>
     <button class="close" data-close>&times;</button></div>
   <div class="dialog-body">
-    <div class="search"><input id="dupSearch" placeholder="Bill number, customer ya cashier&hellip;"></div>
+    <div style="display:flex;gap:8px">
+      <div class="search" style="flex:1 1 auto;min-width:0"><input id="dupSearch" placeholder="Bill number, customer ya cashier&hellip;"></div>
+      <input id="dupDate" type="date" title="Bills of this date" style="flex:0 0 170px;width:170px;height:38px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font:inherit">
+    </div>
     <div class="clist" id="dupList"></div>
   </div>
   <div class="dialog-foot"><button class="btn" data-close>Cancel</button>
@@ -363,6 +366,7 @@ var cart=[], level='Retail', custId='cu1', billDisc=0, sel=-1, billNo=20905, pay
    (pehle demo store mein chup chaap chala jata tha). */
 var LIVE=!!(S.online&&S.boot), BLOCKED=(location.protocol!=='file:'&&!LIVE);
 var counter=(function(){try{return localStorage.getItem('rtl_counter')||''}catch(e){return ''}})();
+S.counter=counter;   /* V193 — held bills sirf isi counter ke */
 /* V191 — bill khatam ya hold ho to agla bill RETAIL rate aur walk-in se.
    Pehle Wholesale customer ke baad level Wholesale hi rehta tha aur agla
    walk-in customer bhi wholesale rate par bik jata tha. */
@@ -591,8 +595,15 @@ function hold(){
 }
 function recall(id){
   if(cart.length){flash('Finish the current bill first',true);return}
-  var h=S.get('held_bills'),b=null;
-  for(var i=0;i<h.length;i++) if(h[i].id===id){b=h[i];break}
+  var h=null,b=null;
+  /* V193 — server par "claim": ek held bill sirf EK counter utha sakta hai.
+     Pehle do counter ek hi waqt usay utha lete aur woh do dafa bik jata. */
+  if(S.online){
+    try{ b=S.claimHold(id); }catch(err){ flash(err.message||'Could not recall',true); paintHeld(); return; }
+  } else {
+    h=S.get('held_bills');
+    for(var i=0;i<h.length;i++) if(h[i].id===id){b=h[i];break}
+  }
   if(!b)return;
   clearCart();
   for(var j=b.cart.length-1;j>=0;j--){
@@ -604,8 +615,7 @@ function recall(id){
      'Zero Limit' ke khate mein). */
   custId=b.customer_id||'cu1'; if(!S.byId('customers',custId))custId='cu1'; paintCust();
   emptyEl.style.display=cart.length?'none':'block';
-  if(S.online){ try{ S.releaseHold(id); }catch(e){} }
-  else S.set('held_bills',h.filter(function(x){return x.id!==id}));
+  if(!S.online) S.set('held_bills',h.filter(function(x){return x.id!==id}));
   selectLine(0); totals(); paintHeld(); flash('Bill recalled');
 }
 $('heldChips').addEventListener('click',function(e){
@@ -833,6 +843,9 @@ function confirmPay(quickCash){
       qty:l.qty,price:l.unit_price,disc:l.discount}});
     buildReceipt(saved,false);
     closeM(); openM('rcptModal');
+    /* V193 — bill band hote hi parchi khud chhapti hai (restaurant ki tarah).
+       Pehle sirf screen par aati thi aur cashier ko Print dabana parta tha. */
+    printReceipt();
     flash(saved.bill_no+' saved \u00b7 '+money(saved.total));
     $('billNo').textContent=saved.next_bill_no||saved.bill_no;
     if(Math.abs(Number(saved.total)-t.grand)>0.009) flash(saved.bill_no+' saved \u00b7 server total '+money(saved.total),true);
@@ -870,7 +883,7 @@ function confirmPay(quickCash){
   }
   S.commit();
   buildReceipt(sale,false);
-  closeM(); openM('rcptModal');
+  closeM(); openM('rcptModal'); printReceipt();
   flash('INV-'+billNo+' saved \u00b7 '+money(t.grand));
   billNo++; $('billNo').textContent='INV-'+billNo;
   clearCart(); custId='cu1'; paintCust();
@@ -922,13 +935,15 @@ function buildReceipt(sale,dup){
 /* ---------- duplicate bill ---------- */
 var dupRows=[],dIdx=0;
 function openDup(){
-  $('dupSearch').value=''; fillDup(''); openM('dupModal');
+  $('dupSearch').value=''; $('dupDate').value=''; fillDup(''); openM('dupModal');
   setTimeout(function(){$('dupSearch').focus()},50);
 }
 function fillDup(q){
   q=String(q).toLowerCase();
+  /* V193 — date bhi: pichle din ka bill bill-number yaad na ho tab bhi mil jaye. */
+  var dd=$('dupDate').value||'';
   /* V191 — server par dhoondo; pehle sirf aakhri 100 bill. */
-  dupRows=(LIVE&&S.searchSales&&q)?S.searchSales(q):S.get('sales').filter(function(x){
+  dupRows=(LIVE&&S.searchSales&&(q||dd))?S.searchSales(q,dd):S.get('sales').filter(function(x){
     return !q||String(x.bill_no).toLowerCase().indexOf(q)>-1||
            String(x.customer).toLowerCase().indexOf(q)>-1||
            String(x.cashier).toLowerCase().indexOf(q)>-1;
@@ -955,7 +970,7 @@ function printDup(){
     srv.items=(srv.items||[]).map(function(l){return {name:l.product_name,unit:l.unit_code,
       qty:Number(l.qty),price:Number(l.unit_price),disc:Number(l.discount)}});
     buildReceipt(srv,true);
-    closeM(); openM('rcptModal');
+    closeM(); openM('rcptModal'); printReceipt();
     flash('Duplicate of '+srv.bill_no+' \u00b7 copy '+srv.reprint_count);
     return;
   }
@@ -966,14 +981,24 @@ function printDup(){
   sale.last_reprint_at=new Date().toISOString().slice(0,16).replace('T',' ');
   S.set('sales',sales); S.commit();
   buildReceipt(sale,true);
-  closeM(); openM('rcptModal');
+  closeM(); openM('rcptModal'); printReceipt();
   flash('Duplicate of '+sale.bill_no+' \u00b7 copy '+sale.reprint_count);
 }
-$('dupSearch').addEventListener('input',function(){fillDup(this.value)});
+/* V193 — likhna rukne ke 250 ms baad ek dafa (pehle har harf par server call). */
+var dupT=null;
+$('dupSearch').addEventListener('input',function(){var v=this.value;clearTimeout(dupT);dupT=setTimeout(function(){fillDup(v)},250)});
+$('dupDate').addEventListener('change',function(){fillDup($('dupSearch').value)});
+/* date chun kar seedha Enter = pehla bill (cashier ko wapas search box mein jana na pare) */
+$('dupDate').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();e.stopPropagation();fillDup($('dupSearch').value);printDup()}
+});
 $('dupSearch').addEventListener('keydown',function(e){
   if(e.key==='ArrowDown'){e.preventDefault();dIdx=Math.min(dIdx+1,dupRows.length-1);markDup()}
   else if(e.key==='ArrowUp'){e.preventDefault();dIdx=Math.max(dIdx-1,0);markDup()}
-  else if(e.key==='Enter'){e.preventDefault();printDup()}
+  /* V193 — stopPropagation: wohi Enter neeche document tak pohnch kar
+     abhi khuli duplicate receipt ko foran band kar deta tha. */
+  else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();
+    if(dupT){clearTimeout(dupT);dupT=null;fillDup(this.value)} printDup()}
 });
 $('dupList').addEventListener('click',function(e){
   var d=e.target.closest('[data-d]'); if(!d)return;
@@ -1001,7 +1026,14 @@ function printReceipt(){
     '.big{font-size:15px;font-weight:700}.dupstamp{text-align:center;border:2px dashed #000;font-weight:700;padding:3px;margin:5px 0}'+
     '</style></head><body>'+html+'</body></html>');
   d.close();
-  setTimeout(function(){try{f.contentWindow.focus();f.contentWindow.print()}catch(e){flash('Print failed: '+e.message,true)}},50);
+  setTimeout(function(){
+    try{f.contentWindow.focus();f.contentWindow.print()}catch(e){flash('Print failed: '+e.message,true)}
+    /* V193 — print ke baad focus wapas POS par. Warna keyboard aur
+       barcode scanner chhupe print frame mein likhte rehte: agla item scan
+       na hota, Enter/Ctrl+D kaam na karte jab tak cashier mouse se click
+       na kare. */
+    try{ window.focus(); scan.focus(); }catch(e){}
+  },50);
 }
 $('btnPrint').onclick=printReceipt;
 $('btnDrawer').onclick=function(){flash('The cash drawer opens through the receipt printer \u2014 turn on "open drawer" in the printer driver.')};
@@ -1114,6 +1146,7 @@ $('keybar').addEventListener('click',function(e){
     $('cashierName').textContent='OFFLINE'; $('billNo').textContent='\u2014';
   } else { $('billNo').textContent='INV-'+billNo; $('cashierName').textContent='Demo'; }
   $('ctrName').textContent=counter||'Counter 1';
+  S.counter=counter||'Counter 1';
   $('ctrChip').onclick=function(){
     if(!LIVE)return;
     var cs=(S.boot.counters||[]).map(function(c){return c.name}).filter(Boolean);
@@ -1121,7 +1154,7 @@ $('keybar').addEventListener('click',function(e){
     var pick=prompt('Counter for this computer:\n'+cs.map(function(c,i){return (i+1)+'. '+c}).join('\n')+'\n\nType the number:', String(Math.max(1,cs.indexOf(counter)+1)));
     var n=parseInt(pick,10); if(!n||!cs[n-1])return;
     counter=cs[n-1]; try{localStorage.setItem('rtl_counter',counter)}catch(e){}
-    $('ctrName').textContent=counter; flash('This computer is now '+counter);
+    $('ctrName').textContent=counter; S.counter=counter; paintHeld(); flash('This computer is now '+counter);
   };
   $('taxLab').textContent=p.tax_label;
   $('regionChip').innerHTML=p.flag+' <b>'+p.currency+'</b>';
@@ -1167,4 +1200,4 @@ $('keybar').addEventListener('click',function(e){
 </body>
 </html>
 
-<!-- build: V192 build 2026-11-13 -->
+<!-- build: V193 build 2026-11-13 -->

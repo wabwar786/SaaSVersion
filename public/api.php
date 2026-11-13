@@ -3967,7 +3967,7 @@ case 'rpos-quote':
 case 'rpos-sales':
   needLogin(); needRetail();
   if(!Auth::canModule('rpos')&&!Auth::canModule('sales')&&!Auth::canModule('void'))fail('You do not have access to bills',403);
-  ok(['rows'=>RetailPos::sales((int)($_GET['limit']??100),(string)($_GET['q']??''))]);
+  ok(['rows'=>RetailPos::sales((int)($_GET['limit']??100),(string)($_GET['q']??''),(string)($_GET['date']??''))]);
 
 case 'rpos-sale-get':
   needLogin(); needRetail();
@@ -3989,11 +3989,17 @@ case 'rpos-reprint':
 
 case 'rpos-held':
   needLogin(); needRetail(); needRetailModule('rpos');
-  ok(['rows'=>RetailPos::heldBills()]);
+  ok(['rows'=>RetailPos::heldBills((string)($_GET['counter']??''))]);
 
 case 'rpos-hold':
   needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
   ok(['id'=>RetailPos::hold(body())]);
+
+/* V193 — recall: held bill ek hi counter ko milta hai (atomic). */
+case 'rpos-hold-claim':
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
+  try{ ok(['held'=>RetailPos::claimHold((string)(body()['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 case 'rpos-hold-release':
   needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
@@ -4141,4 +4147,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V163 build 2026-10-25
+// build: V193 build 2026-11-13

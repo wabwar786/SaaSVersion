@@ -1,6 +1,7 @@
 {
   "_help": "Which business type each build is for. RETAIL, RESTAURANT or both. A build that is not listed here is shown to everyone. Newest first.",
   "releases": [
+    {"build": "V193 build 2026-11-13", "for": ["RETAIL"], "note": "Retail: receipt prints on bill close, held bills per counter, duplicate bill by date, faster bill search, safe bill numbers on many counters, offline database auto-repair"},
     {"build": "V192 build 2026-11-13", "for": ["RETAIL"], "note": "Retail: Excel import, fast product screens on large catalogs, POS name search on Enter"},
     {"build": "V191 build 2026-11-13", "for": ["RETAIL"], "note": "Retail sale point fixes"},
     {"build": "V190 build 2026-11-12", "for": ["RESTAURANT", "RETAIL"]}

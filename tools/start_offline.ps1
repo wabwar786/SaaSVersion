@@ -219,7 +219,7 @@ if ($schemaExit -eq 20 -or $schemaExit -eq 21) {
     Read-Host 'Press Enter to close'; exit 1
   }
   Say 'Database is ready.' 'Green'
-} elseif ($schemaExit -ne 0) {
+} elseif ($schemaExit -ne 0 -and $schemaExit -ne 22) {
   # Database se baat hi nahi ho rahi. Server chalane ka koi faida nahi -
   # har safha isi ghalti par ruk jata.
   Bad ''
@@ -229,6 +229,50 @@ if ($schemaExit -eq 20 -or $schemaExit -eq 21) {
   Bad ''
   Bad 'Please run INSTALL_OFFLINE.bat once, then start the software again.'
   Read-Host 'Press Enter to close'; exit 1
+}
+
+# ---------- 3a2) V193: DATABASE IS VERSION KE MUTABIQ? ----------
+#
+# JO HUA: ek PC par restaurant (V155) ka database pehle se tha. Us par
+# retail V192 chalaya. Tables sab mojood thin, is liye upar wala check
+# "SCHEMA_OK" keh kar aage barh gaya - aur retail ki migrations KABHI
+# na chalin. Natija: login ke baad restaurant ka design, aur har bill par
+# "The bill could not be saved because of a database problem"
+# (cashier_shifts.shift_seq ghaib).
+#
+# AB: har naye version par (aur jab koi zaroori column ghaib ho - exit 22)
+# poori migrations list EK DAFA chalti hai: scripts\run_migrations.php,
+# wohi list jo cloud aur UPDATE.bat chalate hain. Yeh scripts sirf jo
+# kam hai woh banati hain; mojood data ko haath nahi lagatin.
+# Kamyabi par storage\schema_version.txt mein version likh diya jata hai,
+# taake agli dafa software foran khule.
+$schemaMark = Join-Path $root 'storage\schema_version.txt'
+$markWant = "$version"
+$markHave = ''
+if (Test-Path $schemaMark) { try { $markHave = (Get-Content $schemaMark -Raw).Trim() } catch {} }
+if ($schemaExit -eq 20 -or $schemaExit -eq 21 -or $schemaExit -eq 22 -or $markHave -ne $markWant) {
+  if ($schemaExit -eq 22) {
+    Say 'This database was made by an older version. Updating its tables...' 'Yellow'
+    Say ("  " + ("$schema" -split "`r?`n" | Where-Object { $_ -match 'SCHEMA_' } | Select-Object -First 1)) 'DarkGray'
+  } else {
+    Say 'Updating database tables for this version (one time only)...' 'Cyan'
+  }
+  $mig = Invoke-Native -Exe $phpExe -Arguments @('-c', "$phpIni",
+    (Join-Path $root 'scripts\run_migrations.php'), '--node', '--stage=all', '--quiet')
+  $migExit = $global:NativeExitCode
+  if ($migExit -eq 0 -and "$mig" -match 'MIGRATIONS_OK') {
+    try {
+      $null = New-Item -ItemType Directory -Force -Path (Split-Path $schemaMark)
+      Set-Content -Path $schemaMark -Value $markWant -Encoding ASCII
+    } catch {}
+    Say 'Database is up to date.' 'Green'
+  } else {
+    # Server phir bhi chalta hai (data salamat hai); agli dafa dobara koshish.
+    Say 'Some database updates did not finish. The software will still start.' 'DarkYellow'
+    ("$mig" -split "`r?`n") | Where-Object { $_ -match 'FAIL|FAILED|!!' } | Select-Object -First 3 |
+      ForEach-Object { Say ("  " + $_) 'DarkGray' }
+    Say 'If bills do not save, please call Wabwar Software House: +92 342 5095104' 'DarkYellow'
+  }
 }
 
 # ---------- 3b) licence ----------
@@ -613,4 +657,4 @@ if ($trayOk) {
   }
 }
 
-# build: V164 build 2026-10-25
+# build: V193 build 2026-11-13

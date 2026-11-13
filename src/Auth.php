@@ -242,14 +242,23 @@ final class Auth {
         }
         $ind = 'RESTAURANT'; $reg = 'PK';
         if ($tid) {
+            /* V193 — industry aur region ALAG ALAG. Purane database mein
+               `region_profile` column na ho to pehle poori query fail hoti aur
+               business chup-chaap RESTAURANT ban jata: supermarket ka data,
+               restaurant ka design. Ab industry hamesha apne column se aati
+               hai, aur nakami error log mein likhi jati hai. */
             try {
-                $q = DB::pdo()->prepare("SELECT industry_code, region_profile FROM tenants WHERE id=? LIMIT 1");
+                $q = DB::pdo()->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");
                 $q->execute([$tid]);
-                if ($r = $q->fetch(\PDO::FETCH_ASSOC)) {
-                    $ind = \strtoupper((string)($r['industry_code'] ?: 'RESTAURANT'));
-                    $reg = \strtoupper((string)($r['region_profile'] ?: 'PK'));
-                }
-            } catch (\Throwable $e) {}
+                $v = $q->fetchColumn();
+                if ($v !== false) $ind = \strtoupper((string)($v ?: 'RESTAURANT'));
+            } catch (\Throwable $e) { \error_log('tenantIndustry: ' . $e->getMessage()); }
+            try {
+                $q = DB::pdo()->prepare("SELECT region_profile FROM tenants WHERE id=? LIMIT 1");
+                $q->execute([$tid]);
+                $v = $q->fetchColumn();
+                if ($v !== false) $reg = \strtoupper((string)($v ?: 'PK'));
+            } catch (\Throwable $e) { \error_log('tenantRegion: ' . $e->getMessage()); }
         }
         $_SESSION['tenant_ctx'] = ['tid' => $tid, 'industry' => $ind, 'region' => $reg];
         return $ind;
@@ -467,31 +476,9 @@ final class Auth {
         $mi = self::moduleIndustry($key);
         if ($mi !== null && $mi !== 'COMMON' && $mi !== self::tenantIndustry()) return false;
 
-        /* 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai.
-
-           V175 — ALWAYS_ON YAHAN BHI. Yeh do pehre hain aur in ka qanoon
-           alag ho gaya tha:
-
-             gateByFeatures()  -> ALWAYS_ON girne nahi deta  (sidebar,
-                                  pos-boot, Users & Access)
-             canModule()       -> girne deta tha             (router ka
-                                  page gate)
-
-           Nateeja yeh nikla ke sidebar mein "Activate / Renew" NAZAR
-           AATA tha, aur dabane par router usay pehle allowed page par
-           bhej deta tha — POS par, jahan khali cart dekh kar New Bill
-           ka dialog khud khul jata. Customer ko lagta Renew ka button
-           hi kharab hai.
-
-           Aur masla theek us waqt hota tha jab customer WAQT PAR renew
-           karna chahta — expire hone ke BAAD router activate.html ko
-           publicPages mein daal deta hai aur yeh gate chalta hi nahi.
-           V149 ne yeh ALWAYS_ON gateByFeatures() par laga diya tha, is
-           jagah rah gaya. */
+        // 1) Business-level feature flag (super admin ka faisla) — admin par bhi lagta hai
         $feat = self::tenantFeatures();
-        if ($feat !== null
-            && !in_array($key, $feat, true)
-            && !in_array($key, \Aio\Services\ModuleGroups::ALWAYS_ON, true)) return false;
+        if ($feat !== null && !in_array($key, $feat, true)) return false;
         // 2) User-level permission
         if (self::isAdmin()) return true;
         // V141 — session ki jami hui copy nahi, taza list.
@@ -550,4 +537,4 @@ final class Auth {
     }
 }
 
-// build: V175 build 2026-10-29
+// build: V193 build 2026-11-13
