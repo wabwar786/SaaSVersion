@@ -36,11 +36,11 @@
         { key: 'status', label: 'Status', options: ['Active', 'Inactive'] }
       ],
       kpis: [
-        { label: 'Products', calc: function (r) { return r.length; } },
-        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); } },
-        { label: 'Low stock', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.stock_qty > 0 && p.stock_qty <= p.min_stock; }).length; } },
-        { label: 'Out of stock', tone: 'info', calc: function (r) { return r.filter(function (p) { return Number(p.stock_qty) <= 0; }).length; } },
-        { label: 'Scale items', tone: 'violet', calc: function (r) { return r.filter(function (p) { return p.is_scale_item; }).length; } }
+        { label: 'Products', calc: function (r) { return r.length; }, srv: function (a, M) { return M.num(a.n); } },
+        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); }, srv: function (a, M) { return M.money(a.stock_value); } },
+        { label: 'Low stock', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.stock_qty > 0 && p.stock_qty <= p.min_stock; }).length; }, srv: function (a, M) { return M.num(a.low); } },
+        { label: 'Out of stock', tone: 'info', calc: function (r) { return r.filter(function (p) { return Number(p.stock_qty) <= 0; }).length; }, srv: function (a, M) { return M.num(a.out_of_stock); } },
+        { label: 'Scale items', tone: 'violet', calc: function (r) { return r.filter(function (p) { return p.is_scale_item; }).length; }, srv: function (a, M) { return M.num(a.scale); } }
       ],
       columns: [
         {
@@ -106,14 +106,15 @@
       kpis: [
         { label: 'Departments', calc: function (r) { return r.length; } },
         { label: 'Categories', tone: 'info', calc: function () { return S.get('categories').length; } },
-        { label: 'Products mapped', tone: 'ok', calc: function () { return S.get('products').length; } }
+        { label: 'Products mapped', tone: 'ok', calc: function () { return S.productGroups ? S.productGroups().total : S.get('products').length; } }
       ],
       columns: [
         { label: 'Department', field: 'name', sub: 'code' },
         { label: 'Categories', align: 'num', render: function (r) { return S.get('categories').filter(function (c) { return c.department_id === r.id; }).length; } },
-        { label: 'Products', align: 'num', render: function (r) { return S.get('products').filter(function (p) { return p.department_id === r.id; }).length; } },
+        { label: 'Products', align: 'num', render: function (r) { return S.group ? S.group('department_id', r.id).n : S.get('products').filter(function (p) { return p.department_id === r.id; }).length; } },
         {
           label: 'Stock value', align: 'num', render: function (r, M) {
+            if (S.group) return M.money(S.group('department_id', r.id).v);
             return M.money(S.get('products').filter(function (p) { return p.department_id === r.id; })
               .reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0));
           }
@@ -135,12 +136,12 @@
       searchPlaceholder: 'Search category', searchFields: ['name'], emptyIcon: '☰',
       kpis: [
         { label: 'Categories', calc: function (r) { return r.length; } },
-        { label: 'Avg products / category', tone: 'info', calc: function (r) { return r.length ? Math.round(S.get('products').length / r.length) : 0; } }
+        { label: 'Avg products / category', tone: 'info', calc: function (r) { return r.length ? Math.round((S.productGroups ? S.productGroups().total : S.get('products').length) / r.length) : 0; } }
       ],
       columns: [
         { label: 'Category', field: 'name' },
         { label: 'Department', render: function (r, M) { return M.esc(S.name('departments', r.department_id)); } },
-        { label: 'Products', align: 'num', render: function (r) { return S.get('products').filter(function (p) { return p.category_id === r.id; }).length; } }
+        { label: 'Products', align: 'num', render: function (r) { return S.group ? S.group('category_id', r.id).n : S.get('products').filter(function (p) { return p.category_id === r.id; }).length; } }
       ],
       fields: [
         { key: 'name', label: 'Category name', type: 'text', required: true, full: true },
@@ -156,13 +157,14 @@
       searchPlaceholder: 'Search brand', searchFields: ['name'], emptyIcon: '◈',
       kpis: [
         { label: 'Brands', calc: function (r) { return r.length; } },
-        { label: 'Products', tone: 'ok', calc: function () { return S.get('products').length; } }
+        { label: 'Products', tone: 'ok', calc: function () { return S.productGroups ? S.productGroups().total : S.get('products').length; } }
       ],
       columns: [
         { label: 'Brand', field: 'name' },
-        { label: 'Products', align: 'num', render: function (r) { return S.get('products').filter(function (p) { return p.brand_id === r.id; }).length; } },
+        { label: 'Products', align: 'num', render: function (r) { return S.group ? S.group('brand_id', r.id).n : S.get('products').filter(function (p) { return p.brand_id === r.id; }).length; } },
         {
           label: 'Stock value', align: 'num', render: function (r, M) {
+            if (S.group) return M.money(S.group('brand_id', r.id).v);
             return M.money(S.get('products').filter(function (p) { return p.brand_id === r.id; })
               .reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0));
           }
@@ -219,7 +221,7 @@
         { label: 'Batch stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, b) { return a + b.qty * b.cost_price; }, 0)); } }
       ],
       columns: [
-        { label: 'Product', render: function (r, M) { var p = S.byId('products', r.product_id); return '<span class="t-main">' + M.esc(p ? p.name : '—') + '</span><span class="t-sub">Batch ' + M.esc(r.batch_no) + '</span>'; } },
+        { label: 'Product', render: function (r, M) { var p = r.product_name != null ? { name: r.product_name } : S.byId('products', r.product_id); return '<span class="t-main">' + M.esc(p ? p.name : '—') + '</span><span class="t-sub">Batch ' + M.esc(r.batch_no) + '</span>'; } },
         { label: 'Received', field: 'received_on' },
         { label: 'Expiry', field: 'expiry_date' },
         {
@@ -400,10 +402,10 @@
       ],
       searchPlaceholder: 'Search product or SKU', searchFields: ['name', 'sku'], emptyIcon: '\u25a6',
       kpis: [
-        { label: 'SKUs', calc: function (r) { return r.length; } },
-        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); } },
-        { label: 'Low stock', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.stock_qty > 0 && p.stock_qty <= p.min_stock; }).length; } },
-        { label: 'Out of stock', tone: 'info', calc: function (r) { return r.filter(function (p) { return Number(p.stock_qty) <= 0; }).length; } }
+        { label: 'SKUs', calc: function (r) { return r.length; }, srv: function (a, M) { return M.num(a.n); } },
+        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); }, srv: function (a, M) { return M.money(a.stock_value); } },
+        { label: 'Low stock', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.stock_qty > 0 && p.stock_qty <= p.min_stock; }).length; }, srv: function (a, M) { return M.num(a.low); } },
+        { label: 'Out of stock', tone: 'info', calc: function (r) { return r.filter(function (p) { return Number(p.stock_qty) <= 0; }).length; }, srv: function (a, M) { return M.num(a.out_of_stock); } }
       ],
       columns: [
         { label: 'Product', field: 'name', sub: 'sku' },
@@ -443,14 +445,14 @@
           } }
       ],
       kpis: [
-        { label: 'Products', calc: function (r) { return r.length; } },
-        { label: 'Avg margin', tone: 'ok', calc: function (r) {
+        { label: 'Products', calc: function (r) { return r.length; }, srv: function (a, M) { return M.num(a.n); } },
+        { label: 'Avg margin', tone: 'ok', srv: function (a) { return Number(a.avg_margin || 0).toFixed(1) + '%'; }, calc: function (r) {
             var v = r.filter(function (p) { return p.retail_price > 0; });
             if (!v.length) return '0%';
             return (v.reduce(function (a, p) { return a + (p.retail_price - p.cost_price) / p.retail_price * 100; }, 0) / v.length).toFixed(1) + '%'; } },
-        { label: 'Below 8% margin', tone: 'warn', calc: function (r) {
+        { label: 'Below 8% margin', tone: 'warn', srv: function (a, M) { return M.num(a.below8); }, calc: function (r) {
             return r.filter(function (p) { return p.retail_price > 0 && (p.retail_price - p.cost_price) / p.retail_price * 100 < 8; }).length; } },
-        { label: 'Selling below cost', tone: 'info', calc: function (r) { return r.filter(function (p) { return p.retail_price > 0 && p.retail_price < p.cost_price; }).length; } }
+        { label: 'Selling below cost', tone: 'info', srv: function (a, M) { return M.num(a.below_cost); }, calc: function (r) { return r.filter(function (p) { return p.retail_price > 0 && p.retail_price < p.cost_price; }).length; } }
       ],
       columns: [
         { label: 'Product', field: 'name', sub: 'sku' },
@@ -484,10 +486,11 @@
       note: 'Taraazu khud label chhapti hai jismein barcode ke andar weight chhupa hota hai. POS us barcode ko parh kar weight khud le leta hai \u2014 cashier ko kuch type nahi karna parta.',
       listTitle: 'Loose / weighed items', listSub: 'The PLU code must match the one set on the scale',
       searchPlaceholder: 'Search item or PLU', searchFields: ['name', 'plu_code'], emptyIcon: '\u2696',
+      aggScale: true,
       kpis: [
-        { label: 'Scale items', calc: function (r) { return r.filter(function (p) { return p.is_scale_item; }).length; } },
-        { label: 'PLU missing', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.is_scale_item && !p.plu_code; }).length; } },
-        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.filter(function (p) { return p.is_scale_item; }).reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); } }
+        { label: 'Scale items', calc: function (r) { return r.filter(function (p) { return p.is_scale_item; }).length; }, srv: function (a, M) { return M.num(a.n); } },
+        { label: 'PLU missing', tone: 'warn', calc: function (r) { return r.filter(function (p) { return p.is_scale_item && !p.plu_code; }).length; }, srv: function (a, M) { return M.num(a.plu_missing); } },
+        { label: 'Stock value', tone: 'ok', calc: function (r, M) { return M.money(r.filter(function (p) { return p.is_scale_item; }).reduce(function (a, p) { return a + p.stock_qty * p.cost_price; }, 0)); }, srv: function (a, M) { return M.money(a.stock_value); } }
       ],
       columns: [
         { label: 'Item', field: 'name', sub: 'sku' },
@@ -727,4 +730,4 @@
   };
 })();
 
-// build: V191 build 2026-11-13
+// build: V192 build 2026-11-13

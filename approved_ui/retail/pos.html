@@ -188,7 +188,7 @@ html,body{height:100%;overflow:hidden}
       <div class="scanbox">
         <div class="scan-row">
           <div class="scan-in">
-            <input id="scan" autocomplete="off" spellcheck="false" placeholder="Scan barcode &middot; type name &middot; PLU">
+            <input id="scan" autocomplete="off" spellcheck="false" placeholder="Scan barcode &middot; PLU &middot; or 3+ letters of the name, then Enter">
             <div class="sugg" id="sugg"></div>
           </div>
           <div class="lvl" id="lvl">
@@ -474,10 +474,10 @@ function onScan(code){
   else if(hit.source==='pack') flash('Pack \u00b7 '+hit.qty+' units');
   return true;
 }
-function suggest(q){
+function suggest(q,rowsIn){
   var box=$('sugg');
   if(!q||q.length<2){box.classList.remove('show');sRows=[];sIdx=-1;return}
-  sRows=S.searchProducts(q); sIdx=sRows.length?0:-1;
+  sRows=rowsIn||S.searchProducts(q); sIdx=sRows.length?0:-1;
   if(!sRows.length){box.classList.remove('show');return}
   var h='';
   for(var i=0;i<sRows.length;i++){
@@ -497,14 +497,29 @@ scan.addEventListener('keydown',function(e){
   if(e.key!=='Enter')return;
   e.preventDefault();
   var v=scan.value.trim(); if(!v)return;
-  if(sIdx>-1&&sRows[sIdx]) addProduct(sRows[sIdx],1);
-  else if(!onScan(v)){ flash('Not found: '+v,true); scan.select(); return; }
-  scan.value=''; closeSugg();
+  if(sIdx>-1&&sRows[sIdx]){ addProduct(sRows[sIdx],1); scan.value=''; closeSugg(); return; }
+  /* V192 — Enter: pehle barcode / SKU / PLU (scanner bilkul waisa hi).
+     Na mile to NAAM se search — sirf 3+ harf par, aur screen nahi rukti.
+     Pehle har harf par ek rokne wali request jati thi; 56 hazar items
+     aur masroof PC par typing atak jati thi. */
+  if(onScan(v)){ scan.value=''; closeSugg(); return; }
+  if(!LIVE||!S.searchProductsAsync){
+    var loc=S.searchProducts(v);
+    if(loc.length){ suggest(v,loc); return; }
+    flash('Not found: '+v,true); scan.select(); return;
+  }
+  if(v.length<3){ flash('Type at least 3 letters, then press Enter',true); scan.select(); return; }
+  flash('Searching \u201c'+v+'\u201d\u2026');
+  S.searchProductsAsync(v,20,function(rows,msg){
+    if(scan.value.trim()!==v) return;              /* cashier aage likh chuka */
+    if(rows===null){ flash(msg||'Search failed',true); return; }
+    if(!rows.length){ flash('Nothing found for \u201c'+v+'\u201d',true); scan.select(); return; }
+    suggest(v,rows);
+  });
 });
 scan.addEventListener('input',function(){
-  var v=scan.value.trim();
-  if(v.length>5&&/^\d+$/.test(v)){closeSugg();return}   /* barcode: search mat chalao */
-  suggest(v);
+  /* V192 — likhte waqt koi search nahi; purani list band */
+  if(sRows.length) closeSugg();
 });
 $('sugg').addEventListener('click',function(e){
   var d=e.target.closest('[data-s]'); if(!d)return;
@@ -649,6 +664,19 @@ function paintLevel(){
   for(var i=0;i<b.length;i++) b[i].classList.toggle('active',b[i].getAttribute('data-level')===level);
 }
 function repriceAll(){
+  /* V192 — server se naya rate (quote). Pehle yeh POORI product list
+     mangwata tha — 56 hazar items par 8.5 second Wholesale/F10 par. */
+  if(LIVE&&S.quote){
+    if(!cart.length){ totals(); return; }
+    try{
+      var live=cart.filter(function(l){return l.qty>0});
+      var q=S.quote({lines:linesPayload(),price_level:level,bill_discount:0});
+      if(q&&q.lines&&q.lines.length===live.length){
+        for(var j=0;j<live.length;j++){ live[j].price=Number(q.lines[j].unit_price); paintRow(live[j]); }
+      }
+    }catch(err){ flash(err.message||'Could not reprice',true); }
+    totals(); return;
+  }
   for(var i=0;i<cart.length;i++){
     var p=S.byId('products',cart[i].product_id);
     if(p){cart[i].price=priceOf(p);paintRow(cart[i])}
@@ -979,7 +1007,10 @@ $('btnPrint').onclick=printReceipt;
 $('btnDrawer').onclick=function(){flash('The cash drawer opens through the receipt printer \u2014 turn on "open drawer" in the printer driver.')};
 
 /* ============ PRICE CHECK ============ */
-$('pcIn').addEventListener('input',function(){
+/* V192 — likhna rukne ke 300 ms baad ek dafa (pehle har harf par). */
+var pcT=null;
+$('pcIn').addEventListener('input',function(){ var el=this; clearTimeout(pcT); pcT=setTimeout(function(){ pcPaint.call(el); },300); });
+function pcPaint(){
   var v=this.value.trim(); if(!v){$('pcOut').innerHTML='';return}
   var hit=S.findByCode(v),p=hit?hit.product:S.searchProducts(v)[0];
   if(!p){$('pcOut').innerHTML='<div class="note" style="background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)">Not found</div>';return}
@@ -991,7 +1022,7 @@ $('pcIn').addEventListener('input',function(){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
     cell('Retail',money(p.retail_price))+cell('Wholesale',money(p.wholesale_price))+
     cell('Stock',qtyf(p.stock_qty))+cell(R.current().tax_label,p.tax_rate+'%')+'</div></div></div>';
-});
+}
 
 /* ============ MODAL / TOAST ============ */
 function openM(id){$(id).classList.add('show')}
@@ -1136,4 +1167,4 @@ $('keybar').addEventListener('click',function(e){
 </body>
 </html>
 
-<!-- build: V191 build 2026-11-13 -->
+<!-- build: V192 build 2026-11-13 -->

@@ -146,7 +146,18 @@
   ['cw','ch','cu','bh'].forEach(function(id){$(id).oninput=paintSheet;$(id).onchange=paintSheet});
   ['cBiz','cName','cBar','cPrice','cExp'].forEach(function(id){$(id).onchange=paintSheet});
 
-  function products(){ return S.get('products')||[]; }
+  /* V192 — poori product list (56 hazar par 35 MB) ki jagah server se
+     sirf 60 natije. Jo dikhe unhein yaad rakha jata hai taake "Add" par
+     product mil jaye. */
+  var shown={};
+  function products(){
+    var q=($('q').value||'').trim();
+    if(S.productsPage){
+      try{ var r=S.productsPage({q:q,size:50,page:1,status:'Active'}).rows||[];
+           r.forEach(function(p){shown[p.id]=p}); return r; }catch(e){ return []; }
+    }
+    return S.get('products')||[];
+  }
 
   /* Expiry sab se pehle khatam hone wale batch se — wahi shelf par
      lagti hai, na ke sab se door wali. */
@@ -159,7 +170,7 @@
 
   function paintPick(){
     var q=($('q').value||'').toLowerCase();
-    var rows=products().filter(function(p){
+    var rows=S.productsPage? products() : products().filter(function(p){
       if(!q)return true;
       return p.name.toLowerCase().indexOf(q)>-1||(p.barcodes||[]).some(function(b){return b.indexOf(q)>-1});
     }).slice(0,60);
@@ -214,7 +225,7 @@
     var a=e.target.closest('[data-add]');
     if(a){
       var id=a.getAttribute('data-add');
-      var p=products().filter(function(x){return x.id===id})[0];
+      var p=shown[id]||(S.productsPage?null:products().filter(function(x){return x.id===id})[0]);
       var n=Number(document.querySelector('[data-q="'+id+'"]').value||1);
       if(!p||n<1)return;
       var ex=queue.filter(function(x){return x.p.id===id})[0];
@@ -224,7 +235,7 @@
     var d=e.target.closest('[data-del]');
     if(d){ queue.splice(+d.getAttribute('data-del'),1); paintQueue(); }
   });
-  $('q').oninput=paintPick;
+  var qT=null; $('q').oninput=function(){ clearTimeout(qT); qT=setTimeout(paintPick,300); };
   $('btnClear').onclick=function(){queue=[];paintQueue()};
   $('btnPrint').onclick=function(){
     if(!queue.length){alert('The queue is empty — add a product first.');return}

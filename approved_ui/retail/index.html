@@ -159,7 +159,11 @@
 
   $('#todayDate').textContent=new Date().toLocaleDateString(R.current().locale,{day:'numeric',month:'short',year:'numeric'});
 
-  var products=S.get('products'), sales=S.get('sales'), batches=S.get('batches'), customers=S.get('customers');
+  /* V192 — poori product list (56 hazar par 8.5 s) nahi; ginti server se. */
+  var AG=(S.productAgg&&S.productAgg())||null;
+  var products=AG?[]:S.get('products'), sales=S.get('sales'), batches=S.get('batches'), customers=S.get('customers');
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function oosNames(){ try{ return (S.productsPage({stock_state:'Out of stock',size:20,page:1}).rows||[]); }catch(e){ return []; } }
 
   /* V191 — AAJ KA ASLI HISAAB (`retail-dash`). Pehle: "aaj ki sale" poori
      tareekh ke aakhri 100 bill ka jor thi, cash mein +30000 khud jurta
@@ -169,10 +173,10 @@
   D=D||{today_total:0,today_bills:0,today_cash:0,vs_yesterday:null,units:0,margin:0,hours:{},open_shifts:0,returns:0};
   var todaySale=Number(D.today_total||0);
   var margin=Number(D.margin||0);
-  var low=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock}).length;
-  var oos=products.filter(function(p){return Number(p.stock_qty)<=0}).length;
+  var low=AG?AG.low:products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock}).length;
+  var oos=AG?AG.out_of_stock:products.filter(function(p){return Number(p.stock_qty)<=0}).length;
   var exp=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7}).length;
-  var stockVal=products.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0);
+  var stockVal=AG?AG.stock_value:products.reduce(function(a,p){return a+p.stock_qty*p.cost_price},0);
   var khata=customers.reduce(function(a,c){return a+Number(c.balance||0)},0);
   var khataCount=customers.filter(function(c){return Number(c.balance)>0}).length;
 
@@ -191,7 +195,7 @@
   $('#hKhata').textContent=money(khata);
   $('#hKhataSub').textContent=khataCount+' customers';
   $('#hStock').textContent=money(stockVal);
-  $('#hSku').textContent=products.length+' SKUs';
+  $('#hSku').textContent=(AG?AG.n:products.length)+' SKUs';
   $('#mUnits').textContent=qtyf(D.units);
   $('#mDept').textContent=S.get('departments').length;
 
@@ -208,14 +212,15 @@
 
   /* alerts */
   var a=[];
-  var lowItems=products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock});
-  var oosItems=products.filter(function(p){return Number(p.stock_qty)<=0});
+  var lowItems=AG?{length:AG.low}:products.filter(function(p){return p.stock_qty>0 && p.stock_qty<=p.min_stock});
+  var oosItems=AG?(AG.out_of_stock?oosNames():[]):products.filter(function(p){return Number(p.stock_qty)<=0});
+  var oosCount=AG?AG.out_of_stock:oosItems.length;
   var expItems=batches.filter(function(b){var d=S.daysTo(b.expiry_date);return b.qty>0 && d>=0 && d<=7});
 
-  if(oosItems.length) a.push(['danger','⊘','<b>'+oosItems.length+' items out of stock</b><small>'+
-    oosItems.slice(0,2).map(function(p){return p.name}).join(', ')+(oosItems.length>2?' +'+(oosItems.length-2)+' more':'')+'</small>','purchase_orders.html','Create PO']);
+  if(oosCount) a.push(['danger','⊘','<b>'+oosCount+' items out of stock</b><small>'+
+    oosItems.slice(0,2).map(function(p){return esc(p.name)}).join(', ')+(oosCount>2?' +'+(oosCount-2)+' more':'')+'</small>','purchase_orders.html','Create PO']);
   if(expItems.length) a.push(['warn','◷','<b>'+expItems.length+' batches expiring within 7 days</b><small>'+
-    expItems.slice(0,2).map(function(b){var p=S.byId('products',b.product_id);return (p?p.name:'')+' · '+b.expiry_date}).join(' · ')+'</small>','batches.html','Review']);
+    expItems.slice(0,2).map(function(b){return esc(b.product_name||'')+' · '+b.expiry_date}).join(' · ')+'</small>','batches.html','Review']);
   if(lowItems.length) a.push(['info','▽','<b>'+lowItems.length+' items below reorder level</b><small>Auto-PO suggestion ready</small>','purchase_orders.html','Suggest PO']);
   var over=customers.filter(function(c){return Number(c.balance)>0 && Number(c.balance)>=Number(c.credit_limit)*0.9 && Number(c.credit_limit)>0});
   if(over.length) a.push(['warn','₨','<b>'+over.length+' customers near credit limit</b><small>'+over.map(function(c){return c.name}).join(', ')+'</small>','khata.html','Open khata']);
@@ -249,4 +254,4 @@
 </body>
 </html>
 
-<!-- build: V191 build 2026-11-13 -->
+<!-- build: V192 build 2026-11-13 -->

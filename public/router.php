@@ -77,6 +77,8 @@ header('Expires: 0');
    ============================================================ */
 $retailModule=[
   'index.html'=>'dashboard','pos.html'=>'rpos','counters.html'=>'counters',
+  /* V192 — Excel se items: Products ka module (server par manager bhi lazmi). */
+  'import_products.html'=>'products',
   'sales.html'=>'sales','khata.html'=>'khata','products.html'=>'products',
   'departments.html'=>'departments','categories.html'=>'departments','brands.html'=>'brands',
   'uom.html'=>'uom','pricing.html'=>'pricing','scale.html'=>'scale','labels.html'=>'labels',
@@ -275,7 +277,7 @@ if($uiDir==='approved_ui/retail'){
      har change deploy ke baad bhi purana hi chalta rehta tha (max-age
      3600). Nayi file banate waqt YAHAN likhna lazmi hai. */
   $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|doc\.js|doc_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r7"', $html);
+                     '$1="/retail/$2?b=r8"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.

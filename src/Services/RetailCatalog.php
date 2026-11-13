@@ -132,7 +132,7 @@ final class RetailCatalog
             foreach ($rows as $r) {
                 if (isset($seen[$r['id']])) continue;
                 $seen[$r['id']] = true;
-                $out[] = self::hydrate($r);
+                $out[] = $r;
                 if (\count($out) >= $limit) return true;
             }
             return \count($out) >= $limit;
@@ -149,18 +149,22 @@ final class RetailCatalog
               WHERE tenant_id=? AND deleted_at IS NULL AND status='Active' AND name LIKE ?
               ORDER BY name LIMIT " . (int)$limit);
         $st->execute([$tid, $q . '%']);
-        if ($push($st->fetchAll(PDO::FETCH_ASSOC))) return $out;
+        if ($push(self::hydrateMany($st->fetchAll(PDO::FETCH_ASSOC)))) return $out;
 
-        /* 3. beech ke lafz — FULLTEXT. Sirf tab jab upar se kaam na bana. */
+        /* 3. beech ke lafz — FULLTEXT. Sirf tab jab upar se kaam na bana.
+           V192: har lafz lazmi ("coca cola" = coca AUR cola), pehle koi
+           ek bhi lafz kaafi tha aur natije beraba aate the. */
         if (\strlen($q) >= 3) {
             try {
+                $terms = \preg_split('/\s+/', \preg_replace('/[+\-<>()~*"@]+/', ' ', $q)) ?: [];
+                $bool = \implode(' ', \array_map(fn($t) => '+' . $t . '*', \array_filter($terms, fn($t) => $t !== '')));
                 $st = DB::pdo()->prepare(
                     "SELECT * FROM rtl_products
                       WHERE tenant_id=? AND deleted_at IS NULL AND status='Active'
                         AND MATCH(name) AGAINST (? IN BOOLEAN MODE)
-                      LIMIT " . (int)$limit);
-                $st->execute([$tid, $q . '*']);
-                if ($push($st->fetchAll(PDO::FETCH_ASSOC))) return $out;
+                      ORDER BY name LIMIT " . (int)$limit);
+                $st->execute([$tid, $bool !== '' ? $bool : $q . '*']);
+                if ($push(self::hydrateMany($st->fetchAll(PDO::FETCH_ASSOC)))) return $out;
             } catch (\Throwable $e) {
                 /* fulltext index na ho to purana tareeqa — sirf yahan,
                    aur sirf jab pehle do qadam khali rahe hon. */
@@ -169,7 +173,7 @@ final class RetailCatalog
                       WHERE tenant_id=? AND deleted_at IS NULL AND status='Active' AND name LIKE ?
                       ORDER BY name LIMIT " . (int)$limit);
                 $st->execute([$tid, '%' . $q . '%']);
-                $push($st->fetchAll(PDO::FETCH_ASSOC));
+                $push(self::hydrateMany($st->fetchAll(PDO::FETCH_ASSOC)));
             }
         }
         return $out;
@@ -180,7 +184,159 @@ final class RetailCatalog
         $q = DB::pdo()->prepare(
             "SELECT * FROM rtl_products WHERE tenant_id=? AND deleted_at IS NULL ORDER BY name");
         $q->execute([tenant_id()]);
-        return \array_map([self::class, 'hydrate'], $q->fetchAll(PDO::FETCH_ASSOC));
+        return self::hydrateMany($q->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /* ============================================================
+       V192 — BARE CATALOG (50-60 HAZAR ITEMS).
+
+       Pehle Products ki list har item ke liye ALAG barcode query
+       chalati thi (56 hazar queries) aur poori list — 35 MB — browser
+       ko bhejti thi: 8.5 second. Offline PC ek waqt mein ek hi request
+       chalata hai, is liye us dauraan counter ka bill bhi 9 ms se 7.8
+       second ka ho jata tha.
+
+       Ab:
+         - hydrateMany(): barcodes EK query mein (chunks of 1000).
+         - productsPage(): sirf ek safha (50/100/200), search aur
+           filter server par.
+         - productAgg(): KPI ke number SQL mein gine jate hain.
+         - productGroups(): department/category/brand ke hisaab se
+           ginti aur stock value — GROUP BY.
+       ============================================================ */
+    private static function hydrateMany(array $rows): array
+    {
+        if (!$rows) return [];
+        $map = [];
+        foreach (\array_chunk(\array_column($rows, 'id'), 1000) as $ids) {
+            $ph = \implode(',', \array_fill(0, \count($ids), '?'));
+            $b = DB::pdo()->prepare(
+                "SELECT product_id, barcode FROM rtl_product_barcodes
+                  WHERE tenant_id=? AND deleted_at IS NULL AND product_id IN ($ph) ORDER BY created_at");
+            $b->execute(\array_merge([tenant_id()], $ids));
+            foreach ($b->fetchAll(PDO::FETCH_ASSOC) as $x) $map[$x['product_id']][] = $x['barcode'];
+        }
+        foreach ($rows as &$r) {
+            $r['barcodes'] = $map[$r['id']] ?? [];
+            foreach (['tax_rate','cost_price','retail_price','wholesale_price','mrp',
+                      'stock_qty','min_stock','max_stock'] as $n) {
+                if (isset($r[$n])) $r[$n] = (float)$r[$n];
+            }
+            $r['is_scale_item'] = (int)($r['is_scale_item'] ?? 0);
+            $r['track_batch']   = (int)($r['track_batch'] ?? 0);
+        }
+        return $rows;
+    }
+
+    /** Filter ki shartein — productsPage aur productAgg dono yahi istemal karte hain. */
+    private static function productWhere(array $f, array &$args): string
+    {
+        $w = "p.tenant_id=? AND p.deleted_at IS NULL";
+        $args = [tenant_id()];
+        foreach (['department_id','category_id','brand_id'] as $k) {
+            if (!empty($f[$k])) { $w .= " AND p.`$k`=?"; $args[] = (string)$f[$k]; }
+        }
+        if (!empty($f['status']) && \in_array($f['status'], ['Active','Inactive'], true)) {
+            $w .= " AND p.status=?"; $args[] = $f['status'];
+        }
+        switch ((string)($f['stock_state'] ?? '')) {
+            case 'Out of stock': $w .= " AND p.stock_qty <= 0"; break;
+            case 'Low stock':    $w .= " AND p.stock_qty > 0 AND p.stock_qty <= p.min_stock"; break;
+            case 'In stock':     $w .= " AND p.stock_qty > p.min_stock"; break;
+        }
+        switch ((string)($f['margin_state'] ?? '')) {
+            case 'Below cost': $w .= " AND p.retail_price > 0 AND p.retail_price < p.cost_price"; break;
+            case 'Under 8%':   $w .= " AND p.retail_price > 0 AND p.retail_price >= p.cost_price AND (p.retail_price - p.cost_price) < 0.08 * p.retail_price"; break;
+            case 'Healthy':    $w .= " AND p.retail_price > 0 AND (p.retail_price - p.cost_price) >= 0.08 * p.retail_price"; break;
+        }
+        if (!empty($f['scale'])) $w .= " AND p.is_scale_item=1";
+        $q = \trim((string)($f['q'] ?? ''));
+        if ($q !== '') {
+            /* Barcode/SKU/PLU poora ho to seedha; warna naam ka prefix ya
+               FULLTEXT (beech ka lafz). `%q%` jaan boojh kar nahi — 56
+               hazar par poora scan. */
+            $hit = self::findByCode($q);
+            if ($hit) { $w .= " AND p.id=?"; $args[] = $hit['product']['id']; }
+            elseif (\strlen($q) >= 3) {
+                $w .= " AND (p.name LIKE ? OR p.sku LIKE ? OR MATCH(p.name) AGAINST (? IN BOOLEAN MODE))";
+                $args[] = $q . '%'; $args[] = $q . '%';
+                $terms = \preg_split('/\s+/', \preg_replace('/[+\-<>()~*"@]+/', ' ', $q)) ?: [];
+                $args[] = \implode(' ', \array_map(fn($t) => '+' . $t . '*', \array_filter($terms, fn($t) => $t !== '')));
+            } else {
+                $w .= " AND (p.name LIKE ? OR p.sku LIKE ?)";
+                $args[] = $q . '%'; $args[] = $q . '%';
+            }
+        }
+        return $w;
+    }
+
+    /** Ek safha products — search, filter aur ginti server par. */
+    public static function productsPage(array $f): array
+    {
+        $size = (int)($f['size'] ?? 50);
+        if (!\in_array($size, [20, 50, 100, 200], true)) $size = 50;
+        $page = \max(1, (int)($f['page'] ?? 1));
+        $args = [];
+        $w = self::productWhere($f, $args);
+        $c = DB::pdo()->prepare("SELECT COUNT(*) FROM rtl_products p WHERE $w");
+        $c->execute($args);
+        $total = (int)$c->fetchColumn();
+        $pages = \max(1, (int)\ceil($total / $size));
+        if ($page > $pages) $page = $pages;
+        $q = DB::pdo()->prepare("SELECT p.* FROM rtl_products p WHERE $w ORDER BY p.name, p.id
+                                  LIMIT " . $size . " OFFSET " . (($page - 1) * $size));
+        $q->execute($args);
+        return ['rows' => self::hydrateMany($q->fetchAll(PDO::FETCH_ASSOC)),
+                'total' => $total, 'page' => $page, 'pages' => $pages, 'size' => $size];
+    }
+
+    /** KPI ke number — poore catalog par (filter se pehle), jaise pehle screen par the. */
+    public static function productAgg(bool $scaleOnly = false): array
+    {
+        $w = "tenant_id=? AND deleted_at IS NULL" . ($scaleOnly ? " AND is_scale_item=1" : "");
+        $q = DB::pdo()->prepare(
+            "SELECT COUNT(*) n,
+                    COALESCE(SUM(stock_qty * cost_price),0) stock_value,
+                    SUM(CASE WHEN stock_qty > 0 AND stock_qty <= min_stock THEN 1 ELSE 0 END) low,
+                    SUM(CASE WHEN stock_qty <= 0 THEN 1 ELSE 0 END) out_of_stock,
+                    SUM(CASE WHEN is_scale_item=1 THEN 1 ELSE 0 END) scale,
+                    SUM(CASE WHEN is_scale_item=1 AND (plu_code IS NULL OR plu_code='') THEN 1 ELSE 0 END) plu_missing,
+                    AVG(CASE WHEN retail_price > 0 THEN (retail_price - cost_price) / retail_price * 100 END) avg_margin,
+                    SUM(CASE WHEN retail_price > 0 AND (retail_price - cost_price) < 0.08 * retail_price THEN 1 ELSE 0 END) below8,
+                    SUM(CASE WHEN retail_price > 0 AND retail_price < cost_price THEN 1 ELSE 0 END) below_cost,
+                    SUM(CASE WHEN status='Inactive' THEN 1 ELSE 0 END) inactive
+               FROM rtl_products WHERE $w");
+        $q->execute([tenant_id()]);
+        $a = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        foreach ($a as $k => $v) $a[$k] = (float)$v;
+        return $a;
+    }
+
+    /** Department / category / brand ke hisaab se ginti aur stock value. */
+    public static function productGroups(): array
+    {
+        $out = ['total' => 0, 'department_id' => [], 'category_id' => [], 'brand_id' => []];
+        $c = DB::pdo()->prepare("SELECT COUNT(*) FROM rtl_products WHERE tenant_id=? AND deleted_at IS NULL");
+        $c->execute([tenant_id()]);
+        $out['total'] = (int)$c->fetchColumn();
+        foreach (['department_id','category_id','brand_id'] as $k) {
+            $q = DB::pdo()->prepare(
+                "SELECT `$k` g, COUNT(*) n, COALESCE(SUM(stock_qty * cost_price),0) v
+                   FROM rtl_products WHERE tenant_id=? AND deleted_at IS NULL AND `$k` IS NOT NULL
+                  GROUP BY `$k`");
+            $q->execute([tenant_id()]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $out[$k][$r['g']] = ['n' => (int)$r['n'], 'v' => (float)$r['v']];
+        }
+        return $out;
+    }
+
+    /** Halki fehrist (dropdown ke liye): sirf id, naam, sku. */
+    public static function productsLite(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT id, name, sku FROM rtl_products WHERE tenant_id=? AND deleted_at IS NULL ORDER BY name");
+        $q->execute([tenant_id()]);
+        return $q->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /** Product row + uske barcodes (UI barcodes[] expect karta hai). */
@@ -223,7 +379,15 @@ final class RetailCatalog
         if (!$t) return [];
         $order = \in_array($module, ['departments','categories'], true) ? 'sort_order, name'
                : ($module === 'batches' ? 'expiry_date' : 'name');
-        $q = DB::pdo()->prepare("SELECT * FROM `$t` WHERE tenant_id=? AND deleted_at IS NULL ORDER BY $order");
+        if ($module === 'batches') {
+            /* V192 — product ka naam saath hi (pehle screen poori product
+               list mangwa kar naam dhoondti thi). */
+            $q = DB::pdo()->prepare("SELECT b.*, p.name product_name FROM rtl_batches b
+                                       LEFT JOIN rtl_products p ON p.id=b.product_id AND p.tenant_id=b.tenant_id
+                                      WHERE b.tenant_id=? AND b.deleted_at IS NULL ORDER BY b.expiry_date");
+        } else {
+            $q = DB::pdo()->prepare("SELECT * FROM `$t` WHERE tenant_id=? AND deleted_at IS NULL ORDER BY $order");
+        }
         $q->execute([tenant_id()]);
         $rows = $q->fetchAll(PDO::FETCH_ASSOC);
         if ($module === 'batches') {
@@ -536,4 +700,4 @@ final class RetailCatalog
     }
 }
 
-// build: V191 build 2026-11-13
+// build: V192 build 2026-11-13

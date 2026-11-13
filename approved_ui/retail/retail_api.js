@@ -179,6 +179,17 @@
       var s = quiet('rpos-sales&limit=100');
       return s ? s.rows.map(normalizeSale) : [];
     }
+    /* V192 — 'products' ki POORI list (35 MB, 8.5 s, aur us dauraan
+       counter ka bill bhi rukta tha) ab kahin nahi mangwai jati. Jahan
+       sirf naam chahiye (dropdown, batch ka naam) wahan halki list:
+       id, name, sku. Product screens apna safha `rproducts` se lati hain. */
+    if (key === 'products') {
+      if (!cache.products) {
+        var lp = quiet('rproducts-lite');
+        cache.products = lp ? lp.rows : [];
+      }
+      return cache.products;
+    }
     if (!cache[key]) {
       var r = quiet('records-list&module=' + encodeURIComponent(moduleOf(key)));
       cache[key] = r ? r.rows : [];
@@ -187,8 +198,21 @@
   };
 
   S.set = function (key, rows) { cache[key] = rows; return rows; };
+  /* V192 — catalog ki ginti server se (GROUP BY), poori list nahi. */
+  var groupsCache = null;
+  S.productGroups = function () {
+    if (!groupsCache) { var g = quiet('rproducts-groups'); groupsCache = g ? g.groups : { total: 0, department_id: {}, category_id: {}, brand_id: {} }; }
+    return groupsCache;
+  };
+  S.group = function (by, id) { var g = S.productGroups()[by] || {}; return g[id] || { n: 0, v: 0 }; };
+  S.productAgg = function (scale) { var a = quiet('rproducts-agg' + (scale ? '&scale=1' : '')); return a ? a.agg : null; };
+  S.productsPage = function (params) {
+    var qs = Object.keys(params).filter(function (k) { return params[k] !== '' && params[k] != null; })
+      .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+    return api('rproducts' + (qs ? '&' + qs : ''));
+  };
   S.commit = function () { };
-  S.invalidate = function (key) { if (key) delete cache[key]; else cache = {}; };
+  S.invalidate = function (key) { if (key) delete cache[key]; else cache = {}; if (!key || key === 'products') groupsCache = null; };
 
   function normalizeSale(s) {
     s.total = Number(s.total || 0);
@@ -232,6 +256,24 @@
     var r = quiet('retail-search&q=' + encodeURIComponent(q));
     return r ? r.rows : [];
   };
+  /* V192 — POS ke liye ASYNC naam search. Pehle har harf par ek
+     synchronous request jati thi aur screen us ka intezar karti thi
+     (PC masroof ho to 7 harf = 2.2 second). Ab sirf Enter par, aur
+     screen nahi rukti. Sirf aakhri request ka jawab dikhaya jata hai. */
+  var searchSeq = 0;
+  S.searchProductsAsync = function (q, limit, cb) {
+    var my = ++searchSeq;
+    var x = new XMLHttpRequest();
+    x.open('GET', '/api.php?action=retail-search&limit=' + (limit || 20) + '&q=' + encodeURIComponent(q) + '&_=' + Date.now(), true);
+    x.setRequestHeader('Accept', 'application/json');
+    x.onload = function () {
+      if (my !== searchSeq) return;
+      var r = {}; try { r = JSON.parse(x.responseText || '{}'); } catch (e) { }
+      cb(r && r.ok ? (r.rows || []) : null, r && r.message);
+    };
+    x.onerror = function () { if (my === searchSeq) cb(null, 'Server is not reachable'); };
+    x.send();
+  };
   S.byId = function (coll, id) {
     var rows = S.get(coll) || [];
     for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i];
@@ -259,4 +301,4 @@
   S.releaseHold = function (id) { return api('rpos-hold-release', { id: id }); };
 })();
 
-// build: V191 build 2026-11-13
+// build: V192 build 2026-11-13

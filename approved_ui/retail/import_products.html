@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Import Items · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.steps span{padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted);background:var(--surface)}
+.steps span.on{background:var(--brand,#0f7b5f);color:#fff;border-color:transparent}
+.imp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px}
+.maprow{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:center;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.maprow b{font-size:12.5px}.maprow small{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.maprow select{width:100%}
+.prev{overflow:auto;max-height:300px;border:1px solid var(--line);border-radius:10px}
+.prev table{font-size:12px}.prev td,.prev th{white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.prev tr.hdr td{background:var(--warn-soft,#fff6e5);font-weight:700}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer}
+.tabs button.on{background:var(--ink,#1d2b26);color:#fff;border-color:transparent}
+.rowin{width:100%;min-width:120px;padding:4px 6px;font-size:12px}
+.bar{height:12px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--ok,#1f9d55);transition:width .2s}
+.mopt{display:inline-flex!important;flex-direction:row!important;align-items:center;gap:8px;white-space:nowrap;font-size:13px;cursor:pointer;margin:0}
+.mopt input{width:auto!important;height:auto!important;margin:0!important;flex:none}
+.st-new{color:var(--ok)}.st-update{color:var(--info,#2b5a80)}.st-check{color:var(--warn)}.st-error{color:var(--danger)}.st-skip{color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+    <header class="header">
+      <button class="menu-btn" id="menuBtn">&#9776;</button>
+      <div class="header-title"><h1>Import Items from Excel</h1><p>Choose a file, match its columns to the item fields, check, then import</p></div>
+      <div class="header-spacer"></div>
+      <a class="btn" href="products.html">&larr; Product Catalog</a>
+    </header>
+    <div class="content">
+      <div class="steps"><span id="s1" class="on">1 &middot; File</span><span id="s2">2 &middot; Match columns</span><span id="s3">3 &middot; Check</span><span id="s4">4 &middot; Import</span></div>
+
+      <!-- 1 · FILE -->
+      <section class="panel" id="pFile">
+        <div class="panel-head"><div><h2>1 &middot; Choose the file</h2><p>Excel (.xls, .xlsx) or CSV. The file is read on this computer &mdash; nothing is saved until you press Import.</p></div>
+          <span class="spacer"></span><button class="btn" id="btnTpl">Download blank template</button></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+            <label class="field" style="margin:0;min-width:280px"><span>File</span><input type="file" id="fFile" accept=".xls,.xlsx,.csv"></label>
+            <label class="field" style="margin:0;min-width:160px"><span>Sheet</span><select id="fSheet"></select></label>
+            <label class="field" style="margin:0;width:150px"><span>Header row <span class="hint">column names</span></span><input type="number" id="fHead" min="1" value="1"></label>
+          </div>
+          <div id="fInfo" class="note" style="margin-top:12px;display:none"></div>
+          <div class="prev" id="fPrev" style="margin-top:12px;display:none"></div>
+        </div>
+      </section>
+
+      <!-- 2 · MAPPING -->
+      <section class="panel" id="pMap" style="display:none;margin-top:14px">
+        <div class="panel-head" style="flex-wrap:wrap;gap:8px"><div><h2>2 &middot; Match the columns</h2><p>For every item field, choose which Excel column holds it. Sample values are shown so you can see the real data.</p></div>
+          <span class="spacer"></span>
+          <select id="mSaved" style="width:auto;min-width:180px"><option value="">Saved mappings&hellip;</option></select>
+          <button class="btn sm" id="mDelSaved">Delete</button>
+          <button class="btn sm" id="mSave">Save this mapping</button>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+            <label class="mopt"><input type="radio" name="mode" value="split" checked> Barcode and name are in <b>separate</b> columns</label>
+            <label class="mopt"><input type="radio" name="mode" value="combo"> Barcode and name are in <b>one</b> column (<code>barcode-name</code>)</label>
+          </div>
+          <div class="imp-grid" id="mGrid"></div>
+          <div class="note" style="margin-top:12px">Rules: a barcode is never duplicated. If the barcode is already in the system, only its <b>quantity</b> and <b>prices</b> change. An item with sale price 0 is imported as <b>Inactive</b>. A department that does not exist is created.</div>
+          <div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" id="btnCheck">Check the rows &rarr;</button></div>
+        </div>
+      </section>
+
+      <!-- 3 · CHECK -->
+      <section class="panel" id="pCheck" style="display:none;margin-top:14px">
+        <div class="panel-head" style="flex-wrap:wrap;gap:8px"><div><h2>3 &middot; Check before import</h2><p id="cSub"></p></div>
+          <span class="spacer"></span><div class="tabs" id="cTabs"></div></div>
+        <div class="panel-body flush">
+          <div class="kpis" id="cKpis" style="padding:12px 14px 0"></div>
+          <div class="table-wrap"><table class="table"><thead><tr>
+            <th>Row</th><th>Barcode</th><th>Item name</th><th class="num">Cost</th><th class="num">Sale</th><th class="num">Qty</th><th>Department</th><th>Result</th><th></th>
+          </tr></thead><tbody id="cRows"></tbody></table></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line)">
+            <span id="cCount" style="color:var(--muted);font-size:12px"></span><span style="flex:1"></span>
+            <button class="btn sm" id="cPrev">&larr; Previous</button><span id="cPage" style="font-size:12px;font-weight:600"></span><button class="btn sm" id="cNext">Next &rarr;</button>
+          </div>
+          <div style="padding:12px 14px;display:flex;gap:8px;border-top:1px solid var(--line)">
+            <button class="btn" id="btnBack">&larr; Change columns</button><span style="flex:1"></span>
+            <button class="btn primary" id="btnImport">Import</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 · IMPORT -->
+      <section class="panel" id="pRun" style="display:none;margin-top:14px">
+        <div class="panel-head"><div><h2>4 &middot; Import</h2><p id="rSub">Working&hellip; keep this page open.</p></div></div>
+        <div class="panel-body">
+          <div class="bar"><i id="rBar"></i></div>
+          <div id="rText" style="margin-top:10px;font-size:13px"></div>
+          <div id="rDone" style="display:none;margin-top:12px;display:flex;gap:8px">
+            <a class="btn primary" href="products.html">Open Product Catalog</a>
+            <button class="btn" id="btnErrCsv" style="display:none">Download rows that were not imported (CSV)</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="products"></script>
+<script src="/retail/xlsx.full.min.js?b=r8"></script>
+<script>
+/* ============================================================
+   V192 — EXCEL SE ITEMS.
+   Malik khud tay karta hai ke Excel ka kaun sa column kis field mein
+   jaye. File isi computer par parhi jati hai (SheetJS); server ko sirf
+   saaf rows 200-200 ke batch mein jati hain (`rimport-commit`), har
+   batch ek transaction.
+   ============================================================ */
+(function(){
+  'use strict';
+  var $=function(i){return document.getElementById(i)};
+  var S=window.RetailStore, money=window.Region?Region.money:function(n){return n};
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function toast(m,e){var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
+    t.textContent=m;t.className='toast show'+(e?' err':'');clearTimeout(window.__it);window.__it=setTimeout(function(){t.className='toast'},2600)}
+  if(!S||!S.api){ document.querySelector('.content').innerHTML='<div class="note">Server is not reachable.</div>'; return; }
+  if(!window.XLSX){ document.querySelector('.content').innerHTML='<div class="note">The Excel reader could not load. Refresh the page.</div>'; return; }
+  if(S.boot&&S.boot.user&&!S.boot.user.is_manager){
+    document.querySelector('.content').innerHTML='<div class="note">Only the owner or a manager can import items.</div>'; return;
+  }
+
+  var FIELDS=[
+    {k:'combo',l:'Barcode + Name',h:'one column: barcode-name',combo:true},
+    {k:'barcode',l:'Barcode',h:'required',split:true},
+    {k:'name',l:'Item name',h:'required for new items',split:true},
+    {k:'cost',l:'Cost price'},{k:'sale',l:'Sale price',h:'0 = Inactive'},{k:'qty',l:'Quantity (stock)'},
+    {k:'department',l:'Department'},{k:'category',l:'Category'},{k:'brand',l:'Brand'},
+    {k:'wholesale',l:'Wholesale price'},{k:'unit',l:'Unit',h:'PCS, KG, L...'},{k:'tax',l:'Tax %'},
+    {k:'min_stock',l:'Reorder level'},{k:'mrp',l:'MRP'}
+  ];
+  var GUESS={
+    barcode:/barcode|^code$|ean|upc|item ?code/, name:/name|desc|item$|product|title/,
+    cost:/cost|purchase|buying/, sale:/sale|retail|selling|^price$/, qty:/qty|quantity|stock|on ?hand|balance/,
+    department:/dep|section/, category:/categ|group/, brand:/brand|company|make/, wholesale:/whole/,
+    unit:/unit|uom/, tax:/tax|gst|vat/, min_stock:/reorder|min/, mrp:/mrp|printed/
+  };
+
+  var wb=null, grid=[], headRow=0, cols=[], mode='split', map={}, rows=[], tab='all', page=1, PAGE=100, existing={};
+
+  function colName(i){var s='';i++;while(i>0){var m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s}
+  function clean(s){return String(s==null?'':s).replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()}
+  function cellText(v){
+    if(v==null) return '';
+    if(typeof v==='number'){ return Number.isInteger(v)?String(v):String(v); }
+    return clean(v);
+  }
+  function codeText(v){
+    /* Excel number ban chuke barcode: 8.96E+12 jaisa na bane */
+    if(typeof v==='number') return Math.abs(v)>=1e6? v.toFixed(0) : String(v);
+    return clean(v);
+  }
+  function num(v){
+    if(v==null||v==='') return null;
+    if(typeof v==='number') return v;
+    var s=String(v).replace(/,/g,'').replace(/rs\.?|pkr/ig,'').trim();
+    if(s==='') return null;
+    var n=Number(s); return isFinite(n)?n:NaN;
+  }
+  function step(n){ for(var i=1;i<=4;i++) $('s'+i).className=i<=n?'on':''; }
+
+  /* ---------- 1 · file ---------- */
+  $('fFile').onchange=function(){
+    var f=this.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(e){
+      try{ wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false}); }
+      catch(err){ toast('Could not read the file: '+err.message,true); return; }
+      $('fSheet').innerHTML=wb.SheetNames.map(function(n){return '<option>'+esc(n)+'</option>'}).join('');
+      loadSheet();
+    };
+    rd.readAsArrayBuffer(f);
+  };
+  $('fSheet').onchange=loadSheet;
+  $('fHead').onchange=function(){ headRow=Math.max(0,(Number(this.value)||1)-1); readCols(); paintPreview(); paintMap(); };
+
+  function loadSheet(){
+    var sh=wb.Sheets[$('fSheet').value];
+    grid=XLSX.utils.sheet_to_json(sh,{header:1,raw:true,defval:''});
+    /* header row ka andaza: pehli row jis mein 2+ likhe hue (gair-adadi) khane hon */
+    headRow=0;
+    for(var r=0;r<Math.min(15,grid.length);r++){
+      var t=(grid[r]||[]).filter(function(v){return typeof v==='string'&&v.trim()!==''&&isNaN(Number(v))}).length;
+      if(t>=2){headRow=r;break}
+    }
+    $('fHead').value=headRow+1;
+    readCols(); paintPreview();
+    $('fInfo').style.display='block';
+    $('fInfo').innerHTML='<b>'+(grid.length-headRow-1)+'</b> data rows, <b>'+cols.length+'</b> columns. Check the header row in the preview (highlighted), then match the columns below.';
+    $('pMap').style.display='block'; step(2);
+    autoMap(); paintSaved(); paintMap();
+  }
+  function readCols(){
+    var w=0; grid.forEach(function(r){ if(r.length>w) w=r.length; });
+    cols=[];
+    for(var c=0;c<w;c++){
+      var samples=[];
+      for(var r=headRow+1;r<grid.length&&samples.length<3;r++){ var v=cellText((grid[r]||[])[c]); if(v!=='') samples.push(v); }
+      cols.push({i:c,letter:colName(c),head:cellText((grid[headRow]||[])[c]),samples:samples});
+    }
+  }
+  function paintPreview(){
+    var h='<table class="table"><thead><tr><th>#</th>'+cols.map(function(c){return '<th>'+c.letter+'</th>'}).join('')+'</tr></thead><tbody>';
+    for(var r=0;r<Math.min(grid.length,headRow+9);r++){
+      h+='<tr'+(r===headRow?' class="hdr"':'')+'><td>'+(r+1)+'</td>'+cols.map(function(c){return '<td>'+esc(cellText((grid[r]||[])[c.i]))+'</td>'}).join('')+'</tr>';
+    }
+    $('fPrev').innerHTML=h+'</tbody></table>'; $('fPrev').style.display='block';
+  }
+
+  /* ---------- 2 · mapping ---------- */
+  function looksCombo(c){ return c.samples.length && c.samples.every(function(v){return /^\s*\S+?\s*-+\s*\S/.test(v) && /[A-Za-z]/.test(v) && /\d/.test(v)}); }
+  function autoMap(){
+    map={}; var used={};
+    var combo=cols.filter(function(c){return looksCombo(c)})[0];
+    if(combo){ mode='combo'; map.combo=combo.i; used[combo.i]=1; } else mode='split';
+    FIELDS.forEach(function(f){
+      if(f.combo||map[f.k]!=null) return;
+      if(mode==='combo'&&f.split) return;
+      var hit=cols.filter(function(c){ return !used[c.i] && c.samples.length && GUESS[f.k] && GUESS[f.k].test(c.head.toLowerCase().replace(/\s+/g,' ')); })[0];
+      if(hit){ map[f.k]=hit.i; used[hit.i]=1; }
+    });
+    document.querySelector('input[name="mode"][value="'+mode+'"]').checked=true;
+  }
+  document.querySelectorAll('input[name="mode"]').forEach(function(r){ r.onchange=function(){ mode=this.value; paintMap(); }; });
+  function paintMap(){
+    var opts=function(sel){ return '<option value="">— not in file —</option>'+cols.map(function(c){
+      return '<option value="'+c.i+'"'+(String(sel)===String(c.i)?' selected':'')+'>'+c.letter+': '+esc(c.head||'(no name)')+'</option>'}).join(''); };
+    $('mGrid').innerHTML=FIELDS.filter(function(f){ return mode==='combo'? !f.split : !f.combo; }).map(function(f){
+      var c=map[f.k]!=null?cols[map[f.k]]:null;
+      return '<div class="maprow"><div><b>'+esc(f.l)+'</b><small>'+esc(f.h||'')+'</small></div><div>'+
+        '<select data-map="'+f.k+'">'+opts(map[f.k])+'</select><small>'+(c?esc(c.samples.join(' · ')||'(empty)'):'&nbsp;')+'</small></div></div>';
+    }).join('');
+    document.querySelectorAll('[data-map]').forEach(function(s){ s.onchange=function(){
+      var k=this.getAttribute('data-map'); if(this.value==='') delete map[k]; else map[k]=Number(this.value); paintMap(); }; });
+  }
+
+  /* saved mappings — column ka NAAM yaad rakha jata hai (aur harf bhi) */
+  var saved={};
+  function paintSaved(){
+    try{ saved=S.api('rimport-maps').maps||{}; }catch(e){ saved={}; }
+    $('mSaved').innerHTML='<option value="">Saved mappings…</option>'+Object.keys(saved).map(function(n){return '<option>'+esc(n)+'</option>'}).join('');
+  }
+  $('mSave').onclick=function(){
+    var name=prompt('Name for this mapping (for example: Mart17 stock report)'); if(!name) return;
+    var m={_mode:mode,_head:String(headRow+1)};
+    Object.keys(map).forEach(function(k){ var c=cols[map[k]]; m[k]=c.letter+'|'+c.head; });
+    try{ saved=S.api('rimport-map-save',{name:name,map:m}).maps; paintSaved(); $('mSaved').value=name; toast('Mapping saved'); }
+    catch(e){ toast(e.message,true); }
+  };
+  $('mSaved').onchange=function(){
+    var m=saved[this.value]; if(!m) return;
+    mode=m._mode==='combo'?'combo':'split';
+    document.querySelector('input[name="mode"][value="'+mode+'"]').checked=true;
+    if(m._head){ headRow=Math.max(0,Number(m._head)-1); $('fHead').value=headRow+1; readCols(); paintPreview(); }
+    map={};
+    Object.keys(m).forEach(function(k){
+      if(k.charAt(0)==='_') return;
+      var parts=String(m[k]).split('|'), letter=parts[0], head=parts.slice(1).join('|');
+      var c=cols.filter(function(x){return head&&x.head===head})[0]||cols.filter(function(x){return x.letter===letter})[0];
+      if(c) map[k]=c.i;
+    });
+    paintMap(); toast('Mapping applied');
+  };
+  $('mDelSaved').onclick=function(){
+    var n=$('mSaved').value; if(!n||!confirm('Delete the saved mapping "'+n+'"?')) return;
+    try{ saved=S.api('rimport-map-delete',{name:n}).maps; paintSaved(); }catch(e){ toast(e.message,true); }
+  };
+  $('btnTpl').onclick=function(){
+    var ws=XLSX.utils.aoa_to_sheet([['Barcode','Item name','Cost price','Sale price','Quantity','Department','Category','Brand','Wholesale price','Unit','Tax %','Reorder level','MRP'],
+      ['8964000112236','Basmati Rice 5 KG','2180','2450','46','Grocery','Rice & Pulses','Falak','2320','PCS','0','12','2500']]);
+    var w=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(w,ws,'Items'); XLSX.writeFile(w,'item_import_template.xlsx');
+  };
+
+  /* ---------- 3 · check ---------- */
+  function isEan(c){ return /^(\d{8}|\d{12}|\d{13})$/.test(c); }
+  function splitCombo(s){
+    s=clean(s); var code,name,i=s.indexOf('--');
+    if(i>0){ code=s.slice(0,i); name=s.slice(i+2); }
+    else { var m=s.match(/^\s*([^-]*?)\s*-\s*(.*)$/); if(!m) return {code:'',name:s,unsure:true}; code=m[1]; name=m[2]; }
+    code=code.trim(); name=name.replace(/^[-\s]+/,'').trim();
+    var unsure=!isEan(code) && (/^[A-Za-z0-9]{1,6}-/.test(name) || /\s/.test(code) || /[^A-Za-z0-9\-\/\.]/.test(code) || i>0);
+    return {code:code,name:name,unsure:unsure};
+  }
+  function val(r,k){ return map[k]!=null ? (grid[r]||[])[map[k]] : undefined; }
+
+  $('btnCheck').onclick=function(){
+    if(mode==='combo'&&map.combo==null){ toast('Choose the column that has barcode and name',true); return; }
+    if(mode==='split'&&map.barcode==null){ toast('Choose the Barcode column',true); return; }
+    rows=[];
+    for(var r=headRow+1;r<grid.length;r++){
+      var code,name,unsure=false;
+      if(mode==='combo'){ var raw=cellText(val(r,'combo')); if(!raw) continue; var sp=splitCombo(raw); code=sp.code; name=sp.name; unsure=sp.unsure; }
+      else { code=codeText(val(r,'barcode')); name=cellText(val(r,'name')); if(!code&&!name) continue; }
+      var o={row:r+1,barcode:code,name:name,unsure:unsure,ok:false,skip:false};
+      ['cost','sale','qty','wholesale','tax','min_stock','mrp'].forEach(function(k){ var v=val(r,k); o[k]=(v===undefined)?undefined:num(v); });
+      ['department','category','brand','unit'].forEach(function(k){ var v=val(r,k); o[k]=(v===undefined)?'':cellText(v); });
+      rows.push(o);
+    }
+    if(!rows.length){ toast('No data rows found under the header row',true); return; }
+    /* pehle se maujood barcode — server se, 2000-2000 */
+    existing={};
+    var codes=rows.map(function(x){return x.barcode}).filter(Boolean);
+    try{ for(var i=0;i<codes.length;i+=2000){ var e=S.api('rimport-exists',{codes:codes.slice(i,i+2000)}).existing||{}; for(var k in e) existing[k]=e[k]; } }
+    catch(err){ toast(err.message||'Could not check existing items',true); return; }
+    evaluate(); tab='all'; page=1;
+    $('pCheck').style.display='block'; step(3); paintCheck();
+    $('pCheck').scrollIntoView({behavior:'smooth'});
+  };
+
+  function evaluate(){
+    var first={};
+    rows.forEach(function(o){
+      o.notes=[]; o.status='new';
+      if(o.skip){ o.status='skip'; return; }
+      if(!o.barcode){ o.status='error'; o.notes.push('No barcode'); return; }
+      ['cost','sale','qty','wholesale','tax','min_stock','mrp'].forEach(function(k){ if(typeof o[k]==='number'&&isNaN(o[k])){ o.status='error'; o.notes.push(k+' is not a number'); } });
+      if(o.status==='error') return;
+      if(typeof o.cost==='number'&&o.cost<0||typeof o.sale==='number'&&o.sale<0){ o.status='error'; o.notes.push('Negative price'); return; }
+      var f=first[o.barcode];
+      if(f){
+        var same=['name','cost','sale','qty','department'].every(function(k){return String(f[k])===String(o[k])});
+        if(same){ o.status='skip'; o.notes.push('Same as row '+f.row+' (duplicate) — imported once'); return; }
+        o.status='check'; o.notes.push('Barcode also on row '+f.row+' with different data — choose one');
+        if(o.ok){ o.status='error'; o.notes=['Barcode repeated: skip one of the rows']; }
+        return;
+      }
+      first[o.barcode]=o;
+      var ex=existing[o.barcode];
+      if(ex){ o.status='update'; o.notes.push('In system: '+ex.name+' — only qty & price change'); }
+      else if(!o.name){ o.status='error'; o.notes.push('No item name'); return; }
+      if(o.unsure&&!o.ok&&!ex){ o.status='check'; o.notes.unshift('Barcode/name split not certain — correct it or tick OK'); }
+      if(typeof o.sale==='number'&&o.sale<=0) o.notes.push('Sale price 0 → Inactive');
+      if(typeof o.cost==='number'&&o.cost===0) o.notes.push('Cost 0');
+      if(typeof o.sale==='number'&&typeof o.cost==='number'&&o.sale>0&&o.sale<o.cost) o.notes.push('Sale below cost');
+      if(typeof o.qty==='number'&&o.qty!==Math.round(o.qty)) o.notes.push('Fractional qty');
+    });
+  }
+  function counts(){ var c={all:rows.length,new:0,update:0,check:0,error:0,skip:0}; rows.forEach(function(o){c[o.status]++}); return c; }
+  var TABS=[['all','All'],['new','New'],['update','Already in system'],['check','Check'],['error','Errors'],['skip','Skipped']];
+  function paintCheck(){
+    var c=counts();
+    $('cSub').textContent=c.all+' rows read. Rows marked "Check" need you: correct the barcode/name, tick OK, or skip.';
+    $('cKpis').innerHTML=[['New items',c.new,'ok'],['Update qty & price',c.update,'info'],['Check',c.check,'warn'],['Errors',c.error,'danger'],['Skipped',c.skip,'']]
+      .map(function(k){return '<div class="kpi '+k[2]+'"><div class="lab">'+k[0]+'</div><div class="val">'+k[1]+'</div></div>'}).join('');
+    $('cTabs').innerHTML=TABS.map(function(t){return '<button data-tab="'+t[0]+'" class="'+(tab===t[0]?'on':'')+'">'+t[1]+' ('+c[t[0]]+')</button>'}).join('');
+    var list=rows.filter(function(o){return tab==='all'||o.status===tab});
+    var pages=Math.max(1,Math.ceil(list.length/PAGE)); if(page>pages) page=pages;
+    var sl=list.slice((page-1)*PAGE,page*PAGE);
+    $('cRows').innerHTML=sl.map(function(o){
+      var i=rows.indexOf(o), edit=(o.status==='check'||o.status==='error'||o.unsure);
+      var act='';
+      if(o.status==='check'&&o.unsure) act+='<button class="btn sm" data-ok="'+i+'">OK</button> ';
+      act+=o.skip?'<button class="btn sm" data-unskip="'+i+'">Undo skip</button>':'<button class="btn sm" data-skip="'+i+'">Skip</button>';
+      return '<tr><td>'+o.row+'</td>'+
+        '<td>'+(edit?'<input class="rowin" data-e="barcode" data-i="'+i+'" value="'+esc(o.barcode)+'">':esc(o.barcode))+'</td>'+
+        '<td>'+(edit?'<input class="rowin" data-e="name" data-i="'+i+'" value="'+esc(o.name)+'" style="min-width:240px">':esc(o.name))+'</td>'+
+        '<td class="num">'+(o.cost==null?'—':esc(o.cost))+'</td><td class="num">'+(o.sale==null?'—':esc(o.sale))+'</td>'+
+        '<td class="num">'+(o.qty==null?'—':esc(o.qty))+'</td><td>'+esc(o.department||'')+'</td>'+
+        '<td class="st-'+o.status+'"><b>'+o.status.toUpperCase()+'</b><br><small>'+esc(o.notes.join(' · '))+'</small></td>'+
+        '<td style="white-space:nowrap">'+act+'</td></tr>';
+    }).join('')||'<tr><td colspan="9"><div class="empty" style="padding:22px"><h3>Nothing here</h3></div></td></tr>';
+    $('cCount').textContent=list.length?(((page-1)*PAGE+1)+'–'+((page-1)*PAGE+sl.length)+' of '+list.length):'';
+    $('cPage').textContent='Page '+page+' / '+pages; $('cPrev').disabled=page<=1; $('cNext').disabled=page>=pages;
+    $('btnImport').textContent='Import '+(c.new+c.update)+' rows';
+    $('btnImport').disabled=!(c.new+c.update);
+  }
+  $('cTabs').onclick=function(e){ var b=e.target.closest('[data-tab]'); if(!b) return; tab=b.getAttribute('data-tab'); page=1; paintCheck(); };
+  $('cPrev').onclick=function(){ if(page>1){page--;paintCheck();} };
+  $('cNext').onclick=function(){ page++; paintCheck(); };
+  $('cRows').addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    if(b.hasAttribute('data-ok')){ rows[+b.getAttribute('data-ok')].ok=true; }
+    else if(b.hasAttribute('data-skip')){ rows[+b.getAttribute('data-skip')].skip=true; }
+    else if(b.hasAttribute('data-unskip')){ rows[+b.getAttribute('data-unskip')].skip=false; }
+    evaluate(); paintCheck();
+  });
+  $('cRows').addEventListener('change',function(e){
+    var el=e.target.closest('[data-e]'); if(!el) return;
+    var o=rows[+el.getAttribute('data-i')]; o[el.getAttribute('data-e')]=clean(el.value); o.ok=true; o.unsure=false;
+    if(el.getAttribute('data-e')==='barcode'&&o.barcode&&existing[o.barcode]===undefined){
+      try{ var r=S.api('rimport-exists',{codes:[o.barcode]}).existing||{}; if(r[o.barcode]) existing[o.barcode]=r[o.barcode]; }catch(err){}
+    }
+    evaluate(); paintCheck();
+  });
+  $('btnBack').onclick=function(){ $('pCheck').style.display='none'; step(2); $('pMap').scrollIntoView({behavior:'smooth'}); };
+
+  /* ---------- 4 · import ---------- */
+  var failed=[];
+  $('btnImport').onclick=function(){
+    var c=counts(), todo=rows.filter(function(o){return o.status==='new'||o.status==='update'});
+    if(!todo.length) return;
+    if(!confirm('Import now?\n\n'+c.new+' new items\n'+c.update+' items already in the system (qty and prices only)\n'+
+       (c.check?c.check+' rows still marked Check will NOT be imported\n':'')+(c.error?c.error+' rows with errors will NOT be imported\n':''))) return;
+    $('pRun').style.display='block'; step(4); $('btnImport').disabled=true; $('btnBack').disabled=true;
+    $('pRun').scrollIntoView({behavior:'smooth'});
+    var tot={created:0,updated:0,inactive:0,skipped:0}, i=0, B=200; failed=[];
+    rows.filter(function(o){return o.status==='check'||o.status==='error'}).forEach(function(o){ failed.push({row:o.row,barcode:o.barcode,name:o.name,reason:o.notes.join('; ')}); });
+    function pack(o){ var x={row:o.row,barcode:o.barcode,name:o.name};
+      ['cost','sale','qty','wholesale','tax','min_stock','mrp'].forEach(function(k){ if(typeof o[k]==='number'&&!isNaN(o[k])) x[k]=o[k]; });
+      ['department','category','brand','unit'].forEach(function(k){ if(o[k]) x[k]=o[k]; }); return x; }
+    function next(){
+      if(i>=todo.length){ finish(); return; }
+      var batch=todo.slice(i,i+B);
+      setTimeout(function(){
+        try{
+          var r=S.api('rimport-commit',{rows:batch.map(pack)}).result;
+          tot.created+=r.created; tot.updated+=r.updated; tot.inactive+=r.inactive; tot.skipped+=r.skipped;
+          (r.errors||[]).forEach(function(er){ var o=batch.filter(function(x){return x.row===er.row})[0]||{}; failed.push({row:er.row,barcode:o.barcode,name:o.name,reason:er.message}); });
+        }catch(err){
+          /* sirf yeh batch ruka (transaction) — baqi chalte rahein */
+          batch.forEach(function(o){ failed.push({row:o.row,barcode:o.barcode,name:o.name,reason:err.message||'Batch failed'}); });
+        }
+        i+=B;
+        $('rBar').style.width=Math.round(Math.min(i,todo.length)/todo.length*100)+'%';
+        $('rText').innerHTML='<b>'+Math.min(i,todo.length)+'</b> / '+todo.length+' rows &middot; new '+tot.created+' &middot; updated '+tot.updated+' &middot; not imported '+failed.length;
+        next();
+      },0);
+    }
+    function finish(){
+      $('rSub').textContent='Finished.';
+      $('rText').innerHTML='<b>'+tot.created+'</b> new items &middot; <b>'+tot.updated+'</b> updated (qty &amp; price) &middot; <b>'+tot.inactive+'</b> inactive (sale price 0) &middot; <b>'+failed.length+'</b> not imported';
+      $('rDone').style.display='flex'; $('btnErrCsv').style.display=failed.length?'':'none';
+      if(S.invalidate) S.invalidate('products');
+    }
+    next();
+  };
+  $('btnErrCsv').onclick=function(){
+    var q=function(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+    var csv='Row,Barcode,Name,Reason\n'+failed.map(function(f){return [f.row,f.barcode,f.name,f.reason].map(q).join(',')}).join('\n');
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='import_not_imported.csv'; a.click();
+  };
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V192 build 2026-11-13 -->

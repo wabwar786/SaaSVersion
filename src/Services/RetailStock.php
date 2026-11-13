@@ -55,6 +55,7 @@ final class RetailStock
     public const WASTAGE    = 'WASTAGE';     // kharab / expired
     public const OPENING    = 'OPENING';     // pehli dafa stock daala
     public const MANUAL     = 'MANUAL';      // haath se theek kiya
+    public const IMPORT     = 'IMPORT';      // V192: Excel import ne qty set ki
 
     /**
      * Stock hilao aur uska record chhoro.
@@ -182,4 +183,4 @@ final class RetailStock
     }
 }
 
-// build: V154 build 2026-10-13
+// build: V192 build 2026-11-13

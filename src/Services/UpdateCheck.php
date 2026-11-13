@@ -69,6 +69,16 @@ final class UpdateCheck
         return ($v === 'unknown') ? '' : $v;
     }
 
+    /** Is node ka business RETAIL hai ya RESTAURANT (khali = maloom nahi). */
+    private static function industry(): string
+    {
+        try {
+            $q = \Aio\DB::pdo()->prepare("SELECT industry_code FROM tenants WHERE id=? LIMIT 1");
+            $q->execute([tenant_id()]);
+            return strtoupper(trim((string)($q->fetchColumn() ?: '')));
+        } catch (\Throwable $e) { return ''; }
+    }
+
     private static function isCloud(): bool
     {
         return (string)($GLOBALS['config']['app']['role'] ?? 'local') === 'cloud';
@@ -195,7 +205,12 @@ final class UpdateCheck
            pehle se utar chuka hai aur lagne ka intezar kar raha hai. */
 
         $ctx = stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]);
-        $raw = @file_get_contents($base.'?action=update-check', false, $ctx);
+        /* V192 — apni industry aur build bhejo, taake cloud bata sake ke
+           naya build is business ke kaam ka hai ya nahi (RELEASES.json).
+           Purana cloud yeh dono nazarandaz kar deta hai — koi nuqsan nahi. */
+        $ind = self::industry();
+        $q   = '?action=update-check'.($ind !== '' ? '&industry='.rawurlencode($ind).'&installed='.rawurlencode($inst) : '');
+        $raw = @file_get_contents($base.$q, false, $ctx);
 
         if ($raw === false) {
             /* Launcher ko batao ke masla "koi update nahi" nahi, balki
@@ -214,6 +229,13 @@ final class UpdateCheck
 
         if ($there === $inst) {
             return ['ok' => true, 'state' => 'none', 'installed' => $inst, 'build' => $there];
+        }
+
+        /* V192 — naya build doosri industry ke liye hai: patti nahi.
+           GET_UPDATE_FORCE.bat (AIO_UPDATE_FORCE=1) phir bhi le aata hai. */
+        if (array_key_exists('for_you', (array)$j) && $j['for_you'] === false && getenv('AIO_UPDATE_FORCE') !== '1') {
+            return ['ok' => true, 'state' => 'none', 'installed' => $inst, 'build' => $there,
+                    'message' => (string)($j['why'] ?? 'No update for this business type')];
         }
 
         @file_put_contents($d.'/available.txt', $there);
@@ -248,4 +270,4 @@ final class UpdateCheck
     }
 }
 
-// build: V165 build 2026-10-25
+// build: V192 build 2026-11-13

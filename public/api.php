@@ -1419,7 +1419,36 @@ case 'update-check':
     leta hai ke cloud par naya build hai ya nahi. Yeh sirf naam batata
     hai — file tab aati hai jab user "Update now" dabaye. */
  $v=trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'));
- ok(['build'=>$v,'build_id'=>trim((string)@file_get_contents(dirname(__DIR__).'/public/build-id.txt'))]);
+ /* ============================================================
+    V192 — UPDATE SIRF USI KO JIS KE LIYE HAI.
+    Pehle har naya build har dukan ko "naya update" dikhata tha, chahe
+    tabdeeli sirf retail mein ho. Ab node apni industry aur apna build
+    bhejta hai; `RELEASES.json` dekh kar batate hain ke us ke build ke
+    baad koi aisa build aaya hai ya nahi jo us ki industry ke liye ho.
+    `build` waisa hi hai (purane nodes sirf wohi parhte hain);
+    `for_you` naya hai. Download hamesha poora taza package hota hai,
+    is liye beech ke builds khud shamil ho jate hain.
+    Fehrist mein na ho to build SAB ke liye — ghalti ho to update
+    dikhe, chhupe nahi.
+    ============================================================ */
+ $ind=strtoupper(preg_replace('/[^A-Za-z]/','',(string)($_GET['industry']??'')));
+ $inst=trim((string)($_GET['installed']??''));
+ $forYou=true;$why='';
+ if($ind!==''&&$inst!==''){
+   $vn=function($b){return preg_match('/V(\d+)/i',(string)$b,$m)?(int)$m[1]:0;};
+   $rel=json_decode((string)@file_get_contents(dirname(__DIR__).'/RELEASES.json'),true);
+   $list=is_array($rel['releases']??null)?$rel['releases']:[];
+   $known=[];foreach($list as $r){$known[trim((string)($r['build']??''))]=array_map('strtoupper',(array)($r['for']??[]));}
+   $mine=$vn($inst);$cloud=$vn($v);
+   if($mine>0&&$cloud>$mine){
+     $forYou=false;
+     if(!isset($known[$v]))$forYou=true;            /* cloud ka build fehrist mein nahi -> sab ke liye */
+     foreach($known as $b=>$for){$n=$vn($b);if($n>$mine&&$n<=$cloud&&in_array($ind,$for,true)){$forYou=true;break;}}
+     if(!$forYou)$why='No update for '.strtolower($ind).' since '.$inst;
+   }
+ }
+ ok(['build'=>$v,'build_id'=>trim((string)@file_get_contents(dirname(__DIR__).'/public/build-id.txt')),
+     'for_you'=>$forYou,'why'=>$why]);
 
 case 'update-status':
  /* ============================================================
@@ -1694,7 +1723,7 @@ if(is_file($root.'/public/assets/app.ico'))$zip->addFile($root.'/public/assets/a
 if(is_file($root.'/VERSION'))$zip->addFile($root.'/VERSION','VERSION');
 $zip->addEmptyDir('updates');
 /* --- launchers --- */
-foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','UPDATE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat'] as $b){
+foreach(['START_OFFLINE.bat','INSTALL_OFFLINE.bat','DIAGNOSE.bat','UPDATE.bat','INSTALL_UPDATE.bat','RESET_NODE.bat','RESET_PASSWORD.bat','GET_UPDATE.bat','GET_UPDATE_FORCE.bat'] as $b){
   if(is_file($root.'/'.$b))$zip->addFile($root.'/'.$b,$b);
 }
 /* ============================================================
@@ -3858,6 +3887,56 @@ case 'retail-customers':
   $q=DB::pdo()->prepare("SELECT id,full_name name,phone,area,customer_type,credit_limit,balance,loyalty_points
                            FROM customers WHERE tenant_id=? AND deleted_at IS NULL AND COALESCE(status,'ACTIVE')<>'INACTIVE' ORDER BY full_name");
   $q->execute([tenant_id()]);ok(['rows'=>$q->fetchAll()]);
+
+/* ============================================================
+   V192 — EXCEL IMPORT. File browser mein parhi jati hai; yahan sirf
+   saaf rows 200-200 ke batch mein aati hain. Sirf owner/manager, aur
+   jis ke paas Products ka module ho. RetailImport dekhein.
+   ============================================================ */
+case 'rimport-maps':
+  needLogin(); needRetail(); needRetailModule('products');
+  ok(['maps'=>\Aio\Services\RetailImport::maps()]);
+
+case 'rimport-map-save':
+  needLogin(); needRetail(); needRetailModule('products'); csrf_json();
+  if(!Auth::isManager())fail('Only the owner or a manager can import items',403);
+  $d=body();
+  try{ ok(['maps'=>\Aio\Services\RetailImport::saveMap((string)($d['name']??''),(array)($d['map']??[]))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rimport-map-delete':
+  needLogin(); needRetail(); needRetailModule('products'); csrf_json();
+  if(!Auth::isManager())fail('Only the owner or a manager can import items',403);
+  ok(['maps'=>\Aio\Services\RetailImport::deleteMap((string)(body()['name']??''))]);
+
+case 'rimport-exists':
+  needLogin(); needRetail(); needRetailModule('products'); csrf_json();
+  $codes=(array)(body()['codes']??[]);
+  if(count($codes)>5000)fail('Too many barcodes in one check');
+  ok(['existing'=>\Aio\Services\RetailImport::existing($codes)]);
+
+case 'rimport-commit':
+  needLogin(); needRetail(); needRetailModule('products'); csrf_json();
+  if(!Auth::isManager())fail('Only the owner or a manager can import items',403);
+  try{ $__r=\Aio\Services\RetailImport::commit((array)(body()['rows']??[])); register_shutdown_function('sync_nudge'); ok(['result'=>$__r]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+/* V192 — bare catalog: safha, KPI aur ginti server par. */
+case 'rproducts':
+  needLogin(); needRetail();
+  ok(RetailCatalog::productsPage($_GET));
+
+case 'rproducts-agg':
+  needLogin(); needRetail();
+  ok(['agg'=>RetailCatalog::productAgg(!empty($_GET['scale']))]);
+
+case 'rproducts-groups':
+  needLogin(); needRetail();
+  ok(['groups'=>RetailCatalog::productGroups()]);
+
+case 'rproducts-lite':
+  needLogin(); needRetail();
+  ok(['rows'=>RetailCatalog::productsLite()]);
 
 case 'retail-dash':
   needLogin(); needRetail(); needRetailModule('dashboard');

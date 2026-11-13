@@ -229,8 +229,9 @@
           : '';
       }
 
-      var picked = null;
+      var picked = null, lastHits = [], pickT = null;
       function showHits(list) {
+        lastHits = list || [];
         var box = $('#dHits');
         if (!list || !list.length) { box.style.display = 'none'; return; }
         box.style.display = '';
@@ -282,19 +283,24 @@
       $('#dPick').addEventListener('input', function () {
         picked = null;
         var q = this.value.trim();
+        clearTimeout(pickT);
         if (q.length < 2) { showHits([]); return; }
-        /* Pehle poora barcode — counter par scanner isi raaste se aata
-           hai aur wo ek hi hit deta hai. */
-        try {
-          var hit = RetailStore.findByCode(q);
-          if (hit && hit.product) { choose(hit.product); return; }
-        } catch (e) { }
-        try { showHits(RetailStore.searchProducts(q)); } catch (e) { showHits([]); }
+        /* V192 — likhna rukne ke 300 ms baad EK dafa: pehle poora
+           barcode (scanner), phir naam. Pehle har harf par do request. */
+        pickT = setTimeout(function () {
+          try {
+            var hit = RetailStore.findByCode(q);
+            if (hit && hit.product) { choose(hit.product); return; }
+          } catch (e) { }
+          try { showHits(RetailStore.searchProducts(q)); } catch (e) { showHits([]); }
+        }, 300);
       });
       $('#dHits').addEventListener('click', function (e) {
         var el = e.target.closest('[data-hit]'); if (!el) return;
         var id = el.getAttribute('data-hit');
-        var p = (RetailStore.get('products') || []).filter(function (x) { return x.id === id; })[0];
+        /* V192 — jo natije dikhaye the unhi mein se (pehle poori product
+           list mangwai jati thi: 56 hazar par 8.5 second). */
+        var p = (lastHits || []).filter(function (x) { return x.id === id; })[0];
         if (!p) { try { p = RetailStore.searchProducts($('#dPick').value).filter(function (x) { return x.id === id; })[0]; } catch (err) { } }
         if (p) choose(p);
       });
@@ -480,4 +486,4 @@
   };
 })();
 
-// build: V191 build 2026-11-13
+// build: V192 build 2026-11-13

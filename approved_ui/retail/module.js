@@ -186,6 +186,34 @@
     if (!$('#toast')) { var tt = document.createElement('div'); tt.className = 'toast'; tt.id = 'toast'; document.body.appendChild(tt); }
 
     var page = 1, pageSize = 50;
+    /* ============================================================
+       V192 — SERVER PAGING (products wali screens).
+       Pehle poori list (56 hazar par 35 MB, 8.5 s) browser mein aati
+       thi aur filter/search/ginti yahan hoti thi. Us dauraan offline
+       PC par counter ka bill bhi rukta tha (9 ms -> 7.8 s).
+       Ab products, pricing, stock aur scale screens sirf ek safha
+       mangwati hain (`rproducts`), aur KPI server ginta hai.
+       ============================================================ */
+    var srv = !!(cfg.storeKey === 'products' && window.RetailStore && RetailStore.online && RetailStore.productsPage);
+    var total = 0, searchT = null;
+    function fetchPage() {
+      var p = { page: page, size: pageSize, q: ($('#mSearch').value || '').trim() };
+      (cfg.filters || []).forEach(function (f) {
+        var el = document.querySelector('[data-flt="' + f.key + '"]');
+        if (el && el.value) p[f.key] = el.value;
+      });
+      try {
+        var r = RetailStore.productsPage(p);
+        rows = r.rows || []; total = r.total || 0; page = r.page || 1;
+      } catch (e) { rows = []; total = 0; toast(e.message || 'Could not load', true); }
+    }
+    function paintKpis() {
+      var agg = RetailStore.productAgg(!!cfg.aggScale);
+      (cfg.kpis || []).forEach(function (k) {
+        var el = document.querySelector('[data-kpi="' + k.label.replace(/"/g, '') + '"]');
+        if (el) el.textContent = (agg && k.srv) ? k.srv(agg, M) : '\u2014';
+      });
+    }
 
     function fillFilters() {
       (cfg.filters || []).forEach(function (f) {
@@ -202,9 +230,13 @@
       });
     }
 
-    function reload() { rows = db.list() || []; fillFilters(); paint(); }
+    function reload() {
+      if (srv) { fillFilters(); fetchPage(); paintKpis(); paint(); return; }
+      rows = db.list() || []; fillFilters(); paint();
+    }
 
     function paint() {
+      if (srv) { paintServer(); return; }
       var q = ($('#mSearch').value || '').toLowerCase();
       var f = rows.filter(function (r) {
         if (q && !(cfg.searchFields || []).some(function (k) { return String(r[k] || '').toLowerCase().indexOf(q) > -1; })) return false;
@@ -243,6 +275,26 @@
           '<button title="Remove" data-del="' + r.id + '">🗑</button></div></td>' : '';
         return '<tr>' + tds + act + '</tr>';
       }).join('');
+    }
+
+    function rowsHtml(slice) {
+      return slice.map(function (r) {
+        var tds = (cfg.columns || []).map(function (c) { return '<td' + (c.align === 'num' ? ' class="num"' : '') + '>' + fmtCell(r, c) + '</td>'; }).join('');
+        var act = canAdd ? '<td><div class="row-actions"><button title="Edit" data-edit="' + r.id + '">\u270e</button>' +
+          '<button title="Remove" data-del="' + r.id + '">\ud83d\uddd1</button></div></td>' : '';
+        return '<tr>' + tds + act + '</tr>';
+      }).join('');
+    }
+    function paintServer() {
+      var pages = Math.max(1, Math.ceil(total / pageSize));
+      var from = (page - 1) * pageSize;
+      $('#mEmpty').style.display = rows.length ? 'none' : 'block';
+      $('#mPager').style.display = total ? 'flex' : 'none';
+      $('#mCount').textContent = total ? (from + 1) + '\u2013' + (from + rows.length) + ' of ' + total : '';
+      $('#mPageNo').textContent = 'Page ' + page + ' / ' + pages;
+      $('#mPrev').disabled = page <= 1;
+      $('#mNext').disabled = page >= pages;
+      $('#mRows').innerHTML = rowsHtml(rows);
     }
 
     function openForm(id) {
@@ -339,15 +391,25 @@
       }
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeM(); });
-    var s = $('#mSearch'); if (s) s.oninput = function () { page = 1; paint(); };
+    function refresh() { if (srv) fetchPage(); paint(); }
+    var s = $('#mSearch');
+    if (s) s.oninput = function () {
+      page = 1;
+      if (!srv) { paint(); return; }
+      /* server par: likhna band hone ke 350 ms baad ek hi request */
+      clearTimeout(searchT); searchT = setTimeout(refresh, 350);
+    };
+    if (s && srv) s.onkeydown = function (e) { if (e.key === 'Enter') { clearTimeout(searchT); page = 1; refresh(); } };
     document.querySelectorAll('[data-flt]').forEach(function (el) {
-      el.onchange = function () { page = 1; paint(); };
+      el.onchange = function () { page = 1; refresh(); };
     });
-    if ($('#mPrev')) $('#mPrev').onclick = function () { if (page > 1) { page--; paint(); window.scrollTo(0, 0); } };
-    if ($('#mNext')) $('#mNext').onclick = function () { page++; paint(); window.scrollTo(0, 0); };
-    if ($('#mPageSize')) $('#mPageSize').onchange = function () { pageSize = Number(this.value) || 50; page = 1; paint(); };
+    if ($('#mPrev')) $('#mPrev').onclick = function () { if (page > 1) { page--; refresh(); window.scrollTo(0, 0); } };
+    if ($('#mNext')) $('#mNext').onclick = function () { page++; refresh(); window.scrollTo(0, 0); };
+    if ($('#mPageSize')) $('#mPageSize').onchange = function () { pageSize = Number(this.value) || 50; page = 1; refresh(); };
     reload();
   }
 
   window.RetailModule = { render: render, helpers: M, toast: toast };
 })();
+
+// build: V192 build 2026-11-13

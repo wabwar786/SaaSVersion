@@ -75,6 +75,8 @@ switch ((string)$r['state']) {
     case 'none':
         echo "installed: $here\n";
         echo "available: $there\n";
+        /* V192 — naya build doosri industry ke liye ho to wajah bhi */
+        if (!empty($r['message'])) echo "note: ".(string)$r['message']."\n";
         echo "UPDATE_NONE already up to date\n"; return;
 }
 
@@ -118,4 +120,4 @@ if ($n < 50000 || substr((string)@file_get_contents($tmp, false, null, 0, 2), 0,
 echo "UPDATE_DOWNLOADED ".basename($tmp)." (".round($n/1048576,1)." MB)\n";
 echo "Stop SmartPOS (tray icon -> Stop), then run UPDATE.bat to apply it.\n";
 
-// build: V165 build 2026-10-25
+// build: V192 build 2026-11-13
