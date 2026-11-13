@@ -91,7 +91,7 @@
         { key: 'mrp', label: 'MRP / printed price', type: 'money', default: 0,
           autoFrom: 'retail_price', hint: 'filled from the sale price automatically' },
         { key: 'tax_rate', label: 'Tax %', type: 'number', default: 0 },
-        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0 },
+        { key: 'stock_qty', label: 'Opening stock', type: 'number', default: 0, hint: 'new items only \u2014 change stock later with Stock Count' },
         { key: 'min_stock', label: 'Reorder level', type: 'number', default: 0 }
       ],
             onCreate: function (d) { d.barcodes = d.barcode ? [d.barcode] : []; delete d.barcode; }
@@ -311,8 +311,8 @@
         { key: 'phone', label: 'Phone', type: 'tel' },
         { key: 'area', label: 'Area', type: 'text' },
         { key: 'customer_type', label: 'Customer type', type: 'select', options: ['Retail', 'Wholesale'], default: 'Retail' },
-        { key: 'credit_limit', label: 'Credit limit', type: 'money', default: 0, hint: '0 = cash only' },
-        { key: 'balance', label: 'Opening balance', type: 'money', default: 0 },
+        { key: 'credit_limit', label: 'Credit limit', type: 'money', default: 0, hint: '0 = no limit' },
+        { key: 'balance', label: 'Opening balance', type: 'money', default: 0, hint: 'new customers only' },
         { key: 'loyalty_points', label: 'Loyalty points', type: 'number', default: 0 },
         { key: 'tier', label: 'Tier', type: 'select', options: ['Bronze', 'Silver', 'Gold'], default: 'Bronze' },
         { key: 'status', label: 'Status', type: 'select', options: ['Active', 'Inactive'], default: 'Active' }
@@ -727,4 +727,4 @@
   };
 })();
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

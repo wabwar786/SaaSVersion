@@ -103,6 +103,43 @@ final class RetailDocs
                     'A posted document cannot be changed. Post a correcting document instead.');
             }
 
+            /* ============================================================
+               V191 — RETURN (RET) KE PEHRE.
+
+               Audit mein: ek hi bill DO DAFA wapas hua (stock aur refund
+               dono double), 2,450 ke item ka refund haath se 9,000 likh
+               kar post hua, aur udhaar bill ke return par khata nahi
+               ghata kyunke screen customer bhejti hi nahi thi.
+
+               Ab:
+                 - Asal bill ho to: item usi bill ka ho, qty us se zyada na
+                   ho jo abhi baqi hai, aur RATE wohi jo customer ne diya
+                   tha (server khud nikalta hai — screen ka rate nahi).
+                 - Customer SERVER bill se leta hai, aur sirf tab jab bill
+                   udhaar (CREDIT) par tha — warna refund cash hai.
+                 - Bina asal bill ke return sirf manager kar sakta hai, aur
+                   rate item ki sale price se zyada nahi ho sakta.
+               ============================================================ */
+            $retSale = null; $retLeft = []; $retCustomer = null;
+            if ($type === self::RET) {
+                $sid = \trim((string)($d['source_sale_id'] ?? ''));
+                if ($sid !== '') {
+                    $sq = $p->prepare("SELECT id, bill_no, customer_id, payment_method FROM rtl_sales
+                                        WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
+                    $sq->execute([$sid, $tid]);
+                    $retSale = $sq->fetch(PDO::FETCH_ASSOC);
+                    if (!$retSale) throw new \RuntimeException('Original bill not found');
+                    $retLeft = RetailPos::returnable($sid, $p, $id);
+                    if ($retSale['payment_method'] === 'CREDIT' && !empty($retSale['customer_id'])) {
+                        $retCustomer = (string)$retSale['customer_id'];
+                    }
+                } elseif (!\Aio\Auth::isManager()) {
+                    throw new \RuntimeException('Choose the original bill. Only a manager can return without a bill.');
+                }
+                $d['customer_id'] = $retCustomer ?? '';
+            }
+            $retTaken = [];
+
             /* ---- lines saaf karo ---- */
             $clean = []; $sub = 0.0; $tax = 0.0; $disc = 0.0;
             foreach ($lines as $l) {
@@ -134,6 +171,24 @@ final class RetailDocs
                 $ld    = (float)($l['discount'] ?? 0);
                 $rate  = \array_key_exists('tax_rate', $l) ? (float)$l['tax_rate'] : (float)$prod['tax_rate'];
 
+                if ($type === self::RET) {
+                    $ld = 0.0;   /* rate pehle hi asal (discount ke baad) hai */
+                    if ($retSale) {
+                        $info = $retLeft[$pid] ?? null;
+                        if (!$info) throw new \RuntimeException($prod['name'] . ' is not on bill ' . $retSale['bill_no']);
+                        $retTaken[$pid] = ($retTaken[$pid] ?? 0) + $qty;
+                        if ($retTaken[$pid] > $info['left'] + 0.0001) {
+                            throw new \RuntimeException('Only ' . (float)$info['left'] . ' of ' . $prod['name']
+                                . ' can still be returned on bill ' . $retSale['bill_no']);
+                        }
+                        $price = (float)$info['rate'];
+                        $rate  = (float)$info['tax_rate'];
+                    } else {
+                        $price = \min(\max(0.0, $price), (float)$prod['retail_price']);
+                        $rate  = (float)$prod['tax_rate'];
+                    }
+                }
+
                 /* GRN / PRET / PO kharid ki qeemat par chalte hain,
                    RET bikri ki qeemat par, CNT sirf cost par. */
                 $unit  = \in_array($type, [self::RET], true) ? $price : $cost;
@@ -151,11 +206,21 @@ final class RetailDocs
                 ];
                 $sub  += $lt;
                 $disc += $ld;
-                $tax  += \round($lt * $rate / 100, 4);
+                /* RET: bikri ki keemat par tax wohi qanoon jo bill par
+                   tha — inclusive business mein tax keemat ke ANDAR hai.
+                   Pehle tax upar jor diya jata tha: 3,050 ke bill ka
+                   refund 3,152 banta tha. Baqi documents (kharid) waise
+                   hi. */
+                if ($type === self::RET) {
+                    $tax += \round(RegionProfile::taxSplit($lt, $rate)['tax'], 4);
+                } else {
+                    $tax += \round($lt * $rate / 100, 4);
+                }
             }
             if (!$clean) throw new \RuntimeException('Add at least one line before saving');
 
-            $total = \round($sub + $tax, 4);
+            $total = ($type === self::RET && !RegionProfile::isExclusive())
+                   ? \round($sub, 4) : \round($sub + $tax, 4);
             $date  = self::dateOrNull($d['doc_date'] ?? '') ?: \date('Y-m-d');
             $supId = \trim((string)($d['supplier_id'] ?? '')) ?: null;
             $supNm = '';
@@ -191,6 +256,10 @@ final class RetailDocs
                                \count($clean), $sub, $disc, $tax, $total,
                                \trim((string)($d['note'] ?? '')), $id, $tid]);
                 $p->prepare("DELETE FROM rtl_doc_lines WHERE doc_id=? AND tenant_id=?")->execute([$id, $tid]);
+                if ($type === self::RET) {
+                    $p->prepare("UPDATE rtl_docs SET customer_id=?, source_sale_id=? WHERE id=? AND tenant_id=?")
+                      ->execute([$retCustomer, $retSale ? $retSale['id'] : null, $id, $tid]);
+                }
             }
 
             foreach ($clean as $l) {
@@ -234,6 +303,26 @@ final class RetailDocs
             $type = (string)$doc['doc_type'];
             $no   = (string)$doc['doc_no'];
             $ref  = ['table' => 'rtl_docs', 'id' => $id, 'no' => $no];
+
+            /* V191 — post ke WAQT dobara ginti. Do draft ek hi bill par ban
+               sakte hain; jo pehle post ho wohi jeetta hai, doosra ruk jata
+               hai. Bill ki row lock taake do log ek saath post na kar sakein. */
+            if ($type === self::RET && !empty($doc['source_sale_id'])) {
+                $p->prepare("SELECT id FROM rtl_sales WHERE id=? AND tenant_id=? FOR UPDATE")
+                  ->execute([$doc['source_sale_id'], $tid]);
+                $left = RetailPos::returnable((string)$doc['source_sale_id'], $p, $id);
+                $want = [];
+                foreach ($lines as $l) $want[$l['product_id']] = ($want[$l['product_id']] ?? 0) + (float)$l['qty'];
+                foreach ($want as $pid => $q) {
+                    $lf = $left[$pid]['left'] ?? 0.0;
+                    if ($q > $lf + 0.0001) {
+                        throw new \RuntimeException('This bill has already been returned (only ' . (float)$lf
+                            . ' of ' . ($left[$pid]['name'] ?? 'an item') . ' left). Refresh and check.');
+                    }
+                }
+            } elseif ($type === self::RET && !\Aio\Auth::isManager()) {
+                throw new \RuntimeException('Only a manager can post a return without the original bill');
+            }
 
             foreach ($lines as $l) {
                 $pid = (string)$l['product_id'];
@@ -304,9 +393,18 @@ final class RetailDocs
                 self::customerRefund($p, (string)$doc['customer_id'], (float)$doc['total'], $id, $no);
             }
             if ($type === self::RET && !empty($doc['source_sale_id'])) {
-                $p->prepare("UPDATE rtl_sales SET status='Returned', updated_at=NOW(6)
+                /* Poora wapas -> 'Returned'; kuch hissa -> 'Partly Returned'.
+                   Pehle ek item ki wapsi bhi poore bill ko 'Returned' kar deti thi. */
+                $after = RetailPos::returnable((string)$doc['source_sale_id'], $p);
+                $all = true;
+                foreach ($after as $a) {
+                    $mine = 0.0;
+                    foreach ($lines as $l) if ($l['product_id'] === $a['product_id']) $mine += (float)$l['qty'];
+                    if ($a['left'] - $mine > 0.0001) { $all = false; break; }
+                }
+                $p->prepare("UPDATE rtl_sales SET status=?, updated_at=NOW(6)
                               WHERE id=? AND tenant_id=?")
-                  ->execute([$doc['source_sale_id'], $tid]);
+                  ->execute([$all ? 'Returned' : 'Partly Returned', $doc['source_sale_id'], $tid]);
             }
 
             $p->prepare("UPDATE rtl_docs SET status='POSTED', posted_at=NOW(6), posted_by=?, updated_at=NOW(6)
@@ -474,4 +572,4 @@ final class RetailDocs
     }
 }
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

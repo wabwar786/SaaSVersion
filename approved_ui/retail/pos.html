@@ -172,8 +172,8 @@ html,body{height:100%;overflow:hidden}
   <!-- ============ TOP BAR ============ -->
   <div class="topbar">
     <div class="tb-brand"><div class="tb-mark">R</div><div><b>Retail OS</b><span>POS Counter</span></div></div>
-    <div class="tb-chip"><span class="dot"></span><div>Counter 1 &middot; <b>Ali Raza</b></div></div>
-    <div class="tb-chip">Bill <b id="billNo">INV-20905</b></div>
+    <div class="tb-chip" id="ctrChip" title="Change counter" style="cursor:pointer"><span class="dot"></span><div><span id="ctrName">Counter 1</span> &middot; <b id="cashierName">&mdash;</b></div></div>
+    <div class="tb-chip">Bill <b id="billNo">&mdash;</b></div>
     <div class="tb-chip" id="regionChip">PKR</div>
     <span class="tb-spacer"></span>
     <span class="perf" id="perf">&mdash;</span>
@@ -358,6 +358,16 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 
 /* ============ STATE ============ */
 var cart=[], level='Retail', custId='cu1', billDisc=0, sel=-1, billNo=20905, payMethod='CASH';
+/* V191 — server se jura hua POS. LIVE = asal server; file:// par demo.
+   Boot fail ho to LIVE false aur BLOCKED true: koi bill save nahi hota
+   (pehle demo store mein chup chaap chala jata tha). */
+var LIVE=!!(S.online&&S.boot), BLOCKED=(location.protocol!=='file:'&&!LIVE);
+var counter=(function(){try{return localStorage.getItem('rtl_counter')||''}catch(e){return ''}})();
+/* V191 — bill khatam ya hold ho to agla bill RETAIL rate aur walk-in se.
+   Pehle Wholesale customer ke baad level Wholesale hi rehta tha aur agla
+   walk-in customer bhi wholesale rate par bik jata tha. */
+function resetBill(){ custId='cu1'; paintCust(); if(level!=='Retail'){ level='Retail'; paintLevel(); } }
+function blockedMsg(){flash('Server is not reachable \u2014 bill NOT saved. Press Retry at the top.',true)}
 var rowsEl=$('rows'), emptyEl=$('cartEmpty'), scan=$('scan');
 
 function priceOf(p){return level==='Wholesale'?Number(p.wholesale_price||p.retail_price||0):Number(p.retail_price||0)}
@@ -407,8 +417,12 @@ function addProduct(p,q,uom){
     selectLine(cart.indexOf(ex));
   } else {
     var l={key:key,product_id:p.id,name:p.name,
-      unit:uom?S.unitCode(uom.unit_id):S.unitCode(p.base_unit_id),
-      qty:q,price:uom?Number(uom.retail_price||0):priceOf(p),
+      unit:S.unitCode(p.base_unit_id),
+      /* V191 — pack: qty base unit mein (carton = 24 pcs), is liye rate
+         bhi ek piece ka: pack rate / factor. Pehle 24 x pack rate lagta
+         tha (screen Rs 109,440, server Rs 4,800). */
+      qty:q,price:(uom&&Number(uom.factor)>0)?Number(uom.retail_price||0)/Number(uom.factor):priceOf(p),
+      uom_id:uom?uom.id:'',
       tax:Number(p.tax_rate||0),disc:0,is_scale:!!p.is_scale_item,stock:Number(p.stock_qty||0)};
     cart.unshift(l);
     rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
@@ -536,25 +550,28 @@ function paintHeld(){
 function hold(){
   if(!cart.length){flash('Bill is empty',true);return}
   var t=totals(),c=S.byId('customers',custId);
+  if(BLOCKED){blockedMsg();return}
   if(S.online){
     try{
-      S.holdBill({bill_no:'INV-'+billNo,counter_name:'Counter 1',
+      S.holdBill({bill_no:$('billNo').textContent,counter_name:counter||'Counter 1',
         customer_id:(custId&&custId!=='cu1')?custId:null,
         customer_name:c?c.name:'Walk-in',price_level:level,
         line_count:cart.length,total:t.grand,
-        cart:cart.map(function(l){return {key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,
+        cart:cart.map(function(l){return {key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,uom_id:l.uom_id||'',
           qty:l.qty,price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
     }catch(err){ flash(err.message||'Could not hold',true); return; }
-    clearCart(); paintHeld(); flash('Bill held');
+    /* V191 — hold ke baad agla bill walk-in se shuru. Pehle wohi customer
+       chalta rehta aur agla customer ka bill us ke khate mein ja sakta tha. */
+    clearCart(); resetBill(); paintHeld(); flash('Bill held');
     return;
   }
   var h=S.get('held_bills');
-  h.unshift({id:'H'+Date.now(),bill_no:'INV-'+billNo,customer:c?c.name:'Walk-in',price_level:level,
+  h.unshift({id:'H'+Date.now(),bill_no:'INV-'+billNo,customer:c?c.name:'Walk-in',customer_id:custId,price_level:level,
     lines:cart.length,total:t.grand,held_at:new Date().toTimeString().slice(0,5),
     cart:cart.map(function(l){return{key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,qty:l.qty,
       price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
   S.set('held_bills',h);
-  clearCart(); billNo++; $('billNo').textContent='INV-'+billNo;
+  clearCart(); custId='cu1'; paintCust(); billNo++; $('billNo').textContent='INV-'+billNo;
   paintHeld(); flash('Bill held');
 }
 function recall(id){
@@ -567,6 +584,10 @@ function recall(id){
     var l=b.cart[j]; cart.unshift(l); rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
   }
   level=b.price_level; paintLevel();
+  /* V191 — held bill apne hi customer ke sath wapas aata hai. Pehle
+     screen par jo customer chuna hota usi ka ban jata (Hameed ka bill
+     'Zero Limit' ke khate mein). */
+  custId=b.customer_id||'cu1'; if(!S.byId('customers',custId))custId='cu1'; paintCust();
   emptyEl.style.display=cart.length?'none':'block';
   if(S.online){ try{ S.releaseHold(id); }catch(e){} }
   else S.set('held_bills',h.filter(function(x){return x.id!==id}));
@@ -671,10 +692,37 @@ $('numOk').onclick=applyNum;
 $('numInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyNum()}});
 
 /* ============ PAYMENT ============ */
+function linesPayload(){
+  return cart.map(function(l){return {product_id:l.product_id,qty:l.qty,unit_code:l.unit,uom_id:l.uom_id||'',discount:l.disc||0}});
+}
+/* V191 — payment se pehle SERVER ki keemat. Price beech mein badli ho
+   to screen khud durust ho jati hai; is liye screen, parchi aur DB ka
+   total hamesha ek. Discount ki had ya inactive item ka masla bhi yahin
+   bata diya jata hai — paisa lene se pehle. */
+function syncQuote(){
+  if(!LIVE||!S.quote) return true;
+  var q;
+  try{ q=S.quote({lines:linesPayload(),price_level:level,bill_discount:billDisc}); }
+  catch(err){ flash(err.message||'Could not check prices',true); return false; }
+  var live=cart.filter(function(l){return l.qty>0});
+  var changed=false;
+  if(q&&q.lines&&q.lines.length===live.length){
+    for(var i=0;i<live.length;i++){
+      var np=Number(q.lines[i].unit_price);
+      if(Math.abs(np-live[i].price)>0.0001){live[i].price=np;paintRow(live[i]);changed=true}
+    }
+  }
+  if(q&&Math.abs(Number(q.discount)-billDisc)>0.009){billDisc=Number(q.discount);changed=true}
+  totals();
+  if(changed) flash('Prices updated from the server');
+  return true;
+}
 function openPay(){
   if(!cart.length){flash('Bill is empty',true);return}
+  if(BLOCKED){blockedMsg();return}
+  if(!syncQuote()) return;
   var t=totals();
-  $('payLine').textContent='INV-'+billNo+' \u00b7 '+cart.length+' items \u00b7 '+qtyf(t.units)+' units';
+  $('payLine').textContent=$('billNo').textContent+' \u00b7 '+cart.length+' items \u00b7 '+qtyf(t.units)+' units';
   $('payDue').textContent=money(t.grand);
   $('payCash').value=''; $('payCard').value='';
   setMethod('CASH'); openM('payModal');
@@ -685,6 +733,8 @@ function setMethod(m){
   var b=$('payMethods').children;
   for(var i=0;i<b.length;i++) b[i].classList.toggle('active',b[i].getAttribute('data-m')===m);
   $('cardWrap').style.display=(m==='CARD'||m==='MIXED')?'block':'none';
+  /* V191 — card par wohi raqam jo bill hai; card se change nahi banta. */
+  if(m==='CARD') $('payCard').value=Math.round(totals().grand*100)/100;
   $('cashWrap').style.display=(m==='CARD'||m==='CREDIT')?'none':'block';
   var n=$('creditNote');
   if(m==='CREDIT'){
@@ -693,12 +743,13 @@ function setMethod(m){
     if(!c||c.id==='cu1'){
       n.style.cssText='margin-top:10px;background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger)';
       n.innerHTML='No credit on walk-in sales \u2014 press F6 to choose a customer.';
-    } else if(Number(c.balance)+due>Number(c.credit_limit)){
+    } else if(Number(c.credit_limit)>0&&Number(c.balance)+due>Number(c.credit_limit)){
       n.style.cssText='margin-top:10px;background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)';
       n.innerHTML='<b>Credit limit exceeded.</b> Limit '+money(c.credit_limit)+' \u00b7 due '+money(c.balance);
     } else {
       n.style.cssText='margin-top:10px;background:var(--info-soft);border-color:var(--info-line);color:#2b5a80';
-      n.innerHTML='Charged to the account. Remaining limit: '+money(Number(c.credit_limit)-Number(c.balance)-due);
+      n.innerHTML=Number(c.credit_limit)>0?('Charged to the account. Remaining limit: '+money(Number(c.credit_limit)-Number(c.balance)-due))
+        :'Charged to the account. This customer has no credit limit.';
     }
   } else n.style.display='none';
   calcChange();
@@ -706,6 +757,8 @@ function setMethod(m){
 function calcChange(){
   var due=totals().grand,cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   var paid=payMethod==='CREDIT'?due:(payMethod==='CARD'?card:(payMethod==='MIXED'?cash+card:cash));
+  if((payMethod==='CARD'||payMethod==='MIXED')&&card>due+0.009){
+    $('chLab').textContent='Card is more than bill';$('payChange').textContent=money(card-due);$('chBox').className='pd sh';return}
   var d=paid-due,box=$('chBox');
   if(payMethod==='CREDIT'){$('chLab').textContent='To khata';$('payChange').textContent=money(due);box.className='pd';return}
   if(d>=0){$('chLab').textContent='Change';$('payChange').textContent=money(d);box.className='pd ch'}
@@ -724,6 +777,7 @@ $('tenderBtns').addEventListener('click',function(e){
 
 function confirmPay(quickCash){
   if(!cart.length){flash('Bill is empty',true);return}
+  if(BLOCKED){blockedMsg();return}
   var t=totals();
 
   /* SERVER PAR: paise ka hisaab wahin dobara hota hai. Client sirf
@@ -731,20 +785,20 @@ function confirmPay(quickCash){
      console se koi bhi total badal sakta tha. */
   if(S.online){
     var payload={
-      lines:cart.map(function(l){return {product_id:l.product_id,qty:l.qty,
-        unit_code:l.unit,discount:l.disc||0}}),
+      lines:linesPayload(),
       price_level:level, bill_discount:billDisc,
       customer_id:(custId&&custId!=='cu1')?custId:null,
-      payment_method:payMethod,
+      payment_method:quickCash?'CASH':payMethod,
       paid_cash:quickCash?t.grand:Number($('payCash').value||0),
-      paid_card:Number($('payCard').value||0),
-      counter_name:'Counter 1'
+      paid_card:quickCash?0:Number($('payCard').value||0),
+      exact_cash:!!quickCash,
+      counter_name:counter||'Counter 1'
     };
     var saved;
     try{ saved=S.saveSale(payload); }
     catch(err){ flash(err.message||'Bill could not be saved',true); return; }
     saved.bill_no=saved.bill_no||('INV-'+billNo);
-    saved.sold_at=new Date().toISOString().slice(0,16).replace('T',' ');
+    saved.sold_at=saved.sold_at||new Date().toISOString().slice(0,16).replace('T',' ');
     saved.customer=saved.customer_name; saved.counter=saved.counter_name;
     saved.cashier=saved.cashier_name; saved.change=saved.change||0;
     saved.items=(saved.items||[]).map(function(l){return {name:l.name,unit:l.unit_code,
@@ -752,8 +806,9 @@ function confirmPay(quickCash){
     buildReceipt(saved,false);
     closeM(); openM('rcptModal');
     flash(saved.bill_no+' saved \u00b7 '+money(saved.total));
-    $('billNo').textContent=saved.bill_no;
-    clearCart(); custId='cu1'; paintCust(); S.invalidate('products');
+    $('billNo').textContent=saved.next_bill_no||saved.bill_no;
+    if(Math.abs(Number(saved.total)-t.grand)>0.009) flash(saved.bill_no+' saved \u00b7 server total '+money(saved.total),true);
+    clearCart(); resetBill(); S.invalidate('products'); S.invalidate('customers'); S.rebuildIndex();
     return;
   }
 
@@ -803,8 +858,16 @@ function buildReceipt(sale,dup){
           '<div class="rw"><span></span><span><b>'+R.moneyPlain(lt)+'</b></span></div>';
   }
   var stamp = dup ? '<div class="dupstamp">DUPLICATE &middot; COPY '+sale.reprint_count+'</div>' : '';
-  $('rcpt').innerHTML='<div class="ctr big">METRO SUPERSTORE</div><div class="ctr">Islamabad \u2014 F10</div>'+
-    '<div class="ctr">'+(p.code==='PK'?'NTN 1234567-8':'VAT GB123456789')+'</div>'+stamp+'<hr>'+
+  /* V191 — header asal business se (Settings). Pehle har parchi par
+     "METRO SUPERSTORE / Islamabad F10 / NTN 1234567-8" chhapta tha. */
+  var rc=(S.boot&&S.boot.receipt)||{name:'Retail OS',branch:'',address:'',phone:'',ntn:'',header:'',footer:''};
+  var hd='<div class="ctr big">'+esc(rc.name)+'</div>'+
+    (rc.branch?'<div class="ctr">'+esc(rc.branch)+'</div>':'')+
+    (rc.address?'<div class="ctr">'+esc(rc.address)+'</div>':'')+
+    (rc.phone?'<div class="ctr">'+esc(rc.phone)+'</div>':'')+
+    (rc.ntn?'<div class="ctr">'+(p.code==='PK'?'NTN ':'VAT ')+esc(rc.ntn)+'</div>':'')+
+    (rc.header?'<div class="ctr">'+esc(rc.header)+'</div>':'');
+  $('rcpt').innerHTML=hd+stamp+'<hr>'+
     '<div class="rw"><span>'+esc(sale.bill_no)+'</span><span>'+esc(sale.sold_at)+'</span></div>'+
     '<div class="rw"><span>'+esc(sale.cashier)+'</span><span>'+esc(sale.counter)+'</span></div>'+
     '<div class="rw"><span>'+esc(sale.customer)+'</span><span>'+esc(sale.price_level)+'</span></div><hr>'+rows+'<hr>'+
@@ -823,9 +886,9 @@ function buildReceipt(sale,dup){
     (sale.status==='Credit'?'<div class="rw"><span>On khata</span><span>'+R.moneyPlain(sale.total)+'</span></div>':'')+
     (sale.change?'<div class="rw"><span>Change</span><span>'+R.moneyPlain(sale.change)+'</span></div>':'')+
     '<hr>'+
-    (dup?'<div class="ctr">Reprinted '+esc(sale.last_reprint_at)+' by Ali Raza</div>'+
+    (dup?'<div class="ctr">Reprinted '+esc(sale.last_reprint_at)+(sale.reprinted_by?' by '+esc(sale.reprinted_by):'')+'</div>'+
          '<div class="ctr">NOT A FRESH SALE \u2014 payment already taken</div>':
-         '<div class="ctr">'+(p.code==='PK'?'FBR: PENDING (queued)':'Thank you')+'</div>');
+         '<div class="ctr">'+esc(rc.footer||'Thank you')+'</div>');
 }
 
 /* ---------- duplicate bill ---------- */
@@ -836,7 +899,8 @@ function openDup(){
 }
 function fillDup(q){
   q=String(q).toLowerCase();
-  dupRows=S.get('sales').filter(function(x){
+  /* V191 — server par dhoondo; pehle sirf aakhri 100 bill. */
+  dupRows=(LIVE&&S.searchSales&&q)?S.searchSales(q):S.get('sales').filter(function(x){
     return !q||String(x.bill_no).toLowerCase().indexOf(q)>-1||
            String(x.customer).toLowerCase().indexOf(q)>-1||
            String(x.cashier).toLowerCase().indexOf(q)>-1;
@@ -892,8 +956,27 @@ $('btnDupOk').onclick=printDup;
 $('btnDup').onclick=openDup;
 
 $('btnPayOk').onclick=function(){confirmPay()};
-$('btnPrint').onclick=function(){flash('Sent to Epson TM-T88')};
-$('btnDrawer').onclick=function(){flash('Drawer kick sent')};
+/* V191 — PRINT. Pehle yeh button sirf "Sent to Epson TM-T88" ka toast
+   dikhata tha — printer tak kuch nahi jata tha. Ab parchi ek chhupe
+   iframe mein 80mm ke safhe par chhapti hai. Chrome ko --kiosk-printing
+   se chalayein to dialog bhi nahi aata (fauran print). */
+function printReceipt(){
+  var html=$('rcpt').innerHTML; if(!html){flash('Nothing to print',true);return}
+  var f=document.getElementById('rcptFrame');
+  if(!f){f=document.createElement('iframe');f.id='rcptFrame';
+    f.setAttribute('style','position:fixed;right:0;bottom:0;width:0;height:0;border:0');document.body.appendChild(f)}
+  var d=f.contentWindow.document;
+  d.open();
+  d.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt</title><style>'+
+    '@page{size:80mm auto;margin:2mm}body{margin:0;font-family:"Courier New",monospace;font-size:12px;line-height:1.45;color:#000;width:76mm}'+
+    'hr{border:0;border-top:1px dashed #000;margin:5px 0}.ctr{text-align:center}.rw{display:flex;justify-content:space-between;gap:6px}'+
+    '.big{font-size:15px;font-weight:700}.dupstamp{text-align:center;border:2px dashed #000;font-weight:700;padding:3px;margin:5px 0}'+
+    '</style></head><body>'+html+'</body></html>');
+  d.close();
+  setTimeout(function(){try{f.contentWindow.focus();f.contentWindow.print()}catch(e){flash('Print failed: '+e.message,true)}},50);
+}
+$('btnPrint').onclick=printReceipt;
+$('btnDrawer').onclick=function(){flash('The cash drawer opens through the receipt printer \u2014 turn on "open drawer" in the printer driver.')};
 
 /* ============ PRICE CHECK ============ */
 $('pcIn').addEventListener('input',function(){
@@ -928,7 +1011,7 @@ function flash(m,err){
 /* ============ KEYBOARD — poora counter yahin se chalta hai ============ */
 var KEYS={
   F1:function(){ if(cart.length&&!confirm('Current bill discard please?'))return;
-                 clearCart(); custId='cu1'; paintCust(); billNo++; $('billNo').textContent='INV-'+billNo; flash('New bill'); },
+                 clearCart(); resetBill(); if(!LIVE){billNo++; $('billNo').textContent='INV-'+billNo;} flash('New bill'); },
   F2:function(){ openNum('bill') },
   F3:function(){ openNum('qty') },
   F4:hold,
@@ -990,7 +1073,25 @@ $('keybar').addEventListener('click',function(e){
   if(S.online&&S.boot){
     document.querySelector('.tb-brand b').textContent=S.boot.business.name;
     document.querySelector('.tb-brand span').textContent=S.boot.branch;
-  }
+    /* V191 — asal bill number, counter aur cashier (pehle INV-20905,
+       Counter 1, Ali Raza hardcoded). */
+    $('billNo').textContent=S.boot.next_bill_no||'INV-1001';
+    $('cashierName').textContent=(S.boot.user&&S.boot.user.name)||'\u2014';
+    var cs=(S.boot.counters||[]).map(function(c){return c.name}).filter(Boolean);
+    if(!counter||cs.indexOf(counter)<0) counter=(S.boot.shift&&S.boot.shift.counter)||cs[0]||'Counter 1';
+  } else if(BLOCKED){
+    $('cashierName').textContent='OFFLINE'; $('billNo').textContent='\u2014';
+  } else { $('billNo').textContent='INV-'+billNo; $('cashierName').textContent='Demo'; }
+  $('ctrName').textContent=counter||'Counter 1';
+  $('ctrChip').onclick=function(){
+    if(!LIVE)return;
+    var cs=(S.boot.counters||[]).map(function(c){return c.name}).filter(Boolean);
+    if(!cs.length){flash('No counters set up \u2014 add them in Counter Management',true);return}
+    var pick=prompt('Counter for this computer:\n'+cs.map(function(c,i){return (i+1)+'. '+c}).join('\n')+'\n\nType the number:', String(Math.max(1,cs.indexOf(counter)+1)));
+    var n=parseInt(pick,10); if(!n||!cs[n-1])return;
+    counter=cs[n-1]; try{localStorage.setItem('rtl_counter',counter)}catch(e){}
+    $('ctrName').textContent=counter; flash('This computer is now '+counter);
+  };
   $('taxLab').textContent=p.tax_label;
   $('regionChip').innerHTML=p.flag+' <b>'+p.currency+'</b>';
   $('mCredit').textContent=String(p.credit_label).split(' ')[0];
@@ -1035,4 +1136,4 @@ $('keybar').addEventListener('click',function(e){
 </body>
 </html>
 
-<!-- build: V150 build 2026-10-12 -->
+<!-- build: V191 build 2026-11-13 -->

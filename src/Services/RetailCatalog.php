@@ -280,16 +280,39 @@ final class RetailCatalog
                 $c->execute([$id, $tid]);
                 $exists = (bool)$c->fetchColumn();
             }
+            /* ============================================================
+               V191 — STOCK SIRF RetailStock SE.
+
+               Audit mein: Product form ka "Opening stock" edit kar ke
+               stock 0 -> 999 ho gaya, aur `rtl_stock_moves` mein koi
+               nishan nahi bana. Yeh `RetailStock` ke "akela likhne wala"
+               usool ko seedha torta tha — chori ka sab se aasan raasta.
+
+               Ab:
+                 - EDIT par `stock_qty` likha hi nahi jata. Stock badalna
+                   ho to Stock Count / GRN / Wastage — jo nishan chhorte hain.
+                 - NAYE product par opening stock ek OPENING move ke zariye
+                   jata hai, is liye wo bhi stock card par nazar aata hai.
+               ============================================================ */
+            $opening = (float)$vals['stock_qty'];
+            $wcols = \array_values(\array_filter($cols, fn($c) => $c !== 'stock_qty'));
+            $wvals = [];
+            foreach ($wcols as $c) $wvals[] = $vals[$c];
             if ($exists) {
-                $set = \implode(',', \array_map(fn($c) => "`$c`=?", $cols));
-                $pdo->prepare("UPDATE rtl_products SET $set WHERE id=? AND tenant_id=?")
-                    ->execute([...\array_values($vals), $id, $tid]);
+                $set = \implode(',', \array_map(fn($c) => "`$c`=?", $wcols));
+                $pdo->prepare("UPDATE rtl_products SET $set, updated_at=NOW(6) WHERE id=? AND tenant_id=?")
+                    ->execute([...$wvals, $id, $tid]);
             } else {
                 $id = \uuid();   /* di gayi id is tenant ki nahi thi -> nayi banao */
-                $ph = \implode(',', \array_fill(0, \count($cols), '?'));
-                $cl = \implode(',', \array_map(fn($c) => "`$c`", $cols));
-                $pdo->prepare("INSERT INTO rtl_products(id,tenant_id,site_id,$cl) VALUES(?,?,?,$ph)")
-                    ->execute([$id, $tid, site_id(), ...\array_values($vals)]);
+                $ph = \implode(',', \array_fill(0, \count($wcols), '?'));
+                $cl = \implode(',', \array_map(fn($c) => "`$c`", $wcols));
+                $pdo->prepare("INSERT INTO rtl_products(id,tenant_id,site_id,stock_qty,$cl) VALUES(?,?,?,0,$ph)")
+                    ->execute([$id, $tid, site_id(), ...$wvals]);
+                if (\abs($opening) > 0.000001) {
+                    RetailStock::move($pdo, $id, $opening, RetailStock::OPENING,
+                        ['table' => 'rtl_products', 'id' => $id, 'no' => (string)$vals['sku'],
+                         'note' => 'Opening stock']);
+                }
             }
             /* ============================================================
                BARCODE — V154 MEIN YAHAN SAB SE BARA BUG THA.
@@ -513,4 +536,4 @@ final class RetailCatalog
     }
 }
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

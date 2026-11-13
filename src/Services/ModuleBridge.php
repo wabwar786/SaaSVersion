@@ -611,6 +611,7 @@ final class ModuleBridge
 
     private static function listCustomers(): array
     {
+        if (self::isRetail()) return self::listRetailCustomers();
         $q = DB::pdo()->prepare(
             "SELECT c.id, c.full_name name, c.phone, c.customer_type type, c.status,
                     COALESCE(c.discount_pct,0) discount,
@@ -635,8 +636,96 @@ final class ModuleBridge
         ], $q->fetchAll());
     }
 
+    /* ============================================================
+       V191 — RETAIL CUSTOMER.
+
+       Retail ka Customers form credit limit, opening balance, Retail /
+       Wholesale type, area, loyalty points aur status bhejta hai. Yeh
+       function restaurant ke liye bana tha aur in mein se KOI field save
+       nahi karta tha. Audit mein: limit 10,000 likhi, DB mein 0. Khata,
+       POS ki credit limit aur Wholesale ki khud-ba-khud keemat — sab is
+       wajah se khokhle the.
+
+       Sirf RETAIL business par yeh alag raasta chalta hai. Restaurant ka
+       raasta (neeche) bilkul waisa hi hai.
+
+       Opening balance sirf NAYE customer par, aur ledger mein 'OPENING'
+       entry ke sath — taake khate ka hisaab ledger se mile. Baad mein
+       balance sirf bill, wasooli aur return se badalta hai.
+       ============================================================ */
+    private static function isRetail(): bool
+    {
+        try { return \Aio\Auth::tenantIndustry() === 'RETAIL'; } catch (\Throwable $e) { return false; }
+    }
+
+    private static function listRetailCustomers(): array
+    {
+        $q = DB::pdo()->prepare(
+            "SELECT id, full_name, phone, area, customer_type, credit_limit, balance, loyalty_points, status
+               FROM customers
+              WHERE tenant_id=? AND deleted_at IS NULL
+              ORDER BY full_name");
+        $q->execute([tenant_id()]);
+        return array_map(fn($x) => [
+            'id' => $x['id'], 'name' => $x['full_name'], 'phone' => $x['phone'] ?: '',
+            'area' => $x['area'] ?: '',
+            'customer_type' => strcasecmp((string)$x['customer_type'], 'Wholesale') === 0 ? 'Wholesale' : 'Retail',
+            'credit_limit' => (float)$x['credit_limit'], 'balance' => (float)$x['balance'],
+            'loyalty_points' => (int)$x['loyalty_points'],
+            'status' => strtoupper((string)$x['status']) === 'INACTIVE' ? 'Inactive' : 'Active',
+        ], $q->fetchAll());
+    }
+
+    private static function saveRetailCustomer(string $id, array $d): string
+    {
+        $p = DB::pdo();
+        $name = trim((string)($d['name'] ?? ''));
+        if ($name === '') throw new \RuntimeException('Customer name required');
+        $type   = strcasecmp(trim((string)($d['customer_type'] ?? '')), 'Wholesale') === 0 ? 'Wholesale' : 'Retail';
+        $limit  = max(0.0, (float)($d['credit_limit'] ?? 0));
+        $points = max(0, (int)($d['loyalty_points'] ?? 0));
+        $status = strcasecmp(trim((string)($d['status'] ?? '')), 'Inactive') === 0 ? 'INACTIVE' : 'ACTIVE';
+        $area   = substr(trim((string)($d['area'] ?? '')), 0, 120);
+        $phone  = (string)($d['phone'] ?? '');
+
+        return DB::tx(function (\PDO $p) use ($id, $d, $name, $type, $limit, $points, $status, $area, $phone) {
+            $exists = false;
+            if ($id !== '') {
+                $c = $p->prepare("SELECT COUNT(*) FROM customers WHERE id=? AND tenant_id=?");
+                $c->execute([$id, tenant_id()]);
+                $exists = (bool)$c->fetchColumn();
+            }
+            if ($exists) {
+                $p->prepare("UPDATE customers SET full_name=?, phone=?, area=?, customer_type=?, credit_limit=?,
+                                 loyalty_points=?, status=?, updated_at=NOW(6)
+                             WHERE id=? AND tenant_id=?")
+                  ->execute([$name, $phone, $area, $type, $limit, $points, $status, $id, tenant_id()]);
+                return $id;
+            }
+            $id = uuid();
+            $p->prepare("INSERT INTO customers(id,tenant_id,full_name,phone,area,customer_type,credit_limit,
+                             balance,loyalty_points,status,created_at)
+                         VALUES(?,?,?,?,?,?,?,0,?,?,NOW(6))")
+              ->execute([$id, tenant_id(), $name, $phone, $area, $type, $limit, $points, $status]);
+            $open = round((float)($d['balance'] ?? 0), 4);
+            if (abs($open) > 0.0001) {
+                $p->prepare("UPDATE customers SET balance=? WHERE id=? AND tenant_id=?")
+                  ->execute([$open, $id, tenant_id()]);
+                try {
+                    $p->prepare("INSERT INTO rtl_customer_ledger(id,tenant_id,site_id,customer_id,entry_type,
+                                     ref_table,ref_id,ref_no,debit,credit,balance_after,note,entry_at)
+                                 VALUES(?,?,?,?, 'OPENING',NULL,NULL,NULL,?,?,?,?,NOW(6))")
+                      ->execute([uuid(), tenant_id(), site_id(), $id, max(0, $open), max(0, -$open), $open,
+                                 'Opening balance']);
+                } catch (\Throwable $e) { /* ledger table na ho to balance phir bhi rahe */ }
+            }
+            return $id;
+        });
+    }
+
     private static function saveCustomer(string $id, array $d): string
     {
+        if (self::isRetail()) return self::saveRetailCustomer($id, $d);
         $p = DB::pdo();
         $name = trim((string)($d['name'] ?? ''));
         if ($name === '') throw new \RuntimeException('Customer name required');

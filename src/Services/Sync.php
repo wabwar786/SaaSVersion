@@ -556,6 +556,26 @@ final class Sync
             }
 
             /* ============================================================
+               V191 — RETAIL: CLOUD KA PURANA STOCK DUKAN KA STOCK NA MITAYE.
+
+               `rtl_products` pull mein hai (malik portal par price ya naam
+               badle to dukan tak aaye). Magar poori row aati thi — stock
+               samet. Audit mein: node par stock 71.5, cloud ki copy (sirf
+               price badli thi) aayi aur stock 100 ho gaya, koi stock move
+               nahi bana.
+
+               Stock dukan ke computer par banta hai (bill, GRN, ginti) —
+               wohi aakhri faisla hai. Is liye PULL par (`$lastWriteWins`
+               sirf pull par true hota hai) `stock_qty` likha hi nahi
+               jata. Push par (dukan -> cloud) waisa hi jata hai jaisa tha.
+               Sirf yeh ek table, sirf yeh ek column — restaurant ki kisi
+               table par asar nahi.
+               ============================================================ */
+            if ($lastWriteWins && $table === 'rtl_products') {
+                unset($data['stock_qty']);
+            }
+
+            /* ============================================================
                V174 — BAND HO CHUKA BILL SYNC SE DOBARA NAHI KHULTA.
 
                Shikayat: "bill close hone ke baad kabhi kabhi wapis Hold

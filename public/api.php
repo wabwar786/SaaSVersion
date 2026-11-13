@@ -122,6 +122,27 @@ function needLogin(){if(!Auth::user())fail('Login required',401);}function needS
 /* Retail endpoints sirf RETAIL business ke liye. Restaurant tenant se
    aane wali request yahin ruk jati hai, chahe URL haath se likha ho. */
 function needRetail(){if(Auth::tenantIndustry()!=='RETAIL')fail('This business is not a retail store',403);}
+/* V191 — retail ke actions par wohi module jo us ki screen kholne ke liye
+   chahiye. requireModule() plain-text 'Access denied.' deta hai jo POS
+   ki JSON parhne wali screen par "Request failed" ban jata; is liye apna. */
+function needRetailModule(string $key){if(!Auth::canModule($key))fail('You do not have permission for this ('.$key.'). Ask the owner or a manager.',403);}
+/* V191 — retail catalog / customers likhne par permission. Pehle sirf
+   POS wala cashier bhi records-save se product ki keemat badal sakta tha.
+   SIRF retail business par lagta hai; restaurant par yeh function kuch
+   nahi karta. */
+function retailSaveGuard(string $mod){
+  if(Auth::tenantIndustry()!=='RETAIL')return;
+  $map=['products'=>['products','pricing','inventory','scale','labels','grn'],
+        'departments'=>['departments'],'categories'=>['departments'],'brands'=>['brands'],
+        'uom'=>['uom'],'batches'=>['batches'],'counters'=>['counters'],
+        'customers'=>['customers','khata','loyalty']];
+  if(!isset($map[$mod]))return;
+  foreach($map[$mod] as $k)if(Auth::canModule($k))return;
+  fail('You do not have permission to change '.$mod.'. Ask the owner or a manager.',403);
+}
+function retailDocModule(string $t){return ['GRN'=>'grn','PRET'=>'preturn','RET'=>'void','CNT'=>'count','PO'=>'po','WST'=>'wastage'][strtoupper($t)]??'inventory';}
+/* Cashier ko kachi SQL error kabhi na dikhe — asal wajah error log mein jati hai. */
+function retailMsg(Throwable $e){if($e instanceof PDOException){error_log('retail: '.$e->getMessage());return 'The bill could not be saved because of a database problem. Please try again.';}return $e->getMessage();}
 /* ============================================================
    SYNC AUTH — ab PER-TENANT.
    Pehle sirf ek GLOBAL token check hota tha: leaked token se koi bhi
@@ -3160,8 +3181,8 @@ case 'sync-status':needLogin();
  $st['cloud_configured']=(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''))!=='';
  ok(['status'=>$st]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){ok(['rows'=>RetailCatalog::listOf($mod),'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
-case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){try{$id=RetailCatalog::saveList($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
-case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));
+case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);retailSaveGuard($mod);if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){try{$id=RetailCatalog::saveList($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
+case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));retailSaveGuard($mod);
  /* V62 — YAHAN KHAMOSH FAILURE THI.
     Pehle yeh endpoint ok() kar deta tha chahe ek bhi row na badli ho,
     aur client jawab check hi nahi karta tha: user ko "Record removed"
@@ -3797,15 +3818,28 @@ case 'retail-boot':
   $p=DB::pdo();$tq=$p->prepare("SELECT id,name,slug,industry_code,region_profile,COALESCE(display_name,name) dn FROM tenants WHERE id=? LIMIT 1");
   $tq->execute([tenant_id()]);$t=$tq->fetch();if(!$t)fail('Business not found',404);
   $sq=$p->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$sq->execute([site_id()]);
+  $branch=(string)($sq->fetchColumn()?:'Main Branch');
+  /* V191 — parchi ka header asal business se. Pehle har parchi par
+     "METRO SUPERSTORE / Islamabad F10 / NTN 1234567-8" chhapta tha. */
+  $st=[];try{$st=SettingsService::get();}catch(Throwable $e){}
+  $cur=null;try{$cs=\Aio\Services\RetailShift::current();if($cs)$cur=\Aio\Services\RetailShift::shape($cs,\Aio\Services\RetailShift::summary($cs));}catch(Throwable $e){}
   ok([
     'business'=>['id'=>$t['id'],'name'=>$t['dn'],'slug'=>$t['slug'],
                  'industry'=>$t['industry_code'],'region'=>$t['region_profile']],
-    'branch'=>(string)($sq->fetchColumn()?:'Main Branch'),
+    'branch'=>$branch,
     'region'=>RegionProfile::forClient((string)$t['region_profile']),
     'user'=>['id'=>Auth::user()['id']??'','name'=>Auth::user()['full_name']??'',
              'is_admin'=>(bool)(Auth::user()['is_tenant_admin']??false),
+             'is_manager'=>Auth::isManager(),
              'modules'=>Auth::effectiveModules()],
     'counters'=>RetailCatalog::listOf('counters'),
+    'receipt'=>['name'=>(string)(($st['business_name']??'')?:$t['dn']),'branch'=>(string)(($st['branch_name']??'')?:$branch),
+                'address'=>(string)($st['address']??''),'phone'=>(string)($st['phone']??''),
+                'ntn'=>(string)($st['ntn']??''),'header'=>(string)($st['receipt_header']??''),
+                'footer'=>(string)($st['receipt_footer']??'')],
+    'next_bill_no'=>\Aio\Services\RetailPos::peekBillNo(),
+    'shift'=>$cur,
+    'build'=>trim((string)@file_get_contents(dirname(__DIR__).'/VERSION')),
   ]);
 
 case 'retail-lookup':
@@ -3822,44 +3856,68 @@ case 'retail-search':
 case 'retail-customers':
   needLogin(); needRetail();
   $q=DB::pdo()->prepare("SELECT id,full_name name,phone,area,customer_type,credit_limit,balance,loyalty_points
-                           FROM customers WHERE tenant_id=? AND deleted_at IS NULL ORDER BY full_name");
+                           FROM customers WHERE tenant_id=? AND deleted_at IS NULL AND COALESCE(status,'ACTIVE')<>'INACTIVE' ORDER BY full_name");
   $q->execute([tenant_id()]);ok(['rows'=>$q->fetchAll()]);
 
+case 'retail-dash':
+  needLogin(); needRetail(); needRetailModule('dashboard');
+  ok(['dash'=>\Aio\Services\RetailPos::dashboard()]);
+
+/* ============================================================
+   V191 — SERVER PAR PERMISSION.
+   Pehle retail ke har action par sirf needRetail() tha. Audit mein
+   sirf `rpos` wala cashier server par 100% discount wala bill bana
+   sakta tha, Stock Count post kar ke stock 0 kar sakta tha, aur khate
+   ki wasooli likh sakta tha. Ab har action par wohi module chahiye jo
+   us ki screen kholne ke liye chahiye (router.php ka $retailModule).
+   ============================================================ */
 case 'rpos-sale':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
   /* V155 — retail bill par bhi wahi nishani jo restaurant bill par lagti
      hai, taake background sync loop usay ~1 second mein cloud par bhej
      de. Nishani file likhne mein microsecond lagte hain; counter par
      koi network call nahi hoti. */
   try{ $__s=RetailPos::saveSale(body()); register_shutdown_function('sync_nudge'); ok(['sale'=>$__s]); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpos-quote':
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
+  try{ ok(['quote'=>RetailPos::quote(body())]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 case 'rpos-sales':
   needLogin(); needRetail();
-  ok(['rows'=>RetailPos::sales((int)($_GET['limit']??100))]);
+  if(!Auth::canModule('rpos')&&!Auth::canModule('sales')&&!Auth::canModule('void'))fail('You do not have access to bills',403);
+  ok(['rows'=>RetailPos::sales((int)($_GET['limit']??100),(string)($_GET['q']??''))]);
 
 case 'rpos-sale-get':
   needLogin(); needRetail();
   $s=RetailPos::sale((string)($_GET['id']??''));if(!$s)fail('Bill not found',404);ok(['sale'=>$s]);
 
+case 'rpos-returnable':
+  needLogin(); needRetail(); needRetailModule('void');
+  $s=RetailPos::sale((string)($_GET['id']??''));if(!$s)fail('Bill not found',404);
+  ok(['bill_no'=>$s['bill_no'],'customer'=>$s['customer_name'],'method'=>$s['payment_method'],
+      'rows'=>array_values(RetailPos::returnable((string)$s['id']))]);
+
 /* Duplicate bill. Har copy ginti mein aati hai — reprint_count receipt
    par chhapta hai aur audit_log mein bhi jata hai. */
 case 'rpos-reprint':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
   $d=body();
   try{ ok(['sale'=>RetailPos::reprint((string)($d['id']??''),(string)($d['reason']??''))]); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 case 'rpos-held':
-  needLogin(); needRetail();
+  needLogin(); needRetail(); needRetailModule('rpos');
   ok(['rows'=>RetailPos::heldBills()]);
 
 case 'rpos-hold':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
   ok(['id'=>RetailPos::hold(body())]);
 
 case 'rpos-hold-release':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('rpos'); csrf_json();
   RetailPos::releaseHold((string)(body()['id']??''));ok();
 
 case 'rpos-ledger':
@@ -3867,70 +3925,98 @@ case 'rpos-ledger':
   ok(['rows'=>RetailPos::ledger((string)($_GET['customer_id']??''))]);
 
 case 'rpos-receive':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('khata'); csrf_json();
   $d=body();
   try{ ok(RetailPos::receivePayment((string)($d['customer_id']??''),(float)($d['amount']??0),
                                     (string)($d['method']??'CASH'),(string)($d['note']??''))); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 /* ============================================================
-   V154 — RETAIL KE DOCUMENTS: GRN, PRET, RET, CNT, PO.
+   V191 — RETAIL SHIFT (till). Pehle Shift screen ke button sirf toast
+   the. Ab asal shift `cashier_shifts` mein — RetailShift dekhein.
+   ============================================================ */
+case 'rshift-current':
+  needLogin(); needRetail();
+  $cs=\Aio\Services\RetailShift::current();
+  ok(['shift'=>$cs?\Aio\Services\RetailShift::shape($cs,\Aio\Services\RetailShift::summary($cs)):null]);
 
-   Yeh paanchon pehle `records-save` ke zariye `ui_records` ke JSON
-   blob mein girte the: row mehfooz ho jati thi, "Saved" ka toast aa
-   jata tha, aur stock ko koi haath nahi lagata tha. Audit mein 20 pcs
-   ka GRN post karne par `ok:true` aaya aur stock 37 ka 37 raha.
+case 'rshift-open':
+  needLogin(); needRetail(); needRetailModule('shift'); csrf_json();
+  $d=body();
+  try{ $cs=\Aio\Services\RetailShift::open((string)($d['counter']??''),(float)($d['opening_cash']??0));
+       ok(['shift'=>\Aio\Services\RetailShift::shape($cs,\Aio\Services\RetailShift::summary($cs))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
-   HAR ACTION `needRetail()` SE GATED HAI. Restaurant ka koi user in
-   mein se kisi tak pohanch hi nahi sakta — na ghalti se, na seedha
-   URL se. Restaurant ka apna purchasing `PurchaseService` par hai aur
-   us ko V154 mein chhua tak nahi gaya.
+case 'rshift-close':
+  needLogin(); needRetail(); needRetailModule('shift'); csrf_json();
+  $d=body();
+  try{ ok(['shift'=>\Aio\Services\RetailShift::close((string)($d['id']??''),(float)($d['counted']??0),(string)($d['note']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rshift-list':
+  needLogin(); needRetail();
+  if(!Auth::canModule('shift')&&!Auth::canModule('closing'))fail('You do not have access to shifts',403);
+  ok(['shifts'=>\Aio\Services\RetailShift::listOf((int)($_GET['limit']??200))]);
+
+/* ============================================================
+   V154 — RETAIL KE DOCUMENTS: GRN, PRET, RET, CNT, PO, WST.
+   Ek engine (RetailDocs), ek jagah. V191: har type par us ki screen
+   ka module lazmi (retailDocModule).
    ============================================================ */
 case 'rdoc-list':
   needLogin(); needRetail();
   $t=strtoupper((string)($_GET['type']??''));
   if(!\Aio\Services\RetailDocs::isType($t))fail('Unknown document type');
+  needRetailModule(retailDocModule($t));
   ok(['rows'=>\Aio\Services\RetailDocs::listOf($t,(string)($_GET['status']??''))]);
 
 case 'rdoc-get':
   needLogin(); needRetail();
   $doc=\Aio\Services\RetailDocs::get((string)($_GET['id']??''));
   if(!$doc)fail('Document not found',404);
+  needRetailModule(retailDocModule((string)$doc['doc_type']));
   ok(['doc'=>$doc]);
 
 case 'rdoc-save':
   needLogin(); needRetail(); csrf_json();
   $d=body();
+  $t=strtoupper((string)($d['doc_type']??''));
+  if(!empty($d['id'])){$old=\Aio\Services\RetailDocs::get((string)$d['id']);if($old)$t=(string)$old['doc_type'];}
+  needRetailModule(retailDocModule($t));
   try{ ok(['doc'=>\Aio\Services\RetailDocs::save($d,(string)($d['id']??''))]); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 case 'rdoc-post':
   needLogin(); needRetail(); csrf_json();
   $d=body();
+  $old=\Aio\Services\RetailDocs::get((string)($d['id']??''));if(!$old)fail('Document not found',404);
+  needRetailModule(retailDocModule((string)$old['doc_type']));
   try{ ok(['doc'=>\Aio\Services\RetailDocs::post((string)($d['id']??''))]); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 case 'rdoc-cancel':
   needLogin(); needRetail(); csrf_json();
   $d=body();
+  $old=\Aio\Services\RetailDocs::get((string)($d['id']??''));if(!$old)fail('Document not found',404);
+  needRetailModule(retailDocModule((string)$old['doc_type']));
   try{ ok(['doc'=>\Aio\Services\RetailDocs::cancel((string)($d['id']??''),(string)($d['reason']??''))]); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 /* Supplier ka khata — balance ledger se GINA jata hai, kahin likha
    nahi hota. `suppliers` table restaurant ke saath mushtarak hai aur
    use V154 mein chhua nahi gaya. */
 case 'rsupplier-ledger':
-  needLogin(); needRetail();
+  needLogin(); needRetail(); needRetailModule('suppliers');
   $sid=(string)($_GET['supplier_id']??'');
   ok(['balance'=>\Aio\Services\RetailDocs::supplierBalance($sid),
       'rows'=>\Aio\Services\RetailDocs::supplierLedger($sid)]);
 
 case 'rsupplier-pay':
-  needLogin(); needRetail(); csrf_json();
+  needLogin(); needRetail(); needRetailModule('suppliers'); csrf_json();
   $d=body();
   try{ ok(\Aio\Services\RetailDocs::paySupplier((string)($d['supplier_id']??''),
             (float)($d['amount']??0),(string)($d['note']??''),(string)($d['ref_no']??''))); }
-  catch(Throwable $e){ fail($e->getMessage()); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
 
 /* Stock card aur stock movement — V153 tak yeh sawaal poocha hi nahi
    ja sakta tha ke "stock 40 se 37 kyun hua". */

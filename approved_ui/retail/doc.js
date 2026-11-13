@@ -241,11 +241,39 @@
             ' · stock ' + qty(p.stock_qty) + ' · cost ' + money(p.cost_price) + '</span></div>';
         }).join('');
       }
+      /* V191 — RETURN: asal bill ke items aur un ka rate. Bill chuna ho
+         to rate wohi jo customer ne diya tha (server bhi yahi rate lagata
+         hai, screen ka rate nahi). Pehle rate haath se likha jata tha. */
+      var retMap = null;
+      function loadReturnable(saleId, keepLines) {
+        retMap = null;
+        if (!saleId) { if ($('#dRate')) $('#dRate').readOnly = false; return; }
+        var r;
+        try { r = api('rpos-returnable&id=' + encodeURIComponent(saleId)); }
+        catch (e) { toast(e.message || 'Could not load the bill', true); return; }
+        retMap = {};
+        (r.rows || []).forEach(function (x) { retMap[x.product_id] = x; });
+        if ($('#dRate')) $('#dRate').readOnly = true;
+        if (keepLines) return;
+        lines = (r.rows || []).filter(function (x) { return x.left > 0; }).map(function (x) {
+          return { product_id: x.product_id, name: x.name, qty: x.left, rate: x.rate };
+        });
+        if ($('#dRate')) $('#dRate').readOnly = true;
+        drawLines();
+        if (!lines.length) toast('Everything on bill ' + r.bill_no + ' has already been returned', true);
+        else toast(r.bill_no + ' \u00b7 ' + (r.method === 'CREDIT' ? 'credit bill \u2014 refund goes to the khata' : 'cash refund') +
+                   ' \u00b7 remove what is not coming back');
+      }
+
       function choose(p) {
         picked = p;
         $('#dPick').value = p.name;
         $('#dHits').style.display = 'none';
         if ($('#dRate')) $('#dRate').value = cfg.rateFrom === 'retail' ? p.retail_price : p.cost_price;
+        if (retMap) {
+          if (!retMap[p.id]) { toast(p.name + ' is not on this bill', true); picked = null; $('#dPick').value = ''; return; }
+          if ($('#dRate')) $('#dRate').value = retMap[p.id].rate;
+        }
         if (isCount) $('#dQty').value = p.stock_qty;
         $('#dQty').focus();
         $('#dQty').select();
@@ -276,6 +304,11 @@
         var q = Number($('#dQty').value || 0);
         if (!isCount && q <= 0) { toast('Quantity zero se zyada honi chahiye', true); return; }
         var l = { product_id: picked.id, name: picked.name, qty: q, rate: Number(($('#dRate') || {}).value || 0) };
+        if (retMap && retMap[picked.id]) {
+          var have = lines.filter(function (x) { return x.product_id === picked.id; }).reduce(function (a, x) { return a + x.qty; }, 0);
+          if (have + q > retMap[picked.id].left + 0.0001) { toast('Only ' + retMap[picked.id].left + ' can be returned on this bill', true); return; }
+          l.rate = retMap[picked.id].rate;
+        }
         if (isCount) { l.counted = q; l.system = Number(picked.stock_qty || 0); l.qty = q - l.system; }
         if (cfg.batch) { l.batch = ($('#dBatch') || {}).value || ''; l.expiry = ($('#dExp') || {}).value || ''; }
         /* Ek hi product do dafa add ho jaye to ginti chup chaap dugni ho
@@ -303,6 +336,7 @@
         }
         if (cfg.party === 'sale' && $('#dSale')) {
           var sales = RetailStore.get('sales') || [];
+          $('#dSale').onchange = function () { loadReturnable(this.value); };
           $('#dSale').innerHTML = '<option value="">—</option>' + sales.slice(0, 50).map(function (s) {
             return '<option value="' + esc(s.id) + '">' + esc(s.bill_no) + ' · ' + money(s.total) + '</option>';
           }).join('');
@@ -310,7 +344,8 @@
       }
 
       function openNew() {
-        current = null; lines = []; picked = null;
+        current = null; lines = []; picked = null; retMap = null;
+        if ($('#dRate')) $('#dRate').readOnly = false;
         $('#dFormTitle').textContent = cfg.addLabel || 'New';
         $('#dDate').value = today();
         if ($('#dRef')) $('#dRef').value = '';
@@ -338,6 +373,7 @@
             batch: l.batch_no || '', expiry: (l.expiry_date || '')
           };
         });
+        if (cfg.party === 'sale' && d.source_sale_id) loadReturnable(d.source_sale_id, true);
         drawLines(); openM('dForm');
       }
 
@@ -444,4 +480,4 @@
   };
 })();
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

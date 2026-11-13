@@ -145,21 +145,50 @@ final class RetailReportService
             "SELECT DATE(s.sold_at) d, COUNT(*) bills,
                     SUM(s.subtotal) gross, SUM(s.discount) discount,
                     SUM(s.tax_amount) tax, SUM(s.total) net,
-                    SUM(s.paid_cash) cash, SUM(s.paid_card) card,
-                    SUM(CASE WHEN s.status='Credit' THEN s.total ELSE 0 END) credit
+                    SUM(CASE WHEN s.payment_method<>'CREDIT' THEN s.paid_cash - s.change_amount ELSE 0 END) cash, SUM(s.paid_card) card,
+                    SUM(CASE WHEN s.payment_method='CREDIT' THEN s.total ELSE 0 END) credit
                FROM rtl_sales s
               WHERE " . self::billWhere() . "
               GROUP BY d ORDER BY d DESC",
             self::billArgs($f, $t));
 
+        /* V191 — RETURNS. Pehle wapas hua bill bhi poora sale mein ginta
+           tha aur refund kahin minus nahi hota tha. Ab har din ke posted
+           returns alag column mein, aur "After returns" = Net sale - Returns. */
+        $ret = [];
+        foreach (self::q(
+            "SELECT DATE(d.posted_at) d, SUM(d.total) r,
+                    SUM(CASE WHEN d.customer_id IS NULL THEN d.total ELSE 0 END) cr
+               FROM rtl_docs d
+              WHERE d.tenant_id=? AND d.site_id=? AND d.doc_type='RET' AND d.status='POSTED'
+                AND d.deleted_at IS NULL AND DATE(d.posted_at) BETWEEN ? AND ?
+              GROUP BY DATE(d.posted_at)", self::billArgs($f, $t)) as $x) {
+            $ret[$x['d']] = $x;
+        }
+        $byDay = [];
+        foreach ($rows as $r) $byDay[$r['d']] = $r;
+        foreach ($ret as $d0 => $x) {
+            if (!isset($byDay[$d0])) $byDay[$d0] = ['d'=>$d0,'bills'=>0,'gross'=>0,'discount'=>0,'tax'=>0,
+                                                     'net'=>0,'cash'=>0,'card'=>0,'credit'=>0];
+        }
+        \krsort($byDay);
+        $rows = [];
+        foreach ($byDay as $d0 => $r) {
+            $r['returns'] = \round((float)($ret[$d0]['r'] ?? 0), 2);
+            $r['cash']    = \round((float)$r['cash'] - (float)($ret[$d0]['cr'] ?? 0), 2);
+            $r['after']   = \round((float)$r['net'] - $r['returns'], 2);
+            $rows[] = $r;
+        }
+
         return self::shape('Daily sales summary',
             [['k'=>'d','l'=>'Date'],['k'=>'bills','l'=>'Bills','n'=>1],
              ['k'=>'gross','l'=>'Gross','n'=>1],['k'=>'discount','l'=>'Discount','n'=>1],
              ['k'=>'tax','l'=>'Tax','n'=>1],['k'=>'net','l'=>'Net sale','n'=>1],
+             ['k'=>'returns','l'=>'Returns','n'=>1],['k'=>'after','l'=>'After returns','n'=>1],
              ['k'=>'cash','l'=>'Cash','n'=>1],['k'=>'card','l'=>'Card','n'=>1],
              ['k'=>'credit','l'=>'Khata','n'=>1]],
-            $rows, self::sum($rows, ['bills','gross','discount','tax','net','cash','card','credit']),
-            'Net sale is what actually reaches your pocket.');
+            $rows, self::sum($rows, ['bills','gross','discount','tax','net','returns','after','cash','card','credit']),
+            'Cash = cash taken minus change given minus cash refunds.');
     }
 
     private static function r_sales_by_item(string $f, string $t): array
@@ -242,7 +271,7 @@ final class RetailReportService
     {
         $rows = self::q(
             "SELECT s.payment_method method, COUNT(*) bills,
-                    SUM(s.total) amount, SUM(s.paid_cash) cash, SUM(s.paid_card) card
+                    SUM(s.total) amount, SUM(CASE WHEN s.payment_method<>'CREDIT' THEN s.paid_cash - s.change_amount ELSE 0 END) cash, SUM(s.paid_card) card
                FROM rtl_sales s
               WHERE " . self::billWhere() . "
               GROUP BY method ORDER BY amount DESC",
@@ -321,7 +350,7 @@ final class RetailReportService
         $rows = self::q(
             "SELECT COALESCE(NULLIF(s.counter_name,''),'-') counter,
                     COUNT(*) bills, SUM(s.total) amount,
-                    SUM(s.paid_cash) cash, SUM(s.paid_card) card
+                    SUM(CASE WHEN s.payment_method<>'CREDIT' THEN s.paid_cash - s.change_amount ELSE 0 END) cash, SUM(s.paid_card) card
                FROM rtl_sales s
               WHERE " . self::billWhere() . "
               GROUP BY counter ORDER BY amount DESC",
@@ -801,7 +830,7 @@ final class RetailReportService
             "SELECT DATE(s.sold_at) d, s.bill_no, s.customer_name customer,
                     s.cashier_name cashier, s.total, s.line_count items
                FROM rtl_sales s
-              WHERE " . self::billWhere() . " AND s.status = 'Credit'
+              WHERE " . self::billWhere() . " AND s.payment_method = 'CREDIT'
               ORDER BY s.sold_at DESC",
             self::billArgs($f, $t));
 
@@ -872,4 +901,4 @@ final class RetailReportService
     }
 }
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

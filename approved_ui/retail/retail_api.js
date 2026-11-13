@@ -48,9 +48,48 @@
   }
   function quiet(action, payload) { try { return api(action, payload); } catch (e) { return null; } }
 
-  /* ---------- boot: business, region, counters ---------- */
-  var boot = quiet('retail-boot');
-  if (!boot) return;                              // login nahi / retail nahi — demo hi rehne do
+  /* ---------- boot: business, region, counters ----------
+     V191 — PEHLE YAHAN SAB SE KHATARNAK BUG THA.
+
+         var boot = quiet('retail-boot');
+         if (!boot) return;     // demo hi rehne do
+
+     Ek dafa boot fail ho (jaise "1040 Too many connections", server
+     ek lamhe ko masroof) to POS khamoshi se DEMO store par chal parta:
+     demo items (Coca-Cola), cashier "Ali Raza", aur bill "INV-20905
+     saved" — magar sirf browser mein. Audit mein DB mein bills 10 -> 10.
+     Customer ka paisa le liya, record kahin nahi.
+
+     Ab: 3 dafa koshish. Phir bhi na mile to demo NAHI chalta — screen
+     par laal patti, saari lists khali, aur POS bill save hi nahi karta.
+     Demo sirf file:// par (designer ke liye) chalta hai, jaise pehle. */
+  var boot = null;
+  for (var bt = 0; bt < 3 && !boot; bt++) boot = quiet('retail-boot');
+  if (!boot) {
+    S.online = false;
+    S.bootFailed = true;
+    S.get = function () { return []; };
+    S.byId = function () { return null; };
+    S.findByCode = function () { return null; };
+    S.searchProducts = function () { return []; };
+    S.set = function (k, rows) { return rows; };
+    S.commit = function () { };
+    var showBar = function () {
+      if (document.getElementById('rtlOffline')) return;
+      var b = document.createElement('div');
+      b.id = 'rtlOffline';
+      b.setAttribute('style', 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#a3222d;color:#fff;' +
+        'padding:12px 16px;font:600 14px/1.4 system-ui,sans-serif;display:flex;gap:12px;align-items:center');
+      b.innerHTML = '<span>Server is not reachable \u2014 nothing is loaded and NO bill will be saved. ' +
+        'Do not take payment on this screen.</span>' +
+        '<button style="margin-left:auto;background:#fff;color:#a3222d;border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" ' +
+        'onclick="location.reload()">Retry</button>';
+      document.body.appendChild(b);
+    };
+    if (document.body) showBar(); else document.addEventListener('DOMContentLoaded', showBar);
+    setTimeout(function () { if (quiet('retail-boot')) location.reload(); }, 5000);
+    return;
+  }
 
   S.online = true;
   S.boot = boot;
@@ -170,17 +209,21 @@
   S.normalizeSale = normalizeSale;
 
   /* ---------- lookup (scan) ---------- */
-  var codeCache = {};
+  /* V191 — cache ki muddat 60 second. Pehle hamesha ke liye tha: price
+     badalti to screen purani dikhati aur server nayi leta ("Payment is
+     short"); naya item reload tak scan nahi hota tha. Har bill ke baad
+     bhi cache saaf hota hai (POS S.rebuildIndex() bulata hai). */
+  var codeCache = {}, codeAt = {};
   S.findByCode = function (code) {
     code = String(code || '').trim();
     if (!code) return null;
-    if (codeCache[code] !== undefined) return codeCache[code];
+    if (codeCache[code] !== undefined && (Date.now() - (codeAt[code] || 0)) < 60000) return codeCache[code];
     var r = null;
     try { r = api('retail-lookup&code=' + encodeURIComponent(code)); } catch (e) { r = null; }
     var hit = r ? r.hit : null;
     /* "Nahi mila" bhi cache hota hai — warna ek ghalat barcode baar baar
        scan ho kar har dafa server tak jata hai. */
-    codeCache[code] = hit;
+    codeCache[code] = hit; codeAt[code] = Date.now();
     return hit;
   };
   S.searchProducts = function (q) {
@@ -199,14 +242,21 @@
     var u = S.byId('units', id);
     return u ? u.code : 'PCS';
   };
-  S.rebuildIndex = function () { codeCache = {}; };
+  S.rebuildIndex = function () { codeCache = {}; codeAt = {}; };
 
   /* ---------- POS writes ---------- */
   S.api = api;
   S.saveSale = function (payload) { return api('rpos-sale', payload).sale; };
+  /* V191 — payment se pehle server ka hisaab (kuch save nahi hota). */
+  S.quote = function (payload) { return api('rpos-quote', payload).quote; };
+  /* V191 — Duplicate bill: server par dhoondo (pehle sirf aakhri 100). */
+  S.searchSales = function (q) {
+    var r = quiet('rpos-sales&limit=60&q=' + encodeURIComponent(q || ''));
+    return r ? r.rows.map(normalizeSale) : [];
+  };
   S.reprint = function (id, reason) { return api('rpos-reprint', { id: id, reason: reason || '' }).sale; };
   S.holdBill = function (payload) { return api('rpos-hold', payload).id; };
   S.releaseHold = function (id) { return api('rpos-hold-release', { id: id }); };
 })();
 
-// build: V154 build 2026-10-13
+// build: V191 build 2026-11-13

@@ -35,7 +35,7 @@
             <label class="field"><span>Counted cash <span class="hint">after counting the drawer</span></span>
               <input id="fCount" type="number" min="0" step="any" placeholder="0"></label>
             <div class="note" id="varNote" style="margin-bottom:12px">Expected cash = opening + cash sales &minus; cash expenses.</div>
-            <button class="btn" id="btnClose" style="width:100%;height:44px">Shift disable</button>
+            <button class="btn" id="btnClose" style="width:100%;height:44px">Close shift</button>
           </div>
         </section>
 
@@ -55,35 +55,89 @@
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="shift"></script>
 <script>
+/* ============================================================
+   V191 — YEH SCREEN PEHLE SIRF DIKHAWA THI.
+   "Shift kholein" aur "Close shift" sirf toast dikhate the; kuch
+   save nahi hota tha. Cash ka KPI poori tareekh ke aakhri 100 bill
+   jor deta tha, aur diya hua note ginta tha (change minus nahi).
+
+   Ab asal shift (`rshift-*`, RetailShift):
+     - Kholne par opening cash ke sath `cashier_shifts` mein row.
+     - KPI sirf ISI shift ke: cash = note minus change, card alag.
+     - Band karne par gini hui cash, expected aur farq mehfooz — wohi
+       Shift Closing History mein nazar aata hai.
+   ============================================================ */
 (function(){
   var $=function(i){return document.getElementById(i)};
   var S=window.RetailStore,R=window.Region,money=R.money;
   function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-  var sales=S.get('sales')||[], counters=S.get('counters')||[];
-  $('fCounter').innerHTML=counters.map(function(c){return '<option>'+esc(c.name)+'</option>'}).join('')||'<option>Counter 1</option>';
-  var open=counters.filter(function(c){return c.status==='Open'})[0];
-  $('kStat').textContent=open?'Open':'Closed';
-  $('kStatSub').textContent=open?(open.name+' · '+(open.cashier||'—')):'no counter is open';
-  var cash=sales.reduce(function(a,s){return a+Number(s.paid_cash||0)},0);
-  var card=sales.reduce(function(a,s){return a+Number(s.paid_card||0)},0);
-  $('kCash').textContent=money(cash); $('kCard').textContent=money(card); $('kBills').textContent=sales.length;
-  $('rows').innerHTML=sales.slice(0,12).map(function(s){
-    return '<tr><td><span class="t-main">'+esc(s.bill_no)+'</span><span class="t-sub">'+esc(s.sold_at||'')+'</span></td>'+
-      '<td>'+esc(s.customer||'Walk-in')+'</td><td class="num"><b>'+money(s.total)+'</b></td>'+
-      '<td><span class="tag '+(s.status==='Credit'?'warn':'ok')+'">'+esc(s.status||'')+'</span></td></tr>';
-  }).join('')||'<tr><td colspan="4"><div class="empty" style="padding:24px"><h3>No bills today</h3></div></td></tr>';
-
   function toast(m,e){var t=$('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}
-    t.textContent=m;t.className='toast show'+(e?' err':'');setTimeout(function(){t.className='toast'},1800)}
-  $('fCount').oninput=function(){
-    var counted=Number(this.value||0), expected=Number($('fOpen').value||0)+cash;
-    var v=counted-expected;
-    $('varNote').innerHTML='Expected <b>'+money(expected)+'</b> · counted <b>'+money(counted)+'</b> · variance '+
-      (v===0?'<b style="color:var(--ok)">match</b>':'<b style="color:var(--'+(v<0?'danger':'warn')+')">'+money(v)+'</b>');
+    t.textContent=m;t.className='toast show'+(e?' err':'');setTimeout(function(){t.className='toast'},2200)}
+  if(!S.api){ $('kStat').textContent='Offline'; return; }
+
+  var counters=S.get('counters')||[], cur=null;
+  var saved=''; try{saved=localStorage.getItem('rtl_counter')||''}catch(e){}
+  $('fCounter').innerHTML=counters.map(function(c){return '<option'+(c.name===saved?' selected':'')+'>'+esc(c.name)+'</option>'}).join('')||'<option>Counter 1</option>';
+  $('varNote').innerHTML='Expected cash = opening + cash sales (cash taken &minus; change) + khata cash received &minus; cash refunds.';
+
+  function bills(){
+    if(!cur){ $('rows').innerHTML='<tr><td colspan="4"><div class="empty" style="padding:24px"><h3>No open shift</h3></div></td></tr>'; return; }
+    var all=[]; try{ all=S.api('rpos-sales&limit=200').rows||[]; }catch(e){}
+    var from=String(cur.date)+' '+String(cur.opened);
+    var me=(S.boot&&S.boot.user&&S.boot.user.id)||'';
+    var mine=all.filter(function(s){return (!me||s.cashier_user_id===me)&&String(s.sold_at).slice(0,16)>=from});
+    $('rows').innerHTML=mine.slice(0,30).map(function(s){
+      return '<tr><td><span class="t-main">'+esc(s.bill_no)+'</span><span class="t-sub">'+esc(String(s.sold_at||'').slice(0,16))+'</span></td>'+
+        '<td>'+esc(s.customer_name||'Walk-in')+'</td><td class="num"><b>'+money(s.total)+'</b></td>'+
+        '<td><span class="tag '+(s.payment_method==='CREDIT'?'warn':'ok')+'">'+esc(s.status||'')+'</span></td></tr>';
+    }).join('')||'<tr><td colspan="4"><div class="empty" style="padding:24px"><h3>No bills in this shift yet</h3></div></td></tr>';
+  }
+  function paint(){
+    var r=null; try{ r=S.api('rshift-current'); }catch(e){ toast(e.message,true); }
+    cur=r&&r.shift;
+    if(cur){
+      var m=cur.summary||{};
+      $('kStat').textContent='Open';
+      $('kStatSub').textContent='#'+cur.shift+' · '+(cur.counter||'')+' · since '+cur.opened;
+      $('kCash').textContent=money(m.cash_sales||0); $('kCard').textContent=money(m.card_sales||0); $('kBills').textContent=m.bills||0;
+      $('fOpen').value=cur.opening; $('fOpen').disabled=true; $('fCounter').disabled=true;
+      $('btnOpen').disabled=true; $('btnClose').disabled=false;
+    } else {
+      $('kStat').textContent='Closed'; $('kStatSub').textContent='no shift is open for you';
+      $('kCash').textContent=money(0); $('kCard').textContent=money(0); $('kBills').textContent='0';
+      $('fOpen').disabled=false; $('fCounter').disabled=false; $('btnOpen').disabled=false; $('btnClose').disabled=true;
+    }
+    calc(); bills();
+  }
+  function calc(){
+    if(!cur){ return; }
+    var counted=Number($('fCount').value||0), expected=Number(cur.expected||0), v=counted-expected;
+    $('varNote').innerHTML='Expected <b>'+money(expected)+'</b> &middot; counted <b>'+money(counted)+'</b> &middot; variance '+
+      (Math.abs(v)<0.01?'<b style="color:var(--ok)">match</b>':'<b style="color:var(--'+(v<0?'danger':'warn')+')">'+money(v)+'</b>');
+  }
+  $('fCount').oninput=calc;
+  $('btnOpen').onclick=function(){
+    try{
+      S.api('rshift-open',{counter:$('fCounter').value,opening_cash:Number($('fOpen').value||0)});
+      try{localStorage.setItem('rtl_counter',$('fCounter').value)}catch(e){}
+      toast('Shift opened'); paint();
+    }catch(e){ toast(e.message,true); }
   };
-  $('btnOpen').onclick=function(){toast('Shift open — counter ready')};
-  $('btnClose').onclick=function(){toast('Shift closed — the report is in Shift Closing History')};
+  $('btnClose').onclick=function(){
+    if(!cur) return;
+    if($('fCount').value===''){ toast('Count the drawer and enter the cash first',true); return; }
+    if(!confirm('Close shift #'+cur.shift+' with counted cash '+money(Number($('fCount').value||0))+'?')) return;
+    try{
+      var r=S.api('rshift-close',{id:cur.id,counted:Number($('fCount').value||0)});
+      var v=Number(r.shift.variance||0);
+      toast('Shift closed · variance '+money(v), v<-0.009);
+      $('fCount').value=''; paint();
+    }catch(e){ toast(e.message,true); }
+  };
+  paint();
 })();
 </script>
 </body>
 </html>
+
+<!-- build: V191 build 2026-11-13 -->
