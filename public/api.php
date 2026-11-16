@@ -3347,6 +3347,15 @@ case 'owner-mobile-sale':needLogin();
  if(!Auth::isManager())fail('Only the owner or a manager can open this.',403);
  ok(['sale'=>\Aio\Services\OwnerMobile::sale((int)($_GET['days']??30))]);
 
+case 'owner-mobile-day':needLogin();
+ /* V194 — kal ka poora din (owner app ka "Yesterday" switch). Sirf
+    parhna; wahi pabandiyan jo owner-mobile-boot par hain. Abhi sirf
+    "yesterday" — koi aur din maanga jaye to inkaar. */
+ if(!Auth::ownerMobile())fail('Owner app is not switched on for this business.',403);
+ if(!Auth::isManager())fail('Only the owner or a manager can open this.',403);
+ if(($_GET['day']??'')!=='yesterday')fail('Unknown day.',400);
+ ok(['day'=>\Aio\Services\OwnerMobile::yesterday()]);
+
 case 'owner-mobile-watch':needLogin();
  /* Poore portal mein yehi ek cheez likhti hai: kis item par nazar
     rakhni hai. Stock ki qty ya koi raqam yahan se nahi badalti. */
@@ -4147,4 +4156,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V193 build 2026-11-13
+// build: V194 build 2026-11-16

@@ -124,6 +124,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes p{70%{box-shadow:0 0 0 7px rgba(84,209,138,0)}100%{box-shadow:0 0 0 0 rgba(84,209,138,0)}}
 
 .sum{margin-top:22px}
+/* V194 — Aaj / Kal switch (khate ke andar, peetal rang) */
+.daysw{display:inline-flex;margin-top:18px;padding:3px;border-radius:999px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(200,162,74,.38)}
+.daysw button{padding:8px 18px;min-height:36px;border-radius:999px;font-size:13px;font-weight:650;color:#A69D8C}
+.daysw button.on{background:var(--brass);color:var(--ink)}
 .sum .when{font-size:13px;color:#A69D8C;letter-spacing:.01em}
 .sum .amt{
   font-family:var(--mono);font-weight:700;letter-spacing:-.045em;
@@ -365,11 +370,12 @@ function trendLine(now, was, tail){
   return '<div class="trend">' + tail + ' <b class="' + cls + '">' + sign + p + '%</b>'
        + ' &mdash; was ' + n0(was) + '</div>';
 }
-function head(title, sub, amount, unit, trend){
+function head(title, sub, amount, unit, trend, sw){
   var a = big(amount);
   return '<div class="ledger">'
     + '<div class="bizrow"><div class="seal">' + esc(B.biz.ini) + '</div>'
     +   '<div class="meta"><h1>' + esc(title) + '</h1><p>' + sub + '</p></div></div>'
+    + (sw || '')
     + '<div class="sum"><div class="when">' + esc(unit) + '</div>'
     +   '<div class="amt"><u>' + esc(CUR) + '</u>' + a.v
     +     (a.u ? '<u style="font-size:.42em">' + a.u + '</u>' : '') + '</div>'
@@ -413,9 +419,17 @@ function hour12(h){
 /* ============================================================
    AAJ
    ============================================================ */
+var DAY = 'today';
 function paintToday(){
-  var t = B.today, L = t.live, p = t.pay;
-  var sub = '<span class="pulse"><i></i>' + esc(B.biz.branch || B.biz.name) + '</span>';
+  var Y = DAY === 'yesterday' && B.yday;
+  var t = Y ? B.yday : B.today, L = t.live, p = t.pay;
+  var sub = Y ? esc(B.biz.branch || B.biz.name)
+              : '<span class="pulse"><i></i>' + esc(B.biz.branch || B.biz.name) + '</span>';
+  var sw = '<div class="daysw" role="tablist">'
+    + '<button data-day="today"' + (Y ? '' : ' class="on"') + '>Today</button>'
+    + '<button data-day="yesterday"' + (Y ? ' class="on"' : '') + '>Yesterday</button></div>';
+  var word = Y ? 'yesterday' : 'today';
+  var before = Y ? 'day before' : 'yesterday';
 
   var chips = [
     {n:'Running', v:L.running, c:'go'},
@@ -428,16 +442,16 @@ function paintToday(){
   var labs = t.hours.map(function(h){ return hour12(h.h); });
   var peak = vals.indexOf(Math.max.apply(null, vals.concat([0])));
 
-  var html = head(B.biz.name, sub, t.net, niceDate(t.date),
-                  trendLine(t.net, t.yest.net, 'Yesterday by this time'))
-    + '<div class="live">' + chips.map(function(c){
+  var html = head(B.biz.name, sub, t.net, niceDate(t.date, Y),
+                  trendLine(t.net, t.yest.net, Y ? 'Day before (full day)' : 'Yesterday by this time'), sw)
+    + (Y ? '<div style="height:24px"></div>' : '<div class="live">' + chips.map(function(c){
         return '<span class="' + c.c + '"><i></i>' + esc(c.n) + ' <b>' + esc(c.v) + '</b></span>';
-      }).join('') + '</div>'
+      }).join('') + '</div>')
     + '<div class="sheet">'
     + '<div class="sect"><div class="pair">'
-    +   pairCell('Bills', n0(t.bills), 'yesterday ' + n0(t.yest.bills))
+    +   pairCell('Bills', n0(t.bills), before + ' ' + n0(t.yest.bills))
     +   pairCell('Average bill', n0(t.avg), t.bills ? '' : 'no bills yet')
-    +   (t.guests ? pairCell('Guests', n0(t.guests), 'yesterday ' + n0(t.yest.guests))
+    +   (t.guests ? pairCell('Guests', n0(t.guests), before + ' ' + n0(t.yest.guests))
                   : (t.disc > 0 ? pairCell('Discount given', n0(t.disc), 'off the bills') : ''))
     + '</div></div>';
 
@@ -456,7 +470,7 @@ function paintToday(){
      tasalli dena hai.
      ============================================================ */
   if (t.cost > 0 || t.exp > 0){
-    html += sect('Money today', 'What came in, what went out, and what is left.',
+    html += sect('Money ' + word, 'What came in, what went out, and what is left.',
       '<div class="lines">'
       + ln('Sales', t.disc > 0 ? ('after ' + n0(t.disc) + ' discount') : '', n0(t.net))
       + (t.cost > 0 ? ln('Food cost', Math.round(t.cost/Math.max(t.net,1)*100) + '% of sales',
@@ -480,11 +494,11 @@ function paintToday(){
   if (vals.length >= 3){
     html += sect('Busiest hours',
       'Busiest at ' + labs[peak] + ' o\'clock — ' + n0(vals[peak]) + '.',
-      bars(vals, labs, peak, vals.length - 1));
+      bars(vals, labs, peak, Y ? -1 : vals.length - 1));
   }
 
   if (t.items.length){
-    html += sect('Top sellers today', '', '<div class="lines">' + t.items.map(function(i){
+    html += sect('Top sellers ' + word, '', '<div class="lines">' + t.items.map(function(i){
       return ln(i.n, sold(i.q), n0(i.a),
                 Math.round(i.a / Math.max(t.net,1) * 100) + '%');
     }).join('') + '</div>');
@@ -502,10 +516,10 @@ function pairCell(k, v, s){
   return '<div><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>'
        + '<div class="s">' + esc(s) + '</div></div>';
 }
-function niceDate(d){
+function niceDate(d, y){
   try{
     var x = new Date(d + 'T00:00:00');
-    return 'Today, ' + x.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
+    return (y ? 'Yesterday, ' : 'Today, ') + x.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
   }catch(e){ return d; }
 }
 
@@ -796,6 +810,19 @@ document.addEventListener('click', function(e){
   if (it){ openSlip(it.getAttribute('data-i')); return; }
   if (e.target.closest('[data-shut]')) document.getElementById('slip').classList.remove('on');
 
+  var sd = e.target.closest('[data-day]');
+  if (sd){
+    DAY = sd.getAttribute('data-day');
+    if (DAY === 'yesterday' && !B.yday){
+      sd.style.opacity = '.55';              /* data aa raha hai */
+      api('owner-mobile-day&day=yesterday', null, function(r){
+        if (!r.ok){ DAY = 'today'; paintToday(); return; }
+        B.yday = r.day; paintToday();
+      });
+      return;
+    }
+    paintToday(); window.scrollTo(0,0); return;
+  }
   var dy = e.target.closest('[data-days]');
   if (dy){
     DAYS = +dy.getAttribute('data-days');
@@ -828,3 +855,4 @@ load();
 </script>
 </body>
 </html>
+<!-- build: V194 build 2026-11-16 -->

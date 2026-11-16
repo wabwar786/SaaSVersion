@@ -239,6 +239,114 @@ final class OwnerMobile
     }
 
     /* ============================================================
+       KAL — V194
+
+       Malik "Yesterday" dabaye to kal ka POORA din. Aaj wala `today()`
+       jaan boojh kar haath nahi lagaya (us ka "kal is waqt tak" wala
+       moqabla wahan theek hai); yeh alag function hai, wahi queries,
+       wahi usool:
+         * din = bill BAND hone ka din (reports aur dashboard jaisa —
+           raat 12 ke baad band hua bill agle din mein).
+         * moqabla parson ke POORE din se (kal ka din poora guzar chuka).
+         * "abhi kya chal raha hai" (running, kitchen, tables) kal ke liye
+           be-maani hai — khali bheja jata hai, screen use nahi dikhati.
+       Sirf parhna — kuch nahi likhta.
+       ============================================================ */
+    public static function yesterday(): array
+    {
+        $sid = site_id();
+        $d   = date('Y-m-d', strtotime('-1 day', strtotime(today())));
+        $p   = date('Y-m-d', strtotime('-1 day', strtotime($d)));
+        $day = "DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'";
+
+        $head = self::q(
+            "SELECT COUNT(*) bills, COALESCE(SUM(grand_total),0) net,
+                    COALESCE(SUM(discount_amount),0) disc,
+                    COALESCE(SUM(guest_count),0) guests
+               FROM orders WHERE site_id=? AND $day", [$sid, $d])[0]
+            ?? ['bills'=>0,'net'=>0,'disc'=>0,'guests'=>0];
+        $prev = self::q(
+            "SELECT COUNT(*) bills, COALESCE(SUM(grand_total),0) net,
+                    COALESCE(SUM(guest_count),0) guests
+               FROM orders WHERE site_id=? AND $day", [$sid, $p])[0]
+            ?? ['bills'=>0,'net'=>0,'guests'=>0];
+
+        $pay = ['cash'=>0.0,'card'=>0.0,'online'=>0.0];
+        foreach (self::q(
+            "SELECT pm.method_type t, COALESCE(SUM(py.amount),0) a
+               FROM payments py
+               JOIN payment_methods pm ON pm.id=py.payment_method_id
+               JOIN orders o ON o.id=py.order_id
+              WHERE py.site_id=? AND py.status='COMPLETED'
+                AND DATE(COALESCE(o.closed_at,o.created_at))=?
+              GROUP BY pm.method_type", [$sid, $d]) as $r) {
+            $t = strtoupper((string)$r['t']);
+            if ($t === 'CASH')      $pay['cash']   += self::f($r['a']);
+            elseif ($t === 'CARD')  $pay['card']   += self::f($r['a']);
+            else                    $pay['online'] += self::f($r['a']);
+        }
+
+        $hours = [];
+        foreach (self::q(
+            "SELECT HOUR(COALESCE(closed_at,created_at)) h, COALESCE(SUM(grand_total),0) a
+               FROM orders WHERE site_id=? AND $day
+              GROUP BY HOUR(COALESCE(closed_at,created_at)) ORDER BY h", [$sid, $d]) as $r) {
+            $hours[] = ['h' => (int)$r['h'], 'a' => self::f($r['a'])];
+        }
+
+        $items = [];
+        foreach (self::q(
+            "SELECT oi.item_name_snapshot n, SUM(oi.qty) q, SUM(oi.line_total) a
+               FROM order_items oi JOIN orders o ON o.id=oi.order_id
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
+              GROUP BY oi.item_name_snapshot ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
+            $items[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
+        }
+
+        $staff = [];
+        foreach (self::q(
+            "SELECT COALESCE(u.full_name,'—') n, COUNT(*) bills,
+                    COALESCE(SUM(o.grand_total),0) a
+               FROM orders o LEFT JOIN users u ON u.id=o.created_by_user_id
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
+              GROUP BY o.created_by_user_id, u.full_name ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
+            $staff[] = ['n'=>(string)$r['n'],'bills'=>(int)$r['bills'],'a'=>self::f($r['a'])];
+        }
+
+        $cost = self::f(self::one(
+            "SELECT COALESCE(SUM(ABS(stl.value_change)),0)
+               FROM stock_transaction_lines stl
+               JOIN stock_transactions st ON st.id=stl.stock_transaction_id
+              WHERE st.site_id=? AND st.business_date=? AND st.transaction_type='SALE'", [$sid, $d]));
+        $exp = self::f(self::one(
+            "SELECT COALESCE(SUM(amount),0) FROM expenses
+              WHERE site_id=? AND expense_date=? AND status<>'REJECTED'
+                AND deleted_at IS NULL", [$sid, $d]));
+
+        $net   = self::f($head['net']);
+        $bills = (int)$head['bills'];
+        return [
+            'date'    => $d,
+            'net'     => $net,
+            'bills'   => $bills,
+            'avg'     => $bills ? round($net / $bills) : 0,
+            'guests'  => (int)$head['guests'],
+            'disc'    => self::f($head['disc']),
+            'cost'    => $cost,
+            'exp'     => $exp,
+            'left'    => $net - $cost - $exp,
+            /* key ka naam `yest` hi rakha (screen wahi code chalati hai);
+               yahan matlab "parson, poora din". */
+            'yest'    => ['net'=>self::f($prev['net']),'bills'=>(int)$prev['bills'],'guests'=>(int)$prev['guests']],
+            'pay'     => $pay,
+            'hours'   => $hours,
+            'items'   => $items,
+            'staff'   => $staff,
+            'live'    => ['running'=>0,'kitchen'=>0,'late'=>0,'tables'=>0,'busy'=>0],
+        ];
+    }
+
+    /* ============================================================
        SALE — arse ka hisaab
        ============================================================ */
     public static function sale(int $days = 30): array
@@ -569,4 +677,4 @@ final class OwnerMobile
     }
 }
 
-// build: V160 build 2026-10-20
+// build: V194 build 2026-11-16
