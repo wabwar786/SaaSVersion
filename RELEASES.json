@@ -1,6 +1,7 @@
 {
   "_help": "Which business type each build is for. RETAIL, RESTAURANT or both. A build that is not listed here is shown to everyone. Newest first.",
   "releases": [
+    {"build": "V196 build 2026-11-17", "for": ["RESTAURANT"], "note": "Restaurant POS: an item removed from a bill stays removed after hold, KOT, print and resume; it is not charged or counted in item reports"},
     {"build": "V195 build 2026-11-17", "for": ["RESTAURANT", "RETAIL"], "note": "Restaurant POS: bills never merge into another order, Duplicate list complete and fresh, table opens its held bill. New login page; any business user can log in from any browser"},
     {"build": "V194 build 2026-11-16", "for": ["RESTAURANT"], "note": "Owner mobile app: Yesterday button — full sale of yesterday"},
     {"build": "V193 build 2026-11-13", "for": ["RETAIL"], "note": "Retail: receipt prints on bill close, held bills per counter, duplicate bill by date, faster bill search, safe bill numbers on many counters, offline database auto-repair"},

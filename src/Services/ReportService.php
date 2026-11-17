@@ -602,7 +602,7 @@ final class ReportService
                JOIN orders o ON o.id = oi.order_id
                LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id = mi.category_id
-              WHERE " . self::billWhere() . "
+              WHERE " . self::billWhere() . " AND oi.status='ACTIVE'
               GROUP BY item, category ORDER BY sale DESC",
             [site_id(), $f, $t]);
 
@@ -646,7 +646,7 @@ final class ReportService
                JOIN orders o ON o.id = oi.order_id
                LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id = mi.category_id
-              WHERE " . self::billWhere() . "
+              WHERE " . self::billWhere() . " AND oi.status='ACTIVE'
               GROUP BY category ORDER BY sale DESC",
             [site_id(), $f, $t]);
 
@@ -1450,7 +1450,7 @@ final class ReportService
                         JOIN orders o ON o.id = oi.order_id
                         LEFT JOIN menu_items mi      ON mi.id = oi.menu_item_id
                         LEFT JOIN menu_categories mc ON mc.id = mi.category_id
-                       WHERE " . self::billWhere(),
+                       WHERE " . self::billWhere() . " AND oi.status='ACTIVE'",
             'expenses' => "FROM expenses e
                            LEFT JOIN expense_categories ec ON ec.id = e.category_id
                           WHERE e.site_id = ? AND e.status <> 'REJECTED' AND e.deleted_at IS NULL
@@ -1885,4 +1885,4 @@ final class ReportService
     }
 }
 
-// build: V178 build 2026-11-03
+// build: V196 build 2026-11-17

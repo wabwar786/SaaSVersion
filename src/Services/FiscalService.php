@@ -330,7 +330,7 @@ final class FiscalService
                                       COALESCE(oi.item_name_snapshot, mi.name) nm, mi.pct_code, mi.code
                                  FROM order_items oi
                                  LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
-                                WHERE oi.order_id=?");
+                                WHERE oi.order_id=? AND oi.status='ACTIVE'");
             $iq->execute([$orderId]);
             $rows = $iq->fetchAll(PDO::FETCH_ASSOC);
             if (!$rows) return ['status' => 'FAILED', 'invoice_no' => '', 'message' => 'The bill has no items'];
@@ -651,4 +651,4 @@ final class FiscalService
     }
 }
 
-// build: V161 build 2026-10-24
+// build: V196 build 2026-11-17

@@ -171,7 +171,9 @@ final class PosService {
   */
  public static function hold(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){
     $order=self::ensureOpenOrder($p,$d);
-    $n=0; foreach($items as $i){ self::upsertOrderItem($p,$order,$i); $n++; }
+    $n=0; $keep=[];
+    foreach($items as $i){ $row=self::upsertOrderItem($p,$order,$i); $keep[]=(string)$row['id']; $n++; }
+    self::dropRemoved($p,$order,$d,$keep);   /* V196 — cart se hata hua item bill se bhi hatao */
 
     $grand = self::writeTotals($p, $order, $d, 1);
 
@@ -180,7 +182,7 @@ final class PosService {
     self::queueSync($p,'orders',$order,'UPDATE');
     /* V189 — asli shift wapas bhejo. POS us se khud ko durust kar leta
        hai jab account kahin aur se band ho chuka ho. */
-    return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),
+    return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
             'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
             'total'=>max(0.0,$grand)];
  }); }
@@ -192,14 +194,15 @@ final class PosService {
     catch(\Throwable $e){ return ''; }
  }
 
- public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
+ public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
     /* V190 — KOT par bhi poora hisaab likho, sirf items nahi.
        Pehle yahan raqam ko haath hi nahi lagta tha: kitchen bhejne ke
        baad bill DB mein svc 0 / disc 0 / total 0 ka khara rehta tha.
        Ab wahi ek method jo hold istemal karta hai — `hold_status` 0,
        kyunki yeh bill ruka hua nahi, chal raha hai. */
+    self::dropRemoved($p,$order,$d,$keep);   /* V196 */
     self::writeTotals($p,$order,$d,0);
-    if(!$pending)return ['order_id'=>$order,'sent'=>0,'bill_no'=>self::billOf($p,$order),
+    if(!$pending)return ['order_id'=>$order,'sent'=>0,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
                          'shift_id'=>(string)(self::shiftFor($p,$d) ?? '')];$groups=[];$noPrinter=[];
  foreach($pending as $x){
    $pr=self::printerForMenu($p,$x['row']['menu_item_id']);
@@ -221,14 +224,14 @@ final class PosService {
  return ['order_id'=>$order,'sent'=>$sent,
          /* V190 — POS ko asli bill number aur asli account bhi batao,
             taake wo khud ko durust kar sake (dekho `syncShift`). */
-         'bill_no'=>self::billOf($p,$order),
+         'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
          'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
          'no_printer'=>count($noPrinter),
          'message'=>$noPrinter
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);/* ============================================================
+ public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);/* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -462,6 +465,35 @@ final class PosService {
     }
     throw new \RuntimeException('Menu item not found in database: '.($i['name']??$base));
  }
+ /* ============================================================
+    V196 — CART SE HATAYA HUA ITEM BILL SE BHI HATAO.
+
+    Customer ne pakra: bill mein se item hatao, hold karo, wapas kholo
+    -> hataya hua item wapas aa jata. Wajah: hold / KOT / bill band
+    karte waqt server sirf cart wali lines likhta tha. Jo line cart se
+    nikal gayi, us ko koi chhuta hi nahi tha — database mein ACTIVE
+    pari rehti. Resume par wapas, aur bill band hone ke baad bhi item
+    reports mein.
+
+    Ab POS `base_line_ids` bhejta hai: is bill ki wo lines jo screen par
+    aayi thin (resume ya pichli KOT se). Un mein se jo is dafa cart mein
+    nahi mili, woh VOID: qty 0, raqam 0. Delete nahi — kitchen ki parchi
+    aur void log us line se jure hain, aur offline sync UPDATE hi le
+    jata hai (delete cloud tak nahi pohanchta).
+
+    Sirf `base_line_ids` wali lines. Tablet ne beech mein koi item daala
+    ho to woh is fehrist mein hai hi nahi — us ko haath nahi lagta.
+    ============================================================ */
+ private static function dropRemoved(PDO $p,string $order,array $d,array $keep):int{
+    $base=[];
+    foreach((array)($d['base_line_ids']??[]) as $x){ $x=trim((string)$x); if($x!=='')$base[$x]=1; }
+    foreach($keep as $k) unset($base[$k]);
+    if(!$base) return 0;
+    $u=$p->prepare("UPDATE order_items SET status='VOID',qty=0,line_total=0,updated_at=NOW(6)
+                     WHERE id=? AND order_id=? AND status='ACTIVE'");
+    $n=0; foreach(array_keys($base) as $id){ $u->execute([$id,$order]); $n+=$u->rowCount(); }
+    return $n;
+ }
  private static function upsertOrderItem(PDO $p,string $order,array $i):array{
     $mid=self::resolveMenuId($p,$i);
     $name=$i['name']??'';
@@ -635,4 +667,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V195 build 2026-11-17
+// build: V196 build 2026-11-17

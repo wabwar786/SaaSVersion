@@ -182,7 +182,7 @@ final class OwnerMobile
         foreach (self::q(
             "SELECT oi.item_name_snapshot n, SUM(oi.qty) q, SUM(oi.line_total) a
                FROM order_items oi JOIN orders o ON o.id=oi.order_id
-              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED' AND oi.status='ACTIVE'
               GROUP BY oi.item_name_snapshot ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
             $items[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
         }
@@ -298,7 +298,7 @@ final class OwnerMobile
         foreach (self::q(
             "SELECT oi.item_name_snapshot n, SUM(oi.qty) q, SUM(oi.line_total) a
                FROM order_items oi JOIN orders o ON o.id=oi.order_id
-              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED' AND oi.status='ACTIVE'
               GROUP BY oi.item_name_snapshot ORDER BY a DESC LIMIT 6", [$sid, $d]) as $r) {
             $items[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
         }
@@ -394,7 +394,7 @@ final class OwnerMobile
                JOIN orders o ON o.id=oi.order_id
                LEFT JOIN menu_items mi ON mi.id=oi.menu_item_id
                LEFT JOIN menu_categories mc ON mc.id=mi.category_id
-              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED' AND oi.status='ACTIVE'
               GROUP BY mc.name ORDER BY a DESC LIMIT 8", [$sid, $from, $to]) as $r) {
             $cats[] = ['n'=>(string)$r['n'],'q'=>self::f($r['q']),'a'=>self::f($r['a'])];
         }
@@ -431,7 +431,7 @@ final class OwnerMobile
                JOIN menu_items mi ON mi.id=oi.menu_item_id
                LEFT JOIN inventory_items di ON di.id=mi.direct_inventory_item_id
                LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1
-              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED'
+              WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ? AND o.order_status='CLOSED' AND oi.status='ACTIVE'
               GROUP BY mi.id, mi.name, mi.base_price, mi.consumption_type,
                        mi.direct_inventory_item_id, mi.direct_inventory_qty,
                        di.avg_cost_per_stock_unit, r.id, r.yield_qty
@@ -677,4 +677,4 @@ final class OwnerMobile
     }
 }
 
-// build: V194 build 2026-11-16
+// build: V196 build 2026-11-17

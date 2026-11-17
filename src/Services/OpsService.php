@@ -676,7 +676,7 @@ final class OpsService
         if (!$o) throw new \RuntimeException('That bill is not open any more.');
 
         $iq = $p->prepare(
-            "SELECT oi.menu_item_id, oi.item_name_snapshot AS name, oi.qty,
+            "SELECT oi.id AS lid, oi.menu_item_id, oi.item_name_snapshot AS name, oi.qty,
                     oi.sent_qty, oi.unit_price, oi.kitchen_note AS note
                FROM order_items oi
               WHERE oi.order_id=? AND oi.status='ACTIVE'
@@ -707,6 +707,7 @@ final class OpsService
             'delivery'    => (float)($o['delivery_charge'] ?? 0),
             'items'    => array_map(fn($x) => [
                 'id'       => (string)$x['menu_item_id'],
+                'lid'      => (string)$x['lid'],   /* V196 — line ki apni id */
                 'name'     => (string)$x['name'],
                 'qty'      => (float)$x['qty'],
                 'sentQty'  => (float)$x['sent_qty'],
@@ -1418,4 +1419,4 @@ final class OpsService
     }
 }
 
-// build: V162 build 2026-10-24
+// build: V196 build 2026-11-17
