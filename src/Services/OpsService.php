@@ -782,13 +782,20 @@ final class OpsService
             $cs->execute([site_id(), Scope::userId()]);
             $sh = $cs->fetch(PDO::FETCH_ASSOC);
             if (!$sh) return [];          /* account khula hi nahi */
+            /* V200 — is cashier ke PICHLE (band) account ka khula bill bhi.
+               Account band hone se pehle ab khule bill rok diye jate hain,
+               magar jo pehle se is tarah reh gaye — woh yahan nazar aayein,
+               gum na hon. Doosre cashier ke bill nahi (Scope ki shart). */
             $shiftW = "(o.shift_id = ? OR (o.shift_id IS NULL
-                        AND COALESCE(o.opened_at,o.created_at) >= ?))";
-            $shiftA = [$sh['id'], $sh['opened_at']];
+                        AND COALESCE(o.opened_at,o.created_at) >= ?)
+                        OR (o.created_by_user_id = ? AND o.shift_id IN
+                            (SELECT cs2.id FROM cashier_shifts cs2
+                              WHERE cs2.site_id = o.site_id AND cs2.status = 'CLOSED')))";
+            $shiftA = [$sh['id'], $sh['opened_at'], Scope::userId()];
         } catch (\Throwable $e) { return []; }
         try {
             $q = DB::pdo()->prepare(
-                "SELECT o.id, o.bill_no, o.service_mode,
+                "SELECT o.id, o.bill_no, o.service_mode, o.shift_id,
                         COALESCE(dt.display_name,'') AS table_name,
                         COALESCE(o.grand_total,0) AS total,
                         COALESCE(c.full_name,'') AS customer,
@@ -836,9 +843,10 @@ final class OpsService
             $rows = $q->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) { return []; }
 
-        return array_map(function ($r) {
+        return array_map(function ($r) use ($sh) {
             $mode = str_replace('_', ' ', (string)$r['service_mode']);
             return [
+                'prev'     => (!empty($r['shift_id']) && $r['shift_id'] !== $sh['id']) ? 1 : 0,   /* V200 */
                 'id'       => (string)$r['id'],
                 'billNo'   => (string)$r['bill_no'],
                 'mode'     => ucwords(strtolower($mode)),
@@ -1356,12 +1364,12 @@ final class OpsService
     public static function tabletOrder(string $tableId): array
     {
         $p = DB::pdo();
-        $q = $p->prepare("SELECT id, bill_no FROM orders
+        $q = $p->prepare("SELECT id, bill_no, row_version FROM orders
                            WHERE site_id=? AND table_id=? AND order_status='OPEN'
                            ORDER BY created_at DESC LIMIT 1");
         $q->execute([site_id(), $tableId]);
         $o = $q->fetch(PDO::FETCH_ASSOC);
-        if (!$o) return ['order_id' => '', 'bill' => '', 'items' => []];
+        if (!$o) return ['order_id' => '', 'bill' => '', 'rev' => '', 'items' => []];
 
         $iq = $p->prepare(
             "SELECT oi.id, oi.menu_item_id, oi.item_name_snapshot AS name,
@@ -1370,7 +1378,10 @@ final class OpsService
               WHERE oi.order_id=? AND oi.status='ACTIVE'
               ORDER BY oi.created_at");
         $iq->execute([$o['id']]);
-        return ['order_id' => $o['id'], 'bill' => (string)$o['bill_no'],
+        /* V200 — `rev`: tablet bhi wahi version bhejta hai jo us ne dekha.
+           Beech mein counter / QR ne bill badla ho to tablet ka save rukta
+           hai (warna tablet ki purani qty QR ke items mita deti). */
+        return ['order_id' => $o['id'], 'bill' => (string)$o['bill_no'], 'rev' => (int)$o['row_version'],
                 'items' => array_map(fn($x) => [
                     'id'    => $x['id'],
                     'menu_id' => (string)$x['menu_item_id'],
@@ -1423,4 +1434,4 @@ final class OpsService
     }
 }
 
-// build: V199 build 2026-11-17
+// build: V200 build 2026-11-17

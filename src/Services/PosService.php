@@ -100,6 +100,38 @@ final class PosService {
                       WHERE order_id=? AND status='ACTIVE'");
     $tq->execute([$order]);
     $sub=(float)$tq->fetchColumn();
+    /* ============================================================
+       V200 — TABLET / QR ITEM JORE TO COUNTER KA DISCOUNT NA MITE.
+       Tablet sirf items bhejta hai — discount, service, tax nahi. Pehle
+       yahan "na bheja = 0" maana jata: counter ne table bill par 10%
+       discount + service + 16% tax lagaya, waiter ne tablet se Naan
+       jori -> discount, service aur tax sab 0 (test: 2,710 -> 2,980).
+       Ab jo khana request mein hai hi nahi, wo bill par jo pehle se
+       likha hai wahi rehta hai. POS counter yeh sab hamesha bhejta hai.
+       ============================================================ */
+    if(!array_key_exists('discount_amount',$d) || !array_key_exists('service_charge',$d)
+       || !array_key_exists('tax_rate',$d) || !array_key_exists('delivery_charge',$d)){
+        $oq=$p->prepare("SELECT subtotal,discount_amount,discount_pct,service_charge,tax_amount,delivery_charge
+                           FROM orders WHERE id=?");
+        $oq->execute([$order]); $o=$oq->fetch(PDO::FETCH_ASSOC) ?: [];
+        $pct=(float)($o['discount_pct']??0);
+        if(!array_key_exists('discount_amount',$d)){
+            $d['discount_pct']=$pct;
+            $d['discount_amount']=$pct>0 ? round(min($sub*$pct/100,$sub),2) : (float)($o['discount_amount']??0);
+        }
+        if(!array_key_exists('service_charge',$d)) $d['service_charge']=(float)($o['service_charge']??0);
+        if(!array_key_exists('delivery_charge',$d)) $d['delivery_charge']=(float)($o['delivery_charge']??0);
+        if(!array_key_exists('tax_rate',$d)){
+            $pt=(float)($o['tax_amount']??0);
+            $pb=(float)($o['subtotal']??0)-(float)($o['discount_amount']??0)+(float)($o['service_charge']??0);
+            $r=0.0;
+            if($pt>0 && $pb>0){
+                $r = \Aio\Services\TaxMode::isInclusive() ? ($pt/max(0.01,$pb-$pt))*100 : ($pt/$pb)*100;
+                $r = round($r,2);
+            }
+            $d['tax_rate']=$r;
+        }
+    }
     $disc=(float)($d['discount_amount']??0);
     $svc=(float)($d['service_charge']??0);
     /* V199 — 400 ke bill par 1,000 discount: bill 0 theek tha, magar
@@ -379,6 +411,15 @@ final class PosService {
                                 ORDER BY created_at DESC LIMIT 1");
             $q0->execute([site_id(), $tid]);
             if ($openId = $q0->fetchColumn()) {
+                /* V200 — tablet ne table KHAALI dekha tha (`table_fresh`), magar
+                   beech mein doosre tablet / QR ne us par bill khol diya. Is
+                   tablet ki qty us bill ki qty ko mita deti (1+1 = 1). Rok kar
+                   tablet ko taaza bill dikhao. */
+                if (!empty($d['table_fresh'])) {
+                    $bq=$p->prepare("SELECT bill_no FROM orders WHERE id=?"); $bq->execute([$openId]);
+                    throw new PosConflict('CHANGED','Is table par abhi bill khul chuka hai — taaza bill dekh kar dobara bhejein.',
+                                          (string)$bq->fetchColumn(), (string)$openId);
+                }
                 self::touchOrder($p, (string)$openId, $d);
                 return (string)$openId;
             }
@@ -493,7 +534,7 @@ final class PosService {
     $p->prepare("UPDATE orders SET service_mode=?,table_id=?,customer_id=?,shift_id=?,guest_count=?,updated_at=NOW(6) WHERE id=?")
       ->execute([$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,$id]);
  }
- private static function resolveMenuId(PDO $p,array $i):string{
+ private static function resolveMenuId(PDO $p,array $i,?string $order=null):string{
     $raw=(string)($i['menu_item_id']??$i['id']??'');
     if($raw && preg_match('/^[0-9a-f-]{36}$/i',$raw)){
         $q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL LIMIT 1");
@@ -510,6 +551,20 @@ final class PosService {
             $q->execute([site_id(),$n]);
             if($id=$q->fetchColumn())return$id;
         }
+    }
+    /* ============================================================
+       V200 — MENU SE HATA ITEM, MAGAR BILL MEIN PEHLE SE HAI.
+       Bill hold par tha (Lassi x2), manager ne menu se Lassi delete kar
+       di -> bill charge hi nahi hota tha ("Menu item not found"). Customer
+       kha chuka, bill phans gaya. Ab: jo item ISI bill mein pehle se hai
+       (chahe menu se hat chuka ho) wo chalta hai. Naye bill mein hata hua
+       item ab bhi nahi aa sakta.
+       ============================================================ */
+    if($order!==null){
+        $q=$p->prepare("SELECT oi.menu_item_id FROM order_items oi
+                         WHERE oi.order_id=? AND (oi.menu_item_id=? OR oi.item_name_snapshot=?) LIMIT 1");
+        $q->execute([$order,$raw,(string)($i['name']??$base)]);
+        if($id=$q->fetchColumn())return (string)$id;
     }
     throw new \RuntimeException('Menu item not found in database: '.($i['name']??$base));
  }
@@ -550,6 +605,76 @@ final class PosService {
     3. Transaction beech mein khatam mili to save ko kamyab nahi maana
        jata — saaf error.
     ============================================================ */
+ /* ============================================================
+    V200 — QR / APP ORDER SEEDHA APNE BILL MEIN.
+
+    Pehle "Accept" QR ke items cashier ke KHULE cart mein daal deta
+    tha — cashier walk-in ka takeaway bana raha ho to table T-02 ke
+    items usi walk-in ke bill mein jur jate, aur table ka naam bhi
+    gayab (test: Biryani x1 + Naan x3, Takeaway, table khali).
+
+    Ab server khud:
+      - table ka order: us table ka khula bill ho to usi mein JORTA hai
+        (qty jama hoti hai), warna table ka naya hold bill banata hai;
+      - app ka order (table nahi): customer ke naam/phone ke saath naya
+        hold bill.
+    Cashier ka cart chheda hi nahi jata. Discount / service / tax wahi
+    rehte hain jo bill par pehle se hain (dekho writeTotals).
+    Ek order do dafa accept nahi ho sakta (PENDING ki shart, lock ke saath).
+    ============================================================ */
+ public static function qrAccept(string $qrId): array { return self::txRetry(function(PDO $p)use($qrId){
+    self::lockSite($p);
+    $q=$p->prepare("SELECT o.*, s.guest_name, s.guest_phone FROM qr_orders o
+                      LEFT JOIN qr_sessions s ON s.id=o.session_id
+                     WHERE o.id=? AND o.site_id=? FOR UPDATE");
+    $q->execute([$qrId,site_id()]); $qo=$q->fetch(PDO::FETCH_ASSOC);
+    if(!$qo) throw new \RuntimeException('This order was not found.');
+    if($qo['status']!=='PENDING') throw new \RuntimeException('This order was already '.strtolower((string)$qo['status']).'.');
+    $items=json_decode((string)$qo['items_json'],true)?:[];
+    $table=trim((string)($qo['table_name']??''));
+    $order=null;
+    if($table!==''){
+        $tid=self::tableId($p,$table);
+        if($tid){
+            $tq=$p->prepare("SELECT id FROM orders WHERE site_id=? AND table_id=? AND order_status='OPEN' ORDER BY created_at DESC LIMIT 1");
+            $tq->execute([site_id(),$tid]); $order=$tq->fetchColumn()?:null;
+        }
+    }
+    $d=['service_mode'=>$table!==''?'Dine In':'Takeaway','table_name'=>$table,
+        'customer_id'=>'walkin','customer_name'=>(string)($qo['guest_name']??''),
+        'bill_no'=>PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT)];
+    if(!$order){
+        $order=self::ensureOpenOrder($p,$d);
+        if($table==='' && ((string)($qo['guest_name']??'')!=='' || (string)($qo['guest_phone']??'')!=='')){
+            $note=' [App: '.trim((string)$qo['guest_name'].' '.(string)$qo['guest_phone']).']';
+            $p->prepare("UPDATE orders SET notes=CONCAT(COALESCE(notes,''),?) WHERE id=?")->execute([$note,$order]);
+        }
+    }
+    $added=0; $skipped=[];
+    $ex=$p->prepare("SELECT qty,unit_price,sent_qty FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=?
+                       AND COALESCE(kitchen_note,'')=? AND status='ACTIVE' LIMIT 1");
+    foreach($items as $it){
+        $qty=(float)($it['qty']??0); if($qty<=0) continue;
+        $line=['menu_item_id'=>(string)($it['id']??''),'name'=>(string)($it['name']??''),'base_name'=>(string)($it['name']??''),
+               'unit_price'=>(float)($it['price']??0),'note'=>(string)($it['note']??''),'qty'=>$qty];
+        try{
+            $mid=self::resolveMenuId($p,$line,$order);
+            $ex->execute([$order,$mid,$line['name'],$line['note']]);
+            if($old=$ex->fetch(PDO::FETCH_ASSOC)){ $line['qty']=(float)$old['qty']+$qty; $line['unit_price']=(float)$old['unit_price']; }
+            self::upsertOrderItem($p,$order,$line); $added++;
+        }catch(\Throwable $e){ $skipped[]=$line['name']; }
+    }
+    if(!$added) throw new \RuntimeException('None of these items are on the menu any more: '.implode(', ',$skipped));
+    /* Pehle se chalta (KOT wala) bill apni halat mein rahe; naya QR bill "hold". */
+    $hq=$p->prepare("SELECT hold_status, (SELECT COUNT(*) FROM order_items WHERE order_id=orders.id AND sent_qty>0) FROM orders WHERE id=?");
+    $hq->execute([$order]); $hs=$hq->fetch(PDO::FETCH_NUM);
+    self::writeTotals($p,$order,['service_mode'=>$d['service_mode']],((int)$hs[1]>0)?(int)$hs[0]:1);
+    $rev=self::bumpRev($p,$order);
+    $p->prepare("UPDATE qr_orders SET status='ACCEPTED',handled_at=NOW(6),handled_by=? WHERE id=?")
+      ->execute([current_user()['id']??null,$qrId]);
+    self::queueSync($p,'orders',$order,'UPDATE');
+    return ['order_id'=>$order,'bill_no'=>self::billOf($p,$order),'table'=>$table,'added'=>$added,'skipped'=>$skipped,'rev'=>$rev];
+ }); }
  private static function lockSite(PDO $p):void{
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
  }
@@ -627,7 +752,7 @@ final class PosService {
     }catch(\Throwable $e){ /* parchi na bane to bhi bill ka kaam na ruke */ }
  }
  private static function upsertOrderItem(PDO $p,string $order,array $i):array{
-    $mid=self::resolveMenuId($p,$i);
+    $mid=self::resolveMenuId($p,$i,$order);
     $name=$i['name']??'';
     $note=(string)($i['note']??'');
     /* ============================================================
@@ -688,7 +813,7 @@ final class PosService {
     $row=$p->prepare("SELECT * FROM order_items WHERE id=?");$row->execute([$id]);return$row->fetch();
  }
  private static function sendPendingInsideTx(PDO $p,string $order):void{$q=$p->prepare("SELECT oi.*,mi.category_id FROM order_items oi JOIN menu_items mi ON mi.id=oi.menu_item_id WHERE oi.order_id=? AND oi.qty>oi.sent_qty AND oi.status='ACTIVE'");$q->execute([$order]);$rows=$q->fetchAll();$groups=[];foreach($rows as $r){$pr=self::printerForMenu($p,$r['menu_item_id']);if(!$pr)continue;$groups[$pr['id']]['printer']=$pr;$groups[$pr['id']]['rows'][]=$r;}foreach($groups as $g){$kt=uuid();$ticket='KOT-'.strtoupper(substr(str_replace('-','',$kt),0,8));$p->prepare("INSERT INTO kitchen_tickets(id,tenant_id,site_id,order_id,ticket_no,printer_id,station_code,ticket_status,sent_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,'NEW',NOW(6),?)")->execute([$kt,tenant_id(),site_id(),$order,$ticket,$g['printer']['id'],$g['printer']['station_code'],current_user()['id']??null]);$lines=[];foreach($g['rows'] as $r){$pending=(float)$r['qty']-(float)$r['sent_qty'];$p->prepare("INSERT INTO kitchen_ticket_items(id,kitchen_ticket_id,order_item_id,qty_sent,item_status,note_snapshot) VALUES(?,?,?,?, 'NEW',?)")->execute([uuid(),$kt,$r['id'],$pending,$r['kitchen_note']]);$p->prepare("UPDATE order_items SET sent_qty=qty WHERE id=?")->execute([$r['id']]);$lines[]=$pending.' x '.$r['item_name_snapshot'];}$p->prepare("INSERT INTO printer_jobs(id,tenant_id,site_id,printer_id,job_type,reference_type,reference_id,payload_text,status) VALUES(?,?,?,?, 'KOT','KITCHEN_TICKET',?,?, 'PENDING')")->execute([uuid(),tenant_id(),site_id(),$g['printer']['id'],$kt,$ticket."\n".implode("\n",$lines)]);}}
- private static function postInventory(PDO $p,string $order,string $bill,array $items):void{$loc=self::defaultLocation($p);$moves=[];foreach($items as $i){$mid=self::resolveMenuId($p,$i);$m=$p->prepare("SELECT mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");$m->execute([$mid]);$x=$m->fetch();if(!$x)continue;$qty=(float)$i['qty'];$oi=$p->prepare("SELECT id FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=? LIMIT 1");$oi->execute([$order,$mid,$i['name']]);$oid=$oi->fetchColumn();if($x['consumption_type']==='DIRECT_INVENTORY'&&$x['direct_inventory_item_id'])$moves[]=(object)['item_id'=>$x['direct_inventory_item_id'],'location_id'=>$loc,'qty'=>-$qty*(float)$x['direct_inventory_qty'],'unit_cost'=>self::cost($p,$x['direct_inventory_item_id']),'source_order_item_id'=>$oid];elseif($x['consumption_type']==='RECIPE'&&$x['recipe_id']){$ri=$p->prepare("SELECT inventory_item_id,qty_per_yield,waste_pct FROM recipe_ingredients WHERE recipe_id=?");$ri->execute([$x['recipe_id']]);foreach($ri->fetchAll() as $r){$need=((float)$r['qty_per_yield']*$qty/max(.000001,(float)$x['yield_qty']))*(1+(float)$r['waste_pct']/100);$moves[]=(object)['item_id'=>$r['inventory_item_id'],'location_id'=>$loc,'qty'=>-$need,'unit_cost'=>self::cost($p,$r['inventory_item_id']),'source_order_item_id'=>$oid];}}}if($moves)$moves=self::liveMoves($p,$moves,$bill);
+ private static function postInventory(PDO $p,string $order,string $bill,array $items):void{$loc=self::defaultLocation($p);$moves=[];foreach($items as $i){$mid=self::resolveMenuId($p,$i,$order);$m=$p->prepare("SELECT mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");$m->execute([$mid]);$x=$m->fetch();if(!$x)continue;$qty=(float)$i['qty'];$oi=$p->prepare("SELECT id FROM order_items WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=? LIMIT 1");$oi->execute([$order,$mid,$i['name']]);$oid=$oi->fetchColumn();if($x['consumption_type']==='DIRECT_INVENTORY'&&$x['direct_inventory_item_id'])$moves[]=(object)['item_id'=>$x['direct_inventory_item_id'],'location_id'=>$loc,'qty'=>-$qty*(float)$x['direct_inventory_qty'],'unit_cost'=>self::cost($p,$x['direct_inventory_item_id']),'source_order_item_id'=>$oid];elseif($x['consumption_type']==='RECIPE'&&$x['recipe_id']){$ri=$p->prepare("SELECT inventory_item_id,qty_per_yield,waste_pct FROM recipe_ingredients WHERE recipe_id=?");$ri->execute([$x['recipe_id']]);foreach($ri->fetchAll() as $r){$need=((float)$r['qty_per_yield']*$qty/max(.000001,(float)$x['yield_qty']))*(1+(float)$r['waste_pct']/100);$moves[]=(object)['item_id'=>$r['inventory_item_id'],'location_id'=>$loc,'qty'=>-$need,'unit_cost'=>self::cost($p,$r['inventory_item_id']),'source_order_item_id'=>$oid];}}}if($moves)$moves=self::liveMoves($p,$moves,$bill);
  if($moves)InventoryService::postMovement($p,'SALE','ORDER',$order,$bill,$moves,current_user()['id']??null);}
  /* ============================================================
     V172 — TOOTI HUI STOCK WIRING BILL KO NA ROKE.
@@ -799,4 +924,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V199 build 2026-11-17
+// build: V200 build 2026-11-17

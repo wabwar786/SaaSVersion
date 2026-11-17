@@ -26,6 +26,23 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 /* V197 — bill band / badla hua: POS ko saaf code ke saath batao (dekho PosConflict). */
+/* ============================================================
+   V200 — KHULE BILL KE SAATH ACCOUNT BAND NAHI.
+   Hold / KOT wala bill chhor kar account band hota to naye account ki
+   Hold Bills mein woh nazar hi nahi aata tha — database mein khula,
+   cashier ke liye gum. Ab account band karne se pehle yeh bill charge,
+   cancel ya "Hand over" karne hote hain.
+   ============================================================ */
+function pos_open_bills_msg(string $shiftId):?string{
+  $q=DB::pdo()->prepare("SELECT o.bill_no, COALESCE(dt.display_name,'') t, o.service_mode m, o.grand_total g
+                           FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id
+                          WHERE o.site_id=? AND o.shift_id=? AND o.order_status='OPEN'
+                          ORDER BY o.bill_no LIMIT 20");
+  $q->execute([site_id(),$shiftId]); $rows=$q->fetchAll();
+  if(!$rows) return null;
+  $list=implode(', ',array_map(fn($r)=>'#'.$r['bill_no'].' ('.($r['t']!==''?$r['t']:ucwords(strtolower(str_replace('_',' ',$r['m'])))).', '.number_format((float)$r['g']).')',$rows));
+  return count($rows).' bill abhi khule hain: '.$list.'. Pehle inhen charge karein, cancel karein, ya "Hand over" se agle cashier ko dein — phir account band karein.';
+}
 function pos_conflict(\Aio\Services\PosConflict $e):never{
   http_response_code(409);
   echo json_encode(['ok'=>false,'code'=>$e->kind,'message'=>$e->getMessage(),
@@ -677,7 +694,17 @@ case 'user-create':needLogin();Auth::requireModule('users');$d=body();$id=applyU
 case 'user-update':needLogin();Auth::requireModule('users');$d=body();applyUser($d['id'],$d,false);ok(['state'=>accessState()]);
 case 'signup-approve':needLogin();Auth::requireModule('users');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT * FROM signup_requests WHERE id=? AND status='PENDING'");$q->execute([$d['id']]);$r=$q->fetch();if(!$r)fail('Request not found.');$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;UserService::create(['full_name'=>$r['full_name'],'email'=>$r['email'],'username'=>'','phone'=>$r['phone']??'','password'=>'','password_hash_override'=>$r['password_hash'],'password_algo'=>'ARGON2ID','role_id'=>$role,'modules'=>$mods,'is_admin'=>0],$r['id']);ok(['state'=>accessState()]);
 case 'signup-reject':needLogin();Auth::requireModule('users');$d=body();DB::pdo()->prepare("UPDATE signup_requests SET status='REJECTED',reviewed_by_user_id=?,reviewed_at=NOW(6) WHERE id=? AND status='PENDING'")->execute([current_user()['id'],$d['id']]);ok(['state'=>accessState()]);
-case 'dashboard-state':needLogin();ok(['state'=>PageData::dashboard()]);
+case 'dashboard-state':needLogin();
+ /* V200 — sale ke figures sirf usay jis ke paas dashboard / reports ka haq
+    ho. Yeh data har page par aata hai (db_boot.js) — cashier ke browser
+    tak poore business ki sale pohanch jati thi. Cashier ko sirf kaam ki
+    ginti (running, kitchen, tables). */
+ {$st=PageData::dashboard();
+  if(!(Auth::isManager()||Auth::canModule('dashboard')||Auth::canModule('reports'))){
+    $keep=['runningOrders','preparing','ready','delayed','onlineNew','ridersRoad','occupiedTables','totalTables','shift','updatedAt'];
+    $st=array_intersect_key($st,array_flip($keep));
+  }
+  ok(['state'=>$st]);}
 case 'store-state':needLogin();ok(['state'=>PageData::storeState()]);
 case 'inventory-category-create':needLogin();Auth::requireModule('inventory');$d=body();InventoryService::createCategory(trim($d['name']??''));ok(['state'=>PageData::storeState()]);
 case 'inventory-item-create':needLogin();
@@ -925,6 +952,7 @@ case 'shiftmgr-report-pdf':needLogin();
  header('Content-Length: '.strlen($pdf));echo $pdf;exit;
 
 case 'shiftmgr-close':needLogin();Auth::requireModule('shift');$d=body();
+ if(($ob=pos_open_bills_msg((string)($d['id']??'')))!==null){http_response_code(409);echo json_encode(['ok'=>false,'code'=>'OPEN_BILLS','message'=>$ob],JSON_UNESCAPED_UNICODE);exit;}/* V200 */
  try{$r=OpsService::shiftClose((string)($d['id']??''),(float)($d['counted']??0),(string)($d['note']??''));}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r+['shifts'=>OpsService::shiftList()]);
@@ -2002,6 +2030,11 @@ case 'qr-pending':needLogin();$p=DB::pdo();
  ok(['orders'=>$rows]);
 case 'qr-handle':needLogin();$d=body();$id=(string)($d['id']??'');$act=strtoupper((string)($d['action']??''));if(!in_array($act,['ACCEPTED','REJECTED'],true))fail('action required');
  $p=DB::pdo();$p->prepare("UPDATE qr_orders SET status=?,handled_at=NOW(6),handled_by=? WHERE id=? AND site_id=? AND status='PENDING'")->execute([$act,current_user()['id']??null,$id,site_id()]);ok(['status'=>$act]);
+/* V200 — QR / app order seedha apne bill mein (dekho PosService::qrAccept). */
+case 'qr-accept':needLogin();Auth::requireModule('pos');$d=body();
+ try{Scope::requireOpenShift();}catch(Throwable $e){fail($e->getMessage(),409);}
+ try{$r=PosService::qrAccept((string)($d['id']??''));}catch(Throwable $e){fail($e->getMessage());}
+ ok($r);
 case 'qr-session-close':needLogin();$d=body();$p=DB::pdo();$p->prepare("UPDATE qr_sessions SET status='CLOSED',closed_at=NOW(6) WHERE site_id=? AND table_name=? AND status='ACTIVE'")->execute([site_id(),(string)($d['table']??'')]);ok();
 /* ============ OFFLINE LOGIN: user dropdown ============ */
 /* ============================================================
@@ -2597,7 +2630,7 @@ case 'shift-handover':needLogin();Auth::requireModule('pos');$d=body();
      'to'=>$tu['full_name'],'to_shift'=>$theirs['shift_no']??null,
      'mode'=>$mode,'message'=>$msg]);
 
-case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
+case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if($sh && ($ob=pos_open_bills_msg((string)$sh['id']))!==null){http_response_code(409);echo json_encode(['ok'=>false,'code'=>'OPEN_BILLS','message'=>$ob],JSON_UNESCAPED_UNICODE);exit;}/* V200 */if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
  $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
    ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');
  /* V76 — shift ka id bhi wapas, taake POS wahi 80mm closing report
@@ -4199,4 +4232,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V199 build 2026-11-17
+// build: V200 build 2026-11-17

@@ -2778,6 +2778,7 @@ $('#holdsBtn').onclick=function(){
           :('<span style="background:var(--warnbg);color:var(--warn);border-radius:5px;padding:1px 6px;'
              +'font-size:10.5px;font-weight:800;margin-left:5px">table nahi chuna</span>')):'')
       +(h.sent?' <span style="color:var(--ok);font-size:10px;font-weight:800">KITCHEN</span>':'')
+      +(h.prev?' <span style="background:var(--warnbg);color:var(--warn);border-radius:5px;padding:1px 6px;font-size:10px;font-weight:800">PICHLA ACCOUNT</span>':'')   /* V200 */
       +'<small>'+(h.lines||0)+' items &middot; '+money(h.total||0)
       +(h.by?(' &middot; '+esc(h.by)):'')+' &middot; '+esc(h.at||'')+'</small></div>'
       +'<div style="display:flex;gap:6px">'
@@ -3232,14 +3233,20 @@ $('#qrBtn').onclick=function(){
   Array.prototype.forEach.call(ov.querySelectorAll('[data-acc]'),function(b){b.onclick=function(){
     var o=qrPending[b.dataset.acc];
     if(!shift){toast('Open a shift first');return}
-    if(!billStarted){mode='Dine In';curTable=o.table||'';billStarted=true}
-    o.items.forEach(function(x){
-      var mp=BOOT.products.filter(function(m){return m.id===x.id})[0];
-      if(mp)push(mp,Number(x.qty)||1,x.note||'');
-    });
-    api('qr-handle',{id:o.id,action:'ACCEPTED'});
-    ov.remove();loadQr();renderCtx();renderCart();
-    toast('Order accepted — it is in the cart now');
+    /* ============================================================
+       V200 — ACCEPT AB CASHIER KE CART KO NAHI CHHOTA.
+       Pehle QR ke items usi bill mein jur jate jo cashier us waqt bana
+       raha tha (walk-in ke bill mein table T-02 ka khana). Ab server
+       order ko apne bill mein daalta hai: table ka khula bill ho to
+       usi mein, warna table / customer ka naya hold bill.
+       ============================================================ */
+    b.disabled=true;
+    var r=api('qr-accept',{id:o.id});
+    if(!r||!r.ok){ b.disabled=false; toast((r&&r.message)||'Could not accept'); return; }
+    ov.remove(); loadQr(); loadHolds();
+    if(curHoldId && r.order_id===curHoldId) resumeHold({id:curHoldId});
+    toast('Order accepted — bill #'+billShow(r.bill_no)+(r.table?(' ('+r.table+')'):'')+' mein add ho gaya. Hold Bills / table se kholein.'
+          +(r.skipped&&r.skipped.length?(' Menu par nahi: '+r.skipped.join(', ')):''));
   }});
   Array.prototype.forEach.call(ov.querySelectorAll('[data-rej]'),function(b){b.onclick=function(){
     api('qr-handle',{id:qrPending[b.dataset.rej].id,action:'REJECTED'});
@@ -3616,7 +3623,9 @@ function closeShift(){
          atak jata aur shift kabhi close na hoti. Khamosh crash. */
       note:ov.querySelector('#cn').value||'',
       clear_cash:(ov.querySelector('#clrChk')&&ov.querySelector('#clrChk').checked)?1:0});
-    if(!r.ok){this.disabled=false;this.textContent='Close Shift and Report';toast(r.message||'Failed');return}
+    if(!r.ok){this.disabled=false;this.textContent='Close Shift and Report';
+      if(r.code==='OPEN_BILLS'){ infoBox('Pehle khule bill', r.message||''); return; }   /* V200 */
+      toast(r.message||'Failed');return}
     ov.remove();shift=null;renderStrip();
     /* Account band hote hi us shift ki poori report khud chhap jati hai —
        cashier ko Print dhoondna na pare, aur malik ko har shift ka kagaz
@@ -3958,4 +3967,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V199 build 2026-11-17 -->
+<!-- build: V200 build 2026-11-17 -->

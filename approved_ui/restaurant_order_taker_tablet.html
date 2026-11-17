@@ -208,6 +208,7 @@ function req(a,p){try{return window.DBApi?DBApi.req(a,p):{ok:false,message:'No s
 
 var MENU=[],CATS=[],TABLES=[],TAX={tax_cash:16,tax_card:8,service_charge:0};
 var view='tables',table=null,cart=[],payMode='cash';
+var tOrder='',tRev='',tBase=[];   /* V200 — bill ki id, version, aur jo lines dikhin */
 
 function boot(){
   var b=req('pos-boot');
@@ -269,13 +270,14 @@ function openTable(id){
   $('#sub').textContent=table.floor+(table.bill?(' \u00b7 Bill '+table.bill):' \u00b7 new bill');
   $('#backBtn').classList.remove('hide');
   $('#holdBtn').classList.remove('on');
-  cart=[];
+  cart=[]; tOrder=''; tRev=''; tBase=[];
   /* Poora bill dikhta hai, sirf apni entries nahi — koi bhi order taker
      kisi bhi table par kaam kar sakta hai, aur customer poora total
      poochta hai. */
   var o=req('tablet-order&table='+encodeURIComponent(id));
   if(o&&o.ok&&o.items)o.items.forEach(function(i){
     cart.push({id:i.menu_id,name:i.name,price:i.price,qty:i.qty,sent:i.sent});});
+  if(o&&o.ok&&o.order_id){ tOrder=o.order_id; tRev=String(o.rev); tBase=(o.items||[]).map(function(i){return i.id}); }
   drawCats();drawMenu(CATS[0]||'');renderCart();
 }
 
@@ -322,21 +324,35 @@ function renderCart(){
 }
 
 function payload(){
-  return {table_id:table?table.id:'',service_mode:'DINE_IN',bill_no:(table&&table.bill)||'',
+  var d={table_id:table?table.id:'',service_mode:'DINE_IN',bill_no:(table&&table.bill)||'',
           items:cart.map(function(l){return {menu_item_id:l.id,name:l.name,qty:l.qty,unit_price:l.price}})};
+  if(tOrder){ d.order_id=tOrder; d.rev=tRev; d.base_line_ids=tBase.slice(); } else d.table_fresh=1;   /* V200 */
+  return d;
+}
+/* V200 — bill counter / QR se badal chuka ho to taaza khol kar batao. */
+function tabConflict(r){
+  if(!r||r.ok||!r.code)return false;
+  var id=table&&table.id;
+  if(r.code==='CHANGED'){ if(id)openTable(id); toast('Is table ka bill counter / QR se badla gaya — taaza bill khol diya, dobara check kar ke bhejein',true); return true; }
+  if(r.code==='CLOSED'){ toast(r.message||'Yeh bill band ho chuka hai',true); loadTables(); drawTables(); return true; }
+  return false;
 }
 function hold(){
   if(!table){toast('Pick a table first',true);return}
   if(!cart.length){toast('Add items first',true);return}
   var r=req('pos-hold',payload());
+  if(tabConflict(r))return;   /* V200 */
   if(!r||!r.ok){toast((r&&r.message)||'Could not hold the bill',true);return}
+  tOrder=r.order_id||tOrder; if(r.rev!=null)tRev=String(r.rev); if(r.line_ids)tBase=r.line_ids.slice();
   toast('Held on '+table.name);loadTables();drawTables();
 }
 function send(){
   if(!table){toast('Pick a table first',true);return}
   if(!cart.filter(function(l){return l.qty>(l.sent||0)}).length){toast('Nothing new to send',true);return}
   var r=req('pos-kot',payload());
+  if(tabConflict(r))return;   /* V200 */
   if(!r||!r.ok){toast((r&&r.message)||'Could not send to the kitchen',true);return}
+  tOrder=r.order_id||tOrder; if(r.rev!=null)tRev=String(r.rev); if(r.line_ids)tBase=r.line_ids.slice();
   toast('Sent to kitchen');
   cart.forEach(function(l){l.sent=l.qty});renderCart();loadTables();
 }
@@ -394,3 +410,4 @@ boot();
 </script>
 </body>
 </html>
+<!-- build: V200 build 2026-11-17 -->

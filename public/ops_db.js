@@ -209,6 +209,7 @@
         counted: Number(v || 0),
         note: 'Closed by admin'
       });
+      if (!res.ok && res.code === 'OPEN_BILLS') { alert(res.message); return; }   /* V200 */
       if (!res.ok) { toast(res.message || 'Could not close this till', true); return; }
 
       var d = Number(res.variance || 0);
@@ -248,6 +249,7 @@
       var v = prompt(msg, '');
       if (v === null) return;
       var res = req('shiftmgr-close', { id: open.id, counted: Number(v || 0) });
+      if (!res.ok && res.code === 'OPEN_BILLS') { alert(res.message); return; }   /* V200 */
       if (!res.ok) { toast(res.message || 'Could not close shift', true); return; }
       /* V173 — poora hisaab dikhao, sirf natija nahi. "CASH SHORT 600"
          apne aap mein ek bemani ilzaam hai; yeh nazar aana chahiye ke
@@ -766,4 +768,4 @@
   }
 })();
 
-/* build: V167 build 2026-10-25 */
+/* build: V200 build 2026-11-17 */
