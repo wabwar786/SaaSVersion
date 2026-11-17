@@ -1,6 +1,7 @@
 {
   "_help": "Which business type each build is for. RETAIL, RESTAURANT or both. A build that is not listed here is shown to everyone. Newest first.",
   "releases": [
+    {"build": "V198 build 2026-11-17", "for": ["RESTAURANT"], "note": "Reports: expenses in Shift closing and Account wise, Online / Wallet column, refunds only for paid bills, void reason and user, item counts; dashboard running orders; tables show Occupied when a bill is open"},
     {"build": "V197 build 2026-11-17", "for": ["RESTAURANT"], "note": "Restaurant POS rush safety: no double sale on retry, closed bill cannot be charged again, a bill changed on another counter or tablet reopens fresh, no failed or half-saved bills in rush, unsaved bill comes back after reload, tablet adds to the table's existing bill"},
     {"build": "V196 build 2026-11-17", "for": ["RESTAURANT"], "note": "Restaurant POS: an item removed from a bill stays removed after hold, KOT, print and resume; it is not charged or counted in item reports"},
     {"build": "V195 build 2026-11-17", "for": ["RESTAURANT", "RETAIL"], "note": "Restaurant POS: bills never merge into another order, Duplicate list complete and fresh, table opens its held bill. New login page; any business user can log in from any browser"},

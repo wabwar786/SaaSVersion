@@ -355,9 +355,15 @@ final class ReportService
                     DATE_FORMAT(s.opened_at,'%d %b %H:%i')       opened,
                     IFNULL(DATE_FORMAT(s.closed_at,'%d %b %H:%i'),'chal raha hai') closed,
                     (DATEDIFF(DATE(COALESCE(s.closed_at,NOW())),DATE(s.opened_at))+1) days,
-                    /* V183 — account ka POORA kharcha, tareekh ki shart nahi. */
+                    /* V183 — account ka POORA kharcha, tareekh ki shart nahi.
+                       V198 — Expenses page se dala kharcha (shift_id khali) bhi,
+                       agar account ke khulne se band hone tak ke waqt mein ho —
+                       wahi shart jo POS ki closing parchi (`tillPieces`) lagati
+                       hai. Pehle yahan 0 aata tha aur parchi par 300. */
                     (SELECT COALESCE(SUM(e.amount),0) FROM expenses e
-                      WHERE e.shift_id = s.id AND e.status <> 'REJECTED'
+                      WHERE (e.shift_id = s.id
+                             OR (e.shift_id IS NULL AND e.site_id = s.site_id
+                                 AND e.created_at BETWEEN s.opened_at AND COALESCE(s.closed_at, NOW(6)))) AND e.status <> 'REJECTED'
                         AND e.deleted_at IS NULL) expenses,
                     COUNT(o.id)                                   bills,
                     COALESCE(SUM(o.subtotal),0)                   subtotal,
@@ -970,7 +976,7 @@ final class ReportService
                     COALESCE(o.service_mode,'-') mode,
                     COALESCE(c.full_name,'Walk-in') customer,
                     COALESCE(u.full_name,'-') cashier,
-                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) items,
+                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id AND oi.status='ACTIVE') items,
                     o.subtotal, o.discount_amount discount,
                     o.service_charge service, COALESCE(o.delivery_charge,0) delivery,
                     o.tax_amount tax, o.grand_total total,
@@ -1076,15 +1082,36 @@ final class ReportService
     private static function r_voids(string $f, string $t): array
     {
         $rows = self::q(
+            /* V198 — WAJAH AUR KIS NE KIYA: asal jagah se.
+               Band bill ka void `deletion_log` mein likha jata hai (wajah +
+               karne wala). Pehle report sirf `orders.notes` dekhti thi, jo
+               void par khali rehta — wajah "-" aati, aur "By user" mein bill
+               banane wala cashier, void karne wala nahi.
+               Hold bill ka cancel `notes` mein likhta hai: " [cancelled: wajah
+               · by Naam]". Purane cancel par "by" nahi — wahan pehle jaisa. */
             "SELECT DATE(COALESCE(o.closed_at,o.created_at)) d, o.bill_no,
-                    COALESCE(u.full_name,'-') by_user,
-                    COALESCE(NULLIF(o.notes,''),
-                             (SELECT a.description FROM audit_log a
-                               WHERE a.record_id = o.id AND a.action LIKE '%VOID%'
-                               ORDER BY a.created_at DESC LIMIT 1),
-                             '-') reason,
+                    COALESCE(
+                      (SELECT NULLIF(dl.actor_name,'') FROM deletion_log dl
+                        WHERE dl.row_id = o.id AND dl.action='VOID'
+                        ORDER BY dl.created_at DESC LIMIT 1),
+                      CASE WHEN o.notes LIKE '%· by %'
+                           THEN TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(o.notes,'· by ',-1),']',1)) END,
+                      u.full_name,'-') by_user,
+                    COALESCE(
+                      (SELECT NULLIF(dl.reason,'') FROM deletion_log dl
+                        WHERE dl.row_id = o.id AND dl.action='VOID'
+                        ORDER BY dl.created_at DESC LIMIT 1),
+                      CASE WHEN o.notes LIKE '%[cancelled%' THEN
+                        CONCAT('Hold bill cancelled', IFNULL(CONCAT(': ', NULLIF(TRIM(TRIM(LEADING ':' FROM TRIM(
+                          REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX(o.notes,'[cancelled',-1),' · by ',1),']','')))),'')),''))
+                      END,
+                      NULLIF(TRIM(o.notes),''),
+                      (SELECT a.description FROM audit_log a
+                        WHERE a.record_id = o.id AND a.action LIKE '%VOID%'
+                        ORDER BY a.created_at DESC LIMIT 1),
+                      '-') reason,
                     o.grand_total total,
-                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) items
+                    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id AND oi.status='ACTIVE') items
                FROM orders o
                LEFT JOIN users u ON u.id = o.created_by_user_id
               WHERE o.site_id = ?
@@ -1178,12 +1205,26 @@ final class ReportService
                       WHERE o.shift_id = s.id AND o.order_status='CLOSED'
                         AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
                         AND pay.status <> 'CANCELLED'
-                        AND UPPER(COALESCE(pm.code,'')) NOT IN ('CASH','COD','CARD')) credit_sales,
+                        AND UPPER(COALESCE(pm.code,'')) NOT IN ('CASH','COD','CARD')
+                        AND UPPER(COALESCE(pm.method_type,'')) NOT IN ('WALLET','BANK')) credit_sales,
+                    /* V198 — Easypaisa / JazzCash / bank: apna khana. Pehle yeh
+                       Credit (udhaar) mein gin jate thay. */
+                    (SELECT COALESCE(SUM(pay.amount),0)
+                       FROM payments pay
+                       JOIN orders o ON o.id = pay.order_id
+                       LEFT JOIN payment_methods pm ON pm.id = pay.payment_method_id
+                      WHERE o.shift_id = s.id AND o.order_status='CLOSED'
+                        AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                        AND pay.status <> 'CANCELLED'
+                        AND UPPER(COALESCE(pm.code,'')) NOT IN ('CASH','COD','CARD')
+                        AND UPPER(COALESCE(pm.method_type,'')) IN ('WALLET','BANK')) online_sales,
                     s.refund_total refunds,
                     (SELECT COALESCE(SUM(e.amount),0) FROM expenses e
-                      WHERE e.shift_id = s.id AND e.status <> 'REJECTED'
+                      WHERE (e.shift_id = s.id
+                             OR (e.shift_id IS NULL AND e.site_id = s.site_id
+                                 AND e.created_at BETWEEN s.opened_at AND COALESCE(s.closed_at, NOW(6)))) AND e.status <> 'REJECTED'
                         AND e.deleted_at IS NULL
-                        AND e.expense_date BETWEEN ? AND ?)                     expenses,
+                        AND e.expense_date BETWEEN ? AND ?)                     expenses,   /* V198 */
                     s.expected_cash, s.actual_cash, s.variance_amount variance,
                     COALESCE(s.status,'-') status
                FROM cashier_shifts s
@@ -1196,7 +1237,7 @@ final class ReportService
               ORDER BY s.business_date DESC, s.shift_no DESC",
             array_merge(
               /* teen bill wali sub-query */   [$f,$t, $f,$t, $f,$t],
-              /* teen payment wali */          [$f,$t, $f,$t, $f,$t],
+              /* chaar payment wali (V198) */  [$f,$t, $f,$t, $f,$t, $f,$t],
               /* kharche */                    [$f,$t],
               /* WHERE */                      [site_id(), $f, $t, $f, $t]));
 
@@ -1213,7 +1254,7 @@ final class ReportService
             $rows[] = ['d'=>'-','shift_no'=>'(no account)','counter'=>'-','cashier'=>'-',
                        'bills'=>(int)$o['bills'],'opening_cash'=>0,
                        'gross_sales'=>$o['gross_sales'],'discount'=>$o['discount'],
-                       'cash_sales'=>0,'card_sales'=>0,'credit_sales'=>0,'refunds'=>0,
+                       'cash_sales'=>0,'card_sales'=>0,'online_sales'=>0,'credit_sales'=>0,'refunds'=>0,
                        'expenses'=>0,'expected_cash'=>0,'actual_cash'=>0,'variance'=>0,
                        'status'=>'-'];
         }
@@ -1223,11 +1264,12 @@ final class ReportService
              ['k'=>'cashier','l'=>'Cashier'],['k'=>'bills','l'=>'Bills','n'=>1],
              ['k'=>'opening_cash','l'=>'Opening','n'=>1],['k'=>'gross_sales','l'=>'Sale','n'=>1],
              ['k'=>'discount','l'=>'Discount','n'=>1],['k'=>'cash_sales','l'=>'Cash','n'=>1],
-             ['k'=>'card_sales','l'=>'Card','n'=>1],['k'=>'credit_sales','l'=>'Credit','n'=>1],
+             ['k'=>'card_sales','l'=>'Card','n'=>1],['k'=>'online_sales','l'=>'Online / Wallet','n'=>1],
+             ['k'=>'credit_sales','l'=>'Credit','n'=>1],
              ['k'=>'expenses','l'=>'Expenses','n'=>1],['k'=>'expected_cash','l'=>'Expected','n'=>1],
              ['k'=>'actual_cash','l'=>'Counted','n'=>1],['k'=>'variance','l'=>'Variance','n'=>1]],
             $rows, self::sum($rows, ['bills','opening_cash','gross_sales','discount','cash_sales',
-                                     'card_sales','credit_sales','expenses','expected_cash',
+                                     'card_sales','online_sales','credit_sales','expenses','expected_cash',
                                      'actual_cash','variance']));
     }
 
@@ -1768,6 +1810,9 @@ final class ReportService
                LEFT JOIN users u ON u.id = o.created_by_user_id
               WHERE o.site_id=? AND o.order_status='VOID'
                 AND DATE(COALESCE(o.closed_at,o.created_at)) BETWEEN ? AND ?
+                /* V198 — sirf woh bill jin ke PAISE liye gaye thay. Hold bill
+                   jo cancel hua us ki koi payment hi nahi — wo refund nahi. */
+                AND EXISTS (SELECT 1 FROM payments py WHERE py.order_id = o.id)
               ORDER BY d DESC",
             [site_id(), $f, $t]);
         return self::shape('Returns and refunds',
@@ -1885,4 +1930,4 @@ final class ReportService
     }
 }
 
-// build: V196 build 2026-11-17
+// build: V198 build 2026-11-17

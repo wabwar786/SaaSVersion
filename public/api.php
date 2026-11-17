@@ -1078,7 +1078,7 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  $p->prepare("UPDATE orders SET order_status='VOID',
                  notes=CONCAT(COALESCE(notes,''),?), closed_at=NOW(6), updated_at=NOW(6)
                WHERE id=? AND site_id=?")
-   ->execute([($reason!==''?(' [cancelled: '.$reason.']'):' [cancelled]'),$id,site_id()]);
+   ->execute([' [cancelled'.($reason!==''?(': '.$reason):'').' · by '.substr((string)(current_user()['full_name']??'-'),0,80).']',$id,site_id()]);   /* V198 — kis ne cancel kiya, void report ke liye */
  Audit::log('VOID','pos',['record_id'=>$id,'bill_no'=>$ord['bill_no'],'reason'=>$reason]);
  ok(['cancelled'=>$ord['bill_no']]);
 
@@ -4196,4 +4196,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V197 build 2026-11-17
+// build: V198 build 2026-11-17

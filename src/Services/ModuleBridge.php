@@ -846,9 +846,20 @@ final class ModuleBridge
         }
         $id = uuid();
         $ref = trim((string)($d['ref'] ?? '')) ?: ('EXP-'.date('ymd').'-'.strtoupper(substr(str_replace('-', '', $id), 0, 4)));
-        $p->prepare("INSERT INTO expenses(id,tenant_id,site_id,expense_no,expense_date,category_id,amount,payment_method,description,status,created_by_user_id,created_at)
-                     VALUES(?,?,?,?,CURDATE(),?,?,?,?,'APPROVED',?,NOW(6))")
-          ->execute([$id, tenant_id(), site_id(), $ref, $cid, $amount, $method, $note, current_user()['id'] ?? null]);
+        /* V198 — kharcha usi account (shift) se jure jo is user ka abhi khula
+           hai. Pehle Expenses page ka kharcha kisi account se nahi jurta tha:
+           POS parchi waqt dekh kar gin leti, magar "Shift / day closing" aur
+           "Account wise" report 0 dikhati. Khula account na ho to khali. */
+        $shiftId = null;
+        try {
+            $sq = $p->prepare("SELECT id FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                                ORDER BY opened_at DESC LIMIT 1");
+            $sq->execute([site_id(), current_user()['id'] ?? '']);
+            $shiftId = $sq->fetchColumn() ?: null;
+        } catch (\Throwable $e) { $shiftId = null; }
+        $p->prepare("INSERT INTO expenses(id,tenant_id,site_id,expense_no,expense_date,category_id,amount,payment_method,description,status,created_by_user_id,shift_id,created_at)
+                     VALUES(?,?,?,?,CURDATE(),?,?,?,?,'APPROVED',?,?,NOW(6))")
+          ->execute([$id, tenant_id(), site_id(), $ref, $cid, $amount, $method, $note, current_user()['id'] ?? null, $shiftId]);
         return $id;
     }
 
@@ -938,4 +949,4 @@ final class ModuleBridge
     }
 }
 
-// build: V62 build 2026-08-26
+// build: V198 build 2026-11-17

@@ -117,7 +117,7 @@ final class PageData {
  public static function dashboard(): array { $p=DB::pdo();$date=today();
   $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'");$q->execute([site_id(),$date]);$a=$q->fetch();
   $cnt=function($sql,$args=[])use($p){$q=$p->prepare($sql);$q->execute($args);return (int)$q->fetchColumn();};
-  $running=$cnt("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status<>'CLOSED'",[site_id()]);$preparing=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING')",[site_id()]);$ready=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status='READY'",[site_id()]);$delayed=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING') AND TIMESTAMPDIFF(MINUTE,sent_at,NOW())>=18",[site_id()]);$online=$cnt("SELECT COUNT(*) FROM online_order_details WHERE site_id=? AND acceptance_status='PENDING'",[site_id()]);$riders=$cnt("SELECT COUNT(*) FROM riders WHERE site_id=? AND status IN ('ON_DELIVERY','ON ROAD','ON_DELIVERY')",[site_id()]);$tables=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1",[site_id()]);$occ=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1 AND status='OCCUPIED'",[site_id()]);
+  $running=$cnt("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status='OPEN'",[site_id()]);/* V198 — sirf khule bill; void/cancel nahi */$preparing=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING')",[site_id()]);$ready=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status='READY'",[site_id()]);$delayed=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING') AND TIMESTAMPDIFF(MINUTE,sent_at,NOW())>=18",[site_id()]);$online=$cnt("SELECT COUNT(*) FROM online_order_details WHERE site_id=? AND acceptance_status='PENDING'",[site_id()]);$riders=$cnt("SELECT COUNT(*) FROM riders WHERE site_id=? AND status IN ('ON_DELIVERY','ON ROAD','ON_DELIVERY')",[site_id()]);$tables=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1",[site_id()]);$occ=$cnt("SELECT COUNT(DISTINCT o.table_id) FROM orders o JOIN dining_tables dt ON dt.id=o.table_id WHERE o.site_id=? AND o.order_status='OPEN' AND dt.is_active=1",[site_id()])/* V198 — khule bill se, purane status khane se nahi */;
   $pay=['cash'=>0,'card'=>0,'raast'=>0,'walletBank'=>0];$pq=$p->prepare("SELECT pm.code,pm.method_type,SUM(py.amount) amount FROM payments py JOIN payment_methods pm ON pm.id=py.payment_method_id WHERE py.site_id=? AND DATE(py.paid_at)=? AND py.status='COMPLETED' GROUP BY pm.code,pm.method_type");$pq->execute([site_id(),$date]);foreach($pq->fetchAll() as $x){$code=strtoupper($x['code']);$amt=(float)$x['amount'];if($code==='CASH')$pay['cash']+=$amt;elseif($code==='CARD')$pay['card']+=$amt;elseif($code==='RAAST')$pay['raast']+=$amt;else$pay['walletBank']+=$amt;}
   $mix=['dineIn'=>0,'takeaway'=>0,'delivery'=>0,'online'=>0];$mq=$p->prepare("SELECT service_mode,SUM(grand_total) amount FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED' GROUP BY service_mode");$mq->execute([site_id(),$date]);foreach($mq->fetchAll() as $x){$m=$x['service_mode'];if($m==='DINE_IN')$mix['dineIn']=(float)$x['amount'];elseif($m==='TAKEAWAY')$mix['takeaway']=(float)$x['amount'];else$mix['delivery']+=(float)$x['amount'];}/* V179 — online wale tile par `order_status` ki shart hi nahi thi, is liye
      OPEN aur VOID bill bhi "online sale" mein gin jate thay. Baqi teen
@@ -200,7 +200,17 @@ final class PageData {
   /* V157 — `discount` bhi: POS customer chunte hi us ka tay-shuda
      discount bill par laga deta hai. Walk-in ka hamesha 0. */
   $cu=$p->prepare("SELECT c.id,c.full_name name,c.phone,c.customer_type type,COALESCE(c.discount_pct,0) discount,ca.address_text address,ca.area FROM customers c LEFT JOIN customer_addresses ca ON ca.customer_id=c.id AND ca.is_default=1 WHERE c.tenant_id=? AND c.status='ACTIVE' ORDER BY c.full_name LIMIT 300");$cu->execute([tenant_id()]);$customers=array_merge([['id'=>'walkin','name'=>'Walk-in Customer','phone'=>'','address'=>'','area'=>'','type'=>'Walk-in','discount'=>0]],array_map(function($x){$x['discount']=(float)($x['discount']??0);return $x;},$cu->fetchAll()));
-  $tb=$p->prepare("SELECT id,display_name,status,seats FROM dining_tables WHERE site_id=? AND is_active=1 ORDER BY display_name");$tb->execute([site_id()]);$tables=$tb->fetchAll();
+  /* V198 — TABLE "OCCUPIED" KHULE BILL SE.
+     `dining_tables.status` ko POS kabhi badalta hi nahi — is liye chalte
+     bill wala table bhi "Available" dikhta tha. Ab: table par koi khula
+     bill ho to OCCUPIED; warna wahi jo table par likha hai (RESERVED
+     waghera), aur purana OCCUPIED bina bill ke -> AVAILABLE. */
+  $tb=$p->prepare("SELECT dt.id,dt.display_name,
+                          CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.table_id=dt.id AND o.site_id=dt.site_id AND o.order_status='OPEN') THEN 'OCCUPIED'
+                               WHEN dt.status='OCCUPIED' THEN 'AVAILABLE'
+                               ELSE dt.status END AS status,
+                          dt.seats
+                     FROM dining_tables dt WHERE dt.site_id=? AND dt.is_active=1 ORDER BY dt.display_name");$tb->execute([site_id()]);$tables=$tb->fetchAll();
   /* ============================================================
      POS ko SIRF apni shift dikhani chahiye.
 
@@ -418,4 +428,4 @@ final class PageData {
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
 
-// build: V195 build 2026-11-17
+// build: V198 build 2026-11-17
