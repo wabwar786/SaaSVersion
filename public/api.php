@@ -37,6 +37,7 @@ function pos_open_bills_msg(string $shiftId):?string{
   $q=DB::pdo()->prepare("SELECT o.bill_no, COALESCE(dt.display_name,'') t, o.service_mode m, o.grand_total g
                            FROM orders o LEFT JOIN dining_tables dt ON dt.id=o.table_id
                           WHERE o.site_id=? AND o.shift_id=? AND o.order_status='OPEN'
+                            AND o.table_id IS NULL   /* V201 — table bill kisi bhi counter se khulta hai: rokta nahi */
                           ORDER BY o.bill_no LIMIT 20");
   $q->execute([site_id(),$shiftId]); $rows=$q->fetchAll();
   if(!$rows) return null;
@@ -732,8 +733,10 @@ case 'pos-table-bill':needLogin();Auth::requireModule('pos');
  $tq->execute([site_id(),$tn,$tn]);
  $tb=$tq->fetch(PDO::FETCH_ASSOC);
  if(!$tb)ok(['bill'=>null]);
- $mine=Scope::isManagement() || (string)$tb['created_by_user_id']===(string)Scope::userId();
- ok(['bill'=>['id'=>$tb['id'],'bill_no'=>$tb['bill_no'],'can_open'=>$mine,'by'=>$mine?'':$tb['by_name']]]);
+ /* V201 — malik ka faisla: table ka bill KOI BHI counter khol sakta hai
+    (jis table par items pehle se hain, click karte hi wohi items). Paisa
+    us counter ke account mein jata hai jo bill band kare. */
+ ok(['bill'=>['id'=>$tb['id'],'bill_no'=>$tb['bill_no'],'can_open'=>true,'by'=>'']]);
 
 case 'pos-shift-bills':needLogin();Auth::requireModule('pos');
  /* V195 — Duplicate Bill ki fehrist HAR CLICK par taaza: is cashier ki
@@ -972,7 +975,8 @@ case 'pos-hold-open':needLogin();Auth::requireModule('pos');
  $oid=(string)($_GET['id']??'');
  if($oid==='')fail('Which bill?');
  if(!Scope::isManagement()){
-   $chk=DB::pdo()->prepare("SELECT COUNT(*) FROM orders WHERE id=? AND site_id=? AND created_by_user_id=?");
+   /* V201 — table ka bill har counter khol sakta hai; baqi bill sirf apne. */
+   $chk=DB::pdo()->prepare("SELECT COUNT(*) FROM orders WHERE id=? AND site_id=? AND (created_by_user_id=? OR table_id IS NOT NULL)");
    $chk->execute([$oid,site_id(),Scope::userId()]);
    if((int)$chk->fetchColumn()===0)fail('That bill belongs to another user.',403);
  }
@@ -1108,6 +1112,7 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
                WHERE id=? AND site_id=?")
    ->execute([' [cancelled'.($reason!==''?(': '.$reason):'').' · by '.substr((string)(current_user()['full_name']??'-'),0,80).']',$id,site_id()]);   /* V198 — kis ne cancel kiya, void report ke liye */
  Audit::log('VOID','pos',['record_id'=>$id,'bill_no'=>$ord['bill_no'],'reason'=>$reason]);
+ \Aio\Services\PosService::cancelSlipForOrder($id);   /* V201 — kitchen ko cancel parchi */
  ok(['cancelled'=>$ord['bill_no']]);
 
 case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
@@ -4232,4 +4237,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V200 build 2026-11-17
+// build: V201 build 2026-11-17

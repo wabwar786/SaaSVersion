@@ -59,9 +59,12 @@ final class OpsService
             /* V199 — bill se hati hui (VOID) line kitchen par CANCELLED. */
             "SELECT kti.kitchen_ticket_id AS tid, kti.qty_sent AS qty,
                     CASE WHEN oi.status='VOID' THEN 'CANCELLED' ELSE kti.item_status END AS item_status,
-                    CASE WHEN oi.status='VOID' THEN 'CANCELLED - mat banayein' ELSE kti.note_snapshot END AS note,
-                    CONCAT(CASE WHEN oi.status='VOID' THEN 'CANCELLED: ' ELSE '' END,
-                           COALESCE(oi.item_name_snapshot, mi.name, 'Item')) AS name
+                    CASE WHEN oi.status='VOID' THEN 'CANCELLED - mat banayein'
+                         WHEN oi.qty < kti.qty_sent THEN CONCAT('Sirf ', TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM oi.qty)), ' banayein - baqi cancel')
+                         ELSE kti.note_snapshot END AS note,
+                    CONCAT(CASE WHEN oi.status='VOID' THEN 'CANCELLED: '
+                                WHEN oi.qty < kti.qty_sent THEN 'KAM: ' ELSE '' END,
+                           COALESCE(oi.item_name_snapshot, mi.name, 'Item')) AS name   /* V201 — qty kam hui */
                FROM kitchen_ticket_items kti
                LEFT JOIN order_items oi ON oi.id = kti.order_item_id
                LEFT JOIN menu_items mi  ON mi.id = oi.menu_item_id
@@ -1434,4 +1437,4 @@ final class OpsService
     }
 }
 
-// build: V200 build 2026-11-17
+// build: V201 build 2026-11-17

@@ -500,6 +500,12 @@ final class PosService {
         self::touchOrder($p,(string)$id,$d);
         return$id;
     }
+    /* V201 — EK TABLE, EK BILL. Do counters ne ek saath khali table chuna,
+       ya POS ne purani fehrist dekhi — pehle dono ke alag bill us table par
+       ban jate (test: T-05 par 3 khule bill). Ab naya bill us table par
+       nahi banta jahan bill pehle se khula ho; POS apne items usi bill
+       mein daal deta hai (TABLE_BUSY). */
+    if($table) self::tableFree($p,(string)$table,null,'TABLE_BUSY');
     $id=$wantId ?: uuid();
     $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,current_user()['id']??null]);
     return$id;
@@ -518,6 +524,11 @@ final class PosService {
         $table=$tq->fetchColumn()?:null;
     }
     if(!$table) $table=self::tableId($p,$d['table_name']??$d['table']??'');
+    /* V201 — "Change Table" se bill aise table par nahi ja sakta jahan doosra bill khula ho. */
+    if($table){
+        $cq=$p->prepare("SELECT table_id FROM orders WHERE id=?"); $cq->execute([$id]);
+        if((string)$cq->fetchColumn()!==(string)$table) self::tableFree($p,(string)$table,$id,'TABLE_BUSY_MOVE');   /* sirf jab table BADAL raha ho */
+    }
     $customer=null;
     $rawCustomer=(string)($d['customer_id']??'');
     if($rawCustomer && $rawCustomer!=='walkin'){
@@ -675,6 +686,27 @@ final class PosService {
     self::queueSync($p,'orders',$order,'UPDATE');
     return ['order_id'=>$order,'bill_no'=>self::billOf($p,$order),'table'=>$table,'added'=>$added,'skipped'=>$skipped,'rev'=>$rev];
  }); }
+ /** V201 — table par (is bill ke ilawa) koi khula bill ho to PosConflict. */
+ private static function tableFree(PDO $p,string $tableId,?string $exceptOrder,string $kind):void{
+    $q=$p->prepare("SELECT o.id,o.bill_no,dt.display_name FROM orders o JOIN dining_tables dt ON dt.id=o.table_id
+                     WHERE o.site_id=? AND o.table_id=? AND o.order_status='OPEN' AND o.id<>? ORDER BY o.created_at LIMIT 1");
+    $q->execute([site_id(),$tableId,(string)($exceptOrder??'')]);
+    if($o=$q->fetch(PDO::FETCH_ASSOC)){
+        throw new PosConflict($kind, $kind==='TABLE_BUSY'
+            ? $o['display_name'].' par pehle se bill #'.$o['bill_no'].' khula hai — aap ke items usi bill mein daal diye gaye hain. Check kar ke dobara bhejein / charge karein.'
+            : $o['display_name'].' par bill #'.$o['bill_no'].' khula hai — yeh bill wahan nahi ja sakta. Doosra table chunein.',
+            (string)$o['bill_no'],(string)$o['id']);
+    }
+ }
+ /** V201 — poore bill ka cancel (hold cancel): kitchen ja chuke items ki parchi. */
+ public static function cancelSlipForOrder(string $order):void{
+    try{
+        $p=DB::pdo();
+        $q=$p->prepare("SELECT id,item_name_snapshot,sent_qty FROM order_items WHERE order_id=? AND status='ACTIVE' AND sent_qty>0");
+        $q->execute([$order]); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+        if($rows) self::kitchenCancel($p,$order,$rows);
+    }catch(\Throwable $e){}
+ }
  private static function lockSite(PDO $p):void{
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
  }
@@ -741,7 +773,9 @@ final class PosService {
             $tq->execute([$r['id']]); $t=$tq->fetch(PDO::FETCH_ASSOC);
             if(!$t || !$t['printer_id']) continue;
             $byPrinter[$t['printer_id']]['tickets'][$t['ticket_no']]=1;
-            $byPrinter[$t['printer_id']]['lines'][]=rtrim(rtrim(number_format((float)$r['sent_qty'],3,'.',''),'0'),'.').' x '.$r['item_name_snapshot'].'  -- CANCELLED';
+            $fmt=fn($v)=>rtrim(rtrim(number_format((float)$v,3,'.',''),'0'),'.');
+            $byPrinter[$t['printer_id']]['lines'][]=$fmt($r['sent_qty']).' x '.$r['item_name_snapshot'].'  -- CANCELLED'
+                .(isset($r['of'])?(' ('.$fmt($r['of']).' mein se)'):'');
         }
         foreach($byPrinter as $pid=>$g){
             $payload="*** CANCEL ***\nBill #".$bill."  (".implode(', ',array_keys($g['tickets'])).")\n"
@@ -792,6 +826,16 @@ final class PosService {
     if(!$menu)throw new \RuntimeException('Menu item not found in database: '.$name);
     if($old){
         $p->prepare("UPDATE order_items SET qty=?,unit_price=?,line_total=?,kitchen_note=?,updated_at=NOW(6) WHERE id=?")->execute([$qty,$rate,$qty*$rate,$note,$old['id']]);
+        /* V201 — kitchen ja chuki qty KAM ki gayi (2 -> 1): kitchen ko parchi
+           "1 x Karahi CANCELLED (2 mein se)". `sent_qty` bhi utni kar do,
+           taake har save par parchi dobara na nikle; qty phir barhe to
+           sirf nayi qty kitchen jati hai. (POS par is ke liye manager
+           password lagta hai — line hatane jaisa.) */
+        if((float)$old['sent_qty'] > $qty && $qty>0){
+            $diff=(float)$old['sent_qty']-$qty;
+            self::kitchenCancel($p,$order,[['id'=>$old['id'],'item_name_snapshot'=>$name,'sent_qty'=>$diff,'of'=>(float)$old['sent_qty']]]);
+            $p->prepare("UPDATE order_items SET sent_qty=? WHERE id=?")->execute([$qty,$old['id']]);
+        }
         $id=$old['id'];
     }else{
         $id=uuid();$snap=null;
@@ -924,4 +968,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V200 build 2026-11-17
+// build: V201 build 2026-11-17

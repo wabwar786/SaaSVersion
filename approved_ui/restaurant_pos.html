@@ -631,6 +631,28 @@ function posConflict(r){
     infoBox('Bill pehle hi band hai', r.message||'');
     return true;
   }
+  /* ============================================================
+     V201 — TABLE PAR PEHLE SE BILL.
+     Naya bill aise table par bana jahan doosre counter ne abhi bill khola
+     tha: is screen ke items usi table bill mein daal do (ek table, ek
+     bill), aur cashier dekh kar dobara bheje / charge kare.
+     ============================================================ */
+  if(r.code==='TABLE_BUSY' && r.order_id){
+    var mine=cart.slice(), keepMode=mode;
+    if(resumeHold({id:r.order_id})){
+      mine.forEach(function(l){
+        var ex=cart.filter(function(x){return x.id===l.id&&x.name===l.name&&(x.note||'')===(l.note||'')})[0];
+        if(ex) ex.qty+=l.qty; else cart.push({id:l.id,name:l.name,qty:l.qty,price:l.price,sentQty:0,note:l.note||''});
+      });
+      renderCart();
+    }
+    infoBox('Table par pehle se bill', r.message||'');
+    return true;
+  }
+  if(r.code==='TABLE_BUSY_MOVE'){
+    infoBox('Table khali nahi', r.message||'');
+    return true;
+  }
   return false;
 }
 function draftKey(){ return 'pos_draft_'+((shift&&shift.id)||''); }
@@ -1907,7 +1929,17 @@ function renderCart(){
   Array.prototype.forEach.call(c.querySelectorAll('.ci'),function(row){row.onclick=function(e){
     if(e.target.closest('[data-cx]'))return;
     var i=row.dataset.i;
-    calculator(cart[i].name,cart[i].qty,function(v){cart[i].qty=v;renderCart()});
+    /* V201 — kitchen ja chuki qty KAM karni ho to manager password (bilkul
+       line hatane ki tarah) — warna kitchen 2 banata, bill 1 ka banta. */
+    calculator(cart[i].name,cart[i].qty,function(v){
+      var l=cart[i];
+      if(l && l.sentQty>0 && v<l.sentQty){
+        var part={name:l.name,sentQty:l.sentQty-v};
+        voidApproval(part,function(){ var cut=l.sentQty-v; l.qty=v; l.sentQty=v; renderCart(); toast(qfmt(cut)+' x '+l.name+' cancel — kitchen ko parchi jayegi'); });
+        return;
+      }
+      l.qty=v;renderCart();
+    });
   }});
   var t=totals();
   $('#tSub').textContent=money(t.sub);
@@ -3967,4 +3999,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V200 build 2026-11-17 -->
+<!-- build: V201 build 2026-11-17 -->
