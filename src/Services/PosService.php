@@ -347,16 +347,35 @@ final class PosService {
        bill). Aise mein naya number le liya jata hai — wahi kaam jo
        `pos_bill_guard()` karta hai, magar ab HAR raaste par.
        ============================================================ */
-    $q=$p->prepare("SELECT id,order_status FROM orders
-                     WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1 FOR UPDATE");
+    /* ============================================================
+       V195 — NAYA BILL KABHI KISI DOOSRE ORDER MEIN NAHI MILTA.
+
+       JO HOTA THA (customer: "bill gum ho jata hai"):
+         Counter A aur Counter B dono ki screen par agla number 0001.
+         B ne table R-01 ka KOT bheja -> 0001 ek KHULA order ban gaya.
+         A ne walk-in 0001 band kiya -> yeh talash KHULE 0001 ko pakar
+         leti, A ka item USI order mein jorti aur order BAND kar deti.
+         Table R-01 ka bill running/hold se ghayab, us ke 3 item walk-in
+         customer ke bill mein. (Test: dono ka order id ek, table ka
+         order CLOSED, walk-in bill mein 2 lines.)
+
+       AB: jis bill ke saath order id nahi aayi (yani yeh kisi hold /
+       KOT / table ka bill nahi), wo hamesha NAYA order hai. Number
+       kisi aur order ka ho (khula ho ya band) to naya number.
+       Hold, KOT aur table wale bill apni ID se aate hain (upar) —
+       un par koi asar nahi.
+
+       Number dene se pehle branch (sites) ki row par lock: ek waqt
+       mein ek hi counter agla number leta hai (retail V193 jaisa).
+       Lock sirf is transaction tak rehta hai.
+       ============================================================ */
+    $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
+    $q=$p->prepare("SELECT id FROM orders
+                     WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1");
     $q->execute([site_id(),today(),$bill]);
-    $hit=$q->fetch(\PDO::FETCH_ASSOC);
     $id=null;
-    if($hit){
-        if(($hit['order_status']??'')==='OPEN') $id=$hit['id'];
-        else {
-            $bill = PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
-        }
+    if($q->fetchColumn()){
+        $bill = PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
     }
     /* V94 — TABLE: id ya naam, dono chalein.
        Pehle sirf `table_name` dekha jata tha. Tablet aur QR ordering
@@ -616,4 +635,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V17.1 build 2026-08-25
+// build: V195 build 2026-11-17

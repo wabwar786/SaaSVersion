@@ -421,10 +421,13 @@ case 'login':
         fail('Email/login and password are required.',422);
     }
 
-    // Cloud multi-tenant: scope login to the business identified by its slug.
+    /* V195 — cloud par business ab username se tay hota hai (Auth::login).
+       `b` (business link) sirf tab kaam aata hai jab ek hi username +
+       password do businesses mein ho. Pehle yeh yahan business ZABARDASTI
+       laga deta tha — doosre business ka sahi password bhi "Invalid". */
     if(cfg('app.role')==='cloud'){
-        $slug=trim((string)($d['b']??($_SESSION['login_tenant_slug']??'')));
-        if($slug!==''){ $tid=\Aio\Services\Platform::tenantIdBySlug($slug); if($tid){$_SESSION['login_tenant_id']=$tid;} }
+        $slug=preg_replace('/[^a-z0-9-]/','',strtolower(trim((string)($d['b']??''))));
+        if($slug!=='') $_SESSION['login_tenant_slug']=$slug;
     }
 
     if(!Auth::login($email,$password)){
@@ -677,6 +680,36 @@ case 'purchase-receive':needLogin();
 case 'store-save-state':needLogin();$d=body();$p=DB::pdo();foreach($d['menuCategories']??[] as $c){$q=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$c['name']]);$cid=$q->fetchColumn();if(!$cid){$cid=uuid();$p->prepare("INSERT INTO menu_categories(id,tenant_id,site_id,name,is_active) VALUES(?,?,?,?,1)")->execute([$cid,tenant_id(),site_id(),$c['name']]);}$station=strtoupper($c['printer']??'MAIN');$pr=$p->prepare("SELECT id FROM printers WHERE site_id=? AND UPPER(station_code)=? AND is_active=1 LIMIT 1");$pr->execute([site_id(),$station]);$pid=$pr->fetchColumn();if($pid){$p->prepare("DELETE FROM menu_category_printer_routes WHERE category_id=?")->execute([$cid]);$p->prepare("INSERT INTO menu_category_printer_routes(id,tenant_id,site_id,category_id,printer_id,is_primary,print_rule,is_active) VALUES(?,?,?,?,?,1,'PENDING_QTY_ONLY',1)")->execute([uuid(),tenant_id(),site_id(),$cid,$pid]);}}ok(['state'=>PageData::storeState()]);
 case 'recipe-save':needLogin();Auth::requireModule('recipe');$d=body();$p=DB::pdo();$cq=$p->prepare("SELECT id FROM menu_categories WHERE site_id=? AND name=? LIMIT 1");$cq->execute([site_id(),$d['category']]);$cid=$cq->fetchColumn();if(!$cid)fail('Menu category not found.');$menuId=$d['id']??'';if($menuId&&!preg_match('/^[0-9a-f-]{36}$/i',$menuId))$menuId='';$ingredients=[];foreach($d['ingredients']??[] as $x){$iid=(string)($x['itemId']??'');if(!preg_match('/^[0-9a-f-]{36}$/i',$iid)&&!empty($x['itemName'])){$iq=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$iq->execute([site_id(),$x['itemName']]);$iid=$iq->fetchColumn()?:'';}if($iid)$ingredients[]=['item_id'=>$iid,'qty'=>(float)$x['qty'],'waste_pct'=>(float)($x['wastePct']??0)];}$id=RecipeService::save(['menu_item_id'=>$menuId,'category_id'=>$cid,'code'=>'','name'=>$d['menuName'],'description'=>'','consumption_type'=>$d['mode']==='direct'?'DIRECT_INVENTORY':'RECIPE','direct_inventory_item_id'=>(function()use($p,$d){$iid=$d['inventoryItemId']??null;if($iid&&preg_match('/^[0-9a-f-]{36}$/i',(string)$iid))return$iid;if(!empty($d['inventoryItemName'])){$q=$p->prepare("SELECT id FROM inventory_items WHERE site_id=? AND name=? LIMIT 1");$q->execute([site_id(),$d['inventoryItemName']]);return$q->fetchColumn()?:null;}return null;})(),'direct_inventory_qty'=>$d['directQty']??null,'base_price'=>0,'yield_qty'=>$d['yieldQty']??1],$ingredients);$state=PageData::storeState();$recipe=null;foreach($state['recipes'] as $r)if($r['id']===$id)$recipe=$r;ok(['recipe'=>$recipe?:['id'=>$id]+$d,'state'=>$state]);
 case 'pos-next-bill':needLogin();ok(['next'=>pos_bill_no((int)PageData::nextBill())]);
+
+case 'pos-table-bill':needLogin();Auth::requireModule('pos');
+ /* V195 — table chuna -> us table ka KHULA bill (kisi bhi counter,
+    tablet ya waiter ka, kisi bhi shift ka). POS isay khol deta hai agar
+    yeh cashier ka apna hai ya user manager hai (wohi pehra jo
+    pos-hold-open par hai); warna batata hai ke bill kis ke paas hai,
+    taake usi table par doosra bill na ban jaye. */
+ $tn=trim((string)($_GET['table']??''));
+ if($tn==='')ok(['bill'=>null]);
+ $tq=DB::pdo()->prepare("SELECT o.id,o.bill_no,o.created_by_user_id,COALESCE(u.full_name,'') by_name
+                           FROM orders o JOIN dining_tables dt ON dt.id=o.table_id
+                           LEFT JOIN users u ON u.id=o.created_by_user_id
+                          WHERE o.site_id=? AND o.order_status='OPEN'
+                            AND (dt.display_name=? OR dt.table_code=?)
+                          ORDER BY COALESCE(o.opened_at,o.created_at) DESC LIMIT 1");
+ $tq->execute([site_id(),$tn,$tn]);
+ $tb=$tq->fetch(PDO::FETCH_ASSOC);
+ if(!$tb)ok(['bill'=>null]);
+ $mine=Scope::isManagement() || (string)$tb['created_by_user_id']===(string)Scope::userId();
+ ok(['bill'=>['id'=>$tb['id'],'bill_no'=>$tb['bill_no'],'can_open'=>$mine,'by'=>$mine?'':$tb['by_name']]]);
+
+case 'pos-shift-bills':needLogin();Auth::requireModule('pos');
+ /* V195 — Duplicate Bill ki fehrist HAR CLICK par taaza: is cashier ki
+    khuli shift ke SAARE band bill (pehle sirf page load par, aur sirf
+    aakhri 50). Wahi function jo POS boot chalata hai. */
+ $shq=DB::pdo()->prepare("SELECT id,shift_no,shift_seq,opened_at FROM cashier_shifts
+                           WHERE site_id=? AND cashier_user_id=? AND status='OPEN'
+                           ORDER BY opened_at DESC LIMIT 1");
+ $shq->execute([site_id(), current_user()['id'] ?? '']);
+ ok(['bills'=>PageData::shiftBills($shq->fetch(PDO::FETCH_ASSOC)?:null, today())]);
 
 case 'pos-bills-on':needLogin();Auth::requireModule('pos');
  /* ============================================================
@@ -4156,4 +4189,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V194 build 2026-11-16
+// build: V195 build 2026-11-17

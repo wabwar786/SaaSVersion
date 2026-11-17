@@ -315,6 +315,10 @@ try{
 $brand=['name'=>'','logo'=>'','color'=>'','accent'=>''];
 try{
   $btid=null;
+  /* V195 — login page SAB businesses ka ek darwaza hai: us par kisi
+     business ka naam/logo nahi (pehle session ya `?b=` link wala business
+     chhap jata tha). Login ke baad har safha apna brand lagata hai. */
+  if($name==='login.html'){ throw new \RuntimeException('no brand on login'); }
   if(Auth::user())$btid=$_SESSION['user']['tenant_id']??null;
   elseif(!empty($_SESSION['login_tenant_id']))$btid=$_SESSION['login_tenant_id'];
   if(!$btid && cfg('app.role')!=='cloud')$btid=tenant_id();
@@ -471,4 +475,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V193 build 2026-11-13
+// build: V195 build 2026-11-17

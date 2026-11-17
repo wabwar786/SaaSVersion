@@ -1624,6 +1624,27 @@ function newBillFlow(isEdit){
       if(mine){ h=x; break; }
     }
     if(h && resumeHold(h)){ ov.remove(); return; }
+    /* ============================================================
+       V195 — TABLE KA BILL SERVER SE BHI DHOONDO.
+       Upar wali `holds` fehrist sirf is cashier ki shift ki hai, aur
+       page khulne ke waqt ki. Doosre counter / tablet / waiter ne jo
+       table hold kiya ho wo yahan nahi hota — table KHALI khulta aur
+       usi table par doosra bill ban jata. Ab server se us table ka
+       khula bill pucha jata hai:
+         * khul sakta hai (apna, ya manager) -> wahi bill khulta hai
+         * kisi aur cashier ka -> naya bill NAHI banta, saaf paigham
+       ============================================================ */
+    if(!byCustomer){
+      var tb=api('pos-table-bill&table='+encodeURIComponent(key));
+      if(tb&&tb.ok&&tb.bill){
+        if(tb.bill.can_open){
+          if(resumeHold({id:tb.bill.id})){ loadHolds(); ov.remove(); return; }
+          return;
+        }
+        toast('Table '+key+' ka bill #'+billShow(tb.bill.bill_no)+' '+(tb.bill.by||'doosre cashier')+' ke paas khula hai — wohi ya manager khol sakta hai',true);
+        return;
+      }
+    }
     setFresh(); done();
   }
   function step2(m){
@@ -2708,9 +2729,30 @@ function dupRow(b,i){
     +(b.payment?(' &middot; '+esc(b.payment)):'')+'</small></div>'
     +'<button data-dup="'+i+'">Reprint</button></div>';
 }
+/* V195 — fehrist mein din badle to chhota sa sar-e-safha (shift raat 12
+   ke baad tak chale to bill number 1 se dobara shuru hote hain). */
+function dupListHtml(list){
+  var days={}; list.forEach(function(o){days[o.b.day||'']=1});
+  var multi=Object.keys(days).length>1, last=null;
+  return list.map(function(o){
+    var h='';
+    if(multi && o.b.day!==last){ last=o.b.day;
+      h='<div style="margin:10px 0 4px;font-size:11px;font-weight:800;color:var(--mut,#777);letter-spacing:.04em">'
+        +esc(new Date((o.b.day||'')+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))+'</div>'; }
+    return h+dupRow(o.b,o.i);
+  }).join('');
+}
 $('#dupBtn').onclick=function(){
+  /* V195 — HAR CLICK PAR TAAZA FEHRIST, POORI SHIFT.
+     Pehle yeh `BOOT.shiftBills` thi — POS khulte waqt ek dafa bani
+     hui, aur sirf aakhri 50 bill. Page khulne ke baad bane bill reload
+     ke baghair nazar nahi aate the ("bill gum ho gaya"), aur lambi
+     shift mein shuru ke bill ghayab the. */
+  var fr=api('pos-shift-bills');
+  if(fr&&fr.ok&&fr.bills) BOOT.shiftBills=fr.bills;
+  else toast((fr&&fr.message)||'Taaza fehrist nahi mili — purani dikha rahe hain');
   var bills=(BOOT.shiftBills||[]);
-  var body=bills.length?bills.map(function(b,i){return dupRow(b,i)}).join('')
+  var body=bills.length?dupListHtml(bills.map(function(b,i){return {b:b,i:i}}))
                        :'<div class="cempty">No closed bills today</div>';
   /* V159 — "from today" ab sach nahi raha: yeh fehrist KHULE ACCOUNT ki
      hai. Account do din khula rahe to dono din ke bills yahan rehte
@@ -2778,7 +2820,7 @@ $('#dupBtn').onclick=function(){
     var f=bills.map(function(b,i){return {b:b,i:i}}).filter(function(o){
       return !q || (String(o.b.billNo)+' '+billShow(o.b.billNo)+' '+(o.b.customer||'')+' '+(o.b.table||'')).toLowerCase().indexOf(q)>=0});
     ov.querySelector('#dupList').innerHTML=f.length
-      ?f.map(function(o){return dupRow(o.b,o.i)}).join('')
+      ?dupListHtml(f)
       :'<div class="cempty">No bill found</div>';
     bind();
   }
@@ -3823,5 +3865,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-
-<!-- build: V177 build 2026-11-03 -->
+<!-- build: V195 build 2026-11-17 -->

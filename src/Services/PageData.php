@@ -245,6 +245,44 @@ final class PageData {
      jati thi aur cashier apni hi shift ka bill dobara nahi nikaal
      sakta tha — halanke account abhi khula tha. (Tafseel ke liye
      posCounters ka note dekhein.) */
+  /* V195 — fehrist ab alag function mein: page load aur har Duplicate
+     click (pos-shift-bills) wahi chalate hain. */
+  $shiftBills=self::shiftBills($shift,$date);
+  /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
+     Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
+     hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par
+     "kya version chal raha hai?" ka jawab GHALAT milta tha. Ab `VERSION`
+     file se seedha aata hai. */
+  $build=trim((string)@file_get_contents(\dirname(__DIR__,2).'/VERSION'));
+  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'build'=>$build,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
+ /**
+  * V189 — kisi bhi ek din ke BAND bill, duplicate ki fehrist ke liye.
+  *
+  * `posBoot()` wali fehrist chalte account ki hoti hai aur safha load
+  * hote waqt ek dafa banti hai. Yeh us se alag hai: cashier tareekh chun
+  * kar us din ke bill mangwa sakta hai, taake kal ka bill dobara chhapne
+  * ke liye Reports kholni na pare.
+  *
+  * Pehra wahi: `Scope::orderWhere()` (cashier apne, manager sab) aur
+  * site ki shart — kisi doosre business ka bill kisi soorat nahi aata.
+  *
+  * @return array<int,array<string,mixed>>
+  */
+ /* ============================================================
+    V195 — DUPLICATE KI FEHRIST: POORI SHIFT, HAR CLICK PAR TAAZA.
+
+    Pehle (1) sirf aakhri 50 bill — 63 bills wali shift mein pehle 13
+    ghayab, fehrist 0006 se shuru; (2) fehrist sirf POS khulte waqt
+    banti thi, baad ke bill reload ke baghair nazar nahi aate the.
+    Customer ko lagta "bill gum ho gaya".
+
+    Ab yeh function POS boot aur `pos-shift-bills` (har Duplicate
+    click) dono chalate hain. Had 1000 — ek shift mein is se zyada
+    bill nahi bante; yeh sirf hifazat ki had hai.
+    ============================================================ */
+ public static function shiftBills(?array $shift, string $date): array
+ {
+  $p = DB::pdo();
   $pick = $shift
     ? ["WHERE site_id=? AND order_status='CLOSED'
              AND (shift_id=? OR (shift_id IS NULL AND closed_at>=?))",
@@ -256,7 +294,7 @@ final class PageData {
                           pm.name payment_name,fi.provider_invoice_no fbr_no
                      FROM (SELECT id FROM orders
                             {$pick[0]}
-                            ORDER BY closed_at DESC LIMIT 50) pick
+                            ORDER BY closed_at DESC LIMIT 1000) pick
                      JOIN orders o ON o.id=pick.id
                      LEFT JOIN dining_tables dt ON dt.id=o.table_id
                      LEFT JOIN customers c ON c.id=o.customer_id
@@ -304,26 +342,9 @@ final class PageData {
      ============================================================ */
   usort($shiftBills, fn($a,$b) => (strcmp((string)$a['day'],(string)$b['day']))
       ?: ($a['seq'] <=> $b['seq']) ?: strcmp((string)$a['billNo'],(string)$b['billNo']));
-  /* V158 — `build`: POS ke footer aur "About" par asal build nazar aaye.
-     Pehle wahan `var VERSION='POS v48'` likha hua tha — haath ka likha
-     hua number jo V49 se V157 tak kabhi badla hi nahi. Support call par
-     "kya version chal raha hai?" ka jawab GHALAT milta tha. Ab `VERSION`
-     file se seedha aata hai. */
-  $build=trim((string)@file_get_contents(\dirname(__DIR__,2).'/VERSION'));
-  return ['products'=>$products,'printers'=>$printers,'categories'=>$cats,'customers'=>$customers,'tables'=>$tables,'shift'=>$shift,'shiftBills'=>$shiftBills,'build'=>$build,'nextBill'=>self::billPrefix().str_pad((string)self::nextBill(),4,'0',STR_PAD_LEFT)]; }
- /**
-  * V189 — kisi bhi ek din ke BAND bill, duplicate ki fehrist ke liye.
-  *
-  * `posBoot()` wali fehrist chalte account ki hoti hai aur safha load
-  * hote waqt ek dafa banti hai. Yeh us se alag hai: cashier tareekh chun
-  * kar us din ke bill mangwa sakta hai, taake kal ka bill dobara chhapne
-  * ke liye Reports kholni na pare.
-  *
-  * Pehra wahi: `Scope::orderWhere()` (cashier apne, manager sab) aur
-  * site ki shart — kisi doosre business ka bill kisi soorat nahi aata.
-  *
-  * @return array<int,array<string,mixed>>
-  */
+  return $shiftBills;
+ }
+
  public static function billsOn(string $day): array
  {
     [$w, $a] = \Aio\Services\Scope::orderWhere('o');
@@ -397,4 +418,4 @@ final class PageData {
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
 
-// build: V177 build 2026-11-03
+// build: V195 build 2026-11-17

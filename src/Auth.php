@@ -115,26 +115,72 @@ final class Auth {
            yahin girana zaroori hai, warna pichle business ka industry
            chipka reh jata hai. */
         self::forgetTenantContext();
-        self::resolveCloudTenant($pdo, $login);
 
-        $q = $pdo->prepare(
-            "SELECT *
-               FROM users
-              WHERE tenant_id=?
-                AND status='ACTIVE'
-                AND deleted_at IS NULL
-                AND (LOWER(email)=LOWER(?) OR LOWER(username)=LOWER(?))
-              LIMIT 1"
-        );
-        $q->execute([tenant_id(), $login, $login]);
-        $u = $q->fetch();
+        if (cfg('app.role') === 'cloud') {
+            /* ============================================================
+               V195 — JO USER LOGIN KARE, USI KA BUSINESS.
 
-        if (!$u || !is_string($u['password_hash'] ?? null)) {
-            return false;
-        }
+               Pehle user ko SIRF us business mein dhoonda jata tha jo
+               session mein pehle se para tha (pichla login, ya kisi
+               purane `login.html?b=` link ka business). Ek hi browser mein
+               Mart Import login tha, phir Fish Test ka SAHI password diya:
+               "Invalid login" — business ke link ke saath bhi, aur logout
+               ke baad bhi (test se pakka).
 
-        if (!password_verify($password, $u['password_hash'])) {
-            return false;
+               Ab: pichla business, us ki branch aur cache sab saaf; user
+               SAARE businesses mein dhoonda jata hai aur jis ka password
+               mile us ka business khulta hai. Ek hi username + password
+               do businesses mein ho (bohat kam) to `?b=` link wala
+               business faisla karta hai; link na ho to login nahi hota —
+               ghalat business kabhi nahi khulta.
+               ============================================================ */
+            unset($_SESSION['user'], $_SESSION['site_id'], $_SESSION['login_tenant_id']);
+            $q = $pdo->prepare(
+                "SELECT u.*
+                   FROM users u
+                   JOIN tenants t ON t.id=u.tenant_id
+                  WHERE u.status='ACTIVE' AND u.deleted_at IS NULL
+                    AND (LOWER(u.email)=LOWER(?) OR LOWER(u.username)=LOWER(?))
+                  LIMIT 10"
+            );
+            $q->execute([$login, $login]);
+            $hits = [];
+            foreach ($q->fetchAll() as $row) {
+                if (is_string($row['password_hash'] ?? null) && password_verify($password, $row['password_hash'])) {
+                    $hits[] = $row;
+                }
+            }
+            if (!$hits) return false;
+            $u = $hits[0];
+            if (count($hits) > 1) {
+                $hint = '';
+                $slug = (string)($_SESSION['login_tenant_slug'] ?? '');
+                if ($slug !== '') { try { $hint = (string)\Aio\Services\Platform::tenantIdBySlug($slug); } catch (\Throwable $e) {} }
+                $u = null;
+                foreach ($hits as $h) if ($hint !== '' && (string)$h['tenant_id'] === $hint) $u = $h;
+                if (!$u) return false;
+            }
+            $_SESSION['login_tenant_id'] = (string)$u['tenant_id'];
+        } else {
+            $q = $pdo->prepare(
+                "SELECT *
+                   FROM users
+                  WHERE tenant_id=?
+                    AND status='ACTIVE'
+                    AND deleted_at IS NULL
+                    AND (LOWER(email)=LOWER(?) OR LOWER(username)=LOWER(?))
+                  LIMIT 1"
+            );
+            $q->execute([tenant_id(), $login, $login]);
+            $u = $q->fetch();
+
+            if (!$u || !is_string($u['password_hash'] ?? null)) {
+                return false;
+            }
+
+            if (!password_verify($password, $u['password_hash'])) {
+                return false;
+            }
         }
 
         // Create the authenticated session before doing any optional
@@ -537,4 +583,4 @@ final class Auth {
     }
 }
 
-// build: V193 build 2026-11-13
+// build: V195 build 2026-11-17
