@@ -102,6 +102,10 @@ final class PosService {
     $sub=(float)$tq->fetchColumn();
     $disc=(float)($d['discount_amount']??0);
     $svc=(float)($d['service_charge']??0);
+    /* V199 — 400 ke bill par 1,000 discount: bill 0 theek tha, magar
+       discount 1,000 save hota aur discount reports 600 zyada dikhati.
+       Ab discount zyada se zyada bill (items + service) jitna. */
+    $disc=min(max(0.0,$disc),max(0.0,$sub+$svc));
     /* V171 — delivery charge. Sirf Home Delivery par; `deliveryOf()`
        khud dekh leta hai ke bill ka type kya hai. */
     $dlv=self::deliveryOf($d);
@@ -234,7 +238,7 @@ final class PosService {
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);/* ============================================================
+ public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho *//* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -578,10 +582,49 @@ final class PosService {
     foreach((array)($d['base_line_ids']??[]) as $x){ $x=trim((string)$x); if($x!=='')$base[$x]=1; }
     foreach($keep as $k) unset($base[$k]);
     if(!$base) return 0;
+    /* V199 — kitchen ja chuki line hat rahi ho to pehle us ka naam aur
+       kitchen wali qty le lo — kitchen ko cancel parchi jayegi. */
+    $sq=$p->prepare("SELECT id,item_name_snapshot,sent_qty FROM order_items WHERE id=? AND order_id=? AND status='ACTIVE' AND sent_qty>0");
+    $sent=[];
+    foreach(array_keys($base) as $id){ $sq->execute([$id,$order]); if($r=$sq->fetch(PDO::FETCH_ASSOC)) $sent[]=$r; }
     $u=$p->prepare("UPDATE order_items SET status='VOID',qty=0,line_total=0,updated_at=NOW(6)
                      WHERE id=? AND order_id=? AND status='ACTIVE'");
     $n=0; foreach(array_keys($base) as $id){ $u->execute([$id,$order]); $n+=$u->rowCount(); }
+    if($sent) self::kitchenCancel($p,$order,$sent);
     return $n;
+ }
+ /* ============================================================
+    V199 — KITCHEN KO CANCEL BATAO.
+
+    Pehle: KOT ke baad manager password se item hataya to bill se hat
+    jata, magar kitchen screen par wohi item "NEW" pari rehti aur koi
+    parchi nahi jati — kitchen woh cheez bana deta jo customer ne
+    cancel kar di.
+
+    Ab: (1) kitchen screen us item ko CANCELLED dikhati hai (OpsService
+    kitchen tickets query line ki halat dekhti hai), aur (2) jis printer
+    par us item ki KOT gayi thi, usi par cancel parchi.
+    ============================================================ */
+ private static function kitchenCancel(PDO $p,string $order,array $rows):void{
+    try{
+        $bill=self::billOf($p,$order);
+        $tq=$p->prepare("SELECT kt.ticket_no,kt.printer_id,kt.station_code FROM kitchen_ticket_items kti
+                           JOIN kitchen_tickets kt ON kt.id=kti.kitchen_ticket_id
+                          WHERE kti.order_item_id=? ORDER BY kt.sent_at DESC LIMIT 1");
+        $byPrinter=[];
+        foreach($rows as $r){
+            $tq->execute([$r['id']]); $t=$tq->fetch(PDO::FETCH_ASSOC);
+            if(!$t || !$t['printer_id']) continue;
+            $byPrinter[$t['printer_id']]['tickets'][$t['ticket_no']]=1;
+            $byPrinter[$t['printer_id']]['lines'][]=rtrim(rtrim(number_format((float)$r['sent_qty'],3,'.',''),'0'),'.').' x '.$r['item_name_snapshot'].'  -- CANCELLED';
+        }
+        foreach($byPrinter as $pid=>$g){
+            $payload="*** CANCEL ***\nBill #".$bill."  (".implode(', ',array_keys($g['tickets'])).")\n"
+                    .implode("\n",$g['lines'])."\nMAT BANAYEIN";
+            $p->prepare("INSERT INTO printer_jobs(id,tenant_id,site_id,printer_id,job_type,reference_type,reference_id,payload_text,status) VALUES(?,?,?,?, 'KOT','ORDER',?,?, 'PENDING')")
+              ->execute([uuid(),tenant_id(),site_id(),$pid,$order,$payload]);
+        }
+    }catch(\Throwable $e){ /* parchi na bane to bhi bill ka kaam na ruke */ }
  }
  private static function upsertOrderItem(PDO $p,string $order,array $i):array{
     $mid=self::resolveMenuId($p,$i);
@@ -756,4 +799,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V197 build 2026-11-17
+// build: V199 build 2026-11-17

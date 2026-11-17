@@ -621,7 +621,8 @@ function posConflict(r){
   if(!r||r.ok||!r.code) return false;
   if(r.code==='CHANGED'){
     var id=r.order_id||curHoldId;
-    if(id) resumeHold({id:id});
+    /* V199 — bill ab kisi aur ka ho (handover) to khulega nahi: screen saaf. */
+    if(!id || !resumeHold({id:id})){ newBill(null,true); loadHolds(); }
     infoBox('Bill badal gaya hai', r.message||'');
     return true;
   }
@@ -3957,4 +3958,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V197 build 2026-11-17 -->
+<!-- build: V199 build 2026-11-17 -->

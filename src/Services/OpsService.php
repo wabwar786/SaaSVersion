@@ -56,9 +56,12 @@ final class OpsService
         $ids = array_column($tickets, 'id');
         $in  = implode(',', array_fill(0, count($ids), '?'));
         $iq = DB::pdo()->prepare(
+            /* V199 — bill se hati hui (VOID) line kitchen par CANCELLED. */
             "SELECT kti.kitchen_ticket_id AS tid, kti.qty_sent AS qty,
-                    kti.item_status, kti.note_snapshot AS note,
-                    COALESCE(oi.item_name_snapshot, mi.name, 'Item') AS name
+                    CASE WHEN oi.status='VOID' THEN 'CANCELLED' ELSE kti.item_status END AS item_status,
+                    CASE WHEN oi.status='VOID' THEN 'CANCELLED - mat banayein' ELSE kti.note_snapshot END AS note,
+                    CONCAT(CASE WHEN oi.status='VOID' THEN 'CANCELLED: ' ELSE '' END,
+                           COALESCE(oi.item_name_snapshot, mi.name, 'Item')) AS name
                FROM kitchen_ticket_items kti
                LEFT JOIN order_items oi ON oi.id = kti.order_item_id
                LEFT JOIN menu_items mi  ON mi.id = oi.menu_item_id
@@ -1420,4 +1423,4 @@ final class OpsService
     }
 }
 
-// build: V197 build 2026-11-17
+// build: V199 build 2026-11-17

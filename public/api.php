@@ -2576,8 +2576,11 @@ case 'shift-handover':needLogin();Auth::requireModule('pos');$d=body();
  if((int)$tot['n']===0)fail($mode==='pending'?'There are no pending bills to hand over.':'This shift has no bills.');
 
  $note=' [handed to '.($tu['full_name']?:'user').' by '.((current_user()['full_name']??'')?:'cashier').' '.date('Y-m-d H:i').']';
+ /* V199 — `row_version` bhi: jis screen par yeh bill pehle se khula ho,
+    us ka save "Bill badal gaya" par ruk jaye (PosConflict CHANGED) —
+    warna purana cashier doosre ke naam ka bill charge kar leta. */
  $upd=$p->prepare("UPDATE orders o SET o.created_by_user_id=?, o.shift_id=?,
-                          o.notes=CONCAT(COALESCE(o.notes,''),?), o.updated_at=NOW(6)
+                          o.notes=CONCAT(COALESCE(o.notes,''),?), o.row_version=o.row_version+1, o.updated_at=NOW(6)
                     WHERE $where");
  $upd->execute([$to, $theirs['id']??null, $note, $mine['id']]);
 
@@ -4196,4 +4199,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V198 build 2026-11-17
+// build: V199 build 2026-11-17
