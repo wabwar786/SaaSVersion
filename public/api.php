@@ -25,6 +25,13 @@ header('Content-Type: application/json; charset=utf-8');
    ============================================================ */
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
+/* V197 — bill band / badla hua: POS ko saaf code ke saath batao (dekho PosConflict). */
+function pos_conflict(\Aio\Services\PosConflict $e):never{
+  http_response_code(409);
+  echo json_encode(['ok'=>false,'code'=>$e->kind,'message'=>$e->getMessage(),
+                    'bill_no'=>$e->billNo,'order_id'=>$e->orderId],JSON_UNESCAPED_UNICODE);
+  exit;
+}
 function body():array{$x=json_decode(file_get_contents('php://input'),true);return is_array($x)?$x:[];}function ok($x=[]):never{echo json_encode(['ok'=>true]+$x,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}function fail($m,$s=400):never{
   /* 5xx ka matlab hai server ki apni kharabi — yeh Error Log mein jana
      chahiye. 4xx (ghalat password, khali khaana) rozana ki baat hai aur
@@ -1096,7 +1103,7 @@ case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
     ============================================================ */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
- try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(Throwable $e){fail($e->getMessage());}
+ try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}catch(Throwable $e){fail($e->getMessage());}
  ok($r);
 
 case 'tablet-tables':needLogin();
@@ -2889,7 +2896,7 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
  /* V168 — ruka hua bill apni id se band hota hai (dekhen `pos-hold`).
     Us soorat mein number badalne ka koi sawal hi nahi. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
- $id=PosService::finalize($d,$d['items']??[]);
+ try{$id=PosService::finalize($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  /* Parchi par WAHI number jo order par waqai likha hai — guard ya id
     ki wajah se badla ho to bhi. Pehle yahan request ka number chhapta
     tha, jo order ke number se alag ho sakta tha. */
@@ -2914,7 +2921,7 @@ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageDat
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();
  /* V168 — ruka hua bill apni id se chalta hai; warna wahi purana pehra. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
- $r=PosService::sendKot($d,$d['items']??[]);
+ try{$r=PosService::sendKot($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$r['order_id']??'']);
      if($bn=$bq->fetchColumn())$d['bill_no']=(string)$bn;}catch(Throwable $e){}
  $r['bill_no']=$d['bill_no'];ok($r);
@@ -4189,4 +4196,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V196 build 2026-11-17
+// build: V197 build 2026-11-17

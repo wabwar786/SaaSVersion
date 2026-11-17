@@ -169,20 +169,22 @@ final class PosService {
   * "hold" rehta hai; kitchen tab jata hai jab wo Send dabata hai.
   * Pehle hold ka koi server-side rasta tha hi nahi.
   */
- public static function hold(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){
+ public static function hold(array $d,array $items): array { return self::txRetry(function(PDO $p)use($d,$items){
+    self::lockSite($p);   /* V197 — branch ke saves ek qatar mein */
     $order=self::ensureOpenOrder($p,$d);
     $n=0; $keep=[];
     foreach($items as $i){ $row=self::upsertOrderItem($p,$order,$i); $keep[]=(string)$row['id']; $n++; }
     self::dropRemoved($p,$order,$d,$keep);   /* V196 — cart se hata hua item bill se bhi hatao */
 
     $grand = self::writeTotals($p, $order, $d, 1);
+    $rev = self::bumpRev($p, $order);          /* V197 */
 
     /* Table `ensureOpenOrder` khud set karta hai (id ya naam se). */
 
     self::queueSync($p,'orders',$order,'UPDATE');
     /* V189 — asli shift wapas bhejo. POS us se khud ko durust kar leta
        hai jab account kahin aur se band ho chuka ho. */
-    return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
+    return ['order_id'=>$order,'held'=>$n,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,'rev'=>$rev,
             'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
             'total'=>max(0.0,$grand)];
  }); }
@@ -194,7 +196,7 @@ final class PosService {
     catch(\Throwable $e){ return ''; }
  }
 
- public static function sendKot(array $d,array $items): array { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$pending=[];$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
+ public static function sendKot(array $d,array $items): array { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$pending=[];$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
     /* V190 — KOT par bhi poora hisaab likho, sirf items nahi.
        Pehle yahan raqam ko haath hi nahi lagta tha: kitchen bhejne ke
        baad bill DB mein svc 0 / disc 0 / total 0 ka khara rehta tha.
@@ -202,7 +204,8 @@ final class PosService {
        kyunki yeh bill ruka hua nahi, chal raha hai. */
     self::dropRemoved($p,$order,$d,$keep);   /* V196 */
     self::writeTotals($p,$order,$d,0);
-    if(!$pending)return ['order_id'=>$order,'sent'=>0,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
+    $rev=self::bumpRev($p,$order);   /* V197 */
+    if(!$pending)return ['order_id'=>$order,'sent'=>0,'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,'rev'=>$rev,
                          'shift_id'=>(string)(self::shiftFor($p,$d) ?? '')];$groups=[];$noPrinter=[];
  foreach($pending as $x){
    $pr=self::printerForMenu($p,$x['row']['menu_item_id']);
@@ -224,14 +227,14 @@ final class PosService {
  return ['order_id'=>$order,'sent'=>$sent,
          /* V190 — POS ko asli bill number aur asli account bhi batao,
             taake wo khud ko durust kar sake (dekho `syncShift`). */
-         'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,
+         'bill_no'=>self::billOf($p,$order),'line_ids'=>$keep,'rev'=>$rev,
          'shift_id'=>(string)(self::shiftFor($p,$d) ?? ''),
          'no_printer'=>count($noPrinter),
          'message'=>$noPrinter
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return DB::tx(function(PDO $p)use($d,$items){$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);/* ============================================================
+ public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);/* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -300,25 +303,66 @@ final class PosService {
        talash ab SIRF khule orders mein hoti hai.
        ============================================================ */
     $oid = trim((string)($d['order_id'] ?? ''));
+    $wantId = null;
     if ($oid !== '' && preg_match('/^[0-9a-f-]{36}$/i', $oid)) {
-        $qo = $p->prepare("SELECT id FROM orders
-                            WHERE id=? AND site_id=? AND order_status='OPEN' LIMIT 1 FOR UPDATE");
+        /* ============================================================
+           V197 — ID SE MILA BILL: KHULA HAI TO WOHI, BAND HAI TO RUKO.
+
+           Pehle: id wala bill band mila to neeche ka raasta NAYA bill
+           bana deta. Do counters ne ek held bill band kiya, ya payment
+           ka jawab net mein gum hua aur cashier ne dobara dabaya —
+           dono soorat mein DO SALE. Ab band bill par koi naya bill
+           nahi banta (PosConflict CLOSED).
+
+           `rev`: screen ne bill jis version par dekha tha. Bill us ke
+           baad kahin aur badla ho to save rukta hai (CHANGED) — purani
+           screen doosre ka kaam nahi mita sakti. Tablet `rev` nahi
+           bhejta: us par yeh shart nahi lagti (wo sirf jorta hai).
+
+           Naya POS bill shuru hote hi apni id banata hai. Woh id abhi
+           database mein na ho to naya order ISI id se banta hai — taake
+           wohi bill dobara aaye (double click, net ka masla) to wohi
+           order mile, doosra nahi.
+           ============================================================ */
+        $qo = $p->prepare("SELECT id, order_status, bill_no, row_version FROM orders
+                            WHERE id=? AND site_id=? LIMIT 1 FOR UPDATE");
         $qo->execute([$oid, site_id()]);
-        if ($found = $qo->fetchColumn()) {
-            self::touchOrder($p, (string)$found, $d);
-            return (string)$found;
+        if ($o = $qo->fetch(PDO::FETCH_ASSOC)) {
+            $bn = (string)$o['bill_no'];
+            if ($o['order_status'] === 'OPEN') {
+                $rev = trim((string)($d['rev'] ?? ''));
+                if ($rev !== '' && (int)$rev !== (int)$o['row_version']) {
+                    throw new PosConflict('CHANGED',
+                        'Bill #'.$bn.' doosri jagah (counter / tablet) badla gaya hai. '
+                       .'Taaza bill khol diya gaya hai — check kar ke dobara karein.', $bn, (string)$o['id']);
+                }
+                self::touchOrder($p, (string)$o['id'], $d);
+                return (string)$o['id'];
+            }
+            throw new PosConflict('CLOSED',
+                $o['order_status'] === 'CLOSED'
+                  ? 'Bill #'.$bn.' pehle hi band (paid) ho chuka hai — dobara charge nahi hua.'
+                  : 'Bill #'.$bn.' cancel ho chuka hai — is par kaam nahi ho sakta.',
+                $bn, (string)$o['id']);
         }
-        /* Id mili magar order khula nahi — us par aage kaam nahi hoga.
-           Neeche wala rasta naya bill bana dega. */
+        $ex = $p->prepare("SELECT COUNT(*) FROM orders WHERE id=?");
+        $ex->execute([$oid]);
+        if ((int)$ex->fetchColumn() === 0) $wantId = $oid;
     }
 
     /* V72 — TABLET table se kaam karta hai, bill number se nahi.
        Pehle yahan `$d['bill_no']` lazmi tha; khali aane par khali bill
        number wala order ban jata tha. Ab: bill_no na ho to us table ka
        khula bill dhoondo, aur wo bhi na ho to naya number khud banao. */
-    if (trim((string)($d['bill_no'] ?? '')) === '') {
+    /* V197 — TABLET: table ka khula bill HAMESHA pehle dhoondo.
+       Tablet table ka bill number bhi bhejta hai. V195 ke baad
+       "number pehle se maujood -> naya number" wali shart lagne se
+       tablet ka har naya item ALAG bill ban jata tha (test: R-01 par
+       0428, 0429, 0430 — teen khule bill). Ab `table_id` aaye to us
+       table ka khula bill hi istemal hota hai, number kuch bhi ho. */
+    {
         $tid = (string)($d['table_id'] ?? '');
-        if ($tid !== '') {
+        if ($tid !== '' && $wantId === null) {
             /* V168 — table ka khula bill ab apni ID se pakRa jata hai.
                Pehle sirf us ka NUMBER liya jata tha, aur neeche wali
                talash "aaj ki tareekh" par hoti thi. Raat ka khula hua
@@ -411,7 +455,7 @@ final class PosService {
         self::touchOrder($p,(string)$id,$d);
         return$id;
     }
-    $id=uuid();
+    $id=$wantId ?: uuid();
     $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,table_id,customer_id,shift_id,guest_count,opened_at,created_by_user_id) VALUES(?,?,?,?,?,'POS',?,'OPEN','UNPAID',?,?,?,?,NOW(6),?)")->execute([$id,tenant_id(),site_id(),$bill,today(),$mode,$table,$customer,self::shiftFor($p,$d),($d['guest_count']??null)?:null,current_user()['id']??null]);
     return$id;
  }
@@ -484,6 +528,51 @@ final class PosService {
     Sirf `base_line_ids` wali lines. Tablet ne beech mein koi item daala
     ho to woh is fehrist mein hai hi nahi — us ko haath nahi lagta.
     ============================================================ */
+ /* ============================================================
+    V197 — RUSH MEIN BILL FAIL / ADHA NA HO.
+
+    Cloud par kai requests ek saath chalti hain. 8 counters ek saath
+    bill band karein to MariaDB "Deadlock" de deta tha: bill refuse, aur
+    kabhi adha save (andar kahin error chup chaap pakra gaya, transaction
+    khatam, baqi likhai bina transaction ke). Test: 96 mein se 1-45
+    bills refuse, 5-7 khule bill bache.
+
+    1. `lockSite`: har save ka PEHLA kaam branch ki row par lock. Ek
+       branch ke saves ek qatar mein — aapas mein deadlock ho hi nahi
+       sakta. (Shop PC par pehle hi ek waqt mein ek request hoti hai.)
+    2. `txRetry`: phir bhi deadlock / lock-wait aaye to poora save
+       dobara (3 dafa tak). Deadlock par MariaDB poora transaction
+       wapas le leta hai, is liye dobara chalana mehfooz hai.
+    3. Transaction beech mein khatam mili to save ko kamyab nahi maana
+       jata — saaf error.
+    ============================================================ */
+ private static function lockSite(PDO $p):void{
+    $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
+ }
+ private static function txRetry(callable $fn):mixed{
+    for($try=1;;$try++){
+        try{
+            return DB::tx(function(PDO $p)use($fn){
+                $r=$fn($p);
+                if(!$p->inTransaction())
+                    throw new \RuntimeException('Bill save beech mein ruk gaya — dobara koshish karein.');
+                return $r;
+            });
+        }catch(\PDOException $e){
+            $code=(int)($e->errorInfo[1]??0);
+            if($try<3 && ($code===1213 || $code===1205 || $e->getCode()==='40001')){
+                usleep(random_int(20000,80000)); continue;
+            }
+            throw $e;
+        }
+    }
+ }
+ /** Bill ka version barhao — har save par (dekho PosConflict CHANGED). */
+ private static function bumpRev(PDO $p,string $order):int{
+    $p->prepare("UPDATE orders SET row_version=row_version+1, updated_at=NOW(6) WHERE id=?")->execute([$order]);
+    $q=$p->prepare("SELECT row_version FROM orders WHERE id=?"); $q->execute([$order]);
+    return (int)$q->fetchColumn();
+ }
  private static function dropRemoved(PDO $p,string $order,array $d,array $keep):int{
     $base=[];
     foreach((array)($d['base_line_ids']??[]) as $x){ $x=trim((string)$x); if($x!=='')$base[$x]=1; }
@@ -667,4 +756,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V196 build 2026-11-17
+// build: V197 build 2026-11-17

@@ -660,7 +660,7 @@ final class OpsService
     {
         $p = DB::pdo();
         $q = $p->prepare(
-            "SELECT o.id, o.bill_no, o.service_mode, o.tax_amount, o.discount_amount,
+            "SELECT o.id, o.bill_no, o.row_version, o.service_mode, o.tax_amount, o.discount_amount,
                     COALESCE(o.discount_pct,0) AS discount_pct, o.service_charge,
                     COALESCE(o.delivery_charge,0) AS delivery_charge,
                     COALESCE(dt.display_name,'') AS table_name,
@@ -686,6 +686,7 @@ final class OpsService
         $mode = ucwords(strtolower(str_replace('_', ' ', (string)$o['service_mode'])));
         return [
             'order_id' => (string)$o['id'],
+            'rev'      => (int)($o['row_version'] ?? 0),   /* V197 */
             'billNo'   => (string)$o['bill_no'],
             'mode'     => $mode,
             'table'    => (string)$o['table_name'],
@@ -1419,4 +1420,4 @@ final class OpsService
     }
 }
 
-// build: V196 build 2026-11-17
+// build: V197 build 2026-11-17

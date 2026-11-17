@@ -590,6 +590,81 @@ var HOLD='held_bills', holds=[], lastBill=null, curHoldId='';
    jati hain; jo cart se hat gayi woh server par bhi hat jati hai. */
 var baseLids=[];
 function setBase(r){ if(r&&r.line_ids) baseLids=r.line_ids.slice(); }
+/* ============================================================
+   V197 — BILL KI PAKKI ID, VERSION, AUR PICHLA BILL WAPAS.
+
+   curBillUid: naya bill shuru hote hi POS us ki id bana leta hai. Har
+     save isi id se jata hai — double click ho ya net ka jawab gum ho
+     jaye aur cashier dobara dabaye, server ko wohi bill milta hai,
+     doosri sale nahi banti.
+   curRev: bill ka version jo is screen ne dekha. Bill kisi aur counter
+     ya tablet par badla ho to save rukta hai aur bill taaza khulta hai.
+   Draft: bina save bill is PC ke browser mein rehta hai; page reload ya
+     browser band ho jaye to POS poochta hai "wapas laayein?".
+   ============================================================ */
+var curBillUid=uuid4(), curRev='';
+function uuid4(){
+  var b=new Uint8Array(16),i,h=[];
+  try{ (window.crypto||window.msCrypto).getRandomValues(b); }
+  catch(e){ for(i=0;i<16;i++) b[i]=Math.floor(Math.random()*256); }
+  b[6]=(b[6]&15)|64; b[8]=(b[8]&63)|128;
+  for(i=0;i<16;i++) h.push((b[i]+256).toString(16).slice(1));
+  return h.slice(0,4).join('')+'-'+h.slice(4,6).join('')+'-'+h.slice(6,8).join('')+'-'+h.slice(8,10).join('')+'-'+h.slice(10).join('');
+}
+function setRev(r){ if(r&&r.rev!=null) curRev=String(r.rev); }
+function infoBox(title,msg){
+  modal('<div class="dh"><h3>'+esc(title)+'</h3></div><div class="db"><p style="font-size:15px;line-height:1.5">'+esc(msg)+'</p></div>'
+       +'<div class="df"><button class="go" data-x>OK</button></div>');
+}
+/* Server ne bill rok diya (CLOSED / CHANGED) to yahan sambhalo. true = sambhal liya. */
+function posConflict(r){
+  if(!r||r.ok||!r.code) return false;
+  if(r.code==='CHANGED'){
+    var id=r.order_id||curHoldId;
+    if(id) resumeHold({id:id});
+    infoBox('Bill badal gaya hai', r.message||'');
+    return true;
+  }
+  if(r.code==='CLOSED'){
+    newBill(null,true); loadHolds();
+    infoBox('Bill pehle hi band hai', r.message||'');
+    return true;
+  }
+  return false;
+}
+function draftKey(){ return 'pos_draft_'+((shift&&shift.id)||''); }
+function saveDraft(){
+  if(!window.__draftDone||!shift) return;
+  try{
+    if(!cart.length){ localStorage.removeItem(draftKey()); return; }
+    localStorage.setItem(draftKey(), JSON.stringify({cart:cart,billNo:billNo,mode:mode,curTable:curTable,
+      curCustId:curCustId,curCustName:curCustName,curCustPhone:curCustPhone,disc:disc,svc:svc,dlv:dlv,
+      orderTax:orderTax,payMethod:payMethod,curHoldId:curHoldId,curBillUid:curBillUid,curRev:curRev,
+      baseLids:baseLids,at:Date.now()}));
+  }catch(e){}
+}
+function offerDraft(){
+  if(window.__draftDone) return;
+  window.__draftDone=1;
+  var d=null; try{ d=JSON.parse(localStorage.getItem(draftKey())||'null'); }catch(e){}
+  if(!d||!d.cart||!d.cart.length||cart.length) return;
+  var ov=modal('<div class="dh"><h3>Pichla bill wapas laayein?</h3><p>Page band ya reload hone se pehle yeh bill save nahi hua tha.</p></div>'
+    +'<div class="db"><div class="kv"><span>Bill</span><b>#'+esc(billShow(d.billNo))+' &middot; '+esc(d.mode||'')+(d.curTable?(' &middot; '+esc(d.curTable)):'')+'</b></div>'
+    +'<div class="kv"><span>Items</span><b>'+d.cart.length+'</b></div>'
+    +'<div class="kv"><span>Waqt</span><b>'+esc(new Date(d.at||Date.now()).toLocaleTimeString())+'</b></div></div>'
+    +'<div class="df"><button class="sec" id="drNo">Nahi, mita dein</button><button class="go" id="drYes">Haan, wapas laayein</button></div>',false,true);
+  ov.querySelector('#drNo').onclick=function(){ ov.remove(); try{localStorage.removeItem(draftKey())}catch(e){} };
+  ov.querySelector('#drYes').onclick=function(){
+    ov.remove();
+    cart=d.cart; billNo=d.billNo; mode=d.mode||'Dine In'; curTable=d.curTable||'';
+    curCustId=d.curCustId||'walkin'; curCustName=d.curCustName||'Walk-in Customer'; curCustPhone=d.curCustPhone||'';
+    disc=d.disc||{type:'flat',value:0}; svc=d.svc||{type:'percent',value:0}; dlv=d.dlv||0;
+    if(d.orderTax!=null) orderTax=d.orderTax; if(d.payMethod) payMethod=d.payMethod;
+    curHoldId=d.curHoldId||''; curBillUid=d.curBillUid||uuid4(); curRev=d.curRev||''; baseLids=d.baseLids||[];
+    billStarted=true; renderCtx(); renderCart();
+    toast('Bill #'+billShow(billNo)+' wapas aa gaya');
+  };
+}
 var CAN={manage:false};
 /* Module check ka GLOBAL helper.
    Pehle `hasMod` sirf boot wale function ke ANDAR ek local variable tha.
@@ -957,6 +1032,7 @@ function boot(){
      hatte hi timer mar jata tha. Ab background loop (60s) kaam karta hai;
      yahan sirf chip refresh hota hai. */
   if(!shift){openGate();return}
+  offerDraft();   /* V197 — reload se pehle ka bill */
   /* ============================================================
      V176 — POS KHULTE HI NEW BILL KA DIALOG NAHI KHULEGA.
 
@@ -1848,6 +1924,7 @@ function renderCart(){
   $('#kotBtn').disabled=!cart.some(function(l){return l.qty-l.sentQty>0});
   $('#chargeBtn').disabled=!cart.length;
   renderStrip();
+  saveDraft();   /* V197 */
 }
 /* kitchen-sent line ko manager approval ke baghair remove NahI kiya ja sakta */
 function removeLine(i){
@@ -1895,7 +1972,7 @@ function payload(extra){
      Ab `curHoldId` (wahi order jo resume kiya gaya) saath jata hai,
      to server wahi ek order band karta hai — tareekh jo bhi ho.
      ============================================================ */
-  var d={bill_no:billNo,order_id:curHoldId||'',
+  var d={bill_no:billNo,order_id:curHoldId||curBillUid||'',rev:curRev,
     service_mode:mode,table_name:mode==='Dine In'?curTable:'',
     customer_id:curCustId||'walkin',customer_name:curCustName||'Walk-in Customer',customer_phone:curCustPhone||'',
     shift_id:(shift&&shift.id)||'',discount_amount:t.disc,
@@ -1957,10 +2034,11 @@ function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast
 function saveNow(){
   if(!cart.length) return true;
   var r=api('pos-hold',payload());
+  if(posConflict(r)) return false;   /* V197 */
   if(!r||!r.ok){ toast((r&&r.message)||'Bill mehfooz nahi hua — dobara koshish karein'); return false; }
   syncBill(r); syncShift(r);
   if(r.order_id) curHoldId=r.order_id;
-  setBase(r);
+  setBase(r); setRev(r);
   loadHolds();
   return true;
 }
@@ -1993,10 +2071,11 @@ function sendKot(autoPrint){
   /* RUNNING = is bill ka kuch pehle hi kitchen ja chuka hai (mark karne se PEHLE dekho) */
   var wasRunning=cart.some(function(l){return l.sentQty>0});
   var r=api('pos-kot',payload());
+  if(posConflict(r)) return;   /* V197 */
   if(!r.ok){toast(r.message||'KOT could not be saved — it did not reach the kitchen');return}
   syncBill(r); syncShift(r);   /* V190 — account kahin aur se band ho gaya ho to yahin pata chale */
   if(r.order_id) curHoldId=r.order_id;
-  setBase(r);
+  setBase(r); setRev(r);
   cart.forEach(function(l){l.sentQty=l.qty});
   renderCart();
   var kinfo={running:wasRunning};
@@ -2073,6 +2152,7 @@ $('#chargeBtn').onclick=function(){
   function pay_now_go(btn,rcv){
     var r=api('pos-finalize',payload({payment_code:pay,received_amount:rcv}));
     paying=false;
+    if(r&&!r.ok&&r.code){ ov.remove(); posConflict(r); return; }   /* V197 */
     if(!r.ok){
       if(btn){btn.disabled=false;btn.textContent='Complete Payment';btn.style.opacity=''}
       var ob=ov.querySelector('.db'); if(ob)ob.style.pointerEvents='';
@@ -2467,6 +2547,7 @@ function waSend(kind,lines,info){
 /* ================= NEW BILL / HOLDS / DUPLICATE ================= */
 function newBill(next,skipFlow){
   cart=[];disc={type:'flat',value:0};preQty={};baseLids=[];
+  curBillUid=uuid4();curRev='';   /* V197 */
   /* ============================================================
      V176 — SERVICE CHARGE BHI NAYE BILL PAR SAAF.
 
@@ -2592,6 +2673,7 @@ function cancelHold(h,done){
 function holdCurrent(silent){
   if(!cart.length){if(!silent)toast('Your cart is empty');return false}
   var r=api('pos-hold',payload());
+  if(posConflict(r)) return false;   /* V197 */
   if(!r||!r.ok){toast((r&&r.message)||'Hold failed');return false}
   syncShift(r);          /* V189 — account kahin aur se band ho gaya ho to yahin pata chal jaye */
   loadHolds();newBill();
@@ -2616,6 +2698,7 @@ function resumeHold(h){
   var r=api('pos-hold-open&id='+encodeURIComponent(h.id));
   if(!r||!r.ok){toast((r&&r.message)||'This bill could not be opened');return false}
   curHoldId=h.id;
+  curRev=String(r.rev!=null?r.rev:'');   /* V197 */
   baseLids=(r.items||[]).map(function(x){return x.lid||''}).filter(Boolean);
   cart=(r.items||[]).map(function(x){
     return {id:x.id,name:x.name,qty:x.qty,price:x.price,
@@ -3874,4 +3957,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V196 build 2026-11-17 -->
+<!-- build: V197 build 2026-11-17 -->
