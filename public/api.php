@@ -1446,6 +1446,12 @@ case 'bill-pdf':needLogin();
           liye un par koi asar nahi. */
        'logo'=>\Aio\Services\ReceiptLogo::tenantLogo(),
        'pos_id'=>(string)(\Aio\Services\FiscalService::settings()['pos_id']??'')];
+ /* V202 — Duplicate se reprint: upar "DUPLICATE COPY", aur kis ne kab
+    nikala woh Audit log mein. Items aur raqam wahi. */
+ if(!empty($_GET['dup'])){
+   $ctx['header']="*** DUPLICATE COPY ***\n".(string)$ctx['header'];
+   try{ \Aio\Services\Audit::log('BILL_REPRINT','pos',['id'=>$o['id'],'label'=>'Bill '.$bill]); }catch(Throwable $e){}
+ }
  $tpl=(string)($_GET['template']??'')?:(string)($st['receipt_template']??'classic');
  $pdf=\Aio\Services\Pdf::receipt(BillTemplate::render($tpl,$o,$items,$ctx));
  while(ob_get_level())ob_end_clean();
@@ -4237,4 +4243,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V201 build 2026-11-17
+// build: V202 build 2026-11-17

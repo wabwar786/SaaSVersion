@@ -109,6 +109,10 @@ final class PosService {
        Ab jo khana request mein hai hi nahi, wo bill par jo pehle se
        likha hai wahi rehta hai. POS counter yeh sab hamesha bhejta hai.
        ============================================================ */
+    if(array_key_exists('discount_amount',$d)){   /* V202 — counter ka discount: had se zyada ho to manager */
+        $dq=min(max(0.0,(float)$d['discount_amount']),max(0.0,$sub+(float)($d['service_charge']??0)));
+        self::discAllowed($p,$order,$d,$sub,$dq);
+    }
     if(!array_key_exists('discount_amount',$d) || !array_key_exists('service_charge',$d)
        || !array_key_exists('tax_rate',$d) || !array_key_exists('delivery_charge',$d)){
         $oq=$p->prepare("SELECT subtotal,discount_amount,discount_pct,service_charge,tax_amount,delivery_charge
@@ -270,7 +274,7 @@ final class PosService {
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho *//* ============================================================
+ public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho */self::discAllowed($p,$order,$d,$subtotal,$discount);/* V202 *//* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -462,13 +466,17 @@ final class PosService {
        Lock sirf is transaction tak rehta hai.
        ============================================================ */
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
-    $q=$p->prepare("SELECT id FROM orders
-                     WHERE site_id=? AND business_date=? AND bill_no=? LIMIT 1");
-    $q->execute([site_id(),today(),$bill]);
+    /* ============================================================
+       V202 — NAYE BILL KA NUMBER HAMESHA SERVER DETA HAI.
+       POS raat bhar khula raha: screen par kal ka agla number (#0142)
+       tha, aur 12 baje ke baad pehla bill #0142 hi ban gaya — aaj ke bill
+       0142 se chale, #0001-#0141 kabhi bane hi nahi (numbering mein gap).
+       Ab naya bill aaj ka agla number leta hai (branch lock ke andar),
+       chahe screen par kuch bhi likha ho. POS jawab se asli number le
+       leta hai (syncBill) — KOT / bill par wohi chhapta hai.
+       ============================================================ */
+    $bill = PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
     $id=null;
-    if($q->fetchColumn()){
-        $bill = PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
-    }
     /* V94 — TABLE: id ya naam, dono chalein.
        Pehle sirf `table_name` dekha jata tha. Tablet aur QR ordering
        `table_id` bhejte hain (unke paas asli id hoti hai), is liye
@@ -706,6 +714,51 @@ final class PosService {
         $q->execute([$order]); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
         if($rows) self::kitchenCancel($p,$order,$rows);
     }catch(\Throwable $e){}
+ }
+ /* ============================================================
+    V202 — DISCOUNT KI HAD.
+    Pehle koi had nahi thi: cashier 100% discount de deta (400 -> 0),
+    koi password nahi. Ab Settings ki had (default 10%) tak cashier khud;
+    us se zyada ke liye manager ka password (POS mangta hai). Manager /
+    owner par had nahi. Chhoot:
+      - customer ka apna tay-shuda discount (customer profile),
+      - jo discount is bill par pehle hi manzoor ho kar save ho chuka.
+    ============================================================ */
+ private static function discAllowed(PDO $p,?string $order,array $d,float $base,float $disc):void{
+    if($disc<=0.009 || $base<=0) return;
+    if(\Aio\Auth::isManager()) return;
+    $pct=$disc/$base*100;
+    $max=(float)(SettingsService::taxes()['max_discount'] ?? 10);
+    if($pct <= $max+0.01) return;
+    $cid=(string)($d['customer_id']??'');
+    if($cid!=='' && preg_match('/^[0-9a-f-]{36}$/i',$cid)){
+        $cq=$p->prepare("SELECT COALESCE(discount_pct,0) FROM customers WHERE id=? AND tenant_id=?");
+        $cq->execute([$cid,tenant_id()]);
+        if($pct <= (float)$cq->fetchColumn()+0.01) return;
+    }
+    if($order){
+        $oq=$p->prepare("SELECT discount_amount,discount_pct FROM orders WHERE id=?");
+        $oq->execute([$order]); $o=$oq->fetch(PDO::FETCH_ASSOC);
+        if($o){
+            $rp=(float)($d['discount_pct']??0);
+            if($disc <= (float)$o['discount_amount']+0.01) return;
+            if($rp>0 && $rp <= (float)$o['discount_pct']+0.001) return;
+        }
+    }
+    $pw=(string)($d['disc_pw']??'');
+    if($pw!==''){
+        $mq=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id
+                          WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                            AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+        $mq->execute([tenant_id()]);
+        foreach($mq->fetchAll(PDO::FETCH_ASSOC) as $m){
+            if($m['password_hash'] && password_verify($pw,$m['password_hash'])){
+                try{ Audit::log('DISCOUNT_APPROVED','pos',['id'=>$order,'label'=>round($pct,1).'% by '.$m['full_name']]); }catch(\Throwable $e){}
+                return;
+            }
+        }
+    }
+    throw new PosConflict('DISC_LIMIT','Discount '.round($pct,1).'% hai — cashier '.rtrim(rtrim(number_format($max,2,'.',''),'0'),'.').'% tak de sakta hai. Zyada ke liye manager password chahiye.');
  }
  private static function lockSite(PDO $p):void{
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
@@ -968,4 +1021,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V201 build 2026-11-17
+// build: V202 build 2026-11-17
