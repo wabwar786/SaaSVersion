@@ -890,7 +890,12 @@ final class OpsService
                        cs.invoice_count, cs.gross_sales, cs.discount_total,
                        cs.cash_sales, cs.card_sales,
                        COALESCE(u.full_name,'-') AS cashier,
-                       CASE WHEN cs.snapshot_json IS NULL THEN 0 ELSE 1 END AS has_snapshot
+                       CASE WHEN cs.snapshot_json IS NULL THEN 0 ELSE 1 END AS has_snapshot,
+                       /* V204 — account band hone ke BAAD void hue bill: closing
+                          slip wahi rehti hai, magar yahan farq saaf nazar aaye. */
+                       (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
+                         WHERE o.order_status='VOID' AND o.updated_at > cs.closed_at
+                           AND EXISTS(SELECT 1 FROM payments pp WHERE pp.order_id=o.id AND pp.shift_id=cs.id)) AS void_after
                   FROM cashier_shifts cs
                   LEFT JOIN users u ON u.id = cs.cashier_user_id
                  WHERE cs.site_id = ? AND cs.status='CLOSED' AND cs.deleted_at IS NULL
@@ -926,6 +931,7 @@ final class OpsService
                     'counted'  => (float)$x['actual_cash'],
                     'variance' => (float)$x['variance_amount'],
                     'saved'    => (int)$x['has_snapshot'] === 1,
+                    'void_after' => (float)($x['void_after'] ?? 0),   /* V204 */
                 ], $rows)];
     }
 
@@ -1437,4 +1443,4 @@ final class OpsService
     }
 }
 
-// build: V201 build 2026-11-17
+// build: V204 build 2026-11-18

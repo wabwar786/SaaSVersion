@@ -48,8 +48,34 @@ function pos_open_bills_msg(string $shiftId):?string{
    ghalat koshish Audit log mein rahe (5 ghalat = 5 minute taala), aur
    PosService ko sirf "kis manager ne manzoor kiya" milta hai. Client
    khud `__` wale khane nahi bhej sakta. */
+/* V204 — Owner / Admin (business ka malik). */
+function pos_items_only(array &$d):void{
+  foreach(['discount_amount','discount_pct','service_charge','tax_rate','tax_amount','delivery_charge','disc_pw','void_pw','customer_id','shift_id','payment_code','received_amount'] as $k) unset($d[$k]);
+}
+/* V204 — naya bill bina item ke na bane (khali khule bill shift close rokte the). */
+function pos_need_items(array $d):void{
+  if(trim((string)($d['order_id']??''))!=='') return;
+  foreach((array)($d['items']??[]) as $i){ if(is_array($i)&&(float)($i['qty']??0)>0) return; }
+  fail('Bill mein koi item nahi hai.',422);
+}
+function is_owner():bool{ if(Auth::isAdmin())return true; $u=current_user()??[]; return stripos((string)($u['role']??''),'owner')!==false; }
+/* V204 — manager password, har jagah ek hi pehra (5 ghalat = 5 minute taala). */
+function mgr_pw_ok(string $pw,string $why,int $code=401):array{
+  $r=PosService::managerByPassword($pw,$why);
+  if(empty($r['ok']))fail($r['message'],!empty($r['locked'])?429:$code);
+  return $r;
+}
 function pos_disc_pw(array &$d):void{
   foreach(array_keys($d) as $k){ if(strpos((string)$k,'__')===0) unset($d[$k]); }
+  /* V204 — kitchen ja chuki qty kam / line hatane ki manzoori. */
+  PosService::$voidMgr=null;
+  PosService::$voidInfo=['reason'=>substr(trim((string)($d['void_reason']??'')),0,80),'note'=>substr(trim((string)($d['void_note']??'')),0,160)];
+  $vp=(string)($d['void_pw']??''); unset($d['void_pw']);
+  if($vp!==''){
+    $vr=PosService::managerByPassword($vp,'void');
+    if(!empty($vr['ok'])) PosService::$voidMgr=(string)$vr['manager'];
+    else { http_response_code(409); header('Content-Type: application/json'); echo json_encode(['ok'=>false,'code'=>'VOID_APPROVAL','message'=>$vr['message']]); exit; }
+  }
   $pw=(string)($d['disc_pw']??''); unset($d['disc_pw']);
   if($pw==='') return;
   $r=\Aio\Services\PosService::managerByPassword($pw,'discount');
@@ -413,6 +439,10 @@ if(!in_array($a,$licenceOpen,true) && strpos($a,'sa-')!==0 && Auth::user()){
     }
   }catch(Throwable $e){ /* shak ho to kaam na roko */ }
 }
+/* V204 — paise / bill badalne wale kaam sirf POST se (CSRF ke saath).
+   Pehle GET se bhi chalte the: koi link khulte hi khali bill ban jata. */
+if(in_array($a,['pos-finalize','pos-hold','pos-kot','pos-hold-cancel','pos-prebill-printed','records-save','records-delete','order-void','shift-clear-cash','entity-delete','entity-delete-bulk','entity-restore','module-demo-create','pos-settings-save','settings-save','whatsapp-save','qr-accept','qr-handle'],true)
+   && ($_SERVER['REQUEST_METHOD']??'GET')!=='POST'){ http_response_code(405); header('Content-Type: application/json'); echo json_encode(['ok'=>false,'message'=>'Use POST for this action.']); exit; }
 switch($a){
 case 'csrf-token':
  /* Client isay tab bulata hai jab token expire ho jaye (misal container
@@ -854,6 +884,7 @@ case 'backup-now':needLogin();
  ok($r+\Aio\Services\BackupService::listBackups());
 
 case 'backup-settings':needLogin();$d=body();
+ if(!\Aio\Services\Scope::isManagement())fail('Access denied.',403);   /* V204 — backup ki fehrist sirf management */
  try{
    if(array_key_exists('backup_path',$d))\Aio\Services\BackupService::saveSetting('backup_path',(string)$d['backup_path']);
    if(array_key_exists('auto_on_close',$d))\Aio\Services\BackupService::saveSetting('auto_on_close',(string)$d['auto_on_close']);
@@ -912,11 +943,11 @@ case 'activity-log':needLogin();
  catch(Throwable $e){fail($e->getMessage(),403);}
 
 case 'whatsapp-settings':needLogin();
- ok(['settings'=>\Aio\Services\WhatsApp::settings(),'queue'=>\Aio\Services\WhatsApp::queue(50)]);
+ ok(['settings'=>\Aio\Services\WhatsApp::publicSettings(),'queue'=>\Aio\Services\WhatsApp::queue(50)]);
 
 case 'whatsapp-save':needLogin();$d=body();
  try{\Aio\Services\WhatsApp::saveSettings($d);}catch(Throwable $e){fail($e->getMessage(),403);}
- ok(['settings'=>\Aio\Services\WhatsApp::settings()]);
+ ok(['settings'=>\Aio\Services\WhatsApp::publicSettings()]);
 
 case 'whatsapp-retry':needLogin();$d=body();
  try{$r=\Aio\Services\WhatsApp::retry((string)($d['id']??''));}catch(Throwable $e){fail($e->getMessage(),403);}
@@ -1102,9 +1133,13 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  if(!$ord)fail('This bill was not found',404);
  if(($ord['order_status']??'')==='CLOSED')fail('This bill is already closed');
 
- if((int)$ord['sent']>0 && !Auth::isManager()){
+ /* V204 — jis bill ki parchi (payment se pehle) print ho chuki, us ka cancel
+    bhi manager se: parchi par paise liye ja sakte hain. */
+ $pq=$p->prepare("SELECT COUNT(*) FROM audit_log WHERE action='PREBILL_PRINTED' AND record_id=?");$pq->execute([$id]);
+ $printed=(int)$pq->fetchColumn()>0;
+ if(((int)$ord['sent']>0 || $printed) && !Auth::isManager()){
    $pw=(string)($d['password']??'');
-   if($pw==='')fail('Items have gone to the kitchen — manager approval is required',403);
+   if($pw==='')fail(((int)$ord['sent']>0?'Items have gone to the kitchen':'Is bill ki parchi print ho chuki hai').' — manager approval is required',403);
    /* V203 — wahi pehra (5 ghalat = 5 minute taala). */
    $mr=PosService::managerByPassword($pw,'cancel bill');
    if(empty($mr['ok']))fail($mr['message'],403);
@@ -1114,11 +1149,30 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
                  notes=CONCAT(COALESCE(notes,''),?), closed_at=NOW(6), updated_at=NOW(6)
                WHERE id=? AND site_id=?")
    ->execute([' [cancelled'.($reason!==''?(': '.$reason):'').' · by '.substr((string)(current_user()['full_name']??'-'),0,80).']',$id,site_id()]);   /* V198 — kis ne cancel kiya, void report ke liye */
- Audit::log('VOID','pos',['record_id'=>$id,'bill_no'=>$ord['bill_no'],'reason'=>$reason]);
+ /* V204 — pehle yahan ghalat khane (record_id) the: log mein bill ka
+    pata hi nahi chalta tha. Ab bill, raqam, items aur wajah. */
+ $iq=$p->prepare("SELECT GROUP_CONCAT(CONCAT(ROUND(qty,2),' x ',item_name_snapshot) SEPARATOR ', ') FROM order_items WHERE order_id=? AND status='ACTIVE'");$iq->execute([$id]);
+ $gq=$p->prepare("SELECT grand_total FROM orders WHERE id=?");$gq->execute([$id]);
+ Audit::log('BILL_CANCELLED','pos',['id'=>$id,'label'=>substr('Bill '.$ord['bill_no'].' Rs '.round((float)$gq->fetchColumn()).($printed?' (parchi print ho chuki thi)':'').': '.(string)$iq->fetchColumn().($reason!==''?' — '.$reason:''),0,200)]);
  \Aio\Services\PosService::cancelSlipForOrder($id);   /* V201 — kitchen ko cancel parchi */
  ok(['cancelled'=>$ord['bill_no']]);
 
-case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
+case 'pos-prebill-printed':needLogin();if(!Auth::canModule('pos'))fail('Access denied.',403);$d=body();
+ /* V204 — payment se pehle wali parchi print hui: record, taake baad mein
+    is bill ka cancel manager se ho. */
+ $id=(string)($d['id']??'');if($id==='')fail('Bill id is required');
+ $q=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? AND site_id=? AND order_status='OPEN'");$q->execute([$id,site_id()]);
+ if(($bn=$q->fetchColumn())===false)fail('Bill not found',404);
+ Audit::log('PREBILL_PRINTED','pos',['id'=>$id,'label'=>'Bill '.$bn]);
+ ok();
+case 'pos-hold':needLogin();
+ /* V204 — sirf tablet wala waiter bhi order SAVE kar sake (pehle 403 —
+    is liye shops waiter ko poora POS de deti thin, aur waiter bill charge
+    aur discount bhi kar sakta tha). Tablet se sirf items: discount,
+    charges, tax, manzooriyan nahi. */
+ if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Access denied.',403);
+ $d=body();
+ if(!Auth::canModule('pos')) pos_items_only($d);
  /* ============================================================
     V168 — HOLD PAR BHI WAHI PEHRA JO KOT AUR BILL PAR HAI.
 
@@ -1139,6 +1193,7 @@ case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
     ============================================================ */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
+ pos_need_items($d);   /* V204 */
  pos_disc_pw($d);   /* V203 */
  try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}catch(Throwable $e){fail($e->getMessage());}
  if(is_array($r)) $r['repriced']=PosService::$repriced;   /* V203 */
@@ -2085,7 +2140,7 @@ case 'entity-delete':needLogin();$d=body();
    if($pw==='')fail('A manager password is required for force delete',422);
    $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
    $mq->execute([tenant_id()]);$okpw=false;
-   foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
+   $okpw=!empty(mgr_pw_ok($pw,'force delete')['ok']);   /* V204 — lock wala pehra */
    if(!$okpw)fail('Incorrect manager password',401);
  }
  /* ============================================================
@@ -2106,7 +2161,7 @@ case 'entity-delete':needLogin();$d=body();
                             OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
    $mq->execute([tenant_id()]);
    $okPw=false;
-   foreach($mq->fetchAll() as $m){ if($m['password_hash'] && password_verify($pw,$m['password_hash'])){$okPw=true;break;} }
+   $okPw=!empty(mgr_pw_ok($pw,'delete',403)['ok']);   /* V204 */
    if(!$okPw)fail('Incorrect manager password',403);
    /* Password sahi nikla — is ek request ke liye manager ki haisiyat. */
    DeleteService::$managerVerified = true;
@@ -2190,7 +2245,7 @@ case 'entity-delete-bulk':needLogin();$d=body();
                           OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
  $mq->execute([tenant_id()]);
  $okPw=false;
- foreach($mq->fetchAll() as $mu){ if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okPw=true;break;} }
+ $okPw=!empty(mgr_pw_ok($pw,'bulk delete',422)['ok']);   /* V204 */
  /* ============================================================
     422 — 401 NAHI. YEH FARQ MAINE TEST MEIN PAKRA.
 
@@ -2265,8 +2320,17 @@ case 'order-void':needLogin();$d=body();
  if($pw==='')fail('Manager password is required',422);
  $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.id,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
  $mq->execute([tenant_id()]);$mid=null;
- foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$mid=$mu['id'];break;}}
+ $mid=(string)(mgr_pw_ok($pw,'void bill')['id']??'');   /* V204 */
  if(!$mid)fail('Incorrect manager password',401);
+ /* V204 — jis account (shift) ka bill hai woh band ho chuka ho to void sirf
+    Owner / Admin. Band account ki slip wahi rehti hai; Closing history mein
+    "Void after close" alag dikhta hai. */
+ $sq=$p->prepare("SELECT cs.status,cs.shift_no,o.bill_no,o.grand_total FROM orders o JOIN payments pp ON pp.order_id=o.id JOIN cashier_shifts cs ON cs.id=pp.shift_id WHERE o.id=? AND o.site_id=? LIMIT 1");
+ $sq->execute([(string)($d['id']??''),site_id()]);$so=$sq->fetch();
+ if($so && $so['status']==='CLOSED'){
+   if(!is_owner())fail('Yeh bill band account '.$so['shift_no'].' ka hai — sirf Owner / Admin void kar sakta hai.',403);
+   Audit::log('VOID_AFTER_CLOSE','pos',['id'=>(string)$d['id'],'label'=>'Bill '.$so['bill_no'].' Rs '.round((float)$so['grand_total']).' (account '.$so['shift_no'].')']);
+ }
  try{$r=DeleteService::voidOrder((string)($d['id']??''),(string)($d['reason']??''),$mid);}
  catch(Throwable $e){fail($e->getMessage());}
  ok($r);
@@ -2525,6 +2589,12 @@ case 'shift-clear-cash':needLogin();$d=body();$p=DB::pdo();$sid=(string)($d['shi
  $q=$p->prepare("SELECT * FROM cashier_shifts WHERE id=? AND site_id=? AND status='CLOSED' LIMIT 1");$q->execute([$sid,site_id()]);
  $sh=$q->fetch(); if(!$sh)fail('Closed shift not found');
  if((int)$sh['cash_cleared'])ok(['already'=>true]);
+ /* V204 — galle ka cash "clear" (manager ne utha liya) pehle koi bhi kar
+    sakta tha, koi bhi raqam likh kar, bina password. Ab manager khud, ya
+    manager password (lock wala); Audit log mein raqam. */
+ $by=(string)((current_user()['name']??current_user()['full_name']??''));
+ if(!Auth::isManager()){ $mr=mgr_pw_ok((string)($d['manager_password']??$d['password']??''),'clear cash',403); $by=(string)$mr['manager']; }
+ Audit::log('CASH_CLEARED','shift',['id'=>$sid,'label'=>'Account '.$sh['shift_no'].' Rs '.round((float)($d['amount']??$sh['actual_cash'])).' by '.$by]);
  $amt=(float)($d['amount']??$sh['actual_cash']);
  $p->prepare("UPDATE cashier_shifts SET cash_cleared=1,cleared_amount=?,updated_at=NOW(6) WHERE id=?")->execute([$amt,$sid]);
  ok(['cleared'=>$amt,'shift_no'=>$sh['shift_no']]);
@@ -2696,7 +2766,7 @@ case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo()
  ok(['report'=>$rep]);
 case 'shift-last-report':needLogin();Auth::requireModule('pos');$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at,closed_at,expected_cash,actual_cash,variance_amount,close_note,cash_cleared,counter_name FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='CLOSED' ORDER BY closed_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if(!$sh)fail('No closed shift yet.');$rep=shift_report($sh,$sh['closed_at']);$rep['actual_cash']=(float)$sh['actual_cash'];$rep['variance']=(float)$sh['variance_amount'];$rep['closed_at']=substr((string)$sh['closed_at'],0,16);$rep['note']=(string)($sh['close_note']??'');
  $rep['cash_cleared']=(int)($sh['cash_cleared']??0);$rep['shift_id']=$sh['id'];ok(['report'=>$rep]);
-case 'item-debug':needLogin();
+case 'item-debug':needLogin();if(!is_owner())fail('Access denied.',403);   /* V204 */
  /* ============================================================
     Ek item ka ASAL database haal — bina kisi tabdeeli ke.
 
@@ -2959,6 +3029,9 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
  /* V168 — ruka hua bill apni id se band hota hai (dekhen `pos-hold`).
     Us soorat mein number badalne ka koi sawal hi nahi. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ /* V204 — khali bill charge nahi hota (pehle 0 ka band bill ban jata). */
+ $__has=false; foreach((array)($d['items']??[]) as $__i){ if(is_array($__i)&&(float)($__i['qty']??0)>0){$__has=true;break;} }
+ if(!$__has)fail('Bill mein koi item nahi hai.',422);
  pos_disc_pw($d);   /* V203 */
  try{$id=PosService::finalize($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  /* Parchi par WAHI number jo order par waqai likha hai — guard ya id
@@ -2983,8 +3056,10 @@ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageDat
  register_shutdown_function('sync_nudge');
  ok($resp);
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();
+ if(!Auth::canModule('pos')) pos_items_only($d);   /* V204 */
  /* V168 — ruka hua bill apni id se chalta hai; warna wahi purana pehra. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ pos_need_items($d);   /* V204 */
  pos_disc_pw($d);   /* V203 */
  try{$r=PosService::sendKot($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$r['order_id']??'']);
@@ -3000,6 +3075,11 @@ ok(['order_id'=>$oid,'movements'=>[],'shortages'=>[],'state'=>PageData::storeSta
 
 case 'module-demo-create':
 $d=body();needLogin();$page=(string)($d['page']??'');$f=is_array($d['fields']??null)?$d['fields']:[];$p=DB::pdo();$row=[];
+/* V204 — yeh bhi likhne ka raasta hai: wahi ijazat jo us module ke save par. */
+$__pm=['customers.html'=>'customers','suppliers.html'=>'suppliers','expenses.html'=>'expenses','reservations.html'=>'reservations','rider_management.html'=>'riders','tables_floors.html'=>'tables','printer_devices.html'=>'printers','discounts_promotions.html'=>'promotions','staff_roles.html'=>'staff','wastage_adjustment.html'=>'wastage'];
+if(isset($__pm[$page])){ if(!ModuleBridge::maySave($__pm[$page],true))fail('You do not have permission to add here.',403); }
+elseif(!Auth::isManager())fail('You do not have permission to add here.',403);
+if(isset($f['discount']) && !Auth::isManager()) $f['discount']=0;
 $now=date('h:i A');
 if($page==='customers.html'){
   $id=uuid();$name=trim($f['name']??'New Customer');$phone=trim($f['phone']??'');$type=strtoupper(str_replace(' ','_',trim($f['type']??'REGULAR')));
@@ -3315,8 +3395,11 @@ case 'sync-status':needLogin();
  $st['cloud_configured']=(($GLOBALS['config']['sync']['cloud_api_url']??'')?:($GLOBALS['config']['sync']['endpoint']??''))!=='';
  ok(['status'=>$st]);
 case 'records-list':needLogin();$mod=preg_replace('/[^a-z_]/','',strtolower($_GET['module']??''));if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){ok(['rows'=>RetailCatalog::listOf($mod),'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){ok(['rows'=>ModuleBridge::list($mod),'bridged'=>true]);}$q=DB::pdo()->prepare("SELECT id,data_json FROM ui_records WHERE tenant_id=? AND (site_id=? OR site_id IS NULL) AND module_key=? AND deleted=0 ORDER BY created_at DESC");$q->execute([tenant_id(),site_id(),$mod]);$rows=[];foreach($q->fetchAll() as $r){$data=json_decode($r['data_json'],true)?:[];$data['id']=$r['id'];$rows[]=$data;}ok(['rows'=>$rows]);
-case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);retailSaveGuard($mod);if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){try{$id=RetailCatalog::saveList($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
-case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));retailSaveGuard($mod);
+case 'records-save':needLogin();$d=body();$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));
+ /* V204 — void log ab sirf server likhta hai (PosService::voidApprove). */
+ if(in_array($mod,['void_logs'],true))fail('This record is written by the system only.',403);$data=is_array($d['data']??null)?$d['data']:[];if($mod==='')fail('module required');$id=(string)($data['id']??'');unset($data['id']);retailSaveGuard($mod);if(Auth::tenantIndustry()==='RETAIL'&&RetailCatalog::handles($mod)){try{$id=RetailCatalog::saveList($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>'retail']);}if(ModuleBridge::handles($mod)){try{$id=ModuleBridge::save($mod,$id,$data);}catch(Throwable $e){fail($e->getMessage());}ok(['id'=>$id,'bridged'=>true]);}$p=DB::pdo();if($id!==''){$p->prepare("UPDATE ui_records SET data_json=?,row_version=row_version+1,updated_at=NOW(6) WHERE id=? AND tenant_id=? AND module_key=?")->execute([json_encode($data,JSON_UNESCAPED_UNICODE),$id,tenant_id(),$mod]);}else{$id=uuid();$p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")->execute([$id,tenant_id(),site_id(),$mod,json_encode($data,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);}ok(['id'=>$id]);
+case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg_replace('/[^a-z_]/','',strtolower($d['module']??''));
+ if(in_array($mod,['void_logs'],true))fail('This record is written by the system only.',403);   /* V204 */retailSaveGuard($mod);
  /* V62 — YAHAN KHAMOSH FAILURE THI.
     Pehle yeh endpoint ok() kar deta tha chahe ek bhi row na badli ho,
     aur client jawab check hi nahi karta tha: user ko "Record removed"
@@ -3329,7 +3412,7 @@ case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg
      $pw=(string)($d['manager_password']??'');if($pw==='')fail('A manager password is required for force delete',422);
      $p=DB::pdo();$mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
      $mq->execute([tenant_id()]);$okpw=false;
-     foreach($mq->fetchAll() as $mu){if($mu['password_hash']&&password_verify($pw,$mu['password_hash'])){$okpw=true;break;}}
+     $okpw=!empty(mgr_pw_ok($pw,'force delete')['ok']);   /* V204 — lock wala pehra */
      if(!$okpw)fail('Incorrect manager password',401);
    }
    try{$r=ModuleBridge::delete($mod,$id,$mode,(string)($d['reason']??''));}catch(Throwable $e){fail($e->getMessage());}
@@ -4261,4 +4344,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V203 build 2026-11-18
+// build: V204 build 2026-11-18

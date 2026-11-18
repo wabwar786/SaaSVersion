@@ -303,6 +303,14 @@ final class DeleteService
 
     /* ================= helpers ================= */
 
+    /* V204 — save ke liye bhi wahi module / form jo delete par dekha jata hai. */
+    public static function permOf(string $entity): ?array
+    {
+        if (!isset(self::ENTITIES[$entity])) return null;
+        $e = self::ENTITIES[$entity];
+        return ['module' => (string)($e['module'] ?? ''), 'form' => (string)($e['form'] ?? '')];
+    }
+
     private static function cfgOf(string $entity): array
     {
         if (!isset(self::ENTITIES[$entity])) {
@@ -861,4 +869,4 @@ final class DeleteService
     }
 }
 
-// build: V62 build 2026-08-26
+// build: V204 build 2026-11-18

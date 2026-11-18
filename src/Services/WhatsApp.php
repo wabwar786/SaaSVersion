@@ -38,12 +38,22 @@ final class WhatsApp
         return $out;
     }
 
+    /* V204 — token kabhi screen par nahi jata; sirf "set hai" ka nishan. */
+    public const MASK = '********';
+    public static function publicSettings(): array
+    {
+        $s = self::settings();
+        if (($s['api_token'] ?? '') !== '') $s['api_token'] = self::MASK;
+        return $s;
+    }
+
     public static function saveSettings(array $d): void
     {
         Scope::requireManagement('changing WhatsApp settings');
         foreach (self::settings() as $k => $_) {
             if (!array_key_exists('wa_'.$k, $d)) continue;
             $v = trim((string)$d['wa_'.$k]);
+            if ($k === 'api_token' && $v === self::MASK) continue;   /* V204 — chhupi qeemat wapas aayi: purani rehne do */
             if ($k === 'owner_number' && $v !== '') {
                 $v = preg_replace('/[^0-9+]/', '', $v);
                 if (strlen($v) < 10) throw new \RuntimeException('That WhatsApp number does not look complete.');
@@ -214,4 +224,4 @@ final class WhatsApp
     }
 }
 
-// build: V148 build 2026-10-12
+// build: V204 build 2026-11-18

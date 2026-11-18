@@ -162,6 +162,10 @@ final class SettingsService
         /* --- FBR / fiscal (site_settings group 'fiscal') --- */
         $f = FiscalService::settings();
         foreach (FiscalService::defaults() as $k => $_) $out['fiscal_'.$k] = $f[$k];
+        /* V204 — FBR / KPRA ki access key screen par kabhi nahi (cashier ko
+           bhi nazar aati thi). Sirf "set hai" ka nishan; save par yahi nishan
+           wapas aaye to purani key rehti hai. */
+        if (($out['fiscal_access_key'] ?? '') !== '') $out['fiscal_access_key'] = '********';
         $out['fiscal_available_here'] = $f['available_here'];
 
         $out['templates'] = BillTemplate::options();
@@ -369,6 +373,7 @@ final class SettingsService
             $form = 'fiscal_'.$k;
             if (!array_key_exists($form, $d)) continue;
             $v = trim((string)$d[$form]);
+            if ($k === 'access_key' && $v === '********') continue;   /* V204 */
             if ($k === 'provider' && !in_array($v, FiscalService::PROVIDERS, true)) {
                 throw new \RuntimeException('Invalid provider.');
             }
@@ -409,4 +414,4 @@ final class SettingsService
     }
 }
 
-// build: V202 build 2026-11-17
+// build: V204 build 2026-11-18

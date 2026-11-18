@@ -605,6 +605,9 @@ function setBase(r){ if(r&&r.line_ids) baseLids=r.line_ids.slice(); }
 var curBillUid=uuid4(), curRev='';
 /* V202 — had se zyada discount ka manager password (sirf is bill ke liye). */
 var discPw='';
+/* V204 — kitchen ja chuki qty kam / line hatane ki manzoori: server bhi
+   password mangta hai, aur void log server khud likhta hai. */
+var voidPw='', voidReason='', voidNote='';
 function askManager(title,msg,cb){
   var ov=modal('<div class="dh"><h3>'+esc(title)+'</h3><p>'+esc(msg)+'</p></div>'
     +'<div class="db"><label class="f">Manager Password</label><input class="inp" id="amPw" type="password" placeholder="Admin / Owner / Manager ka password"></div>'
@@ -664,6 +667,7 @@ function posConflict(r){
     infoBox('Table par pehle se bill', r.message||'');
     return true;
   }
+  if(r.code==='VOID_APPROVAL'){ infoBox('Manager approval', r.message||''); return true; }   /* V204 */
   if(r.code==='DISC_LIMIT'){
     askManager('Discount ki had', r.message||'', function(pw){ discPw=pw; toast('Discount approved — ab dobara dabayein'); });
     return true;
@@ -2002,9 +2006,8 @@ function voidApproval(line,ok){
     /* server par verify: koi bhi Admin/Owner/Manager user ka password chalega */
     var v=api('pos-verify-manager',{password:pw});
     if(!v.ok){this.disabled=false;this.textContent='Approve Void';toast(v.message||'Incorrect manager password');return}
-    var rec={bill:billNo,item:line.name,qty:line.sentQty,reason:ov.querySelector('#vReason').value,
-      note:ov.querySelector('#vNote').value||'',approvedBy:v.manager,at:new Date().toLocaleString()};
-    api('records-save',{module:'void_logs',data:rec});
+    /* V204 — void log ab server likhta hai (save ke waqt, isi password se). */
+    voidPw=pw; voidReason=ov.querySelector('#vReason').value; voidNote=ov.querySelector('#vNote').value||'';
     ov.remove();toast('Approved by '+v.manager);ok();
   };
 }
@@ -2031,6 +2034,7 @@ function payload(extra){
     shift_id:(shift&&shift.id)||'',discount_amount:t.disc,
     base_line_ids:baseLids.slice(),   /* V196 */
     disc_pw:discPw||undefined,        /* V202 */
+    void_pw:voidPw||undefined, void_reason:voidReason||undefined, void_note:voidNote||undefined,   /* V204 */
     /* V157 — raqam ke saath PERCENT bhi. Server isay `orders.discount_pct`
        par likhta hai, taake bill unhold karne par "10%" hi wapas aaye —
        usi raqam ka flat discount nahi (items badal jayen to wo raqam
@@ -2046,7 +2050,7 @@ function payload(extra){
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
 }
-function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}syncPrices(r)}
+function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}syncPrices(r);if(r&&r.ok){voidPw='';}}
 /* V203 — server ne kisi line ki price menu se durust ki (menu mein price
    badli ho, ya screen par purani price thi): menu taza karo aur cart ki
    price wahi kar do jo bill par likhi gayi — parchi aur bill barabar. */
@@ -2173,7 +2177,7 @@ $('#chargeBtn').onclick=function(){
     +'<div class="df"><button class="sec" data-x>Cancel (Esc)</button><button class="go" id="doPay">Complete Payment</button></div>');
   ov.querySelector('#cmHold').onclick=function(){ov.remove();holdCurrent()};
   /* V190 — parchi se PEHLE bill mehfooz. Dekho `saveNow()`. */
-  ov.querySelector('#cmPrev').onclick=function(){if(saveNow())slipPreview('BILL',cart.slice())};
+  ov.querySelector('#cmPrev').onclick=function(){if(saveNow())slipPreview('BILL',cart.slice(),{unpaid:true,onPrint:function(){ if(curHoldId) api('pos-prebill-printed',{id:curHoldId}); }})};   /* V204 */
   ov.querySelector('#cmWa').onclick=function(){if(saveNow())waSend('BILL',cart.slice())};
   function refreshTot(){
     orderTax=taxPct(pay); t=totals(); renderCart();
@@ -2331,6 +2335,8 @@ function slipHtml(kind,lines,info){
       +(ST.receipt_header?'<div class="meta">'+esc(ST.receipt_header)+'</div>':'')
       +'<div class="srule"></div>'
       +'<div class="doc">'+(ST.ntn?'SALES TAX INVOICE':'SALES INVOICE')+'</div>'
+      /* V204 — payment se pehle ki parchi: saaf likha ho ke yeh raseed nahi */
+      +(info&&info.unpaid?'<div class="doc" style="font-weight:800">*** BILL — UNPAID (NOT A RECEIPT) ***</div>':'')
       +'<div class="srule"></div>'
       +'<table class="binfo">'
         +'<tr><td>Invoice '+esc(billShow((info&&info.billNo)||billNo))+'</td>'
@@ -2477,7 +2483,7 @@ function slipPreview(kind,lines,info){
   var ov=modal('<div class="dh"><h3>'+(kind==='KOT'?'Kitchen Ticket':'Bill')+' Preview</h3><p>Print ya WhatsApp par send.</p></div>'
     +'<div class="db" id="slipBody">'+slipHtml(kind,lines,info)+'</div>'
     +'<div class="df"><button class="sec" data-x>Close</button><button class="sec" id="slipWa">WhatsApp</button><button class="go" id="slipPrint">Print</button></div>');
-  ov.querySelector('#slipPrint').onclick=function(){printNode(ov.querySelector('#slipBody'))};
+  ov.querySelector('#slipPrint').onclick=function(){ if(info&&info.onPrint)info.onPrint(); printNode(ov.querySelector('#slipBody'))};
   ov.querySelector('#slipWa').onclick=function(){waSend(kind,lines,info)};
 }
 /* print: DOM API se — kisi bhi HTML document ko string mein NAHI banate */
@@ -2617,7 +2623,7 @@ function waSend(kind,lines,info){
 /* ================= NEW BILL / HOLDS / DUPLICATE ================= */
 function newBill(next,skipFlow){
   cart=[];disc={type:'flat',value:0};preQty={};baseLids=[];
-  curBillUid=uuid4();curRev='';discPw='';   /* V197, V202 */
+  curBillUid=uuid4();curRev='';discPw='';voidPw='';voidReason='';voidNote='';   /* V197, V202, V204 */
   /* ============================================================
      V176 — SERVICE CHARGE BHI NAYE BILL PAR SAAF.
 
@@ -3524,12 +3530,13 @@ function openGate(){
         var cb=ov.querySelector('#clrBtn');
         if(cb)cb.onclick=function(){
           if(!sid){toast('Could not find the previous shift');return}
-          this.disabled=true;this.textContent='Clearing…';
-          var c=api('shift-clear-cash',{shift_id:sid,amount:amt});
-          if(!c||!c.ok){this.disabled=false;this.textContent='Cash handed over — clear it now';
-            toast((c&&c.message)||'Could not clear',true);return}
-          el.textContent='Cleared. You can open your shift now.';
-          toast('Cash cleared'+(c.cleared?(': '+money(c.cleared)):''));
+          /* V204 — cash manager ko diya: manager password se tasdeeq. */
+          askManager('Cash handover','Pichle account ka cash ('+money(amt)+') manager ko diya — manager password se tasdeeq karein.',function(pw){
+            var c=api('shift-clear-cash',{shift_id:sid,amount:amt,manager_password:pw});
+            if(!c||!c.ok){toast((c&&c.message)||'Could not clear',true);return}
+            el.textContent='Cleared. You can open your shift now.';
+            toast('Cash cleared'+(c.cleared?(': '+money(c.cleared)):''));
+          });
         };
       }
       return;
@@ -4049,4 +4056,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V203 build 2026-11-18 -->
+<!-- build: V204 build 2026-11-18 -->

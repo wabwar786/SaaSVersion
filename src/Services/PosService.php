@@ -4,6 +4,30 @@ use Aio\DB;use PDO;
 final class PosService {
  /* V203 — is request mein kitni lines ki price menu se durust ki gayi. */
  public static int $repriced=0;
+ /* V204 — kitchen ja chuki qty kam / line hatane ki manzoori (api.php ne
+    manager password transaction se BAHAR parkha ho to us manager ka naam). */
+ public static ?string $voidMgr=null;
+ public static array $voidInfo=['reason'=>'','note'=>''];
+ /* ============================================================
+    V204 — KITCHEN JA CHUKA ITEM: MANZOORI SERVER PAR, VOID LOG BHI.
+    Pehle manager password sirf POS screen mangti thi; API se bina
+    password Biryani (KOT ho chuki) hat gayi, aur void log POS screen
+    khud likhti thi (jhoota "approved by Owner" bhi ban jata, asli mit
+    bhi jata). Ab: manager khud login ho, ya request ke saath manager
+    password (lock wala) — warna inkaar. Log server likhta hai.
+    ============================================================ */
+ private static function voidApprove(PDO $p,string $order,string $item,float $qty):void{
+    if($qty<=0.0001) return;
+    $u=current_user()??[];
+    $by=\Aio\Auth::isManager() ? (string)($u['name']??$u['full_name']??'Manager') : (string)(self::$voidMgr??'');
+    if($by==='') throw new PosConflict('VOID_APPROVAL','"'.$item.'" kitchen ja chuka hai — kam karne / hatane ke liye manager password chahiye.');
+    $bill=self::billOf($p,$order);
+    $rec=['bill'=>$bill,'item'=>$item,'qty'=>$qty,'reason'=>(string)(self::$voidInfo['reason']?:'—'),'note'=>(string)self::$voidInfo['note'],
+          'approvedBy'=>$by,'by'=>(string)($u['name']??$u['full_name']??''),'at'=>date('d/m/Y, h:i A'),'server'=>1,'order_id'=>$order];
+    $p->prepare("INSERT INTO ui_records(id,tenant_id,site_id,module_key,data_json,origin_node) VALUES(?,?,?,?,?,?)")
+      ->execute([uuid(),tenant_id(),site_id(),'void_logs',json_encode($rec,JSON_UNESCAPED_UNICODE),(string)cfg('app.role')]);
+    try{ Audit::log('ITEM_VOID','pos',['id'=>$order,'label'=>'Bill '.$bill.': '.$qty.' x '.$item.' (approved by '.$by.')']); }catch(\Throwable $e){}
+ }
  /* ============================================================
     V203 — TAX KA RATE SERVER KI SETTINGS SE.
     Pehle jo rate / tax POS bhejta wahi save hota (test: tax -200 bheja,
@@ -909,6 +933,7 @@ final class PosService {
     $sq=$p->prepare("SELECT id,item_name_snapshot,sent_qty FROM order_items WHERE id=? AND order_id=? AND status='ACTIVE' AND sent_qty>0");
     $sent=[];
     foreach(array_keys($base) as $id){ $sq->execute([$id,$order]); if($r=$sq->fetch(PDO::FETCH_ASSOC)) $sent[]=$r; }
+    foreach($sent as $r) self::voidApprove($p,$order,(string)$r['item_name_snapshot'],(float)$r['sent_qty']);   /* V204 */
     $u=$p->prepare("UPDATE order_items SET status='VOID',qty=0,line_total=0,updated_at=NOW(6)
                      WHERE id=? AND order_id=? AND status='ACTIVE'");
     $n=0; foreach(array_keys($base) as $id){ $u->execute([$id,$order]); $n+=$u->rowCount(); }
@@ -1000,6 +1025,7 @@ final class PosService {
            password lagta hai — line hatane jaisa.) */
         if((float)$old['sent_qty'] > $qty && $qty>0){
             $diff=(float)$old['sent_qty']-$qty;
+            self::voidApprove($p,$order,(string)$name,$diff);   /* V204 */
             self::kitchenCancel($p,$order,[['id'=>$old['id'],'item_name_snapshot'=>$name,'sent_qty'=>$diff,'of'=>(float)$old['sent_qty']]]);
             $p->prepare("UPDATE order_items SET sent_qty=? WHERE id=?")->execute([$qty,$old['id']]);
         }
@@ -1135,4 +1161,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V203 build 2026-11-18
+// build: V204 build 2026-11-18

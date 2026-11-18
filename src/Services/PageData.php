@@ -398,7 +398,12 @@ final class PageData {
    return $c !== '' ? substr($c,0,4).'-' : '';
  }
  public static function nextBill(): int {$p=DB::pdo();$pre=self::billPrefix();
-   $q=$p->prepare("SELECT bill_no FROM orders WHERE site_id=? AND business_date=? ORDER BY created_at DESC LIMIT 300");
+   /* V204 — AAJ KE SAARE BILL, sirf aakhri 300 nahi. Din mein 300+ bill
+      hon aur kal ka hold bill aaj charge ho (aaj ka bara number, magar
+      kal ki banawat) to woh number "aakhri 300" mein nahi aata tha ->
+      agla bill wahi number leta -> "Duplicate entry" -> har naya bill
+      ruk jata. Index (site, date, bill_no) se sirf number parhe jate hain. */
+   $q=$p->prepare("SELECT bill_no FROM orders WHERE site_id=? AND business_date=?");
    $q->execute([site_id(),today()]);$max=0;
    foreach($q->fetchAll() as $x){
      $b=(string)$x['bill_no'];
@@ -428,4 +433,4 @@ final class PageData {
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
 
-// build: V198 build 2026-11-17
+// build: V204 build 2026-11-18

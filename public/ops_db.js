@@ -486,6 +486,11 @@
             return '<span style="' + (v === 0 ? '' : (v < 0 ? 'color:#a3222d' : 'color:#b3541e')) + '">'
               + (v > 0 ? '+' : '') + money(v) + '</span>';
           } },
+        /* V204 — band hone ke baad void hue bill */
+        { l: 'Void after close', n: 1, f: function (x) {
+            var v = Number(x.void_after || 0);
+            return v ? '<span style="color:#a3222d" title="Bills voided after this account was closed">- ' + money(v) + '</span>' : '-';
+          } },
         { l: '', f: function (x) {
             return '<button class="btn sm" data-chprint="' + esc(x.id) + '">Print</button>'
               + (x.saved ? '' : ' <span class="hint" title="This shift was closed on an older build, so the report is rebuilt from live data">rebuilt</span>');
@@ -768,4 +773,4 @@
   }
 })();
 
-/* build: V200 build 2026-11-17 */
+/* build: V204 build 2026-11-18 */

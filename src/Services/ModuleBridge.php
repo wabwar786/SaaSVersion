@@ -71,8 +71,31 @@ final class ModuleBridge
     /* ============================ SAVE ============================ */
 
     /** Returns the record id (new or existing). */
+    /* ============================================================
+       V204 — SAVE PAR BHI IJAZAT.
+       Pehle sirf delete par permission dekhi jati thi; save par koi nahi.
+       Cashier seedhi API se menu ki price 1 kar deta, promotion / staff /
+       table / printer bana leta. Ab wahi module + form ijazat jo delete
+       par lagti hai (naya = add, purana = edit). Cashier ke do kaam
+       chalte rehte hain: POS se customer (discount nahi — V203), aur
+       shift se expense (galle se kharcha).
+       ============================================================ */
+    public static function maySave(string $module, bool $isNew): bool
+    {
+        if (\Aio\Auth::isAdmin()) return true;
+        if ($module === 'customers' && (\Aio\Auth::canModule('customers') || \Aio\Auth::canModule('pos'))) return true;
+        if ($module === 'expenses'  && (\Aio\Auth::canModule('expenses')  || \Aio\Auth::canModule('shift'))) return true;
+        $ent = self::DELETE_ENTITY[$module] ?? null;
+        $pm  = $ent ? DeleteService::permOf($ent) : null;
+        if (!$pm || $pm['module'] === '') return \Aio\Auth::isManager();
+        return \Aio\Auth::can($pm['module'], $pm['form'], $isNew ? 'add' : 'edit');
+    }
+
     public static function save(string $module, string $id, array $d): string
     {
+        if (!self::maySave($module, $id === '')) {
+            throw new \RuntimeException('You do not have permission to save '.$module.'. Please contact your administrator.');
+        }
         return match ($module) {
             'customers' => self::saveCustomer($id, $d),
             'suppliers' => self::saveSupplier($id, $d),
@@ -961,4 +984,4 @@ final class ModuleBridge
     }
 }
 
-// build: V203 build 2026-11-18
+// build: V204 build 2026-11-18
