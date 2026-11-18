@@ -44,6 +44,18 @@ function pos_open_bills_msg(string $shiftId):?string{
   $list=implode(', ',array_map(fn($r)=>'#'.$r['bill_no'].' ('.($r['t']!==''?$r['t']:ucwords(strtolower(str_replace('_',' ',$r['m'])))).', '.number_format((float)$r['g']).')',$rows));
   return count($rows).' bill abhi khule hain: '.$list.'. Pehle inhen charge karein, cancel karein, ya "Hand over" se agle cashier ko dein — phir account band karein.';
 }
+/* V203 — discount ka manager password transaction se BAHAR parkho:
+   ghalat koshish Audit log mein rahe (5 ghalat = 5 minute taala), aur
+   PosService ko sirf "kis manager ne manzoor kiya" milta hai. Client
+   khud `__` wale khane nahi bhej sakta. */
+function pos_disc_pw(array &$d):void{
+  foreach(array_keys($d) as $k){ if(strpos((string)$k,'__')===0) unset($d[$k]); }
+  $pw=(string)($d['disc_pw']??''); unset($d['disc_pw']);
+  if($pw==='') return;
+  $r=\Aio\Services\PosService::managerByPassword($pw,'discount');
+  if(!empty($r['ok'])) $d['__disc_mgr']=(string)$r['manager'];
+  elseif(!empty($r['locked'])){ http_response_code(409); header('Content-Type: application/json'); echo json_encode(['ok'=>false,'code'=>'DISC_LIMIT','message'=>$r['message']]); exit; }
+}
 function pos_conflict(\Aio\Services\PosConflict $e):never{
   http_response_code(409);
   echo json_encode(['ok'=>false,'code'=>$e->kind,'message'=>$e->getMessage(),
@@ -1093,18 +1105,9 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  if((int)$ord['sent']>0 && !Auth::isManager()){
    $pw=(string)($d['password']??'');
    if($pw==='')fail('Items have gone to the kitchen — manager approval is required',403);
-   /* Wahi tareeqa jo `pos-verify-manager` istemal karta hai: koi bhi
-      Admin / Owner / Manager ka apna login password. */
-   $mq=$p->prepare("SELECT DISTINCT u.password_hash FROM users u
-                      LEFT JOIN user_roles ur ON ur.user_id=u.id
-                      LEFT JOIN roles r ON r.id=ur.role_id
-                     WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
-                       AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%'
-                            OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
-   $mq->execute([tenant_id()]);
-   $okPw=false;
-   foreach($mq->fetchAll() as $m){ if($m['password_hash'] && password_verify($pw,$m['password_hash'])){$okPw=true;break;} }
-   if(!$okPw)fail('Incorrect manager password',403);
+   /* V203 — wahi pehra (5 ghalat = 5 minute taala). */
+   $mr=PosService::managerByPassword($pw,'cancel bill');
+   if(empty($mr['ok']))fail($mr['message'],403);
  }
  $reason=trim((string)($d['reason']??''));
  $p->prepare("UPDATE orders SET order_status='VOID',
@@ -1136,7 +1139,9 @@ case 'pos-hold':needLogin();Auth::requireModule('pos');$d=body();
     ============================================================ */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
  /* Bill khula rakho — kitchen ko kuch nahi jata. */
+ pos_disc_pw($d);   /* V203 */
  try{$r=PosService::hold($d,(array)($d['items']??[]));}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}catch(Throwable $e){fail($e->getMessage());}
+ if(is_array($r)) $r['repriced']=PosService::$repriced;   /* V203 */
  ok($r);
 
 case 'tablet-tables':needLogin();
@@ -1422,7 +1427,11 @@ case 'pos-settings-save':needLogin();if(!Auth::isManager())fail('Only an Admin o
  try{$val=SettingsService::saveTaxes($d);}catch(Throwable $e){fail($e->getMessage());}
  ok(['settings'=>$val+['tax_mode'=>\Aio\Services\TaxMode::current()]]);
 case 'menu-item-image':needLogin();if(!Auth::isManager())fail('Only an Admin or Manager can change pictures',403);$d=body();$mid=(string)($d['menu_item_id']??'');$url=trim((string)($d['image_url']??''));if($mid===''||!preg_match('/^[0-9a-f-]{36}$/i',$mid))fail('Item required');if($url!==''&&strlen($url)>1500000)fail('Image too large (max ~1MB)');if($url!==''&&!preg_match('#^(https?://|data:image/)#i',$url))fail('A valid image URL or uploaded image is required');$p=DB::pdo();$q=$p->prepare("SELECT id FROM menu_items WHERE id=? AND site_id=? AND deleted_at IS NULL");$q->execute([$mid,site_id()]);if(!$q->fetchColumn())fail('Item not found');$p->prepare("UPDATE menu_items SET image_url=?,updated_at=NOW(6) WHERE id=?")->execute([$url!==''?$url:null,$mid]);ok(['id'=>$mid,'image_url'=>$url]);
-case 'pos-verify-manager':needLogin();$d=body();$pw=(string)($d['password']??'');if($pw==='')fail('Password required',422);$p=DB::pdo();$q=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");$q->execute([tenant_id()]);foreach($q->fetchAll() as $u){if($u['password_hash']&&password_verify($pw,$u['password_hash']))ok(['manager'=>$u['full_name'],'manager_id'=>$u['id']]);}fail('Incorrect manager password',401);
+case 'pos-verify-manager':needLogin();$d=body();
+ /* V203 — 5 ghalat = 5 minute taala (PosService::managerByPassword). */
+ $r=PosService::managerByPassword((string)($d['password']??''),(string)($d['why']??'approval'));
+ if(empty($r['ok']))fail($r['message'],!empty($r['locked'])?429:401);
+ ok(['manager'=>$r['manager'],'manager_id'=>$r['id']]);
 case 'bill-pdf':needLogin();
  /* V64 — layout ab BillTemplate se aata hai (Settings mein jo chuna gaya).
     Pehle yahan ek hi hardcoded shakl thi, aur Settings ki header/footer
@@ -1448,7 +1457,12 @@ case 'bill-pdf':needLogin();
        'pos_id'=>(string)(\Aio\Services\FiscalService::settings()['pos_id']??'')];
  /* V202 — Duplicate se reprint: upar "DUPLICATE COPY", aur kis ne kab
     nikala woh Audit log mein. Items aur raqam wahi. */
- if(!empty($_GET['dup'])){
+ /* V203 — asli bill charge ke waqt POS se chhapta hai; server ka PDF
+    band bill ke liye hamesha COPY hai. Pehle seedha link (bina dup=1)
+    se nikalne par na nishan tha na record. */
+ $isClosed=false;
+ try{$cq=$p->prepare("SELECT order_status FROM orders WHERE id=?");$cq->execute([$o['id']]);$isClosed=($cq->fetchColumn()==='CLOSED');}catch(Throwable $e){}
+ if(!empty($_GET['dup']) || $isClosed){
    $ctx['header']="*** DUPLICATE COPY ***\n".(string)$ctx['header'];
    try{ \Aio\Services\Audit::log('BILL_REPRINT','pos',['id'=>$o['id'],'label'=>'Bill '.$bill]); }catch(Throwable $e){}
  }
@@ -1906,7 +1920,9 @@ case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok===
  $items=is_array($d['items']??null)?$d['items']:[];if(!$items)fail('Your cart is empty');
  $clean=[];$tot=0.0;
  foreach($items as $it){$mid=(string)($it['id']??'');$qty=(float)($it['qty']??0);if($mid===''||$qty<=0)continue;
-   $mq=$p->prepare("SELECT name,base_price FROM menu_items WHERE id=? AND site_id=? AND is_active=1 AND deleted_at IS NULL");$mq->execute([$mid,$ses['site_id']]);$m=$mq->fetch();if(!$m)continue;
+   $mq=$p->prepare("SELECT name,base_price,item_type FROM menu_items WHERE id=? AND site_id=? AND is_active=1 AND deleted_at IS NULL");$mq->execute([$mid,$ses['site_id']]);$m=$mq->fetch();if(!$m)continue;
+   /* V203 — QR: poori plate (1, 2, 3...), zyada se zyada 99; sirf weight wale item mein point. */
+   if(($m['item_type']??'')!=='WEIGHTED')$qty=floor($qty); $qty=min($qty,99.0); if($qty<=0)continue;
    $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],'note'=>(string)($it['note']??'')];
    $tot+=$qty*(float)$m['base_price'];}
  if(!$clean)fail('No valid items');
@@ -2943,6 +2959,7 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
  /* V168 — ruka hua bill apni id se band hota hai (dekhen `pos-hold`).
     Us soorat mein number badalne ka koi sawal hi nahi. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ pos_disc_pw($d);   /* V203 */
  try{$id=PosService::finalize($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  /* Parchi par WAHI number jo order par waqai likha hai — guard ya id
     ki wajah se badla ho to bhi. Pehle yahan request ka number chhapta
@@ -2960,7 +2977,7 @@ case 'pos-finalize':needLogin();Auth::requireModule('pos');$d=body();
    halanke cashier us waqt bill chhapne ka intezar kar raha hota hai.
    Ab sirf wo do aankre jo header par nazar aate hain. */
 $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageData::nextBill()),
-       'dashboard'=>PageData::posCounters(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no']];
+       'dashboard'=>PageData::posCounters(),'fiscal'=>$fiscal,'fbr_no'=>$fiscal['invoice_no'],'repriced'=>PosService::$repriced];
  /* Bill cloud par foran - 60 second wale loop ka intezar nahi. */
  Audit::log('SALE_CREATE','pos',['id'=>$id,'label'=>(string)$d['bill_no'],'new'=>(string)($resp['dashboard']['today_sales']??'')]);
  register_shutdown_function('sync_nudge');
@@ -2968,10 +2985,11 @@ $resp=['order_id'=>$id,'bill_no'=>$d['bill_no'],'next'=>pos_bill_no((int)PageDat
 case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'))fail('Permission denied',403);$d=body();
  /* V168 — ruka hua bill apni id se chalta hai; warna wahi purana pehra. */
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
+ pos_disc_pw($d);   /* V203 */
  try{$r=PosService::sendKot($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$r['order_id']??'']);
      if($bn=$bq->fetchColumn())$d['bill_no']=(string)$bn;}catch(Throwable $e){}
- $r['bill_no']=$d['bill_no'];ok($r);
+ $r['bill_no']=$d['bill_no'];$r['repriced']=PosService::$repriced;ok($r);
 case 'customer-order':
 $d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();
 $p->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,order_status,payment_status,opened_at,created_by_user_id,subtotal,grand_total) VALUES(?,?,?,?,?,'CUSTOMER_APP','DELIVERY','OPEN','UNPAID',NOW(6),?,0,0)")->execute([$oid,tenant_id(),site_id(),$bill,today(),current_user()['id']??null]);
@@ -4243,4 +4261,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V202 build 2026-11-17
+// build: V203 build 2026-11-18

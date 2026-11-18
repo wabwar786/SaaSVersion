@@ -1852,7 +1852,8 @@ function newCustomerModal(cb){
     +'<div><label class="f">Type</label><select class="inp" id="ccType"><option>Regular</option><option>VIP</option><option>Corporate</option></select></div>'
     /* V157 — customer ka apna discount. Har bill par haath se lagana
        aur bhool jana — yehi shikayat thi. */
-    +'<div><label class="f">Discount %</label><input class="inp" id="ccDisc" type="number" min="0" max="100" step="0.5" value="0"></div>'
+    /* V203 — customer discount sirf manager / owner */
+    +(CAN.manage?'<div><label class="f">Discount %</label><input class="inp" id="ccDisc" type="number" min="0" max="100" step="0.5" value="0"></div>':'')
     +'<div class="full"><label class="f">Address</label><input class="inp" id="ccAddr"></div>'
     +'<div class="full"><label class="f">Area</label><input class="inp" id="ccArea"></div>'
     +'</div></div><div class="df"><button class="sec" data-x>Cancel</button><button class="go" id="ccSave">Save Customer</button></div>');
@@ -1862,7 +1863,7 @@ function newCustomerModal(cb){
     if(!n){toast('Customer name is required');return}
     this.disabled=true;this.textContent='Saving...';
     var ph=ov.querySelector('#ccPhone').value||'';
-    var dp=Number(ov.querySelector('#ccDisc').value||0)||0;
+    var dp=Number((ov.querySelector('#ccDisc')||{}).value||0)||0;
     var r=api('records-save',{module:'customers',data:{name:n,phone:ph,type:ov.querySelector('#ccType').value,
       discount:dp,
       address:ov.querySelector('#ccAddr').value||'',area:ov.querySelector('#ccArea').value||''}});
@@ -2045,7 +2046,22 @@ function payload(extra){
   if(extra)for(var k in extra)d[k]=extra[k];
   return d;
 }
-function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}}
+function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast('Server ne bill #'+billNo+' assigned')}syncPrices(r)}
+/* V203 — server ne kisi line ki price menu se durust ki (menu mein price
+   badli ho, ya screen par purani price thi): menu taza karo aur cart ki
+   price wahi kar do jo bill par likhi gayi — parchi aur bill barabar. */
+function syncPrices(r){
+  if(!r||!r.repriced) return;
+  refreshMenu();
+  cart.forEach(function(l){
+    var p=BOOT.products.filter(function(x){return x.id===l.id})[0]; if(!p) return;
+    var m=/\(([^()]+)\)\s*$/.exec(l.name||''), v=null;
+    if(m&&p.variants) v=p.variants.filter(function(x){return (x.name||'').toLowerCase()===m[1].toLowerCase()})[0];
+    var ok=[Number(p.price)].concat((p.variants||[]).map(function(x){return Number(x.price)}));
+    if(ok.indexOf(Number(l.price))<0) l.price=v?Number(v.price):Number(p.price);
+  });
+  renderCart(); toast('Menu ki price update hui — bill nayi price par bana');
+}
 
 /* ============================================================
    V189 — ACCOUNT KAHIN AUR SE BAND HO JAYE TO POS KHUD SAMBHAL LE.
@@ -2206,6 +2222,7 @@ $('#chargeBtn').onclick=function(){
     var r=api('pos-finalize',payload({payment_code:pay,received_amount:rcv}));
     paying=false;
     if(r&&!r.ok&&r.code){ ov.remove(); posConflict(r); return; }   /* V197 */
+    if(r&&r.ok) syncPrices(r);   /* V203 */
     if(!r.ok){
       if(btn){btn.disabled=false;btn.textContent='Complete Payment';btn.style.opacity=''}
       var ob=ov.querySelector('.db'); if(ob)ob.style.pointerEvents='';
@@ -4032,4 +4049,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V202 build 2026-11-17 -->
+<!-- build: V203 build 2026-11-18 -->

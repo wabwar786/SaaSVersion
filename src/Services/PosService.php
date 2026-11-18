@@ -2,6 +2,76 @@
 namespace Aio\Services;
 use Aio\DB;use PDO;
 final class PosService {
+ /* V203 — is request mein kitni lines ki price menu se durust ki gayi. */
+ public static int $repriced=0;
+ /* ============================================================
+    V203 — TAX KA RATE SERVER KI SETTINGS SE.
+    Pehle jo rate / tax POS bhejta wahi save hota (test: tax -200 bheja,
+    400 ka bill 200 ka ban gaya). Ab rate sirf Settings ka: Card / Raast
+    / Easypaisa / JazzCash / Bank / Online = card ka rate, baqi cash ka.
+    Hold par (abhi payment nahi chuni) POS cash ya card ka rate bhejta
+    hai — inhi do mein se ho to woh, warna cash.
+    ============================================================ */
+ private static function taxRateFor(array $d,bool $final):float{
+    $t=SettingsService::taxes(); $cash=(float)$t['tax_cash']; $card=(float)$t['tax_card'];
+    if($final){
+        $pm=(string)($d['payment_code']??'Cash');
+        return preg_match('/card|raast|easypaisa|jazzcash|bank|online/i',$pm)?$card:$cash;
+    }
+    $r=(float)($d['tax_rate']??$cash);
+    return abs($r-$card)<0.001?$card:$cash;
+ }
+ /* ============================================================
+    V203 — DISCOUNT % SIRF WOHI JO RAQAM SE MILTA HO.
+    Pehle POS jo discount_pct bhejta wahi save hota. Raqam 0 aur % 90
+    bhej do -> had ka check (raqam par) pass, aur baad mein tablet ke
+    item jorne par server wahi 90% laga deta. Ab % tabhi save hota hai
+    jab woh discount ki raqam se milta ho.
+    ============================================================ */
+ private static function cleanPct(array $d,float $base,float $disc):float{
+    $pc=(float)($d['discount_pct']??0);
+    if($pc<=0 || $base<=0 || $disc<=0) return 0.0;
+    return abs($base*$pc/100-$disc)<=1.0 ? min(100.0,$pc) : 0.0;
+ }
+ /* ============================================================
+    V203 — ITEM KI PRICE AUR NAAM MENU SE.
+    Pehle line ki price POS se aati aur bina dekhe save hoti (test: 400
+    ki Biryani 1 rupay mein bik gayi) — discount ki had ka koi faida na
+    rehta. Ab jaiz price sirf: menu ki price, us item ke kisi variant ki
+    price, ya is bill par pehle se likhi us line ki price (menu ki price
+    beech mein badli ho). Kuch aur aaye to menu / variant ki price lagti
+    hai aur Audit log mein PRICE_CORRECTED.
+    Naam bhi: menu ke naam se shuru na ho to menu ka naam (kitchen ko
+    ghalat naam na jaye).
+    ============================================================ */
+ /* V203 — qty 0 ya manfi wali line bill par nahi aati. Pehle Biryani x2
+    ke saath Biryani x-1 bheji to bill 400 ka ban jata (800 - 400).
+    0 / manfi line ka matlab "line hatao" — woh kaam dropRemoved karta
+    hai (pehle se save line VOID). */
+ private static function posItems(array $items):array{
+    return array_values(array_filter($items,function($i){ return is_array($i) && (float)($i['qty']??0) > 0; }));
+ }
+ private static function fairName(PDO $p,string $mid,string $name):string{
+    $q=$p->prepare("SELECT name FROM menu_items WHERE id=?");$q->execute([$mid]);$base=(string)$q->fetchColumn();
+    if($base==='') return $name;
+    return (strpos($name,$base)===0)?$name:$base;
+ }
+ private static function fairRate(PDO $p,string $mid,string $name,float $rate,?float $oldRate):float{
+    $q=$p->prepare("SELECT name,base_price FROM menu_items WHERE id=?");$q->execute([$mid]);$m=$q->fetch(PDO::FETCH_ASSOC);
+    if(!$m) return $rate;
+    $ok=[(float)$m['base_price']]; $byName=[];
+    $vq=$p->prepare("SELECT name,price FROM menu_item_variants WHERE menu_item_id=? AND is_active=1 AND deleted_at IS NULL");
+    $vq->execute([$mid]);
+    foreach($vq->fetchAll(PDO::FETCH_ASSOC) as $v){ $ok[]=(float)$v['price']; $byName[strtolower(trim($v['name']))]=(float)$v['price']; }
+    if($oldRate!==null) $ok[]=$oldRate;
+    foreach($ok as $o) if(abs($o-$rate)<0.005) return $rate;
+    $want=(float)$m['base_price'];
+    if(preg_match('/\(([^()]+)\)\s*$/',$name,$mm) && isset($byName[strtolower(trim($mm[1]))])) $want=$byName[strtolower(trim($mm[1]))];
+    self::$repriced++;
+    try{ Audit::log('PRICE_CORRECTED','pos',['id'=>$mid,'label'=>$name.': '.$rate.' -> '.$want]); }catch(\Throwable $e){}
+    return $want;
+ }
+
     /**
      * V70 — bill ko us waqt ki OPEN shift se joro.
      * POS ki screen `shift_id` bhejti hi nahi thi, is liye har payment
@@ -41,10 +111,12 @@ final class PosService {
         $given = trim((string)($d['shift_id'] ?? ''));
         if ($given !== '') {
             try {
+                /* V203 — sirf APNA khula account. Pehle kisi doosre cashier ka
+                   shift_id bhej kar bill us ke galle mein dala ja sakta tha. */
                 $q = $p->prepare("SELECT id FROM cashier_shifts
-                                   WHERE id=? AND site_id=? AND status='OPEN'
+                                   WHERE id=? AND site_id=? AND status='OPEN' AND cashier_user_id=?
                                      AND deleted_at IS NULL LIMIT 1");
-                $q->execute([$given, site_id()]);
+                $q->execute([$given, site_id(), current_user()['id'] ?? null]);
                 if ($q->fetchColumn()) return $given;
             } catch (\Throwable $e) { return $given; }
             /* Band ya ghayab — neeche chalta account dhoonda jayega. */
@@ -109,6 +181,7 @@ final class PosService {
        Ab jo khana request mein hai hi nahi, wo bill par jo pehle se
        likha hai wahi rehta hai. POS counter yeh sab hamesha bhejta hai.
        ============================================================ */
+    if(array_key_exists('tax_rate',$d)) $d['__tax_from_client']=1;   /* V203 */
     if(array_key_exists('discount_amount',$d)){   /* V202 — counter ka discount: had se zyada ho to manager */
         $dq=min(max(0.0,(float)$d['discount_amount']),max(0.0,$sub+(float)($d['service_charge']??0)));
         self::discAllowed($p,$order,$d,$sub,$dq);
@@ -141,6 +214,7 @@ final class PosService {
     /* V199 — 400 ke bill par 1,000 discount: bill 0 theek tha, magar
        discount 1,000 save hota aur discount reports 600 zyada dikhati.
        Ab discount zyada se zyada bill (items + service) jitna. */
+    $svc=max(0.0,$svc);   /* V203 — service charge manfi nahi */
     $disc=min(max(0.0,$disc),max(0.0,$sub+$svc));
     /* V171 — delivery charge. Sirf Home Delivery par; `deliveryOf()`
        khud dekh leta hai ke bill ka type kya hai. */
@@ -164,14 +238,15 @@ final class PosService {
        ============================================================ */
     $taxable = max(0.0, $sub - $disc + $svc);
     $rate    = (float)($d['tax_rate'] ?? 0);
+    if (!empty($d['__tax_from_client'])) $rate = self::taxRateFor($d,false);   /* V203 */
     if ($rate > 0) {
         $sp  = \Aio\Services\TaxMode::split($taxable, $rate);
         $tax = $sp['tax'];
         $grand = \Aio\Services\TaxMode::isInclusive() ? $taxable : ($taxable + $tax);
     } else {
-        /* Purana POS rate nahi bhejta — wahi raasta jo finalize leta hai. */
-        $tax   = (float)($d['tax_amount'] ?? 0);
-        $grand = $taxable + $tax;
+        /* V203 — rate 0 = tax 0 (POS ki bheji tax raqam nahi). */
+        $tax   = 0.0;
+        $grand = $taxable;
     }
     /* V171 — DELIVERY CHARGE TAX KE BAAD JURTA HAI, PEHLE NAHI.
        Malik ka faisla: tax sirf khane par banta hai. Is liye yeh
@@ -186,7 +261,7 @@ final class PosService {
        raqam ka FLAT discount aa jata — aur agar us ke baad items badal
        jayen to wo raqam ghalat ho jati. Ab percent alag se likha jata
        hai, to unhold par "10%" hi wapas aata hai. */
-    $dpct=(float)($d['discount_pct']??0);
+    $dpct=self::cleanPct($d,$sub,$disc);   /* V203 */
     /* `hold_status` ab waqai likha jata hai. Running Orders screen par
        "Held" ka khana isay parhta tha magar likhta koi nahi tha — wo
        ginti hamesha 0 rehti thi. */
@@ -213,7 +288,7 @@ final class PosService {
     self::lockSite($p);   /* V197 — branch ke saves ek qatar mein */
     $order=self::ensureOpenOrder($p,$d);
     $n=0; $keep=[];
-    foreach($items as $i){ $row=self::upsertOrderItem($p,$order,$i); $keep[]=(string)$row['id']; $n++; }
+    foreach(self::posItems($items) as $i){ $row=self::upsertOrderItem($p,$order,$i); $keep[]=(string)$row['id']; $n++; }
     self::dropRemoved($p,$order,$d,$keep);   /* V196 — cart se hata hua item bill se bhi hatao */
 
     $grand = self::writeTotals($p, $order, $d, 1);
@@ -236,7 +311,7 @@ final class PosService {
     catch(\Throwable $e){ return ''; }
  }
 
- public static function sendKot(array $d,array $items): array { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$pending=[];$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
+ public static function sendKot(array $d,array $items): array { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$pending=[];$keep=[];foreach(self::posItems($items) as $i){$row=self::upsertOrderItem($p,$order,$i);$i['name']=$row['item_name_snapshot'];/* V203 */$keep[]=(string)$row['id'];$pd=max(0,(float)$row['qty']-(float)$row['sent_qty']);if($pd>0)$pending[]=['row'=>$row,'pending'=>$pd,'input'=>$i];}
     /* V190 — KOT par bhi poora hisaab likho, sirf items nahi.
        Pehle yahan raqam ko haath hi nahi lagta tha: kitchen bhejne ke
        baad bill DB mein svc 0 / disc 0 / total 0 ka khara rehta tha.
@@ -274,7 +349,7 @@ final class PosService {
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];foreach($items as $i){$row=self::upsertOrderItem($p,$order,$i);$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */$discount=(float)($d['discount_amount']??0);$service=(float)($d['service_charge']??0);$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho */self::discAllowed($p,$order,$d,$subtotal,$discount);/* V202 *//* ============================================================
+ public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];$inv=[];foreach(self::posItems($items) as $i){$row=self::upsertOrderItem($p,$order,$i);$i['name']=$row['item_name_snapshot'];$inv[]=$i;/* V203 */$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */self::moveToToday($p,$order,$d);/* V203 */$discount=(float)($d['discount_amount']??0);$service=max(0.0,(float)($d['service_charge']??0));/* V203 manfi nahi */$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho */self::discAllowed($p,$order,$d,$subtotal,$discount);/* V202 *//* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -299,13 +374,13 @@ final class PosService {
            tak le ja sakta hai, us se aage nahi.
            ============================================================ */
         $taxable = max(0.0, $subtotal - $discount + $service);
-        $rate    = (float)($d['tax_rate'] ?? 0);
+        $rate    = self::taxRateFor($d,true);   /* V203 — Settings se */
         $sp      = \Aio\Services\TaxMode::split($taxable, $rate);
         $inclusive = \Aio\Services\TaxMode::isInclusive();
         $tax     = $sp['tax'];
         /* Purana POS rate nahi bhejta — us soorat mein uska apna tax lo,
            warna wo build achanak bina tax ke bill banane lagta. */
-        if ($rate <= 0) { $tax = (float)($d['tax_amount'] ?? 0); $inclusive = false; }
+        if ($rate <= 0) { $tax = 0.0; $inclusive = false; }   /* V203 */
         $grand = $inclusive ? $taxable : ($taxable + $tax);
         /* V171 — DELIVERY CHARGE TAX KE BAAD. `hold()` mein bhi bilkul
            yehi lakeer, bilkul isi jagah hai. Dono ek jaise na hon to
@@ -313,8 +388,8 @@ final class PosService {
            masla, jis ki shikayat "discount theek nahi" ki shakal mein
            aati thi. */
         $delivery = self::deliveryOf($d);
-        $grand    = $grand + $delivery;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,delivery_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,hold_status=0,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,(float)($d['discount_pct']??0),$service,$delivery,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
-  $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$items);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
+        $grand    = $grand + $delivery;$received=(float)($d['received_amount']??$grand);$p->prepare("UPDATE orders SET order_status='CLOSED',payment_status='PAID',subtotal=?,discount_amount=?,discount_pct=?,service_charge=?,delivery_charge=?,tax_amount=?,grand_total=?,paid_amount=?,change_amount=?,hold_status=0,closed_at=NOW(6),updated_at=NOW(6) WHERE id=?")->execute([$subtotal,$discount,self::cleanPct($d,$subtotal,$discount),$service,$delivery,$tax,$grand,$grand,max(0,$received-$grand),$order]);$exists=$p->prepare("SELECT COUNT(*) FROM payments WHERE order_id=? AND status='COMPLETED'");$exists->execute([$order]);if(!(int)$exists->fetchColumn()){$pm=$p->prepare("SELECT id FROM payment_methods WHERE site_id=? AND code=? AND is_active=1 LIMIT 1");$pm->execute([site_id(),self::paymentCode($d['payment_code']??'Cash')]);$pmid=$pm->fetchColumn();if(!$pmid)throw new \RuntimeException('Payment method not configured');$p->prepare("INSERT INTO payments(id,tenant_id,site_id,order_id,shift_id,payment_method_id,amount,received_amount,change_amount,status,paid_at,created_by_user_id) VALUES(?,?,?,?,?,?,?,?,?,'COMPLETED',NOW(6),?)")->execute([uuid(),tenant_id(),site_id(),$order,self::shiftFor($p,$d),$pmid,$grand,$received,max(0,$received-$grand),current_user()['id']??null]);}
+  $st=$p->prepare("SELECT COUNT(*) FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=? AND transaction_type='SALE'");$st->execute([$order]);if(!(int)$st->fetchColumn()){self::postInventory($p,$order,$d['bill_no'],$inv);}self::sendPendingInsideTx($p,$order);self::queueSync($p,'orders',$order,'UPDATE');return $order;}); }
  private static function ensureOpenOrder(PDO $p,array $d):string{
     /* ============================================================
        V168 — RUKAY HUE BILL KO US KI ID SE PAKRO, NUMBER SE NAHI.
@@ -736,29 +811,66 @@ final class PosService {
         $cq->execute([$cid,tenant_id()]);
         if($pct <= (float)$cq->fetchColumn()+0.01) return;
     }
+    /* V203 — pehle se manzoor discount: % ke hisaab se. V202 mein raqam
+       dekhi jati thi: 4 items par Rs 800 (50%) manzoor, phir bill 2 items
+       ka aur Rs 800 wahi -> bill muft. Ab bill chhota ho to manzoor % hi
+       chalta hai, raqam nahi. */
     if($order){
-        $oq=$p->prepare("SELECT discount_amount,discount_pct FROM orders WHERE id=?");
+        $oq=$p->prepare("SELECT subtotal,discount_amount FROM orders WHERE id=?");
         $oq->execute([$order]); $o=$oq->fetch(PDO::FETCH_ASSOC);
-        if($o){
-            $rp=(float)($d['discount_pct']??0);
-            if($disc <= (float)$o['discount_amount']+0.01) return;
-            if($rp>0 && $rp <= (float)$o['discount_pct']+0.001) return;
+        if($o && (float)$o['subtotal']>0 && (float)$o['discount_amount']>0){
+            $had=(float)$o['discount_amount']/(float)$o['subtotal']*100;
+            if($pct <= $had+0.01) return;
         }
     }
-    $pw=(string)($d['disc_pw']??'');
-    if($pw!==''){
-        $mq=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id
-                          WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
-                            AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
-        $mq->execute([tenant_id()]);
-        foreach($mq->fetchAll(PDO::FETCH_ASSOC) as $m){
-            if($m['password_hash'] && password_verify($pw,$m['password_hash'])){
-                try{ Audit::log('DISCOUNT_APPROVED','pos',['id'=>$order,'label'=>round($pct,1).'% by '.$m['full_name']]); }catch(\Throwable $e){}
-                return;
-            }
-        }
+    /* Manager ka password api.php mein (transaction se bahar) parkha jata
+       hai — ghalat koshishein ginti mein rahen aur 5 ke baad taala lage. */
+    $mgr=(string)($d['__disc_mgr']??'');
+    if($mgr!==''){
+        try{ Audit::log('DISCOUNT_APPROVED','pos',['id'=>$order,'label'=>round($pct,1).'% by '.$mgr]); }catch(\Throwable $e){}
+        return;
     }
     throw new PosConflict('DISC_LIMIT','Discount '.round($pct,1).'% hai — cashier '.rtrim(rtrim(number_format($max,2,'.',''),'0'),'.').'% tak de sakta hai. Zyada ke liye manager password chahiye.');
+ }
+ /* ============================================================
+    V203 — KAL KA HOLD BILL AAJ CHARGE HO TO AAJ KI SALE.
+    Pehle bill kal ki tareekh par hi band hota: kal ka din band ho chuka,
+    phir bhi us ki sale badal jati, aur aaj ki shift closing (2,305) aur
+    aaj ki sale (1,905) mein farq. Ab charge ke waqt tareekh aaj ki aur
+    aaj ka agla number; purana number Audit log mein.
+    ============================================================ */
+ private static function moveToToday(PDO $p,string $order,array &$d):void{
+    $q=$p->prepare("SELECT business_date,bill_no FROM orders WHERE id=?");$q->execute([$order]);$o=$q->fetch(PDO::FETCH_ASSOC);
+    if(!$o || (string)$o['business_date']>=today()) return;
+    $nb=PageData::billPrefix().str_pad((string)PageData::nextBill(),4,'0',STR_PAD_LEFT);
+    $p->prepare("UPDATE orders SET business_date=?, bill_no=?, updated_at=NOW(6) WHERE id=?")->execute([today(),$nb,$order]);
+    try{ Audit::log('BILL_RENUMBERED','pos',['id'=>$order,'label'=>(string)$o['bill_no'].' ('.$o['business_date'].') -> '.$nb]); }catch(\Throwable $e){}
+    $d['bill_no']=$nb;
+ }
+ /* ============================================================
+    V203 — MANAGER PASSWORD: 5 GHALAT = 5 MINUTE TAALA.
+    Pehle 40 ghalat koshishon ke baad bhi 41vi sahi chal jati — password
+    andaze se nikala ja sakta tha. Ab har ghalat koshish Audit log mein
+    (MGR_PW_FAIL); 5 minute mein 5 ghalat ho jayen to us user ke liye
+    5 minute tak manager password qabool nahi. Transaction se bahar
+    chalta hai taake ghalat koshish ka record mit na jaye.
+    ============================================================ */
+ public static function managerByPassword(string $pw,string $why=''):array{
+    $p=DB::pdo(); $uid=current_user()['id']??'';
+    $lq=$p->prepare("SELECT COUNT(*),MIN(created_at) FROM audit_log WHERE user_id=? AND action='MGR_PW_FAIL' AND created_at>NOW(6)-INTERVAL 5 MINUTE");
+    $lq->execute([$uid]); $l=$lq->fetch(PDO::FETCH_NUM);
+    if((int)$l[0]>=5) return ['ok'=>false,'locked'=>true,'message'=>'5 dafa ghalat manager password — 5 minute baad dobara koshish karein.'];
+    if($pw==='') return ['ok'=>false,'message'=>'Manager password is required'];
+    $mq=$p->prepare("SELECT DISTINCT u.id,u.full_name,u.password_hash FROM users u LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id
+                      WHERE u.tenant_id=? AND u.status='ACTIVE' AND u.deleted_at IS NULL
+                        AND (u.is_tenant_admin=1 OR r.name LIKE '%Manager%' OR r.name LIKE '%Owner%' OR r.name LIKE '%Admin%')");
+    $mq->execute([tenant_id()]);
+    foreach($mq->fetchAll(PDO::FETCH_ASSOC) as $m){
+        if($m['password_hash'] && password_verify($pw,$m['password_hash'])) return ['ok'=>true,'id'=>$m['id'],'manager'=>$m['full_name']];
+    }
+    try{ Audit::log('MGR_PW_FAIL','pos',['label'=>$why]); }catch(\Throwable $e){}
+    $left=4-(int)$l[0];
+    return ['ok'=>false,'message'=>'Incorrect manager password'.($left>0?' ('.$left.' koshish baqi)':' — 5 minute ka taala laga diya gaya.')];
  }
  private static function lockSite(PDO $p):void{
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
@@ -866,7 +978,8 @@ final class PosService {
        khana NULL para ho sakta hai; khali note aur NULL ek hi cheez
        hain.
        ============================================================ */
-    $q=$p->prepare("SELECT id,sent_qty FROM order_items
+    $name=self::fairName($p,$mid,(string)$name);   /* V203 */
+    $q=$p->prepare("SELECT id,sent_qty,unit_price FROM order_items
                      WHERE order_id=? AND menu_item_id=? AND item_name_snapshot=?
                        AND COALESCE(kitchen_note,'')=? AND status='ACTIVE'
                      LIMIT 1 FOR UPDATE");
@@ -874,6 +987,7 @@ final class PosService {
     $old=$q->fetch();
     $qty=(float)$i['qty'];
     $rate=(float)($i['unit_price']??$i['unitPrice']??0);
+    $rate=self::fairRate($p,$mid,(string)$name,$rate,$old?(float)$old['unit_price']:null);   /* V203 */
     $m=$p->prepare("SELECT mi.name,mi.consumption_type,mi.direct_inventory_item_id,mi.direct_inventory_qty,r.id recipe_id,r.version_no,r.yield_qty FROM menu_items mi LEFT JOIN recipes r ON r.menu_item_id=mi.id AND r.is_current=1 WHERE mi.id=?");
     $m->execute([$mid]);$menu=$m->fetch();
     if(!$menu)throw new \RuntimeException('Menu item not found in database: '.$name);
@@ -1021,4 +1135,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V202 build 2026-11-17
+// build: V203 build 2026-11-18

@@ -1,6 +1,7 @@
 {
   "_help": "Which business type each build is for. RETAIL, RESTAURANT or both. A build that is not listed here is shown to everyone. Newest first.",
   "releases": [
+    {"build": "V203 build 2026-11-18", "for": ["RESTAURANT"], "note": "Sale point hardening: item price/name from menu, no negative charges, tax rate from Settings, discount approval by %, customer discount only by manager, manager password lock after 5 wrong tries, own shift only, every server reprint of a charged bill marked DUPLICATE COPY, yesterday held bill charged today moves to today, QR whole quantities"},
     {"build": "V202 build 2026-11-17", "for": ["RESTAURANT"], "note": "Bill number always from server (first bill after midnight is #0001); cashier discount limit (default 10%) with manager password above it; Duplicate reprint marked DUPLICATE COPY and logged"},
     {"build": "V201 build 2026-11-17", "for": ["RESTAURANT"], "note": "One table one bill; any counter opens a table bill and the closer gets the amount; reducing a kitchen-sent qty needs manager password and prints a cancel slip; bill cancelled after KOT prints a cancel slip"},
     {"build": "V200 build 2026-11-17", "for": ["RESTAURANT"], "note": "Sale point: QR order goes to its own table bill, account cannot close with open bills, deleted menu item does not block a held bill, tablet keeps discount/service/tax and cannot overwrite newer items, cashier gets no sale figures"},

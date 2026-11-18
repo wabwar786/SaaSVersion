@@ -738,6 +738,18 @@ final class ModuleBridge
         $dp = (float)($d['discount'] ?? 0);
         if ($dp < 0)   $dp = 0;
         if ($dp > 100) $dp = 100;
+        /* V203 — customer ka discount sirf Owner / Manager / Admin.
+           Pehle cashier POS se 90% wala customer bana kar discount ki had
+           (V202) se bach sakta tha. Cashier naya customer banaye to discount
+           0 nahi to inkaar; purane customer ko edit kare to us ka discount
+           wahi rehta hai jo manager ne rakha. */
+        if (!\Aio\Auth::isManager()) {
+            if ($id === '' && $dp > 0) throw new \RuntimeException('Customer discount sirf manager / owner set kar sakta hai.');
+            if ($id !== '') {
+                $cq = $p->prepare("SELECT COALESCE(discount_pct,0) FROM customers WHERE id=? AND tenant_id=?");
+                $cq->execute([$id, tenant_id()]); $dp = (float)$cq->fetchColumn();
+            }
+        }
         if ($id !== '') {
             $p->prepare("UPDATE customers SET full_name=?, phone=?, customer_type=?, discount_pct=?, updated_at=NOW(6) WHERE id=? AND tenant_id=?")
               ->execute([$name, $d['phone'] ?? '', $type, $dp, $id, tenant_id()]);
@@ -949,4 +961,4 @@ final class ModuleBridge
     }
 }
 
-// build: V198 build 2026-11-17
+// build: V203 build 2026-11-18
