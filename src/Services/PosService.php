@@ -373,7 +373,7 @@ final class PosService {
            ? ('Order sent, but '.count($noPrinter).' item(s) had no kitchen printer. '
               .'Add a printer under Printers / Devices so the kitchen gets a paper copy.')
            : ''];}); }
- public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);/* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];$inv=[];foreach(self::posItems($items) as $i){$row=self::upsertOrderItem($p,$order,$i);$i['name']=$row['item_name_snapshot'];$inv[]=$i;/* V203 */$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */self::moveToToday($p,$order,$d);/* V203 */$discount=(float)($d['discount_amount']??0);$service=max(0.0,(float)($d['service_charge']??0));/* V203 manfi nahi */$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho */self::discAllowed($p,$order,$d,$subtotal,$discount);/* V202 *//* ============================================================
+ public static function finalize(array $d,array $items): string { return self::txRetry(function(PDO $p)use($d,$items){self::lockSite($p);self::ownShiftOrStop($p);/* V205 *//* V197 */$order=self::ensureOpenOrder($p,$d);$subtotal=0;$keep=[];$inv=[];foreach(self::posItems($items) as $i){$row=self::upsertOrderItem($p,$order,$i);$i['name']=$row['item_name_snapshot'];$inv[]=$i;/* V203 */$keep[]=(string)$row['id'];$subtotal+=(float)$row['qty']*(float)$row['unit_price'];}self::dropRemoved($p,$order,$d,$keep);/* V196 */self::bumpRev($p,$order);/* V197 */self::moveToToday($p,$order,$d);/* V203 */$discount=(float)($d['discount_amount']??0);$service=max(0.0,(float)($d['service_charge']??0));/* V203 manfi nahi */$discount=min(max(0.0,$discount),max(0.0,$subtotal+$service));/* V199 — discount bill se bara save na ho */self::discAllowed($p,$order,$d,$subtotal,$discount);/* V202 *//* ============================================================
         TAX — ab server par hi banta hai.
 
         Pehle POS browser jo `tax_amount` bhej deta tha wahi mehfooz ho
@@ -896,6 +896,18 @@ final class PosService {
     $left=4-(int)$l[0];
     return ['ok'=>false,'message'=>'Incorrect manager password'.($left>0?' ('.$left.' koshish baqi)':' — 5 minute ka taala laga diya gaya.')];
  }
+ /* ============================================================
+    V205 — PAISA SIRF APNE KHULE ACCOUNT MEIN.
+    Branch lock ke ANDAR dobara dekho: charge karne wale ka apna account
+    khula hai? Band ho chuka ho (isi lamhe band hua) to bill nahi katta —
+    pehle aisi soorat mein payment kisi DOOSRE cashier ke khule account
+    mein chali jati thi. Cart POS par wahin rehta hai.
+    ============================================================ */
+ private static function ownShiftOrStop(PDO $p):void{
+    $q=$p->prepare("SELECT id FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' AND deleted_at IS NULL LIMIT 1");
+    $q->execute([site_id(),current_user()['id']??'']);
+    if(!$q->fetchColumn()) throw new PosConflict('SHIFT_CLOSED','Aap ka account band ho chuka hai — naya account kholein. Bill save nahi hua, cart wahin hai.');
+ }
  private static function lockSite(PDO $p):void{
     $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
  }
@@ -1161,4 +1173,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V204 build 2026-11-18
+// build: V205 build 2026-11-18

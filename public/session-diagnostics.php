@@ -16,6 +16,13 @@
  */
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/bootstrap.php';
+/* V205 — yeh diagnostics pehle bina login sab ke liye khuli thi (default
+   admin ka password chalta hai ya nahi, session folder ka rasta). Ab sirf:
+   super admin, business admin, ya shop PC par isi PC (localhost) se. */
+if (!(\Aio\Services\Platform::superUser() || \Aio\Auth::isAdmin()
+      || ((string)cfg('app.role') !== 'cloud' && in_array((string)($_SERVER['REMOTE_ADDR'] ?? ''), ['127.0.0.1', '::1'], true)))) {
+    http_response_code(404); header('Content-Type: application/json'); echo json_encode(['ok' => false, 'message' => 'Not found']); exit;
+}
 
 use Aio\Auth;
 use Aio\Csrf;
@@ -111,4 +118,4 @@ echo json_encode([
     ],
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-// build: V62 build 2026-08-26
+// build: V205 build 2026-11-18

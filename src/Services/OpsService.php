@@ -468,6 +468,11 @@ final class OpsService
                     : $stamp;
         }
 
+        /* V205 — band karna aur bill charge karna ek qatar mein (branch lock). */
+        $p->beginTransaction();
+        $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
+        $cq = $p->prepare("SELECT status FROM cashier_shifts WHERE id=? FOR UPDATE"); $cq->execute([$shiftId]);
+        if (strtoupper((string)$cq->fetchColumn()) !== 'OPEN') { $p->rollBack(); throw new \RuntimeException('This shift is already closed.'); }
         $till     = self::tillPieces($shiftId);
         $expected = round($till['opening'] + $till['cash'] - $till['expenses'], 2);
         $var      = round($counted - $expected, 2);
@@ -477,6 +482,7 @@ final class OpsService
                             close_note=?, status='CLOSED', updated_at=NOW(6)
                       WHERE id=? AND site_id=?")
           ->execute([$expected, $counted, $var, $note !== '' ? $note : null, $shiftId, site_id()]);
+        $p->commit();   /* V205 */
 
         /* V79 — SNAPSHOT yahan bhi.
            Yeh code sirf POS ke `shift-close` endpoint mein tha. Shift
@@ -1443,4 +1449,4 @@ final class OpsService
     }
 }
 
-// build: V204 build 2026-11-18
+// build: V205 build 2026-11-18

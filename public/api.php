@@ -49,6 +49,26 @@ function pos_open_bills_msg(string $shiftId):?string{
    PosService ko sirf "kis manager ne manzoor kiya" milta hai. Client
    khud `__` wale khane nahi bhej sakta. */
 /* V204 — Owner / Admin (business ka malik). */
+/* V205 — asli client IP. Cloud (Railway) par proxy apna IP REMOTE_ADDR
+   mein rakhta hai aur asli IP X-Forwarded-For ke AAKHRI hisse mein jodta
+   hai (pehle hisse client khud likh sakta hai). */
+function client_ip():string{ return \Aio\Services\LoginGuard::ip(); }
+function login_locked(string $key):?string{ return \Aio\Services\LoginGuard::locked($key); }
+function login_failed(string $key):void{ \Aio\Services\LoginGuard::failed($key); }
+/* V205 — public (bina login) order ki had: device (IP) aur branch. */
+function public_order_guard(string $siteId,bool $byIp):void{
+  $p=DB::pdo();
+  $q=$p->prepare("SELECT COUNT(*) FROM qr_orders WHERE site_id=? AND status='PENDING'");$q->execute([$siteId]);
+  if((int)$q->fetchColumn()>=30) fail('Restaurant abhi bohat busy hai — order ke liye phone karein.',429);
+  if($byIp){
+    $q=$p->prepare("SELECT COUNT(*) FROM audit_log WHERE action='PUBLIC_ORDER' AND ip_address=? AND created_at>NOW(6)-INTERVAL 10 MINUTE");$q->execute([client_ip()]);
+    if((int)$q->fetchColumn()>=10) fail('Is device se bohat zyada order — thori der baad koshish karein.',429);
+  }
+}
+function public_order_log(string $tid,string $sid,string $oid,string $label):void{
+  try{ DB::pdo()->prepare("INSERT INTO audit_log(id,tenant_id,site_id,action,module,record_id,record_label,ip_address,created_at) VALUES(?,?,?,'PUBLIC_ORDER','online',?,?,?,NOW(6))")
+        ->execute([uuid(),$tid,$sid,$oid,substr($label,0,200),client_ip()]); }catch(Throwable $e){}
+}
 function pos_items_only(array &$d):void{
   foreach(['discount_amount','discount_pct','service_charge','tax_rate','tax_amount','delivery_charge','disc_pw','void_pw','customer_id','shift_id','payment_code','received_amount'] as $k) unset($d[$k]);
 }
@@ -441,7 +461,7 @@ if(!in_array($a,$licenceOpen,true) && strpos($a,'sa-')!==0 && Auth::user()){
 }
 /* V204 — paise / bill badalne wale kaam sirf POST se (CSRF ke saath).
    Pehle GET se bhi chalte the: koi link khulte hi khali bill ban jata. */
-if(in_array($a,['pos-finalize','pos-hold','pos-kot','pos-hold-cancel','pos-prebill-printed','records-save','records-delete','order-void','shift-clear-cash','entity-delete','entity-delete-bulk','entity-restore','module-demo-create','pos-settings-save','settings-save','whatsapp-save','qr-accept','qr-handle'],true)
+if(in_array($a,['kitchen-poll','kitchen-done','kitchen-retry','pos-finalize','pos-hold','pos-kot','pos-hold-cancel','pos-prebill-printed','records-save','records-delete','order-void','shift-clear-cash','entity-delete','entity-delete-bulk','entity-restore','module-demo-create','pos-settings-save','settings-save','whatsapp-save','qr-accept','qr-handle'],true)
    && ($_SERVER['REQUEST_METHOD']??'GET')!=='POST'){ http_response_code(405); header('Content-Type: application/json'); echo json_encode(['ok'=>false,'message'=>'Use POST for this action.']); exit; }
 switch($a){
 case 'csrf-token':
@@ -497,7 +517,10 @@ case 'login':
         if($slug!=='') $_SESSION['login_tenant_slug']=$slug;
     }
 
+    $__lk=strtolower($email);
+    if(($__m=login_locked($__lk))!==null) fail($__m,429);   /* V205 */
     if(!Auth::login($email,$password)){
+        login_failed($__lk);
         fail('Invalid login or account not approved.',401);
     }
 
@@ -732,7 +755,13 @@ case 'sa-activation-reject':needSuper();$d=body();
  ok($r+['rows'=>SelfService::pendingActivations()]);
 
 case 'signup':$d=body();if(empty($d['name'])||empty($d['email'])||empty($d['password']))fail('Name, email and password are required.');$p=DB::pdo();$q=$p->prepare("SELECT COUNT(*) FROM users WHERE tenant_id=? AND email=?");$q->execute([tenant_id(),$d['email']]);$exists=(int)$q->fetchColumn();$q=$p->prepare("SELECT COUNT(*) FROM signup_requests WHERE email=? AND status='PENDING'");$q->execute([$d['email']]);$exists+=(int)$q->fetchColumn();if($exists)fail('Email already registered or pending.');UserService::signup(['full_name'=>$d['name'],'email'=>$d['email'],'phone'=>$d['phone']??'','business'=>$d['business']??'Restaurant','password'=>$d['password']]);$_SESSION['pending_signup_email']=$d['email'];ok();
-case 'access-state':ok(['state'=>accessState()]);
+case 'access-state':
+ /* V205 — users ki maloomat (email, phone, permissions) aur signup requests
+    sirf "Users" wale ko. Baaqi ko sirf roles; bina login kuch nahi. */
+ if(!Auth::user()) ok(['state'=>['users'=>[],'requests'=>[],'roles'=>[]]]);
+ $__st=accessState();
+ if(!Auth::canModule('users')){ $__st['users']=[]; $__st['requests']=[]; }
+ ok(['state'=>$__st]);
 case 'user-create':needLogin();Auth::requireModule('users');$d=body();$id=applyUser('', $d,true);ok(['id'=>$id,'state'=>accessState()]);
 case 'user-update':needLogin();Auth::requireModule('users');$d=body();applyUser($d['id'],$d,false);ok(['state'=>accessState()]);
 case 'signup-approve':needLogin();Auth::requireModule('users');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT * FROM signup_requests WHERE id=? AND status='PENDING'");$q->execute([$d['id']]);$r=$q->fetch();if(!$r)fail('Request not found.');$role=roleIdByName($d['role']??'Cashier');$mods=[];foreach($d['modules']??[] as $k)if($m=moduleId($k))$mods[]=$m;UserService::create(['full_name'=>$r['full_name'],'email'=>$r['email'],'username'=>'','phone'=>$r['phone']??'','password'=>'','password_hash_override'=>$r['password_hash'],'password_algo'=>'ARGON2ID','role_id'=>$role,'modules'=>$mods,'is_admin'=>0],$r['id']);ok(['state'=>accessState()]);
@@ -1157,6 +1186,13 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  \Aio\Services\PosService::cancelSlipForOrder($id);   /* V201 — kitchen ko cancel parchi */
  ok(['cancelled'=>$ord['bill_no']]);
 
+case 'kitchen-poll':needLogin();if(!Auth::canModule('pos'))fail('Access denied.',403);
+ /* V205 — kitchen parchiyan: shop PC par seedha printer, warna yeh counter chhape. */
+ try{ ok(\Aio\Services\PrinterService::kitchenPoll((string)cfg('app.role')!=='cloud')); }catch(Throwable $e){ fail($e->getMessage()); }
+case 'kitchen-done':needLogin();if(!Auth::canModule('pos'))fail('Access denied.',403);$d=body();
+ ok(['done'=>\Aio\Services\PrinterService::kitchenDone((array)($d['ids']??[]))]);
+case 'kitchen-retry':needLogin();if(!Auth::canModule('pos'))fail('Access denied.',403);
+ ok(['retry'=>\Aio\Services\PrinterService::kitchenRetry()]);
 case 'pos-prebill-printed':needLogin();if(!Auth::canModule('pos'))fail('Access denied.',403);$d=body();
  /* V204 — payment se pehle wali parchi print hui: record, taake baad mein
     is bill ka cancel manager se ho. */
@@ -1981,9 +2017,15 @@ case 'qr-order':$p=DB::pdo();$d=body();$tok=(string)($d['token']??'');if($tok===
    $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],'note'=>(string)($it['note']??'')];
    $tot+=$qty*(float)$m['base_price'];}
  if(!$clean)fail('No valid items');
+ /* V205 — ek table par 3 se zyada pending order nahi, branch par 30.
+    IP ki had QR par nahi: restaurant ke WiFi par sab mehmanon ka ek hi IP. */
+ public_order_guard((string)$ses['site_id'],false);
+ $tq=$p->prepare("SELECT COUNT(*) FROM qr_orders WHERE site_id=? AND table_name=? AND status='PENDING'");$tq->execute([$ses['site_id'],$ses['table_name']]);
+ if((int)$tq->fetchColumn()>=3) fail('Is table ke 3 order pehle se intezar mein hain — cashier ke confirm karne ka intezar karein.',429);
  $oid=uuid();
  $p->prepare("INSERT INTO qr_orders(id,tenant_id,site_id,session_id,table_name,items_json,total,status,note,created_at) VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
    ->execute([$oid,$ses['tenant_id'],$ses['site_id'],$ses['id'],$ses['table_name'],json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,(string)($d['note']??'')]);
+ public_order_log((string)$ses['tenant_id'],(string)$ses['site_id'],$oid,'QR '.$ses['table_name']);   /* V205 */
  ok(['order_id'=>$oid,'total'=>$tot,'status'=>'PENDING','message'=>'Order cashier ko bhej diya gaya - confirm hone ka intezar please']);
 /* ================= CUSTOMER MOBILE APP (PWA) =================
    Yeh wahi qr_sessions / qr_orders istemal karta hai jo table-QR
@@ -2042,9 +2084,11 @@ case 'app-order':$p=DB::pdo();$d=body();
  foreach($items as $it){
    $mid=(string)($it['id']??''); $qty=(float)($it['qty']??0);
    if($mid===''||$qty<=0)continue;
-   $mq=$p->prepare("SELECT name,base_price FROM menu_items
+   $mq=$p->prepare("SELECT name,base_price,item_type FROM menu_items
                       WHERE id=? AND site_id=? AND is_active=1 AND is_online=1 AND deleted_at IS NULL");
    $mq->execute([$mid,$sid]); $m=$mq->fetch(); if(!$m)continue;
+   /* V205 — app: poori plate 1-99 (pehle 5000 Biryani / 0.3 plate bhi). */
+   if(($m['item_type']??'')!=='WEIGHTED')$qty=floor($qty); $qty=min($qty,99.0); if($qty<=0)continue;
    $clean[]=['id'=>$mid,'name'=>$m['name'],'qty'=>$qty,'price'=>(float)$m['base_price'],
              'note'=>substr((string)($it['note']??''),0,80)];
    $tot+=$qty*(float)$m['base_price'];
@@ -2056,6 +2100,7 @@ case 'app-order':$p=DB::pdo();$d=body();
                    WHERE o.site_id=? AND s.guest_phone=? AND o.created_at>DATE_SUB(NOW(6),INTERVAL 1 MINUTE)");
  $rl->execute([$sid,$phone]);
  if((int)$rl->fetchColumn()>=3)fail('Too many orders in a minute. Please wait a moment.',429);
+ public_order_guard($sid,true);   /* V205 — device (IP) aur branch ki had */
 
  $tok=bin2hex(random_bytes(20)); $qid=uuid();
  $p->prepare("INSERT INTO qr_sessions(id,tenant_id,site_id,table_id,table_name,token,status,started_at,expires_at,guest_name,guest_phone)
@@ -2069,6 +2114,7 @@ case 'app-order':$p=DB::pdo();$d=body();
               VALUES(?,?,?,?,?,?,?,'PENDING',?,NOW(6))")
    ->execute([$oid,$tid,$sid,$qid,$label,json_encode($clean,JSON_UNESCAPED_UNICODE),$tot,substr($note,0,255)]);
 
+ public_order_log($tid,$sid,$oid,'App '.$name);   /* V205 */
  ok(['order_id'=>$oid,'token'=>$tok,'total'=>$tot,'status'=>'PENDING',
      'message'=>'Order sent. The counter will confirm it shortly.']);
 
@@ -2608,6 +2654,7 @@ case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pd
  $oc=$p->prepare("SELECT shift_no FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' LIMIT 1");
  $oc->execute([site_id(),$toUser]);
  if($x=$oc->fetchColumn())fail($nu['full_name'].' ki shift '.$x.' is already open.');
+ $p->beginTransaction(); $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);   /* V205 */
  $rep=shift_report($sh,null);
  $counted=(float)($d['counted_cash']??$rep['expected_cash']);
  $handed=(float)($d['handed_cash']??$counted);
@@ -2630,6 +2677,7 @@ case 'shift-transfer':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pd
    ->execute([uuid(),tenant_id(),site_id(),$sh['id'],$nid,$uid,$toUser,$sh['counter_name']?:'Counter 1',
               $rep['expected_cash'],$counted,$counted-$rep['expected_cash'],$handed,(string)($d['note']??'')]);
  $rep['actual_cash']=$counted;$rep['variance']=$counted-$rep['expected_cash'];
+ if($p->inTransaction())$p->commit();   /* V205 */
  $rep['closed_at']=date('Y-m-d H:i');$rep['handed_to']=$nu['full_name'];$rep['handed_cash']=$handed;$rep['new_shift']=acct_show($nseq,$nno);
  ok(['report'=>$rep,'new_shift_no'=>acct_show($nseq,$nno),'to'=>$nu['full_name']]);
 
@@ -2727,9 +2775,17 @@ case 'shift-handover':needLogin();Auth::requireModule('pos');$d=body();
      'to'=>$tu['full_name'],'to_shift'=>$theirs['shift_no']??null,
      'mode'=>$mode,'message'=>$msg]);
 
-case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if($sh && ($ob=pos_open_bills_msg((string)$sh['id']))!==null){http_response_code(409);echo json_encode(['ok'=>false,'code'=>'OPEN_BILLS','message'=>$ob],JSON_UNESCAPED_UNICODE);exit;}/* V200 */if(!$sh)fail('You have no open shift.');$rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
+case 'shift-close':needLogin();Auth::requireModule('pos');$d=body();$p=DB::pdo();$q=$p->prepare("SELECT id,shift_no,opening_cash,opened_at FROM cashier_shifts WHERE site_id=? AND cashier_user_id=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1");$q->execute([site_id(),current_user()['id']??'']);$sh=$q->fetch();if($sh && ($ob=pos_open_bills_msg((string)$sh['id']))!==null){http_response_code(409);echo json_encode(['ok'=>false,'code'=>'OPEN_BILLS','message'=>$ob],JSON_UNESCAPED_UNICODE);exit;}/* V200 */if(!$sh)fail('You have no open shift.');
+ /* V205 — account band karna aur bill charge karna EK QATAR mein (branch
+    lock — wahi jo har bill leta hai). Pehle band hote waqt chalte bill
+    kisi DOOSRE cashier ke khule account mein chale jate the. */
+ $p->beginTransaction(); $p->prepare("SELECT id FROM sites WHERE id=? FOR UPDATE")->execute([site_id()]);
+ $__c=$p->prepare("SELECT status FROM cashier_shifts WHERE id=? FOR UPDATE");$__c->execute([$sh['id']]);
+ if($__c->fetchColumn()!=='OPEN'){ $p->rollBack(); fail('This shift is already closed.'); }
+ $rep=shift_report($sh,null);$actual=(float)($d['actual_cash']??$rep['expected_cash']);$clear=!empty($d['clear_cash'])?1:0;
  $p->prepare("UPDATE cashier_shifts SET closed_at=NOW(6),expected_cash=?,actual_cash=?,variance_amount=?,status='CLOSED',close_note=?,cash_cleared=?,cleared_amount=?,updated_at=NOW(6) WHERE id=?")
-   ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');
+   ->execute([$rep['expected_cash'],$actual,$actual-$rep['expected_cash'],(string)($d['note']??''),$clear,$clear?$actual:null,$sh['id']]);
+ $p->commit();   /* V205 */$rep['actual_cash']=$actual;$rep['variance']=$actual-$rep['expected_cash'];$rep['closed_at']=date('Y-m-d H:i');$rep['note']=(string)($d['note']??'');
  /* V76 — shift ka id bhi wapas, taake POS wahi 80mm closing report
     khol sake jo Shift Management page kholta hai. Pehle POS apna alag
     saada slip banata tha: na category-wise sale, na payments. */
@@ -3061,9 +3117,12 @@ case 'pos-kot':needLogin();if(!Auth::canModule('pos')&&!Auth::canModule('tablet'
  if(trim((string)($d['order_id']??''))==='') $d['bill_no']=pos_bill_guard($d);
  pos_need_items($d);   /* V204 */
  pos_disc_pw($d);   /* V203 */
+ $__t0=(string)DB::pdo()->query("SELECT NOW(6)")->fetchColumn();   /* V205 */
  try{$r=PosService::sendKot($d,$d['items']??[]);}catch(\Aio\Services\PosConflict $e){pos_conflict($e);}
  try{$bq=DB::pdo()->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$bq->execute([$r['order_id']??'']);
      if($bn=$bq->fetchColumn())$d['bill_no']=(string)$bn;}catch(Throwable $e){}
+ /* V205 — counter ne KOT khud chhap di: wahi parchi kitchen-poll dobara na chhape. */
+ if(!empty($d['kot_printed']) && Auth::canModule('pos') && !empty($r['order_id'])){ try{ \Aio\Services\PrinterService::markCounterPrinted((string)$r['order_id'],$__t0); }catch(Throwable $e){} }
  $r['bill_no']=$d['bill_no'];$r['repriced']=PosService::$repriced;ok($r);
 case 'customer-order':
 $d=body();needLogin();$p=DB::pdo();$bill='ON-'.date('His').'-'.random_int(10,99);$oid=uuid();
@@ -3422,7 +3481,8 @@ case 'records-delete':needLogin();$d=body();$id=(string)($d['id']??'');$mod=preg
  $st->execute([$id,tenant_id(),$mod]);
  if($st->rowCount()<1)fail('Record not found, or it was already deleted. Please refresh the screen.');
  ok(['result'=>'DELETED','message'=>'Record deleted.']);
-case 'sa-login':$d=body();if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??''))){
+case 'sa-login':$d=body();$__lk='sa:'.strtolower((string)($d['email']??''));if(($__m=login_locked($__lk))!==null)fail($__m,429);/* V205 */
+ if(!Platform::superLogin((string)($d['email']??''),(string)($d['password']??''))){login_failed($__lk);
  /* V62.3 — "Invalid platform credentials" bilkul be-maani tha: user ko
     pata hi nahi chalta tha ke aage kya karna hai. Hifazat ke liye hum
     ab bhi nahi batate ke email galat thi ya password, magar rasta zaroor
@@ -4035,8 +4095,9 @@ case 'build-info':
     'region_column'    => $col('tenants','region_profile'),
     'router_fix'       => str_contains((string)@file_get_contents(__DIR__.'/router.php'), 'sharedPages'),
     'modules'          => ['restaurant'=>$mod('RESTAURANT'), 'retail'=>$mod('RETAIL')],
-    'super_accounts'   => (int)$p->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn(),
-    'businesses'       => (int)$p->query("SELECT COUNT(*) FROM tenants WHERE status<>'DELETED'")->fetchColumn(),
+    /* V205 — ginti sirf super admin ko */
+    'super_accounts'   => Platform::superUser() ? (int)$p->query("SELECT COUNT(*) FROM platform_users WHERE role='SUPER' AND status='ACTIVE'")->fetchColumn() : null,
+    'businesses'       => Platform::superUser() ? (int)$p->query("SELECT COUNT(*) FROM tenants WHERE status<>'DELETED'")->fetchColumn() : null,
   ]);
 
 case 'retail-boot':
@@ -4344,4 +4405,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V204 build 2026-11-18
+// build: V205 build 2026-11-18

@@ -24,7 +24,14 @@ if (!empty($_SESSION['login_tenant_slug'])) {
 }
 
 try {
+    /* V205 — wahi taala jo api.php par (5 ghalat = 10 minute). */
+    $__lk = strtolower($email);
+    if (($__m = \Aio\Services\LoginGuard::locked($__lk)) !== null) {
+        header('Location: /login.html?login_error=blocked&reason='.rawurlencode($__m).$bq);
+        exit;
+    }
     if (!Auth::login($email, $password)) {
+        \Aio\Services\LoginGuard::failed($__lk);
         header('Location: /login.html?login_error=invalid'.$bq);
         exit;
     }
@@ -75,4 +82,4 @@ try {
     exit;
 }
 
-// build: V17.1 build 2026-08-25
+// build: V205 build 2026-11-18

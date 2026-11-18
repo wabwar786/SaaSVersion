@@ -200,6 +200,101 @@ final class PrinterService
         }
         return ['ok' => true];
     }
+
+    /* ================================================================
+       V205 — KITCHEN KI PARCHIYAN ASAL MEIN PRINT HON.
+
+       Pehle server har KOT / tablet-QR KOT / cancel parchi sirf
+       `printer_jobs` mein PENDING likh deta tha — use printer tak koi
+       bhejta hi nahi tha (test: 43 pending, 0 printed). Jis shop mein
+       KDS screen nahi, wahan tablet ke order aur cancel kitchen tak
+       pohanchte hi nahi the.
+
+       Ab counter ka POS har 10 second `kitchen-poll` chalata hai:
+         - Shop PC (offline node) + printer ka IP: server seedha printer
+           (ESC/POS, port 9100) par bhejta hai.
+         - Cloud, ya printer ka IP nahi: parchi POS ko milti hai, POS
+           apne printer par chhapta hai, phir `kitchen-done`.
+       Ek parchi sirf EK counter uthata hai (atomic claim). 30 minute se
+       purani parchi kabhi print nahi hoti (deploy par purana dher na
+       nikle). Bill banne ki raftar par asar nahi: yeh kaam sale ki
+       request mein nahi, alag poll mein hota hai.
+       ================================================================ */
+    private static function deadFile(string $pid): string { return sys_get_temp_dir().'/aio_prn_'.preg_replace('/[^a-z0-9-]/i','',$pid); }
+
+    public static function sendRaw(string $ip, int $port, string $text, string $pid = ''): bool
+    {
+        if ($pid !== '' && is_file(self::deadFile($pid)) && (time() - (int)@filemtime(self::deadFile($pid))) < 60) return false;
+        $errno = 0; $errstr = '';
+        $sock = @fsockopen($ip, $port ?: self::DEFAULT_PORT, $errno, $errstr, 1.5);
+        if (!$sock) { if ($pid !== '') @touch(self::deadFile($pid)); return false; }
+        $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        if ($t === false) $t = preg_replace('/[^\x09\x0A\x20-\x7E]/', '?', $text);
+        $ok = @fwrite($sock, "\x1b@" . $t . "\n\n\n\n\x1dV\x01") !== false;
+        @fclose($sock);
+        if ($ok && $pid !== '') @unlink(self::deadFile($pid));
+        return $ok;
+    }
+
+    public static function kitchenPoll(bool $direct): array
+    {
+        $p = DB::pdo(); $sid = site_id();
+        $p->prepare("UPDATE printer_jobs SET status='EXPIRED' WHERE site_id=? AND status IN ('PENDING','PRINTING','FAILED') AND queued_at < NOW(6) - INTERVAL 30 MINUTE")->execute([$sid]);
+        /* POS ne utha li thi magar 2 minute mein "done" nahi aaya: dobara qatar mein */
+        $p->prepare("UPDATE printer_jobs SET status='PENDING' WHERE site_id=? AND status='PRINTING' AND printed_at < NOW(6) - INTERVAL 2 MINUTE")->execute([$sid]);
+        $q = $p->prepare("SELECT pj.id, pj.payload_text, pj.job_type, pr.name, pr.ip_address, pr.port_no
+                            FROM printer_jobs pj LEFT JOIN printers pr ON pr.id = pj.printer_id
+                           WHERE pj.site_id=? AND pj.status='PENDING' ORDER BY pj.queued_at LIMIT 10");
+        $q->execute([$sid]);
+        $claim = $p->prepare("UPDATE printer_jobs SET status='PRINTING', printed_at=NOW(6), attempts=attempts+1 WHERE id=? AND status='PENDING'");
+        $done  = $p->prepare("UPDATE printer_jobs SET status=?, printed_at=NOW(6), last_error=? WHERE id=?");
+        $out = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $j) {
+            $claim->execute([$j['id']]);
+            if ($claim->rowCount() !== 1) continue;           // doosre counter ne utha li
+            $ip = trim((string)($j['ip_address'] ?? ''));
+            if ($direct && $ip !== '') {
+                $ok = self::sendRaw($ip, (int)($j['port_no'] ?? 0), (string)$j['payload_text'], md5($ip.':'.(int)($j['port_no'] ?? 0)));
+                $done->execute([$ok ? 'PRINTED' : 'FAILED', $ok ? 'sent to '.$ip : 'printer '.$ip.' not reachable', $j['id']]);
+                continue;
+            }
+            $out[] = ['id' => $j['id'], 'printer' => (string)($j['name'] ?? 'Kitchen'), 'text' => (string)$j['payload_text']];
+        }
+        return ['print' => $out] + self::kitchenStatus();
+    }
+
+    public static function kitchenStatus(): array
+    {
+        $q = DB::pdo()->prepare("SELECT
+               SUM(status='FAILED') failed,
+               SUM(status='PENDING' AND queued_at < NOW(6) - INTERVAL 60 SECOND) waiting
+             FROM printer_jobs WHERE site_id=? AND queued_at > NOW(6) - INTERVAL 30 MINUTE");
+        $q->execute([site_id()]); $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+        return ['failed' => (int)($r['failed'] ?? 0), 'waiting' => (int)($r['waiting'] ?? 0)];
+    }
+
+    public static function kitchenDone(array $ids): int
+    {
+        $n = 0; $u = DB::pdo()->prepare("UPDATE printer_jobs SET status='PRINTED', printed_at=NOW(6), last_error='printed at counter' WHERE id=? AND site_id=? AND status='PRINTING'");
+        foreach (array_slice($ids, 0, 20) as $id) { $u->execute([(string)$id, site_id()]); $n += $u->rowCount(); }
+        return $n;
+    }
+
+    public static function kitchenRetry(): int
+    {
+        foreach (glob(sys_get_temp_dir().'/aio_prn_*') ?: [] as $f) @unlink($f);
+        $u = DB::pdo()->prepare("UPDATE printer_jobs SET status='PENDING' WHERE site_id=? AND status='FAILED' AND queued_at > NOW(6) - INTERVAL 30 MINUTE");
+        $u->execute([site_id()]); return $u->rowCount();
+    }
+
+    /* POS ne apni KOT khud chhap di (counter par) — wahi parchi dobara na nikle. */
+    public static function markCounterPrinted(string $orderId, string $since): void
+    {
+        DB::pdo()->prepare("UPDATE printer_jobs pj JOIN kitchen_tickets kt ON kt.id = pj.reference_id
+                               SET pj.status='PRINTED', pj.printed_at=NOW(6), pj.last_error='printed at counter (KOT button)'
+                             WHERE kt.order_id=? AND pj.site_id=? AND pj.status='PENDING' AND pj.reference_type='KITCHEN_TICKET' AND pj.queued_at >= ?")
+          ->execute([$orderId, site_id(), $since]);
+    }
 }
 
-// build: V66 build 2026-08-27
+// build: V205 build 2026-11-18

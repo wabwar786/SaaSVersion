@@ -444,6 +444,8 @@ textarea.inp{min-height:62px;resize:vertical}
          screen ke "Order" number se tay hoti hai. -->
     <div style="flex:1"></div>
     <button class="tb" id="qrBtn">QR Orders <b id="qrCount">(0)</b></button>
+    <!-- V205 — kitchen printer ki parchi na nikle to yahan laal nishan -->
+    <button class="tb hide" id="kpBadge" style="background:#a3222d;color:#fff;border-color:#a3222d" title="Kitchen print failed — dobara bhejne ke liye dabayein">Kitchen print failed <b id="kpCount">0</b></button>
     <button class="tb" id="voidBtn">Void Logs</button>
     <button class="tb" id="tabletBtn">Connect a tablet</button>
     <!-- V77 — cashier ko logout ke liye POS chhorna na pare. -->
@@ -667,6 +669,7 @@ function posConflict(r){
     infoBox('Table par pehle se bill', r.message||'');
     return true;
   }
+  if(r.code==='SHIFT_CLOSED'){ infoBox('Account band', r.message||''); try{ shift=null; openGate(); }catch(e){} return true; }   /* V205 */
   if(r.code==='VOID_APPROVAL'){ infoBox('Manager approval', r.message||''); return true; }   /* V204 */
   if(r.code==='DISC_LIMIT'){
     askManager('Discount ki had', r.message||'', function(pw){ discPw=pw; toast('Discount approved — ab dobara dabayein'); });
@@ -1072,6 +1075,8 @@ function boot(){
   if(!window.__posTimers){
     window.__posTimers=1;
     setInterval(loadQr,20000);
+    setInterval(kitchenPoll,10000);         /* V205 — kitchen parchiyan */
+    setTimeout(kitchenPoll,3000);
     setInterval(refreshSync,30000);         /* chip har 30s update */
   }
   /* V64 — pehle yahan har 2 minute par asal sync chalti thi, aur POS se
@@ -2054,6 +2059,33 @@ function syncBill(r){if(r&&r.bill_no&&r.bill_no!==billNo){billNo=r.bill_no;toast
 /* V203 — server ne kisi line ki price menu se durust ki (menu mein price
    badli ho, ya screen par purani price thi): menu taza karo aur cart ki
    price wahi kar do jo bill par likhi gayi — parchi aur bill barabar. */
+/* ============================================================
+   V205 — KITCHEN PARCHIYAN JO KOI AUR NAHI CHHAPTA.
+   Tablet / QR ke KOT aur cancel parchiyan pehle sirf server ki qatar
+   mein parhi rehti thin. Ab har 10 second: shop PC par server khud
+   kitchen printer (IP) par bhejta hai; warna yeh counter chhapta hai.
+   Na chhap sake to upar laal "Kitchen print failed" — dabane se dobara.
+   ============================================================ */
+var kpBusy=false;
+function kitchenPoll(){
+  if(kpBusy||document.hidden||!shift) return;
+  kpBusy=true;
+  try{
+    var r=api('kitchen-poll',{});
+    if(r&&r.ok){
+      if(r.print&&r.print.length){
+        var d=document.createElement('div');
+        d.innerHTML=r.print.map(function(j){return '<div class="slip" style="font:12px monospace;white-space:pre-wrap;page-break-after:always">'
+          +'<b>'+esc(j.printer)+'</b>\n'+esc(j.text)+'</div>'}).join('');
+        printNode(d);
+        api('kitchen-done',{ids:r.print.map(function(j){return j.id})});
+      }
+      var n=(r.failed||0)+(r.waiting||0), b=$('#kpBadge');
+      if(b){ b.classList.toggle('hide',!n); var c=$('#kpCount'); if(c)c.textContent=n; }
+    }
+  }catch(e){}
+  kpBusy=false;
+}
 function syncPrices(r){
   if(!r||!r.repriced) return;
   refreshMenu();
@@ -2143,7 +2175,7 @@ function sendKot(autoPrint){
   if(!delta.length){toast('Nothing new to send to the kitchen');return}
   /* RUNNING = is bill ka kuch pehle hi kitchen ja chuka hai (mark karne se PEHLE dekho) */
   var wasRunning=cart.some(function(l){return l.sentQty>0});
-  var r=api('pos-kot',payload());
+  var r=api('pos-kot',payload({kot_printed:autoPrint?1:0}));   /* V205 — counter khud chhapega to server dobara na chhape */
   if(posConflict(r)) return;   /* V197 */
   if(!r.ok){toast(r.message||'KOT could not be saved — it did not reach the kitchen');return}
   syncBill(r); syncShift(r);   /* V190 — account kahin aur se band ho gaya ho to yahin pata chale */
@@ -3340,6 +3372,7 @@ $('#qrBtn').onclick=function(){
 };
 
 /* ================= VOID LOGS / SYSTEM / DIAGNOSTICS ================= */
+$('#kpBadge').onclick=function(){ var r=api('kitchen-retry',{}); toast(r&&r.ok?('Kitchen parchiyan dobara bheji: '+(r.retry||0)):'Retry failed'); kitchenPoll(); };   /* V205 */
 $('#voidBtn').onclick=function(){
   var r=api('records-list&module=void_logs');
   var rows=(r.ok&&r.rows)?r.rows:[];
@@ -4056,4 +4089,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V204 build 2026-11-18 -->
+<!-- build: V205 build 2026-11-18 -->
