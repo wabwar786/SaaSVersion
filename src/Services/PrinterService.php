@@ -239,7 +239,7 @@ final class PrinterService
     public static function kitchenPoll(bool $direct): array
     {
         $p = DB::pdo(); $sid = site_id();
-        $p->prepare("UPDATE printer_jobs SET status='EXPIRED' WHERE site_id=? AND status IN ('PENDING','PRINTING','FAILED') AND queued_at < NOW(6) - INTERVAL 30 MINUTE")->execute([$sid]);
+        foreach (['PENDING','PRINTING','FAILED'] as $__st) $p->prepare("UPDATE printer_jobs SET status='EXPIRED' WHERE site_id=? AND status=? AND queued_at < NOW(6) - INTERVAL 30 MINUTE")->execute([$sid, $__st]);   /* V206 — index wala */
         /* POS ne utha li thi magar 2 minute mein "done" nahi aaya: dobara qatar mein */
         $p->prepare("UPDATE printer_jobs SET status='PENDING' WHERE site_id=? AND status='PRINTING' AND printed_at < NOW(6) - INTERVAL 2 MINUTE")->execute([$sid]);
         $q = $p->prepare("SELECT pj.id, pj.payload_text, pj.job_type, pr.name, pr.ip_address, pr.port_no
@@ -265,11 +265,13 @@ final class PrinterService
 
     public static function kitchenStatus(): array
     {
+        /* V206 — index (site_id, status, queued_at) ke saath: pehle har poll
+           saari purani parchiyan parhta tha (3 lakh par 0.2 second, har
+           counter har 10 second). */
         $q = DB::pdo()->prepare("SELECT
-               SUM(status='FAILED') failed,
-               SUM(status='PENDING' AND queued_at < NOW(6) - INTERVAL 60 SECOND) waiting
-             FROM printer_jobs WHERE site_id=? AND queued_at > NOW(6) - INTERVAL 30 MINUTE");
-        $q->execute([site_id()]); $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+               (SELECT COUNT(*) FROM printer_jobs WHERE site_id=? AND status='FAILED'  AND queued_at > NOW(6) - INTERVAL 30 MINUTE) failed,
+               (SELECT COUNT(*) FROM printer_jobs WHERE site_id=? AND status='PENDING' AND queued_at > NOW(6) - INTERVAL 30 MINUTE AND queued_at < NOW(6) - INTERVAL 60 SECOND) waiting");
+        $q->execute([site_id(), site_id()]); $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
         return ['failed' => (int)($r['failed'] ?? 0), 'waiting' => (int)($r['waiting'] ?? 0)];
     }
 
@@ -297,4 +299,4 @@ final class PrinterService
     }
 }
 
-// build: V205 build 2026-11-18
+// build: V206 build 2026-11-18

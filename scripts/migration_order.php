@@ -80,6 +80,10 @@ return [
        Offline node par aisi koi majboori nahi — wahan sab ek saath. */
     ['script' => 'migrate_collation',     'optional' => true, 'stage' => 'background'],
     ['script' => 'migrate_site_defaults', 'optional' => true, 'stage' => 'background'],
+    /* V206 — orders(site_id, closed_at) + payments(site_id, paid_at):
+       2 saal ke data ke baad bhi bill aur account report tez. Bari table
+       par minute lag sakta hai, is liye background. */
+    ['script' => 'migrate_speed_v206',    'optional' => true, 'stage' => 'background'],
     ['script' => 'migrate_ui_menu',       'optional' => true, 'stage' => 'background'],
     /* V148 — tax rates `ui_records/pos_settings` se `site_settings` par.
        Background mein hai kyunke yeh sirf data move karti hai; koi
@@ -150,4 +154,4 @@ return [
     ['script' => 'check_stock_links',     'optional' => true, 'check' => true],
 ];
 
-// build: V154 build 2026-10-13
+// build: V206 build 2026-11-18

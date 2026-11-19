@@ -899,9 +899,10 @@ final class OpsService
                        CASE WHEN cs.snapshot_json IS NULL THEN 0 ELSE 1 END AS has_snapshot,
                        /* V204 — account band hone ke BAAD void hue bill: closing
                           slip wahi rehti hai, magar yahan farq saaf nazar aaye. */
-                       (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o
-                         WHERE o.order_status='VOID' AND o.updated_at > cs.closed_at
-                           AND EXISTS(SELECT 1 FROM payments pp WHERE pp.order_id=o.id AND pp.shift_id=cs.id)) AS void_after
+                       /* V206 — payments ke shift index se (pehle har account par
+                          poori orders table: 2 saal ke data par 4 second). */
+                       (SELECT COALESCE(SUM(o.grand_total),0) FROM payments pp JOIN orders o ON o.id=pp.order_id
+                         WHERE pp.shift_id=cs.id AND o.order_status='VOID' AND o.updated_at > cs.closed_at) AS void_after
                   FROM cashier_shifts cs
                   LEFT JOIN users u ON u.id = cs.cashier_user_id
                  WHERE cs.site_id = ? AND cs.status='CLOSED' AND cs.deleted_at IS NULL
@@ -1449,4 +1450,4 @@ final class OpsService
     }
 }
 
-// build: V205 build 2026-11-18
+// build: V206 build 2026-11-18

@@ -115,15 +115,19 @@ final class PageData {
     band hota hai, yani wo pehle se band hone ke din par hai.
     ============================================================ */
  public static function dashboard(): array { $p=DB::pdo();$date=today();
-  $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED'");$q->execute([site_id(),$date]);$a=$q->fetch();
+  /* V206 — "aaj" ab index wali range (closed_at / paid_at): pehle
+     DATE(...)=? har dafa poori history parhta tha — 2 saal ke data par
+     dashboard 2.1 second, aur shop PC par us dauran saare counters ruke. */
+  $d0=$date.' 00:00:00'; $d1=date('Y-m-d',strtotime($date.' +1 day')).' 00:00:00';
+  $q=$p->prepare("SELECT COALESCE(SUM(grand_total),0) s,COUNT(*) c,COALESCE(SUM(subtotal),0) gross FROM orders WHERE site_id=? AND closed_at>=? AND closed_at<? AND order_status='CLOSED'");$q->execute([site_id(),$d0,$d1]);$a=$q->fetch();
   $cnt=function($sql,$args=[])use($p){$q=$p->prepare($sql);$q->execute($args);return (int)$q->fetchColumn();};
   $running=$cnt("SELECT COUNT(*) FROM orders WHERE site_id=? AND order_status='OPEN'",[site_id()]);/* V198 — sirf khule bill; void/cancel nahi */$preparing=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING')",[site_id()]);$ready=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status='READY'",[site_id()]);$delayed=$cnt("SELECT COUNT(*) FROM kitchen_tickets WHERE site_id=? AND ticket_status IN ('NEW','PREPARING') AND TIMESTAMPDIFF(MINUTE,sent_at,NOW())>=18",[site_id()]);$online=$cnt("SELECT COUNT(*) FROM online_order_details WHERE site_id=? AND acceptance_status='PENDING'",[site_id()]);$riders=$cnt("SELECT COUNT(*) FROM riders WHERE site_id=? AND status IN ('ON_DELIVERY','ON ROAD','ON_DELIVERY')",[site_id()]);$tables=$cnt("SELECT COUNT(*) FROM dining_tables WHERE site_id=? AND is_active=1",[site_id()]);$occ=$cnt("SELECT COUNT(DISTINCT o.table_id) FROM orders o JOIN dining_tables dt ON dt.id=o.table_id WHERE o.site_id=? AND o.order_status='OPEN' AND dt.is_active=1",[site_id()])/* V198 — khule bill se, purane status khane se nahi */;
-  $pay=['cash'=>0,'card'=>0,'raast'=>0,'walletBank'=>0];$pq=$p->prepare("SELECT pm.code,pm.method_type,SUM(py.amount) amount FROM payments py JOIN payment_methods pm ON pm.id=py.payment_method_id WHERE py.site_id=? AND DATE(py.paid_at)=? AND py.status='COMPLETED' GROUP BY pm.code,pm.method_type");$pq->execute([site_id(),$date]);foreach($pq->fetchAll() as $x){$code=strtoupper($x['code']);$amt=(float)$x['amount'];if($code==='CASH')$pay['cash']+=$amt;elseif($code==='CARD')$pay['card']+=$amt;elseif($code==='RAAST')$pay['raast']+=$amt;else$pay['walletBank']+=$amt;}
-  $mix=['dineIn'=>0,'takeaway'=>0,'delivery'=>0,'online'=>0];$mq=$p->prepare("SELECT service_mode,SUM(grand_total) amount FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED' GROUP BY service_mode");$mq->execute([site_id(),$date]);foreach($mq->fetchAll() as $x){$m=$x['service_mode'];if($m==='DINE_IN')$mix['dineIn']=(float)$x['amount'];elseif($m==='TAKEAWAY')$mix['takeaway']=(float)$x['amount'];else$mix['delivery']+=(float)$x['amount'];}/* V179 — online wale tile par `order_status` ki shart hi nahi thi, is liye
+  $pay=['cash'=>0,'card'=>0,'raast'=>0,'walletBank'=>0];$pq=$p->prepare("SELECT pm.code,pm.method_type,SUM(py.amount) amount FROM payments py JOIN payment_methods pm ON pm.id=py.payment_method_id WHERE py.site_id=? AND py.paid_at>=? AND py.paid_at<? AND py.status='COMPLETED' GROUP BY pm.code,pm.method_type");$pq->execute([site_id(),$d0,$d1]);foreach($pq->fetchAll() as $x){$code=strtoupper($x['code']);$amt=(float)$x['amount'];if($code==='CASH')$pay['cash']+=$amt;elseif($code==='CARD')$pay['card']+=$amt;elseif($code==='RAAST')$pay['raast']+=$amt;else$pay['walletBank']+=$amt;}
+  $mix=['dineIn'=>0,'takeaway'=>0,'delivery'=>0,'online'=>0];$mq=$p->prepare("SELECT service_mode,SUM(grand_total) amount FROM orders WHERE site_id=? AND closed_at>=? AND closed_at<? AND order_status='CLOSED' GROUP BY service_mode");$mq->execute([site_id(),$d0,$d1]);foreach($mq->fetchAll() as $x){$m=$x['service_mode'];if($m==='DINE_IN')$mix['dineIn']=(float)$x['amount'];elseif($m==='TAKEAWAY')$mix['takeaway']=(float)$x['amount'];else$mix['delivery']+=(float)$x['amount'];}/* V179 — online wale tile par `order_status` ki shart hi nahi thi, is liye
      OPEN aur VOID bill bhi "online sale" mein gin jate thay. Baqi teen
      mode (Dine In / Takeaway / Delivery) hamesha sirf CLOSED ginte hain,
      to chaaron ka jama net sale ke barabar hi nahi hota tha. */
-  $oq=$p->prepare("SELECT COALESCE(SUM(o.grand_total),0) FROM online_order_details d JOIN orders o ON o.id=d.order_id WHERE d.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED'");$oq->execute([site_id(),$date]);$mix['online']=(float)$oq->fetchColumn();
+  $oq=$p->prepare("SELECT COALESCE(SUM(o.grand_total),0) FROM online_order_details d JOIN orders o ON o.id=d.order_id WHERE d.site_id=? AND o.closed_at>=? AND o.closed_at<? AND o.order_status='CLOSED'");$oq->execute([site_id(),$d0,$d1]);$mix['online']=(float)$oq->fetchColumn();
   /* V179 — kharche ki shart bhi barabar.
      Pehle dashboard sirf `status='APPROVED'` ginta tha aur `deleted_at`
      dekhta hi nahi tha. Shift ki closing parchi (OpsService::cashExpenses)
@@ -141,8 +145,8 @@ final class PageData {
      sale chart par nazar hi nahi aati thi, aur chart ka jama upar wale
      net sale se kabhi nahi milta tha. Ab chaubees ghante, aur labels
      bhi server se jate hain taake screen par koi andaza na lagana pare. */
-  $hq=$p->prepare("SELECT HOUR(COALESCE(closed_at,created_at)) h,SUM(grand_total) a FROM orders WHERE site_id=? AND DATE(COALESCE(closed_at,created_at))=? AND order_status='CLOSED' GROUP BY h");$hq->execute([site_id(),$date]);$map=[];foreach($hq->fetchAll() as $x)$map[(int)$x['h']]=(float)$x['a'];$hourly=[];$hourLabels=[];foreach(range(0,23) as $h){$hourly[]=$map[$h]??0;$hourLabels[]=sprintf('%02d',$h);}
-  $bq=$p->prepare("SELECT oi.item_name_snapshot name,SUM(oi.qty) qty,SUM(oi.line_total) sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.site_id=? AND DATE(COALESCE(o.closed_at,o.created_at))=? AND o.order_status='CLOSED' GROUP BY oi.item_name_snapshot ORDER BY qty DESC LIMIT 8");$bq->execute([site_id(),$date]);$best=array_map(fn($x)=>['name'=>$x['name'],'qty'=>(float)$x['qty'],'sales'=>(float)$x['sales'],'cost'=>0],$bq->fetchAll());
+  $hq=$p->prepare("SELECT HOUR(COALESCE(closed_at,created_at)) h,SUM(grand_total) a FROM orders WHERE site_id=? AND closed_at>=? AND closed_at<? AND order_status='CLOSED' GROUP BY h");$hq->execute([site_id(),$d0,$d1]);$map=[];foreach($hq->fetchAll() as $x)$map[(int)$x['h']]=(float)$x['a'];$hourly=[];$hourLabels=[];foreach(range(0,23) as $h){$hourly[]=$map[$h]??0;$hourLabels[]=sprintf('%02d',$h);}
+  $bq=$p->prepare("SELECT oi.item_name_snapshot name,SUM(oi.qty) qty,SUM(oi.line_total) sales FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.site_id=? AND o.closed_at>=? AND o.closed_at<? AND o.order_status='CLOSED' GROUP BY oi.item_name_snapshot ORDER BY qty DESC LIMIT 8");$bq->execute([site_id(),$d0,$d1]);$best=array_map(fn($x)=>['name'=>$x['name'],'qty'=>(float)$x['qty'],'sales'=>(float)$x['sales'],'cost'=>0],$bq->fetchAll());
   /* V179 — "GROSS PROFIT" JHOOT NA BOLE.
      Screen par hisaab `netSales - foodCost - expenses` hai. Jis business
      mein kisi menu item par recipe ya direct-inventory link laga hi na ho,
@@ -433,4 +437,4 @@ final class PageData {
  private static function modeLabel(string $m):string{return ['DINE_IN'=>'Dine In','TAKEAWAY'=>'Takeaway','DELIVERY'=>'Home Delivery'][$m]??$m;}
 }
 
-// build: V204 build 2026-11-18
+// build: V206 build 2026-11-18
