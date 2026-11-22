@@ -55,6 +55,10 @@
           </div>
         </section>
       </div>
+      <section class="panel" id="confPanel" style="margin-top:14px;display:none">
+        <div class="panel-head"><div><h2>Sync conflicts</h2><p>The same bill was worked on two computers before they synced</p></div></div>
+        <div class="panel-body" id="confBody"></div>
+      </section>
     </div>
   </main>
 </div>
@@ -94,13 +98,29 @@
       }
     }
   }
-  function refresh(){ if(!hasDB)return; try{var r=window.DBApi.req('sync-status');if(r&&r.ok)paint(r.status);}catch(e){} }
+  var lastSt=null;
+  function refresh(){ if(!hasDB)return; try{var r=window.DBApi.req('sync-status');if(r&&r.ok){lastSt=r.status;paint(r.status);}}catch(e){} }
 
   document.getElementById('syncBtn').onclick=function(){
     var b=this;b.disabled=true;b.textContent='Syncing…';
     if(!hasDB){setTimeout(function(){b.disabled=false;b.textContent='Sync now';toast('Local-only mode');},500);return;}
     setTimeout(function(){
       var r=window.DBApi.req('sync-run');
+      if(r&&r.ok&&r.queued){
+        /* V207 — background sync ko jagaya; counters nahi rukte. Button
+           tab tak "Syncing..." jab tak status SYNCING se nikal na jaye. */
+        toast('Sync started — billing continues');
+        var t0=Date.now(),n=0;
+        var poll=setInterval(function(){
+          n++;refresh();
+          var st=(lastSt&&lastSt.engine&&lastSt.engine.last_status)||'';
+          if((st!=='SYNCING'&&n>2)||Date.now()-t0>120000){
+            clearInterval(poll);b.disabled=false;b.textContent='Sync now';
+            toast(st==='ERROR'?'Sync problem — see the status above':'Sync complete');loadConf();
+          }
+        },2000);
+        return;
+      }
       b.disabled=false;b.textContent='Sync now';
       if(r&&r.ok){
         var pushed=(r.push&&r.push.rows)||r.pushed||0, pulled=(r.pull&&r.pull.rows)||r.pulled||0;
@@ -115,14 +135,26 @@
            refresh nahi hota tha). */
         toast((r&&r.message)?r.message:'Sync failed');
       }
-      refresh();
+      refresh();loadConf();
     },50);
   };
-  refresh();
+  function esc(x){return String(x==null?'':x).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  /* V207 — owner / manager: jin bills par do computers ne kaam kiya (sync conflict) */
+  function loadConf(){
+    if(!hasDB)return;
+    var r=null; try{r=window.DBApi.req('sync-conflicts');}catch(e){return}
+    var pnl=document.getElementById('confPanel');
+    if(!r||!r.ok||!r.rows||!r.rows.length){pnl.style.display='none';return}
+    pnl.style.display='';
+    var lab={DOUBLE_PAYMENT:'Charged twice',LINE_AFTER_CLOSE:'Item after close',LINE_CHANGED_AFTER_CLOSE:'Line changed after close',DOUBLE_STOCK:'Stock taken twice'};
+    document.getElementById('confBody').innerHTML='<table class="table" style="width:100%"><thead><tr><th>Time</th><th>Bill</th><th>Type</th><th>Rs</th><th>What happened</th></tr></thead><tbody>'
+      +r.rows.map(function(x){return '<tr><td>'+esc(String(x.created_at).slice(0,16))+'</td><td>'+esc(x.bill_no)+'</td><td><span class="tag warn">'+esc(lab[x.kind]||x.kind)+'</span></td><td>'+esc(Math.round(x.amount))+'</td><td style="font-size:12px">'+esc(x.note)+'</td></tr>'}).join('')+'</tbody></table>';
+  }
+  refresh();loadConf();
   setInterval(refresh,15000);
 })();
 </script>
 </body>
 </html>
 
-<!-- build: V62 build 2026-08-26 -->
+<!-- build: V207 build 2026-11-22 -->

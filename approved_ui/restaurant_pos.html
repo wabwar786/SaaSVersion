@@ -669,6 +669,7 @@ function posConflict(r){
     infoBox('Table par pehle se bill', r.message||'');
     return true;
   }
+  if(r.code==='OTHER_SIDE'){ newBill(null,true); loadHolds(); infoBox('Doosri jagah ka bill', r.message||''); return true; }   /* V207 */
   if(r.code==='SHIFT_CLOSED'){ infoBox('Account band', r.message||''); try{ shift=null; openGate(); }catch(e){} return true; }   /* V205 */
   if(r.code==='VOID_APPROVAL'){ infoBox('Manager approval', r.message||''); return true; }   /* V204 */
   if(r.code==='DISC_LIMIT'){
@@ -844,6 +845,9 @@ function syncNow(manual){
     if(!r.ok){
       if(manual)toast(r.message||'Sync failed');
       if(SYNC.state)SYNC.state.last_error=r.message||'failed';
+    }else if(r.queued){   /* V207 — background sync jagai; counter intezar nahi karta */
+      if(manual)toast('Sync started in the background — billing continues');
+      setTimeout(refreshSync,5000);return;
     }else if(manual){
       var pushed=0;for(var k in (r.pushed||{}))pushed+=r.pushed[k];
       toast('Sync complete'+(pushed?(' - '+pushed+' rows uploaded'):' - already up to date'));
@@ -4089,4 +4093,4 @@ boot();
 <script src="/item_dialog.js?b=v19"></script>
 </body>
 </html>
-<!-- build: V205 build 2026-11-18 -->
+<!-- build: V207 build 2026-11-22 -->

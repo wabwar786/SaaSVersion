@@ -622,7 +622,40 @@ final class PosService {
     karna. Pehle yeh seedha `ensureOpenOrder` ke andar likha tha; ab
     do raste us tak aate hain (id se aur number se), is liye ek jagah.
     ============================================================ */
+ /* ============================================================
+    V207 — BILL SIRF APNI JAGAH BADALTA / CHARGE HOTA HAI.
+    Audit (asal sync ke saath): ek hold bill cloud POS par bhi charge hua
+    aur sync se pehle shop PC par bhi -> Rs 560 ke bill par 2 payments.
+    Aur cloud ne bill band kiya jab ke shop PC par waiter ne Naan jora ->
+    band bill mein Rs 80 ki line bina paise.
+    Ab: shop PC (L9-...) ka bill sirf shop PC par, cloud ka sirf cloud par.
+    Pehchan bill number ke prefix se (shop PC ka har bill apne prefix se
+    banta hai). Jis computer ka apna prefix na ho (sirf offline, ya cloud
+    jis ke saath koi shop PC nahi) us par koi rok nahi.
+    ============================================================ */
+ public static function billSide(string $bill):string{
+    return preg_match('/^([A-Z0-9]{1,4})-/i',ltrim($bill,'#'),$m)?strtoupper($m[1]):'';
+ }
+ public static function otherSideMsg(string $bill):string{
+    $side=self::billSide($bill);
+    if(cfg('app.role')==='cloud'){
+        if($side==='') return '';
+        return 'Yeh bill shop PC ('.$side.') ka hai — wahan charge karein. Cloud se is bill ko badla ya charge nahi kiya ja sakta.';
+    }
+    $mine=rtrim(PageData::billPrefix(),'-');
+    if($mine==='' || $side===$mine) return '';
+    return $side===''
+        ? 'Yeh bill cloud par bana hai — wahin charge karein. Shop PC se is bill ko badla ya charge nahi kiya ja sakta.'
+        : 'Yeh bill doosre shop PC ('.$side.') ka hai — wahan charge karein.';
+ }
+ private static function sameSideOrStop(PDO $p,string $id):void{
+    $q=$p->prepare("SELECT bill_no FROM orders WHERE id=? LIMIT 1");$q->execute([$id]);
+    $bn=(string)($q->fetchColumn()?:'');
+    $m=$bn!==''?self::otherSideMsg($bn):'';
+    if($m!=='') throw new PosConflict('OTHER_SIDE',$m,$bn,$id);
+ }
  private static function touchOrder(PDO $p,string $id,array $d):void{
+    self::sameSideOrStop($p,$id);   /* V207 */
     $table=null;
     $rawTable=trim((string)($d['table_id']??''));
     if($rawTable!=='' && preg_match('/^[0-9a-f-]{36}$/i',$rawTable)){
@@ -1173,4 +1206,4 @@ final class PosService {
  private static function queueSync(PDO $p,string $table,string $id,string $op):void{$q=$p->prepare("SELECT id FROM sync_nodes WHERE tenant_id=? AND site_id=? AND node_type='EDGE' AND status='ACTIVE' LIMIT 1");$q->execute([tenant_id(),site_id()]);$node=$q->fetchColumn();if(!$node)return;$p->prepare("INSERT INTO sync_outbox(id,tenant_id,site_id,source_node_id,entity_table,entity_id,operation_type,payload_json,idempotency_key,status) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')")->execute([uuid(),tenant_id(),site_id(),$node,$table,$id,$op,json_encode(['id'=>$id]),uuid()]);}
 }
 
-// build: V205 build 2026-11-18
+// build: V207 build 2026-11-22

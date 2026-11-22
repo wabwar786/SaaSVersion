@@ -347,6 +347,10 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
       busy=false;
       if(!r.ok&&manual){ showDiag(); }
       refresh();
+      if(r.ok&&r.queued){   /* V207 — background sync jagai, jawab foran */
+        var sq=$$('syncSub'); if(sq&&manual)sq.textContent='Sync started in the background - billing continues.';
+        setTimeout(refresh,5000); return;
+      }
       if(r.ok&&manual){
         var n=0; for(var k in (r.pushed||{})) n+=r.pushed[k];
         var sub=$$('syncSub');
@@ -486,4 +490,4 @@ render();clock();setInterval(clock,30000);window.addEventListener('storage',rend
 </body>
 </html>
 
-<!-- build: V149 build 2026-10-12 -->
+<!-- build: V207 build 2026-11-22 -->

@@ -500,6 +500,7 @@ final class Sync
      */
     public static function applyRows(string $table, array $rows, ?string $forceTenantId = null, bool $lastWriteWins = false): int
     {
+        self::$lastKept = 0;
         if (!$rows) return 0;
         if (!self::tableExists($table)) {
             // Yeh bhi ek KHAMOSH rasta tha: table cloud par mojood na ho to
@@ -515,6 +516,7 @@ final class Sync
 
         $applied = 0; $skipped = 0; $failed = 0; $conflicts = 0; $noId = 0; $lastErr = '';
         self::$lastAudit = [];   // har row ka anjaam (diagnostics ke liye)
+        $touched = []; $rehomed = [];   /* V207 — jin bills ko baad mein jaanchna hai */
         $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
         foreach ($rows as $row) {
             $data = array_intersect_key((array)$row, array_flip($cols));
@@ -617,8 +619,11 @@ final class Sync
                     $sq->execute([$data['id']]);
                     $localStatus = strtoupper(trim((string)($sq->fetchColumn() ?: '')));
                     if ($localStatus !== '' && $localStatus !== 'OPEN') {
+                        /* V207 — nishani: bhejne wale ke paas yeh bill abhi KHULA hai,
+                           yani us ki nayi lines band hone ke baad ki hain (neeche). */
+                        try { self::markOpenCopy($pdo, (string)$data['id']); } catch (\Throwable $e) {}
                         $skipped++;
-                        self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'SKIPPED',
+                        self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'KEPT',
                             'reason' => 'bill '.(string)($data['bill_no'] ?? '').' is already '
                                         .$localStatus.' here - an OPEN copy cannot reopen it'];
                         continue;
@@ -626,9 +631,117 @@ final class Sync
                 } catch (\Throwable $e) { /* pehra na chale to purana amal */ }
             }
 
+            /* ============================================================
+               V207 — DO JAGAH BAND HUA BILL: JO PEHLE BAND HUA WOHI ASAL.
+
+               Audit: hold bill cloud par bhi charge hua aur sync se pehle
+               shop PC par bhi. Dono taraf bill CLOSED, magar alag waqt,
+               alag account. Pehle jo copy baad mein pohanchti wo pehli ko
+               mita deti — aur har taraf alag "aakhri" copy reh jati.
+               Ab dono taraf ek hi qanoon: jis ka band hone ka waqt PEHLE
+               hai wohi rehti hai. Baad wali copy chhorh di jati hai (aur
+               us ki payment neeche resolveOrders() alag kar deta hai).
+               Pull par last-write-wins is faisle ko nahi palatta.
+               ============================================================ */
+            $forceApply = false;
+            if ($table === 'orders' && !empty($data['closed_at'])
+                && in_array(strtoupper(trim((string)($data['order_status'] ?? ''))), ['CLOSED','VOID','CANCELLED'], true)) {
+                try {
+                    $fq = $pdo->prepare("SELECT order_status, closed_at FROM orders WHERE id=? LIMIT 1");
+                    $fq->execute([$data['id']]);
+                    if ($lo = $fq->fetch(\PDO::FETCH_ASSOC)) {
+                        $lst = strtoupper((string)$lo['order_status']);
+                        $lc = self::tsNorm((string)($lo['closed_at'] ?? ''));
+                        $ic = self::tsNorm((string)$data['closed_at']);
+                        if (in_array($lst, ['CLOSED','VOID','CANCELLED'], true) && $lc !== '' && $lc !== $ic) {
+                            $touched[(string)$data['id']] = true;
+                            if (strcmp($ic, $lc) > 0) {
+                                $skipped++;
+                                self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'KEPT',
+                                    'reason' => 'bill '.(string)($data['bill_no'] ?? '').' was closed here earlier - the later close is a sync conflict'];
+                                continue;
+                            }
+                            $forceApply = true;
+                        }
+                    }
+                } catch (\Throwable $e) { /* pehra na chale to purana amal */ }
+            }
+
+            /* ============================================================
+               V207 — BAND BILL MEIN NAYI LINE NAHI JURTI.
+
+               Audit: cloud ne bill Rs 960 par band kiya; shop PC ko abhi
+               pata nahi tha aur waiter ne Naan (Rs 80) jor diya. Sync ke
+               baad band bill mein 1,040 ki lines, paisa 960 — Naan muft.
+               Ab aisi NAYI line usi table ke ek naye khule (hold) bill mein
+               jaati hai, taake us ke paise liye ja saken. Band bill ki
+               mojooda line ko badalne wali copy (qty/raqam) chhorh di jati
+               hai aur conflict list mein darj hoti hai.
+               ============================================================ */
+            if ($table === 'order_items' && !empty($data['order_id'])) {
+                try {
+                    $oq = $pdo->prepare("SELECT id, tenant_id, site_id, bill_no, order_status, order_source, service_mode,
+                                                table_id, customer_id, waiter_user_id, guest_count, created_by_user_id
+                                           FROM orders WHERE id=? LIMIT 1");
+                    $oq->execute([$data['order_id']]);
+                    $ord = $oq->fetch(\PDO::FETCH_ASSOC);
+                    if ($ord && in_array(strtoupper((string)$ord['order_status']), ['CLOSED','VOID','CANCELLED'], true)) {
+                        /* Sirf tab jab bhejne wale ne is bill ki KHULI copy bheji thi.
+                           Aam sync mein band bill pehle aata hai aur us ki lines baad
+                           mein — woh asal lines hain, unhen haath nahi lagana. */
+                        $wasOpen = self::hasOpenCopy($pdo, (string)$ord['id']);
+                        $lq = $pdo->prepare("SELECT order_id, qty, unit_price, line_total, voided_qty FROM order_items WHERE id=? LIMIT 1");
+                        $lq->execute([$data['id']]);
+                        $loc = $lq->fetch(\PDO::FETCH_ASSOC);
+                        $orig = $data;
+                        if (!$loc && $wasOpen) {
+                            $nid = self::rehomeOrder($pdo, $ord);
+                            $data['order_id'] = $nid;
+                            if ($ts) $data[$ts] = date('Y-m-d H:i:s').'.'.sprintf('%06d', (int)(fmod(microtime(true), 1) * 1e6));
+                            $rehomed[$nid] = true;
+                            self::conflictNote($pdo, $ord, 'LINE_AFTER_CLOSE', 'order_items', (string)$data['id'],
+                                (float)($data['line_total'] ?? 0), $orig,
+                                'Line '.(string)($data['item_name_snapshot'] ?? '').' came after bill '.$ord['bill_no']
+                                .' was closed - moved to new open bill '.self::billOf($pdo, $nid));
+                        } elseif ($loc && (string)$loc['order_id'] !== (string)$data['order_id']) {
+                            $data['order_id'] = $loc['order_id'];   /* yahan pehle hi naye bill mein ja chuki */
+                        } elseif ($loc && $wasOpen && (abs((float)$loc['qty'] - (float)($data['qty'] ?? $loc['qty'])) > 0.0001
+                               || abs((float)$loc['unit_price'] - (float)($data['unit_price'] ?? $loc['unit_price'])) > 0.0001
+                               || abs((float)$loc['line_total'] - (float)($data['line_total'] ?? $loc['line_total'])) > 0.0001
+                               || abs((float)$loc['voided_qty'] - (float)($data['voided_qty'] ?? $loc['voided_qty'])) > 0.0001)) {
+                            $skipped++;
+                            self::conflictNote($pdo, $ord, 'LINE_CHANGED_AFTER_CLOSE', 'order_items', (string)$data['id'].'@'.(string)($data[$ts] ?? ''),
+                                (float)($data['line_total'] ?? 0) - (float)$loc['line_total'], $data,
+                                'Change to '.(string)($data['item_name_snapshot'] ?? 'a line').' on closed bill '.$ord['bill_no']
+                                .' (qty '.(float)$loc['qty'].' -> '.(float)($data['qty'] ?? 0).') not applied');
+                            self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'KEPT',
+                                'reason' => 'bill '.$ord['bill_no'].' is closed here - line change not applied'];
+                            continue;
+                        }
+                    }
+                } catch (\Throwable $e) { /* pehra na chale to purana amal */ }
+            }
+            /* V207 — hataye gaye doosre stock-kami ki lines baad mein aayen to bhi nahi likhi jatin */
+            if ($table === 'stock_transaction_lines' && !empty($data['stock_transaction_id'])) {
+                try {
+                    self::conflictsEnsure($pdo);
+                    $xq = $pdo->prepare("SELECT 1 FROM sync_bill_conflicts WHERE ref_table='stock_transactions' AND ref_id=? LIMIT 1");
+                    $xq->execute([$data['stock_transaction_id']]);
+                    if ($xq->fetchColumn()) {
+                        $skipped++;
+                        self::$lastAudit[] = ['id' => (string)$data['id'], 'status' => 'KEPT',
+                            'reason' => 'belongs to a duplicate stock deduction removed as a sync conflict'];
+                        continue;
+                    }
+                } catch (\Throwable $e) {}
+            }
+            if ($table === 'payments' && !empty($data['order_id'])) $touched[(string)$data['order_id']] = true;
+            if ($table === 'stock_transactions' && strtoupper((string)($data['reference_type'] ?? '')) === 'ORDER'
+                && !empty($data['reference_id'])) $touched[(string)$data['reference_id']] = true;
+
             try {
                 // Last-write-wins: local copy nayi ho to chhoR do
-                if ($lastWriteWins && $ts && !empty($data[$ts])) {
+                if ($lastWriteWins && !$forceApply && $ts && !empty($data[$ts])) {
                     $q = $pdo->prepare("SELECT `$ts` FROM `$table` WHERE id=? LIMIT 1");
                     $q->execute([$data['id']]);
                     $localTs = $q->fetchColumn();
@@ -727,6 +840,16 @@ final class Sync
         }
         $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
+        /* V207 — is batch ke bills: ek bill, ek payment, ek stock kami. */
+        foreach (array_keys($rehomed) as $rid) {
+            try { self::rehomeTotals($pdo, (string)$rid); } catch (\Throwable $e) {}
+        }
+        foreach (array_keys($touched) as $oid) {
+            try { self::resolveOrder($pdo, (string)$oid); } catch (\Throwable $e) {
+                self::$lastRowErrors[$table] = 'conflict check: '.\substr($e->getMessage(), 0, 160);
+            }
+        }
+
         if ($failed > 0) {
             self::$lastRowErrors[$table] = "$failed row(s) skipped: $lastErr";
         }
@@ -741,7 +864,187 @@ final class Sync
                 . "$conflicts row(s) rejected - duplicate key (another device already used that number)";
         }
         self::$lastSkipped += $skipped;
+        /* V207 — KEPT = jaan boojh kar rakhi gayi local copy (band bill dobara
+           nahi khulta, pehle band hua bill asal, band bill ki line nahi badalti).
+           Yeh faisla hai, kharabi nahi: bhejne wala in rows par atak kar 3 dafa
+           dobara koshish na kare. */
+        self::$lastKept = count(array_filter(self::$lastAudit, fn($a) => $a['status'] === 'KEPT'));
         return $applied;
+    }
+
+    /* ======================= V207 sync conflicts ======================= */
+
+    private static function tsNorm(string $t): string
+    {
+        $t = trim($t);
+        if ($t === '') return '';
+        if (strpos($t, '.') === false) $t .= '.000000';
+        return str_pad(substr($t, 0, 26), 26, '0');
+    }
+
+    private static function billOf(\PDO $pdo, string $id): string
+    {
+        $q = $pdo->prepare("SELECT bill_no FROM orders WHERE id=?"); $q->execute([$id]);
+        return (string)($q->fetchColumn() ?: '');
+    }
+
+    private static function uuidFrom(string $seed): string
+    {
+        $h = md5($seed);
+        return substr($h,0,8).'-'.substr($h,8,4).'-4'.substr($h,13,3).'-a'.substr($h,17,3).'-'.substr($h,20,12);
+    }
+
+    /** Jis computer par yeh chal raha hai us ki taraf ka naam: shop PC ka code, ya C (cloud). */
+    private static function sideTag(): string
+    {
+        if ((string)($GLOBALS['config']['app']['role'] ?? '') === 'cloud') {
+            /* cloud par: line jis shop PC se aayi, naya bill usi ka */
+            $c = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)($_SERVER['HTTP_X_NODE_CODE'] ?? '')) ?? '');
+            return $c !== '' ? substr($c, 0, 4) : 'N';
+        }
+        return 'C';   /* shop PC par pull: line cloud se aayi */
+    }
+
+    /** Band bill par aayi nayi line ke liye usi table par naya khula (hold) bill. */
+    private static function rehomeOrder(\PDO $pdo, array $o): string
+    {
+        $tag  = self::sideTag();
+        $base = preg_replace('~/.*$~', '', (string)$o['bill_no']);
+        /* bill shop PC ka ho to us ka prefix (L9-) rakho; cloud ka naya bill
+           bina prefix — taake jis taraf line bani wahi charge kare */
+        if ($tag === 'C') $base = preg_replace('/^[A-Z0-9]{1,4}-/i', '', $base);
+        elseif (!preg_match('/^[A-Z0-9]{1,4}-/i', $base)) $base = $tag.'-'.$base;
+        for ($n = 1; $n <= 9; $n++) {
+            $bill = $base.'/'.($n === 1 ? 'A' : chr(64 + $n));
+            $id = self::uuidFrom('v207-rehome|'.$o['id'].'|'.$tag.'|'.$n);
+            $q = $pdo->prepare("SELECT order_status FROM orders WHERE id=? LIMIT 1"); $q->execute([$id]);
+            $st = $q->fetchColumn();
+            if ($st === 'OPEN') return $id;
+            if ($st !== false) continue;
+            try {
+                $pdo->prepare("INSERT INTO orders(id,tenant_id,site_id,bill_no,business_date,order_source,service_mode,
+                                    order_status,payment_status,table_id,customer_id,waiter_user_id,guest_count,
+                                    subtotal,grand_total,hold_status,held_at,opened_at,created_by_user_id,notes,updated_at)
+                               VALUES(?,?,?,?,?,?,?,'OPEN','UNPAID',?,?,?,?,0,0,1,NOW(6),NOW(6),?,?,NOW(6))")
+                    ->execute([$id, $o['tenant_id'], $o['site_id'], $bill, date('Y-m-d'), $o['order_source'] ?: 'POS',
+                               $o['service_mode'] ?: 'DINE_IN', $o['table_id'], $o['customer_id'], $o['waiter_user_id'],
+                               $o['guest_count'], $o['created_by_user_id'],
+                               '[V207 sync: item added after bill '.$o['bill_no'].' was closed]']);
+                return $id;
+            } catch (\PDOException $e) {
+                if ((int)$e->getCode() !== 23000) throw $e;   /* number pehle se: agla harf */
+            }
+        }
+        throw new \RuntimeException('could not open a new bill for a line on closed bill '.$o['bill_no']);
+    }
+
+    private static function rehomeTotals(\PDO $pdo, string $id): void
+    {
+        $pdo->prepare("UPDATE orders o SET
+                          subtotal=(SELECT COALESCE(SUM(line_total),0) FROM order_items i WHERE i.order_id=o.id AND i.status='ACTIVE'),
+                          grand_total=(SELECT COALESCE(SUM(line_total),0) FROM order_items i WHERE i.order_id=o.id AND i.status='ACTIVE')
+                        WHERE o.id=? AND o.order_status='OPEN'")->execute([$id]);
+    }
+
+    /** Bhejne wale ne band bill ki KHULI copy bheji (V174 ne chhorh di) — yaad rakho. */
+    private static function markOpenCopy(\PDO $pdo, string $orderId): void
+    {
+        self::conflictsEnsure($pdo);
+        $pdo->prepare("INSERT IGNORE INTO sync_bill_conflicts(id,order_id,kind,ref_table,ref_id,note)
+                       VALUES(?,?,'OPEN_COPY','orders',?,'sender still had this bill open')")
+            ->execute([self::uuidFrom('v207-open|'.$orderId), $orderId, $orderId]);
+    }
+
+    private static function hasOpenCopy(\PDO $pdo, string $orderId): bool
+    {
+        self::conflictsEnsure($pdo);
+        $q = $pdo->prepare("SELECT 1 FROM sync_bill_conflicts WHERE ref_table='orders' AND ref_id=? AND kind='OPEN_COPY' LIMIT 1");
+        $q->execute([$orderId]);
+        return (bool)$q->fetchColumn();
+    }
+
+    private static bool $confReady = false;
+    public static function conflictsEnsure(\PDO $pdo): void
+    {
+        if (self::$confReady) return;
+        $pdo->exec("CREATE TABLE IF NOT EXISTS sync_bill_conflicts(
+            id CHAR(36) NOT NULL PRIMARY KEY,
+            tenant_id CHAR(36) NULL, site_id CHAR(36) NULL,
+            order_id CHAR(36) NULL, bill_no VARCHAR(40) NULL,
+            kind VARCHAR(40) NOT NULL, ref_table VARCHAR(40) NOT NULL, ref_id VARCHAR(80) NOT NULL,
+            amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+            note VARCHAR(400) NULL, row_json MEDIUMTEXT NULL,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            UNIQUE KEY uq_sc_ref(ref_table, ref_id),
+            KEY ix_sc_site(site_id, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        self::$confReady = true;
+    }
+
+    /** Conflict list + Audit log mein ek dafa darj (wohi row dobara aaye to dobara nahi). */
+    private static function conflictNote(\PDO $pdo, array $o, string $kind, string $refTable, string $refId,
+                                         float $amount, array $row, string $note): void
+    {
+        self::conflictsEnsure($pdo);
+        $ins = $pdo->prepare("INSERT IGNORE INTO sync_bill_conflicts(id,tenant_id,site_id,order_id,bill_no,kind,ref_table,ref_id,amount,note,row_json)
+                              VALUES(?,?,?,?,?,?,?,?,?,?,?)");
+        $ins->execute([self::uuidFrom('v207-conf|'.$refTable.'|'.$refId), $o['tenant_id'] ?? null, $o['site_id'] ?? null,
+                       $o['id'] ?? null, $o['bill_no'] ?? null, $kind, $refTable, substr($refId, 0, 80),
+                       round($amount, 2), substr($note, 0, 400), json_encode($row, JSON_UNESCAPED_UNICODE)]);
+        if ($ins->rowCount() < 1) return;
+        try {
+            $pdo->prepare("INSERT INTO audit_log(id,tenant_id,site_id,user_id,username,role_name,action,module,
+                                record_id,record_label,description,created_at)
+                           VALUES(?,?,?,NULL,'sync','System','SYNC_CONFLICT','sync',?,?,?,NOW(6))")
+                ->execute([uuid(), $o['tenant_id'] ?? null, $o['site_id'] ?? null, $o['id'] ?? null,
+                           substr('Bill '.($o['bill_no'] ?? '').' · '.$kind.' · Rs '.round($amount), 0, 200), substr($note, 0, 400)]);
+        } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Ek bill, ek payment. Do jagah charge hua bill: jo payment PEHLE hui wohi
+     * rehti hai; doosri sale / galle se nikal kar conflict list mein (poori
+     * row mehfooz). Isi tarah bill ki doosri stock-kami bhi. Dono computer
+     * yahi qanoon chalate hain, is liye dono par ek hi payment bachti hai.
+     */
+    public static function resolveOrder(\PDO $pdo, string $orderId): void
+    {
+        $oq = $pdo->prepare("SELECT id,tenant_id,site_id,bill_no FROM orders WHERE id=? LIMIT 1");
+        $oq->execute([$orderId]);
+        $o = $oq->fetch(\PDO::FETCH_ASSOC);
+        if (!$o) return;
+
+
+        $pq = $pdo->prepare("SELECT * FROM payments WHERE order_id=? AND status='COMPLETED' ORDER BY paid_at, id");
+        $pq->execute([$orderId]);
+        $pays = $pq->fetchAll(\PDO::FETCH_ASSOC);
+        if (count($pays) > 1) {
+            $keep = array_shift($pays);
+            foreach ($pays as $py) {
+                self::conflictNote($pdo, $o, 'DOUBLE_PAYMENT', 'payments', (string)$py['id'], (float)$py['amount'], $py,
+                    'Bill '.$o['bill_no'].' was charged on two computers before sync. Kept the first payment (Rs '
+                    .round((float)$keep['amount']).' at '.substr((string)$keep['paid_at'], 0, 19).'); second payment Rs '
+                    .round((float)$py['amount']).' at '.substr((string)$py['paid_at'], 0, 19).' removed from sales and till');
+                $pdo->prepare("DELETE FROM payments WHERE id=?")->execute([$py['id']]);
+            }
+        }
+
+        $sq = $pdo->prepare("SELECT * FROM stock_transactions WHERE reference_type='ORDER' AND reference_id=?
+                                AND transaction_type='SALE' ORDER BY posted_at, id");
+        $sq->execute([$orderId]);
+        $txs = $sq->fetchAll(\PDO::FETCH_ASSOC);
+        if (count($txs) > 1) {
+            array_shift($txs);
+            foreach ($txs as $tx) {
+                $lq = $pdo->prepare("SELECT * FROM stock_transaction_lines WHERE stock_transaction_id=?");
+                $lq->execute([$tx['id']]);
+                $tx['_lines'] = $lq->fetchAll(\PDO::FETCH_ASSOC);
+                self::conflictNote($pdo, $o, 'DOUBLE_STOCK', 'stock_transactions', (string)$tx['id'], 0, $tx,
+                    'Bill '.$o['bill_no'].' took stock twice (charged on two computers) - second stock deduction removed');
+                $pdo->prepare("DELETE FROM stock_transaction_lines WHERE stock_transaction_id=?")->execute([$tx['id']]);
+                $pdo->prepare("DELETE FROM stock_transactions WHERE id=?")->execute([$tx['id']]);
+            }
+        }
     }
 
     /** @var array<string,string> per-table row errors (diagnostics) */
@@ -751,6 +1054,7 @@ final class Sync
     /** @var array<int,array{id:string,status:string,reason:string}> har row ka anjaam */
     public static array $lastAudit = [];
     public static int $lastSkipped = 0;
+    public static int $lastKept = 0;
 
     /* ------------------------- watermark state ------------------------- */
 
@@ -1833,4 +2137,4 @@ final class Sync
     }
 }
 
-// build: V148 build 2026-10-12
+// build: V207 build 2026-11-22

@@ -1161,6 +1161,9 @@ case 'pos-hold-cancel':needLogin();Auth::requireModule('pos');$d=body();
  $ord=$q->fetch();
  if(!$ord)fail('This bill was not found',404);
  if(($ord['order_status']??'')==='CLOSED')fail('This bill is already closed');
+ /* V207 — doosri jagah (shop PC / cloud) ka bill yahan se cancel nahi hota. */
+ $bnq=$p->prepare("SELECT bill_no FROM orders WHERE id=?");$bnq->execute([$id]);
+ if(($osm=PosService::otherSideMsg((string)$bnq->fetchColumn()))!=='')fail($osm,409);
 
  /* V204 — jis bill ki parchi (payment se pehle) print ho chuki, us ka cancel
     bhi manager se: parchi par paise liye ja sakte hain. */
@@ -3312,8 +3315,9 @@ case 'sync-push-bulk':$stid=syncTenant();syncNodeSeen($stid);$d=body();
    try{
      Sync::$lastConflicts=[];Sync::$lastAudit=[];unset(Sync::$lastRowErrors[$tbl]);
      $n=Sync::applyRows($tbl,$rows,$stid);
+     $n+=Sync::$lastKept;   /* V207 — jaan boojh kar rakhi gayi rows bhi "ho gayin" */
      $conf=Sync::$lastConflicts;
-     $bad=array_values(array_filter(Sync::$lastAudit,fn($a)=>!in_array($a['status'],['INSERTED','UPDATED'],true)));
+     $bad=array_values(array_filter(Sync::$lastAudit,fn($a)=>!in_array($a['status'],['INSERTED','UPDATED','KEPT'],true)));
      /* Asli wajah bhi wapas bhejo. Pehle sirf gina jata tha ke kitni rows
         na chalin - kyun nahi chalin, wo cloud ke andar hi reh jata tha aur
         node par "X row(s) not accepted" jaisa be-maani message aata tha. */
@@ -3333,7 +3337,7 @@ case 'sync-push':$stid=syncTenant();syncNodeSeen($stid);$d=body();$tbl=(string)(
  if(!syncTableAllowed($tbl))fail('This table is not allowed for sync: '.$tbl,403);
  Sync::$lastConflicts=[];
  $sent=count($d['rows']??[]);
- $n=Sync::applyRows($tbl,$d['rows']??[],$stid);
+ $n=Sync::applyRows($tbl,$d['rows']??[],$stid)+Sync::$lastKept;   /* V207 */
  $conf=Sync::$lastConflicts;
  if($n>0)syncActivityLog($stid,'PUSH',$tbl,$n);
  if($conf)syncActivityLog($stid,'PUSH',$tbl,0,count($conf).' row(s) rejected (duplicate key)');
@@ -3443,7 +3447,31 @@ case 'sync-run':needLogin();
  if(cfg('app.role')==='cloud')fail('This is the cloud server - sync runs from the offline node. Only status can be viewed here.',400);
  $why=Sync::statusReason();
  if($why!=='')fail($why,400);
+ /* ============================================================
+    V207 — "SYNC NOW" COUNTERS KO NAHI ROKTA.
+    Audit: shop PC par yeh button sync isi web request ke andar chalata
+    tha; 300 pending bills par har counter 1.7 second ruka. Background
+    sync_loop (alag process) chal raha ho to ab sirf usay jagaya jata
+    hai (wohi nishani file jo bill banne par likhi jati hai) aur jawab
+    foran wapis. Screen status se progress dikhati hai. Loop band ho
+    (15 minute se dhadkan nahi) to purana tareeqa — sync yahin chalti hai.
+    ============================================================ */
+ $beat=dirname(__DIR__).'/storage/logs/sync_loop.beat';
+ $bt=is_file($beat)?(int)@file_get_contents($beat):0;
+ if($bt>0 && (time()-$bt)<900 && empty($_GET['inline'])){
+   $flag=dirname(__DIR__).'/storage/tmp/sync_now.flag';
+   if(!is_dir(dirname($flag)))@mkdir(dirname($flag),0775,true);
+   @file_put_contents($flag,(string)time());
+   ok(['queued'=>true,'message'=>'Sync started in the background']);
+ }
  ok(Sync::run('manual'));
+case 'sync-conflicts':needLogin();
+ /* V207 — do computers par ek hi bill ka kaam (sync conflict): owner / manager ki list */
+ if(!Auth::isManager()&&!Auth::isAdmin())fail('Only the owner or a manager can see sync conflicts.',403);
+ $p=DB::pdo();\Aio\Services\Sync::conflictsEnsure($p);
+ $q=$p->prepare("SELECT created_at,bill_no,kind,amount,note FROM sync_bill_conflicts WHERE site_id=? AND kind<>'OPEN_COPY' ORDER BY created_at DESC LIMIT 200");
+ $q->execute([site_id()]);
+ ok(['rows'=>$q->fetchAll()]);
 case 'sync-status':needLogin();
  $st=Sync::status();
  $st['role']=cfg('app.role');
@@ -4405,4 +4433,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V205 build 2026-11-18
+// build: V207 build 2026-11-22
