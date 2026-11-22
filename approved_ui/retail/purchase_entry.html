@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purchase Entry · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+
+body{background:var(--bg)}
+.wrap{padding:18px 20px 30px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.top h1{font-size:22px}
+.top p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.sp{flex:1}
+.keys{display:flex;gap:6px}
+.key{font-size:11px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:4px 8px}
+.key b{color:var(--ink);font-family:ui-monospace,monospace}
+.hdr{display:grid;grid-template-columns:330px 1fr 300px;gap:14px;margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-sm);padding:14px 16px}
+.card h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;font-family:var(--font);font-weight:700}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:3px;margin-bottom:10px}
+.seg span{flex:1;text-align:center;font-size:12px;font-weight:600;padding:6px;border-radius:6px;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--brand-ink);box-shadow:var(--sh-sm)}
+.sel{display:flex;gap:8px}
+.sel select,.f input,.f select{height:36px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;font:inherit;font-size:13px;background:#fff;width:100%}
+.info{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 18px}
+.info div span{display:block;font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.info div b{font-size:13px}
+.f{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f label{font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.scan{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.scan input{flex:0 0 420px;height:38px;border:1.5px solid var(--brand-line);border-radius:8px;padding:0 12px;font:inherit;background:#fff}
+.chips{display:flex;gap:6px;margin-left:auto}
+.chip{font-size:11.5px;font-weight:600;border:1px solid var(--line-strong);border-radius:20px;padding:5px 11px;background:#fff;color:var(--ink-2)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+/* grid */
+.gw{overflow-x:auto}
+table.g{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+.g th{background:var(--surface-2);color:var(--muted);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.g th.l{text-align:left}
+.g tr.band th{font-size:10.5px;text-align:center;color:#fff;padding:5px;border-bottom:0;border-right:2px solid #fff}
+.b-item{background:#5b6b66!important}.b-qty{background:#1f6fb2!important}.b-d1{background:#7a5bd6!important}.b-gst{background:#b26a06!important}
+.b-d2{background:#8a56b8!important}.b-adv{background:#a84a3a!important}.b-cost{background:#0a5a46!important}.b-sale{background:#1596a6!important}
+.g td{padding:4px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;background:#fff}
+.g td.l{text-align:left}
+.g td.calc{background:#f4f6f5;color:var(--ink-2)}
+.g td.gs{border-left:2px solid var(--line-strong)}
+.g input{width:62px;height:28px;border:1px solid var(--line-strong);border-radius:6px;text-align:right;padding:0 6px;font:inherit;font-size:12px;background:#fff}
+.g input.w5{width:52px}
+.g input:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+.item small{display:block}.item b{display:block;font-size:11.5px;color:var(--ink)}
+.item small{color:var(--faint);font-family:ui-monospace,monospace;font-size:10.5px}
+.ord{font-size:10.5px;color:var(--muted);display:block}
+.short{color:var(--warn);font-weight:700}.extra{color:var(--info);font-weight:700}
+td.cu{background:#fff6c7!important;font-weight:800;color:#16201d}
+.up{color:var(--danger);font-weight:700;font-size:10.5px;display:block}.dn{color:var(--ok);font-weight:700;font-size:10.5px;display:block}.same{color:var(--faint);font-size:10.5px;display:block}
+td.rp input{background:#e3f7fa;border-color:#7cc9d3;font-weight:700}
+td.rp input.chg{background:#cdf1f6;border-color:#1596a6}
+.mg{font-weight:700}.mg.low{color:var(--danger)}.mg.ok{color:var(--ok)}
+.newp{font-size:10px;color:#1596a6;font-weight:700;display:block}
+.del{width:28px;height:28px;border-radius:6px;border:1px solid var(--danger-line);background:var(--danger-soft);color:var(--danger);font-weight:700}
+tr.new td{background:#f3f9ff}
+tr.new td.calc{background:#e9f1f9}
+tfoot td{background:var(--surface-2)!important;font-weight:800;border-top:2px solid var(--line-strong);padding:8px 6px}
+/* bottom */
+.bottom{display:grid;grid-template-columns:1fr 420px;gap:14px;margin-top:14px}
+.warns div{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;padding:7px 0;border-bottom:1px dashed var(--line)}
+.warns div:last-child{border:0}
+.wi{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;flex-shrink:0}
+.wi.wa{background:var(--warn-soft);color:var(--warn)}.wi.d{background:var(--danger-soft);color:var(--danger)}.wi.i{background:var(--info-soft);color:var(--info)}
+.sum div{display:flex;justify-content:space-between;font-size:13px;padding:5px 0}
+.sum div span{color:var(--muted)}
+.sum .big{font-size:17px;font-weight:800;border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
+.sum .chk{background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;margin-top:8px}
+.sum .chk.bad{background:var(--danger-soft);border-color:var(--danger-line)}
+.acts{display:flex;gap:10px;align-items:center;margin-top:12px}
+.acts label{font-size:12.5px;display:flex;gap:6px;align-items:center;white-space:nowrap}.acts input[type=checkbox]{width:16px;height:16px}
+.ver{font-size:10.5px;color:var(--faint);margin-top:10px;text-align:right}
+
+.wrap{padding:10px 14px 16px}
+.bar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar h1{font-size:18px}
+.docno{font-size:12px;font-weight:700;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.who{display:flex;gap:6px;margin-left:8px}
+.w{font-size:11.5px;font-weight:600;border-radius:6px;padding:4px 10px;border:1px solid}
+.w i{font-style:normal;font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;margin-right:6px;opacity:.8}
+.w.c{background:#e9f2fb;border-color:#bcd8f0;color:#1f5c94}
+.w.a{background:#fdf1de;border-color:#f2d59a;color:#8a5205}
+.w.v{background:#efe9fb;border-color:#d3c6f2;color:#5a3fa8}
+.w.done{background:#e7f5ec;border-color:#bde3cb;color:#15804a}
+.strip{display:flex;gap:10px;align-items:flex-end;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;margin-bottom:8px;box-shadow:var(--sh-sm)}
+.fx{display:flex;flex-direction:column;gap:3px;flex:1.2}
+.fx.sup{flex:2}.fx.sm{flex:.8}
+.fx label{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.fx label em{font-style:normal;font-weight:500;text-transform:none;color:var(--faint)}
+.fx input,.fx select{height:32px;border:1px solid var(--line-strong);border-radius:7px;padding:0 9px;font:inherit;font-size:12.5px;background:#fff;width:100%}
+.fx small{font-size:10.5px;color:var(--warn);font-weight:600;position:absolute;margin-top:56px}
+.fx.sup{position:relative}
+.sel{display:flex;gap:6px}
+.sel .btn{height:30px}
+.scan{padding:6px 10px}
+.scan input{flex:0 0 340px;height:32px}
+.chip{padding:4px 10px;font-size:11px}
+.bottom{display:grid;grid-template-columns:1fr 560px;gap:8px;margin-top:8px}
+.warns{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:4px 12px;max-height:120px;overflow:auto}
+.warns div{padding:4px 0;font-size:12px}
+.sum{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+.sum div{padding:2px 0;font-size:12px}
+.sum .big{grid-column:span 2;font-size:15px;padding-top:6px;margin-top:2px}
+.sum .chk{grid-column:span 2;padding:5px 9px;margin-top:4px}
+.sum .acts{grid-column:span 2;margin-top:6px}
+.sum h3{display:none}
+.ver{margin-top:4px}
+.g input.w7{width:74px}.g input.w4{width:40px}
+.g select.gb{height:28px;border:1px solid var(--line-strong);border-radius:6px;font:inherit;font-size:11px;padding:0 2px;background:#fff8ec}
+.g input.src{background:#fffbea;border-color:#e8c66a}
+.g input.low{color:var(--danger);font-weight:700}.g input.okm{color:var(--ok);font-weight:700}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:14px;height:12px;border:1px solid var(--line-strong);border-radius:3px;vertical-align:-2px;margin-right:4px}
+.gw{height:calc(100vh - 470px);min-height:260px;overflow:auto}
+.g thead tr th{position:sticky;top:0;z-index:2}
+.g thead tr:nth-child(2) th{top:24px}
+.g tfoot td{position:sticky;bottom:0;z-index:2}
+.warns{max-height:150px}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(16,24,22,.45);display:none;align-items:flex-start;justify-content:center;padding-top:70px;z-index:50}
+.ov.show{display:flex}
+.md{background:#fff;border-radius:14px;width:640px;box-shadow:var(--sh-lg);overflow:hidden}
+.md .mh{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.md .mh h3{font-size:15px}
+.md .mb{padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.md .mb .full{grid-column:span 2}
+.md .mf{display:flex;gap:8px;justify-content:flex-end;padding:10px 16px;border-top:1px solid var(--line);background:var(--surface-2)}
+.md .note{font-size:11px;color:var(--faint);grid-column:span 2}
+
+/* ---- v6: sada, kaam ka look ---- */
+body{background:#f2f3f4}
+.wrap{font-size:12.5px}
+.bar h1{font-family:var(--font);font-weight:700;font-size:17px;letter-spacing:0}
+.docno{background:#fff;color:#444;border-color:#d5d8db;border-radius:4px}
+.w{border-radius:4px;font-weight:500}
+.w i{opacity:1;font-weight:600}
+.w.c{background:#eef1f5;border-color:#d3d9e1;color:#2f3b4a}
+.w.a{background:#f5f1e8;border-color:#e0d6bf;color:#5a4a26}
+.w.v{background:#eef3ee;border-color:#cfdccf;color:#2f4a2f}
+.key{border-radius:4px;background:#fff;border-color:#d5d8db}
+.strip,.panel,.warns,.sum{border-radius:6px;box-shadow:none;border-color:#d5d8db}
+.fx input,.fx select{border-radius:4px;border-color:#c9cdd1;height:30px}
+.fx label{color:#5f666d;letter-spacing:0;text-transform:none;font-size:11px;font-weight:600}
+.fx label em{color:#7a8087!important;font-weight:400!important}
+.btn{border-radius:4px}
+.btn.primary{background:#1f5f4a;border-color:#1f5f4a;box-shadow:none}
+.scan{background:#fafafa;border-bottom-color:#e1e3e5}
+.scan input{border:1px solid #c9cdd1;border-radius:4px}
+.chip{border-radius:4px;border-color:#c9cdd1;color:#444}
+.chip.on{background:#3a4148;border-color:#3a4148}
+.legend{display:none}
+.g tr.band th{background:#fff!important;color:#5f666d!important;font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0;border-right:0;border-bottom:1px solid #d5d8db;border-left:1px solid #d5d8db;padding:4px}
+.g tr.band th:first-child{border-left:0}
+.g th{background:#f7f8f9;color:#3d444b;font-size:10.5px;text-transform:none;letter-spacing:0;font-weight:600;border-bottom:1px solid #c9cdd1}
+.g td{border-bottom:1px solid #eceef0}
+.g td.gs,.g th.gs{border-left:1px solid #d5d8db}
+.g td.calc{background:#fff;color:#3d444b}
+.g input{border-radius:3px;border-color:#c9cdd1;height:26px}
+.g input.src{background:#fff;border-color:#c9cdd1;font-weight:600}
+td.cu{background:#fff!important;font-weight:700}
+.up{color:#b3261e}.dn{color:#2e7d4f}.same{color:#8a9096}
+td.rp input,td.rp input.chg{background:#fff;border-color:#9aa3ab;font-weight:700}
+.newp{color:#6b7279}
+.g input.low{color:#b3261e;font-weight:600}.g input.okm{color:#2e7d4f;font-weight:600}
+.del{border-radius:3px;border-color:#d9c3c1;background:#fff;color:#a33}
+tfoot td{background:#f7f8f9!important;border-top:1px solid #9aa3ab}
+.wi{width:auto;height:auto;background:none!important;border-radius:0;font-size:12px}
+.wi.d{color:#b3261e}.wi.wa{color:#8a6100}.wi.i{color:#5f666d}
+.sum .chk{background:#f4f7f5;border-color:#cfdccf;border-radius:4px}
+.sum .chk.bad{background:#fbf1f0;border-color:#e3c4c1}
+.sum .big{color:#222}
+.ver{color:#8a9096}
+.md{border-radius:6px}
+
+.cmp{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.cmp th{font-size:11px;color:#5f666d;font-weight:600;text-align:left;padding:3px 6px;border-bottom:1px solid #d5d8db}
+.cmp td{padding:3px 6px;border-bottom:1px solid #eceef0}
+.cmp .n{text-align:right}
+.cmp input{width:100px;height:26px;border:1px solid #c9cdd1;border-radius:3px;text-align:right;padding:0 6px;font:inherit}
+.cmp tr.tot td{font-weight:700;border-bottom:0}
+.cmp .ok{color:#2e7d4f;font-weight:600}.cmp .bad{color:#b3261e;font-weight:700}
+.sum{display:block}
+.minor{font-size:11px;color:#6b7279;margin-top:6px}
+.g input.sus{border-color:#b3261e;background:#fdf3f2}
+.state{font-size:12px;font-weight:600}.state.ok{color:#2e7d4f}.state.bad{color:#b3261e}
+.acts .btn[disabled]{opacity:.45;cursor:not-allowed}
+.main .wrap{min-width:0}
+.bar .menu-btn{margin-right:2px}
+.bar .btn.sm{height:28px}
+.g input:disabled,.strip input:disabled,.strip select:disabled,.cmp input:disabled{background:#f4f5f6;color:#333}
+.w.done{background:#eef6f0;border-color:#bfd9c6;color:#245a35}
+.sr{position:absolute;z-index:40;background:#fff;border:1px solid #c9cdd1;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:320px;overflow:auto;min-width:520px}
+.sr div{padding:7px 10px;font-size:12.5px;cursor:pointer;display:flex;gap:12px}
+.sr div:hover,.sr div.on{background:#eef1f5}
+.sr small{color:#6b7279;font-family:ui-monospace,monospace}
+.sr .nf{color:#6b7279;cursor:default}
+.empty{padding:40px;text-align:center;color:#6b7279;font-size:13px}
+.lst{width:100%;border-collapse:collapse;font-size:12.5px}
+.lst th{text-align:left;font-size:11px;color:#5f666d;padding:6px;border-bottom:1px solid #d5d8db}
+.lst td{padding:6px;border-bottom:1px solid #eceef0;cursor:pointer}
+.lst tr:hover td{background:#f4f6f8}
+.toast2{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2b3137;color:#fff;padding:9px 16px;border-radius:4px;font-size:13px;z-index:90;display:none;max-width:80vw}
+.toast2.err{background:#8f1d17}
+.g.compact .cx{display:none}
+.ro .del{display:none}
+.cmp input::placeholder{color:#b0b5ba}
+
+.bar{flex-wrap:nowrap;white-space:nowrap}
+.bar h1{white-space:nowrap}
+.who{min-width:0}
+.w{display:inline-flex;align-items:center;gap:4px;max-width:270px;white-space:nowrap}
+.w .nm{overflow:hidden;text-overflow:ellipsis;max-width:150px;display:inline-block}
+.w .at{opacity:.75;font-size:10.5px}
+.keys{flex-wrap:nowrap}
+@media (max-width:1700px){.keys{display:none}}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="wrap" id="pe">
+  <div class="bar">
+    <button class="menu-btn" id="menuBtn">&#9776;</button>
+    <h1>Purchase Entry</h1>
+    <span class="docno" id="docNo">New</span>
+    <div class="who">
+      <span class="w c" id="wC"><i>Created by</i><span>—</span></span>
+      <span class="w a" id="wA"><i>Approved by</i><span>— pending</span></span>
+      <span class="w v" id="wV"><i>Verified by</i><span>— pending</span></span>
+    </div>
+    <button class="btn sm" id="btnNew" title="Start a new purchase entry">New</button>
+    <button class="btn sm" id="btnOpen" title="Open a saved purchase entry">Open…</button>
+    <div class="sp"></div>
+    <div class="keys"><span class="key"><b>F2</b> Scan</span><span class="key"><b>F5</b> Refresh</span><span class="key"><b>F8</b> Row update</span><span class="key"><b>Ctrl+S</b> Draft</span></div>
+  </div>
+
+  <div class="strip">
+    <div class="fx sup"><label>Supplier / Vendor <em id="supInfo"></em></label>
+      <div class="sel"><select id="sup"><option value="">— Select supplier —</option></select><button class="btn sm primary" id="btnSupNew">+ New</button></div>
+    </div>
+    <div class="fx"><label>PO <em>(new, or select an open PO)</em></label><select id="po"><option value="">— Create new PO from this bill —</option></select></div>
+    <div class="fx sm"><label>Supplier invoice no.</label><input id="refNo" maxlength="60"></div>
+    <div class="fx sm"><label>Invoice date</label><input id="billDate" type="date"></div>
+    <div class="fx sm"><label>Branch</label><input id="branch" disabled></div>
+    <div class="fx sm"><label>Mode</label><select id="payMode"><option value="CREDIT">Credit</option><option value="CASH">Cash</option></select></div>
+  </div>
+
+  <div class="panel">
+    <div class="scan" style="position:relative">
+      <input id="scan" placeholder="Scan barcode / item name (F2)" autocomplete="off">
+      <div class="sr" id="sr" style="display:none;top:44px;left:10px"></div>
+      <span style="font-size:11.5px;color:var(--muted)">Enter: next field · ↑↓: move between rows</span>
+      <div class="chips"><span class="chip on" id="chipFull">Full columns</span><span class="chip" id="chipCompact">Compact</span></div>
+    </div>
+    <div class="gw">
+    <table class="g" id="g">
+      <thead>
+        <tr class="band">
+          <th colspan="2">Item</th>
+          <th colspan="3">Qty &amp; price</th>
+          <th colspan="2">Disc B4 GST</th>
+          <th colspan="2">GST</th>
+          <th colspan="2">Disc after</th>
+          <th colspan="2">Advance tax</th>
+          <th colspan="4">Net cost</th>
+          <th colspan="5">Sale</th>
+          <th></th>
+        </tr>
+        <tr>
+          <th class="l">#</th><th class="l">Barcode / Name</th>
+          <th class="gs">Qty</th><th>Price</th><th class="cx">Total</th>
+          <th class="gs">Disc %</th><th class="cx">Disc amt</th>
+          <th class="gs">GST %</th><th>GST amount</th>
+          <th class="gs">Disc %</th><th class="cx">Disc amt</th>
+          <th class="gs">Adv tax %</th><th class="cx">Adv tax amt</th>
+          <th class="gs">Net amt</th><th>Net unit amt</th><th>Prev cost</th><th>Mkt price</th>
+          <th class="gs">Sale price</th><th class="cx">Current</th><th>Profit %</th><th class="cx">Profit / unit</th><th>Final total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+      <tfoot><tr id="foot"></tr></tfoot>
+    </table>
+    <div class="empty" id="empty">Select the supplier, then scan items or choose an open PO.</div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="warns" id="warns"></div>
+    <div class="sum" id="sum"></div>
+  </div>
+  <div class="ver" id="ver"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<div class="ov" id="ovSup"><div class="md">
+  <div class="mh"><h3>New supplier / vendor</h3><span class="sp"></span><button class="btn sm ghost" data-close>✕</button></div>
+  <div class="mb">
+    <div class="fx full"><label>Supplier name *</label><input id="nsName" maxlength="150"></div>
+    <div class="fx"><label>Contact person</label><input id="nsContact" maxlength="120"></div>
+    <div class="fx"><label>Phone / WhatsApp *</label><input id="nsPhone" maxlength="40"></div>
+    <div class="fx"><label>NTN</label><input id="nsNtn" maxlength="40"></div>
+    <div class="fx"><label>STRN (sales tax reg.)</label><input id="nsStrn" maxlength="40"></div>
+    <div class="fx"><label>Filer status</label><select id="nsFiler"><option value="FILER">Filer (Adv tax 0.5%)</option><option value="NON_FILER">Non-filer (Adv tax 1%)</option></select></div>
+    <div class="fx"><label>Payment terms</label><select id="nsTerms"><option value="0">Cash</option><option value="7">Credit 7 days</option><option value="15" selected>Credit 15 days</option><option value="30">Credit 30 days</option></select></div>
+    <div class="fx full"><label>Address / city</label><input id="nsAddr" maxlength="200"></div>
+    <div class="fx"><label>Opening balance (payable)</label><input id="nsOpen" value="0"></div>
+    <div class="fx"><label>Default discount %</label><input id="nsDisc" value="0"></div>
+    <div class="note">On save, this supplier is added to the list and selected. The advance tax % is set from the filer status.</div>
+  </div>
+  <div class="mf"><button class="btn" data-close>Cancel</button><button class="btn primary" id="nsSave">Save &amp; select</button></div>
+</div></div>
+
+<div class="ov" id="ovOpen"><div class="md" style="width:820px">
+  <div class="mh"><h3>Open purchase entry</h3><span class="sp"></span><button class="btn sm ghost" data-close>✕</button></div>
+  <div style="max-height:460px;overflow:auto"><table class="lst"><thead><tr><th>Entry</th><th>Date</th><th>Supplier</th><th>Invoice</th><th style="text-align:right">Total</th><th>Status</th></tr></thead><tbody id="openRows"></tbody></table></div>
+</div></div>
+<div class="toast2" id="toast"></div>
+
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="purchase_entry"></script>
+<script>
+/* ============================================================
+   V208 — RETAIL PURCHASE ENTRY.
+   The screen calculates as you type; the server recalculates the same
+   way on save/post (RetailPurchase::calcLine) and never trusts these
+   totals. Each pair (rate/total, % / amount) remembers which side was
+   typed; the other side is worked out from it.
+   ============================================================ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var R = [], DOC = null, BOOT = null, SUP = {}, dirty = false, MINM = 5;
+  var BILL = { bDisc: '', bGst: '', bSub: '', bAdv: '', bTot: '' };
+
+  /* ---------- transport ---------- */
+  function api(action, payload) {
+    var x = new XMLHttpRequest();
+    var get = payload === undefined;
+    x.open(get ? 'GET' : 'POST', '/api.php?action=' + action + (get ? '&_=' + Date.now() : ''), false);
+    x.setRequestHeader('Accept', 'application/json');
+    if (!get) { x.setRequestHeader('Content-Type', 'application/json'); x.setRequestHeader('X-CSRF-Token', window.APP_CSRF || ''); }
+    try { x.send(get ? null : JSON.stringify(payload)); } catch (e) { return { ok: false, message: 'Server not reachable' }; }
+    var r = {}; try { r = JSON.parse(x.responseText || '{}'); } catch (e) { r = { ok: false, message: 'HTTP ' + x.status }; }
+    if (r && r.csrf && !api._retry) {   /* token expired: take a fresh one once */
+      api._retry = true;
+      try { var t = new XMLHttpRequest(); t.open('GET', '/api.php?action=csrf-token', false); t.send(); var j = JSON.parse(t.responseText || '{}'); if (j.token) window.APP_CSRF = j.token; } catch (e) { }
+      var again = api(action, payload); api._retry = false; return again;
+    }
+    return r;
+  }
+  function toast(m, err) { var t = $('toast'); t.textContent = m; t.className = 'toast2' + (err ? ' err' : ''); t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, err ? 5000 : 2500); }
+  function f(x, d) { return Number(x || 0).toLocaleString('en-US', { minimumFractionDigits: d === undefined ? 2 : d, maximumFractionDigits: d === undefined ? 2 : d }); }
+  function r2(v) { return Math.round((v + 0) * 100) / 100; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
+  function ro() { return !!(DOC && DOC.status !== 'DRAFT'); }
+
+  /* ---------- the calculation (same as RetailPurchase::calcLine) ---------- */
+  function comp(x) {
+    var g = x.m.rt === 't' ? r2(x.tot) : r2(x.q * x.r); if (x.m.rt === 't') x.r = x.q ? g / x.q : 0;
+    var d1 = x.m.d1 === 'a' ? r2(x.d1a) : r2(g * x.d1p / 100); if (x.m.d1 === 'a') x.d1p = g ? d1 / g * 100 : 0;
+    var n1 = g - d1;
+    var ga = x.m.g === 'a' ? r2(x.gamt) : r2(n1 * x.gp / 100); if (x.m.g === 'a') x.gp = n1 ? ga / n1 * 100 : 0;
+    var ig = n1 + ga;
+    var d2 = x.m.d2 === 'a' ? r2(x.d2a) : r2(ig * x.d2p / 100); if (x.m.d2 === 'a') x.d2p = ig ? d2 / ig * 100 : 0;
+    var n2 = ig - d2;
+    var av = x.m.adv === 'a' ? r2(x.adva) : r2(n2 * x.advp / 100); if (x.m.adv === 'a') x.advp = n2 ? av / n2 * 100 : 0;
+    var lt = r2(n2 + av), cu = x.q ? lt / x.q : 0;
+    if (x.m.sp === 'pp') x.rp = r2(cu * (1 + x.ppct / 100));
+    else if (x.m.sp === 'pa') x.rp = r2(cu + x.pu);
+    var pu = x.rp - cu, pp = cu ? pu / cu * 100 : 0;
+    x.tot = g; x.d1a = d1; x.gamt = ga; x.d2a = d2; x.adva = av; x.ppct = pp; x.pu = pu;
+    x._ = { g: g, d1: d1, n1: n1, ga: ga, d2: d2, n2: r2(n2), av: av, lt: lt, cu: cu, ch: x.prev ? (cu - x.prev) / x.prev * 100 : 0, mg: pp, pl: pu * x.q, sale: x.rp * x.q };
+  }
+  var FIELDS = { q: ['q', null], r: ['r', 'rt', 'r'], tot: ['tot', 'rt', 't'], d1p: ['d1p', 'd1', 'p'], d1a: ['d1a', 'd1', 'a'],
+    gp: ['gp', 'g', 'p'], gamt: ['gamt', 'g', 'a'], d2p: ['d2p', 'd2', 'p'], d2a: ['d2a', 'd2', 'a'], advp: ['advp', 'adv', 'p'],
+    adva: ['adva', 'adv', 'a'], rp: ['rp', 'sp', 'rp'], ppct: ['ppct', 'sp', 'pp'], pu: ['pu', 'sp', 'pa'], mk: ['mk', null] };
+  var ORDER = ['q', 'r', 'tot', 'd1p', 'd1a', 'gp', 'gamt', 'd2p', 'd2a', 'advp', 'adva', 'mk', 'rp', 'ppct', 'pu'];
+
+  function newLine(p, over) {
+    var s = SUP[$('sup').value] || {};
+    var x = { pid: p.id, bc: p.barcode || '', n: p.name, q: 1, r: num(p.cost_price), tot: 0, d1p: s.rtl_disc_pct != null ? num(s.rtl_disc_pct) : 0, d1a: 0,
+      gp: 0, gamt: 0, d2p: 0, d2a: 0, advp: s.rtl_adv_pct != null ? num(s.rtl_adv_pct) : 0.5, adva: 0, prev: num(p.prev_cost),
+      rp: num(p.retail_price), cur: num(p.retail_price), mk: num(p.mrp), ppct: 0, pu: 0,
+      m: { rt: 'r', d1: 'p', g: 'p', d2: 'p', adv: 'p', sp: 'rp' } };
+    if (over) for (var k in over) x[k] = over[k];
+    return x;
+  }
+  function fromDocLine(l) {
+    var md = String(l.calc_modes || 'r,p,a,p,p').split(',');
+    return { pid: l.product_id, bc: l.barcode || '', n: l.product_name, q: num(l.qty), r: num(l.rate), tot: 0,
+      d1p: num(l.disc1_pct), d1a: num(l.disc1_amt), gp: num(l.gst_pct), gamt: num(l.gst_amt), d2p: num(l.disc2_pct), d2a: num(l.disc2_amt),
+      advp: num(l.adv_pct), adva: num(l.adv_amt), prev: num(l.prev_cost), rp: num(l.sale_price), cur: num(l.old_sale_price), mk: num(l.mkt_price),
+      ppct: 0, pu: 0, m: { rt: md[0] === 't' ? 't' : 'r', d1: md[1] === 'a' ? 'a' : 'p', g: md[2] === 'a' ? 'a' : 'p', d2: md[3] === 'a' ? 'a' : 'p', adv: md[4] === 'a' ? 'a' : 'p', sp: 'rp' } };
+  }
+
+  /* ---------- grid ---------- */
+  function inp(i, k, c) { return '<input class="' + (c || '') + '" data-i="' + i + '" data-k="' + k + '" inputmode="decimal"' + (ro() ? ' disabled' : '') + '>'; }
+  function cell(i, k, c) { return '<td class="calc ' + (c || '') + '" id="c' + i + k + '"></td>'; }
+  function rowHtml(x, i) {
+    return '<tr>' +
+      '<td class="l">' + (i + 1) + '</td><td class="l item"><small>' + esc(x.bc) + '</small><b>' + esc(x.n) + '</b></td>' +
+      '<td class="gs">' + inp(i, 'q', 'w5') + '</td><td>' + inp(i, 'r') + '</td><td class="cx">' + inp(i, 'tot', 'w7') + '</td>' +
+      '<td class="gs">' + inp(i, 'd1p', 'w5') + '</td><td class="cx">' + inp(i, 'd1a') + '</td>' +
+      '<td class="gs">' + inp(i, 'gp', 'w5') + '</td><td>' + inp(i, 'gamt', 'w7') + '</td>' +
+      '<td class="gs">' + inp(i, 'd2p', 'w5') + '</td><td class="cx">' + inp(i, 'd2a') + '</td>' +
+      '<td class="gs">' + inp(i, 'advp', 'w5') + '</td><td class="cx">' + inp(i, 'adva') + '</td>' +
+      '<td class="gs calc" id="c' + i + 'lt"></td><td class="cu" id="c' + i + 'cu"></td>' + cell(i, 'prev') + '<td>' + inp(i, 'mk', 'w5') + '</td>' +
+      '<td class="gs rp">' + inp(i, 'rp') + '<span class="newp" id="c' + i + 'was"></span></td>' + cell(i, 'cur', 'cx') +
+      '<td>' + inp(i, 'ppct', 'w5') + '</td><td class="cx">' + inp(i, 'pu') + '</td>' + cell(i, 'sale') +
+      '<td><button class="del" data-del="' + i + '" title="Remove line">×</button></td></tr>';
+  }
+  function render() {
+    var h = ''; R.forEach(function (x, i) { h += rowHtml(x, i); });
+    $('rows').innerHTML = h;
+    $('empty').style.display = R.length ? 'none' : '';
+    $('pe').classList.toggle('ro', ro());
+    calc(true);
+  }
+
+  function calc(all) {
+    var act = all ? null : document.activeElement;
+    R.forEach(function (x, i) {
+      comp(x);
+      var dec = { q: 3 };
+      document.querySelectorAll('#rows input[data-i="' + i + '"]').forEach(function (el) {
+        var fd = FIELDS[el.dataset.k];
+        if (el !== act) { var v = x[fd[0]]; el.value = String(dec[el.dataset.k] === 3 ? Math.round(v * 1000) / 1000 : r2(v)); }
+        el.classList.toggle('src', !!fd[1] && x.m[fd[1]] === fd[2] && fd[1] !== 'rt' && fd[1] !== 'sp');
+      });
+      var c = x._;
+      $('c' + i + 'lt').textContent = f(c.lt);
+      $('c' + i + 'cu').innerHTML = f(c.cu) + (Math.abs(c.ch) < 0.05 ? '<span class="same">no change</span>' : c.ch > 0 ? '<span class="up">▲ ' + f(c.ch, 1) + '%</span>' : '<span class="dn">▼ ' + f(-c.ch, 1) + '%</span>');
+      $('c' + i + 'prev').textContent = f(x.prev); $('c' + i + 'cur').textContent = f(x.cur); $('c' + i + 'sale').textContent = f(c.sale);
+      $('c' + i + 'was').textContent = Math.abs(x.rp - x.cur) > 0.0001 ? 'was ' + f(x.cur) : '';
+      var pe = document.querySelector('#rows input[data-i="' + i + '"][data-k="ppct"]'); if (pe) { pe.classList.toggle('low', c.mg < MINM); pe.classList.toggle('okm', c.mg >= MINM); }
+      var rpe = document.querySelector('#rows input[data-i="' + i + '"][data-k="rp"]'); if (rpe) rpe.classList.toggle('chg', Math.abs(x.rp - x.cur) > 0.0001);
+    });
+    var T = {}; ['g', 'd1', 'ga', 'd2', 'n2', 'av', 'lt', 'sale', 'pl'].forEach(function (k) { T[k] = r2(R.reduce(function (s, x) { return s + x._[k]; }, 0)); });
+    T.disc = r2(T.d1 + T.d2);
+    var q = R.reduce(function (s, x) { return s + x.q; }, 0);
+    $('foot').innerHTML = R.length ? '<td></td><td class="l">Grand total · ' + R.length + ' items</td><td class="gs">' + f(q, 0) + '</td><td></td><td class="cx">' + f(T.g) + '</td><td class="gs"></td><td class="cx">' + f(T.d1) + '</td><td class="gs"></td><td>' + f(T.ga) + '</td><td class="gs"></td><td class="cx">' + f(T.d2) + '</td><td class="gs"></td><td class="cx">' + f(T.av) + '</td><td class="gs">' + f(T.lt) + '</td><td></td><td></td><td></td><td class="gs"></td><td class="cx"></td><td></td><td class="cx">' + f(T.pl) + '</td><td>' + f(T.sale) + '</td><td></td>' : '';
+    summary(T);
+  }
+
+  function summary(T) {
+    var w = '';
+    R.forEach(function (x) {
+      if (x._.ch > 0.5) w += '<div><span class="wi d">●</span><span><b>' + esc(x.n) + '</b>: cost ' + f(x._.ch, 1) + '% higher than last purchase (Rs ' + f(x.prev) + ' → ' + f(x._.cu) + '). Please review the sale price.</span></div>';
+      if (x.q > 0 && x._.mg < MINM) w += '<div><span class="wi d">●</span><span><b>' + esc(x.n) + '</b>: margin ' + f(x._.mg, 2) + '% is below the minimum of ' + MINM + '%.</span></div>';
+      if (!x.mk) w += '<div><span class="wi wa">●</span><span><b>' + esc(x.n) + '</b>: market price is missing.</span></div>';
+      if (x.mk && x.rp > x.mk) w += '<div><span class="wi d">●</span><span><b>' + esc(x.n) + '</b>: sale price ' + f(x.rp) + ' is above the market price ' + f(x.mk) + '.</span></div>';
+      if (Math.abs(x.rp - x.cur) > 0.0001) w += '<div><span class="wi i">●</span><span><b>' + esc(x.n) + '</b>: sale price ' + f(x.cur) + ' → ' + f(x.rp) + ' — the new price applies at the POS once the purchase is posted.</span></div>';
+    });
+    var bill = {}; ['bDisc', 'bGst', 'bSub', 'bAdv', 'bTot'].forEach(function (k) { bill[k] = BILL[k] === '' || BILL[k] == null ? null : num(BILL[k]); });
+    var tolL = 0.5 * Math.max(1, R.length);
+    var rows = [['Discount', T.disc, 'bDisc', 1], ['GST (Tax value)', T.ga, 'bGst', 1], ['Sub total (inc GST)', T.n2, 'bSub', tolL], ['W.H.T 236H / Adv tax', T.av, 'bAdv', 0.5], ['Invoice total', T.lt, 'bTot', tolL]];
+    var allok = R.length > 0, h = '';
+    rows.forEach(function (r) {
+      var b = bill[r[2]], d = b === null ? null : r2(b - r[1]), ok = b !== null && Math.abs(d) <= r[3] + 0.0001;
+      if (!ok) allok = false;
+      h += '<tr' + (r[2] === 'bTot' ? ' class="tot"' : '') + '><td>' + r[0] + '</td><td class="n">' + f(r[1]) + '</td><td class="n"><input id="' + r[2] + '" value="' + esc(BILL[r[2]]) + '" placeholder="from bill"' + (ro() ? ' disabled' : '') + '></td><td class="n ' + (b === null ? '' : ok ? 'ok' : 'bad') + '">' + (b === null ? '' : ok ? '✓ ' + (Math.abs(d) >= 0.01 ? f(d) : '') : f(d)) + '</td></tr>';
+    });
+    document.querySelectorAll('#rows input.sus').forEach(function (e) { e.classList.remove('sus'); });
+    if (bill.bGst !== null && Math.abs(bill.bGst - T.ga) > 1) {
+      var sus = []; R.forEach(function (x, i) { if (x.m.g === 'p') sus.push(i + 1); });
+      w = '<div><span class="wi d">●</span><span><b>GST differs from the supplier bill by Rs ' + f(bill.bGst - T.ga) + '.</b> ' + (sus.length ? 'On lines ' + sus.join(', ') + ' the GST amount was calculated from a percentage. Enter the GST amount exactly as printed on the bill.' : 'Check the GST amount of each line against the bill.') + '</span></div>' + w;
+      R.forEach(function (x, i) { if (x.m.g === 'p') { var e = document.querySelector('#rows input[data-i="' + i + '"][data-k="gamt"]'); if (e) e.classList.add('sus'); } });
+    }
+    $('warns').innerHTML = w || '<div style="color:#5f666d">No issues found.</div>';
+    var mgr = BOOT && BOOT.user && BOOT.user.is_manager;
+    var st = !R.length ? '' : allok ? '<span class="state ok">Matches the bill — ready to post</span>' : '<span class="state bad">Bill mismatch — posting blocked</span>';
+    var acts = '';
+    if (ro()) {
+      acts = '<span class="state ok">' + esc(DOC.status === 'POSTED' ? 'Posted ' + String(DOC.posted_at || '').slice(0, 16) : DOC.status) + '</span><span class="sp"></span>' +
+        (mgr && !DOC.verified_by && DOC.status === 'POSTED' ? '<button class="btn" id="btnVerify">Verify</button>' : '') + '<button class="btn" id="btnNew2">New entry</button>';
+    } else {
+      acts = st + '<span class="sp"></span>' +
+        (DOC && mgr && !DOC.approved_by ? '<button class="btn" id="btnApprove">Approve</button>' : '') +
+        (DOC && mgr && !DOC.verified_by ? '<button class="btn" id="btnVerify">Verify</button>' : '') +
+        '<label><input type="checkbox" id="confirm"' + (($('confirm') && $('confirm').checked) ? ' checked' : '') + '> Confirm</label><button class="btn" id="btnDraft">Save draft</button>' +
+        '<button class="btn primary" id="btnPost"' + (allok && mgr ? '' : ' disabled') + ' title="' + (mgr ? '' : 'Only a manager or the owner can post') + '">Post purchase</button>';
+    }
+    $('sum').innerHTML = '<table class="cmp"><thead><tr><th></th><th class="n">This PO</th><th class="n">Supplier bill</th><th class="n">Diff</th></tr></thead><tbody>' + h + '</tbody></table>' +
+      '<div class="minor">Gross ' + f(T.g) + ' · Disc ' + f(T.disc) + ' · GST ' + f(T.ga) + ' · Sale value ' + f(T.sale) + ' · Profit ' + f(T.pl) + '</div>' +
+      '<div class="acts">' + acts + '</div>';
+  }
+
+  /* ---------- editing ---------- */
+  var calcT = null;
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (el.dataset && el.dataset.k && el.closest('#rows')) {
+      var x = R[+el.dataset.i], fd = FIELDS[el.dataset.k]; if (!x) return;
+      x[fd[0]] = num(el.value); if (fd[1]) x.m[fd[1]] = fd[2];
+      dirty = true; clearTimeout(calcT); calcT = setTimeout(function () { calc(false); }, 200);
+    } else if (el.id && BILL.hasOwnProperty(el.id)) {
+      BILL[el.id] = el.value; dirty = true;
+      clearTimeout(calcT); calcT = setTimeout(function () { var id = el.id, pos = el.selectionStart; calc(false); var n = $(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (er) { } } }, 400);
+    } else if (['refNo', 'billDate', 'payMode'].indexOf(el.id) > -1) dirty = true;
+  });
+  document.addEventListener('focusin', function (e) { if (e.target.dataset && e.target.dataset.k) e.target.select(); });
+  document.addEventListener('keydown', function (e) {
+    var el = e.target;
+    if (e.key === 'F2') { e.preventDefault(); $('scan').focus(); return; }
+    if (e.key === 'F5') { e.preventDefault(); refresh(); return; }
+    if (e.key === 'F8') { e.preventDefault(); calc(true); $('scan').focus(); toast('Row updated'); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (!ro()) save(false); return; }
+    if (el.dataset && el.dataset.k && el.closest('#rows')) {
+      var i = +el.dataset.i, k = el.dataset.k;
+      if (e.key === 'Enter') {
+        e.preventDefault(); calc(true);
+        var vis = ORDER.filter(function (kk) { var n = document.querySelector('#rows input[data-i="' + i + '"][data-k="' + kk + '"]'); return n && n.offsetParent; });
+        var at = vis.indexOf(k);
+        var nx = at < vis.length - 1 ? document.querySelector('#rows input[data-i="' + i + '"][data-k="' + vis[at + 1] + '"]') : null;
+        if (nx) nx.focus(); else $('scan').focus();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        var t = document.querySelector('#rows input[data-i="' + (i + (e.key === 'ArrowDown' ? 1 : -1)) + '"][data-k="' + k + '"]');
+        if (t) { e.preventDefault(); calc(true); t.focus(); }
+      }
+    }
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.dataset && t.dataset.del !== undefined && !ro()) { R.splice(+t.dataset.del, 1); dirty = true; render(); return; }
+    if (t.hasAttribute && t.hasAttribute('data-close')) { t.closest('.ov').classList.remove('show'); return; }
+    if (t.id === 'btnDraft') save(false);
+    else if (t.id === 'btnPost') save(true);
+    else if (t.id === 'btnVerify') stamp('rpurchase-verify', 'Verified');
+    else if (t.id === 'btnApprove') stamp('rpurchase-approve', 'Approved');
+    else if (t.id === 'btnNew2') newEntry();
+    if (!t.closest('.sr') && t.id !== 'scan') $('sr').style.display = 'none';
+  });
+
+  /* ---------- scan / search ---------- */
+  var srRows = [], srOn = 0;
+  function addProduct(p) {
+    $('sr').style.display = 'none'; $('scan').value = '';
+    var at = -1; R.forEach(function (x, i) { if (x.pid === p.id) at = i; });
+    if (at < 0) { R.push(newLine(p)); at = R.length - 1; render(); dirty = true; }
+    var q = document.querySelector('#rows input[data-i="' + at + '"][data-k="q"]'); if (q) q.focus();
+  }
+  function showSr(rows) {
+    srRows = rows; srOn = 0;
+    var box = $('sr');
+    box.innerHTML = rows.length ? rows.map(function (p, i) { return '<div data-sr="' + i + '"' + (i === 0 ? ' class="on"' : '') + '><small>' + esc(p.barcode) + '</small><span>' + esc(p.name) + '</span><span style="margin-left:auto">Rs ' + f(p.retail_price) + '</span></div>'; }).join('')
+      : '<div class="nf">No item found. Add it in Product Catalog first.</div>';
+    box.style.display = 'block';
+  }
+  $('sr').addEventListener('click', function (e) { var d = e.target.closest('[data-sr]'); if (d) addProduct(srRows[+d.dataset.sr]); });
+  $('scan').addEventListener('keydown', function (e) {
+    if (ro()) return;
+    if ($('sr').style.display === 'block' && srRows.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault(); srOn = Math.max(0, Math.min(srRows.length - 1, srOn + (e.key === 'ArrowDown' ? 1 : -1)));
+      document.querySelectorAll('#sr [data-sr]').forEach(function (d, i) { d.classList.toggle('on', i === srOn); }); return;
+    }
+    if (e.key === 'Escape') { $('sr').style.display = 'none'; return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if ($('sr').style.display === 'block' && srRows.length) { addProduct(srRows[srOn]); return; }
+    var v = this.value.trim(); if (!v) return;
+    if (!$('sup').value) { toast('Select the supplier first', true); $('sup').focus(); return; }
+    var r = api('rpurchase-product&code=' + encodeURIComponent(v));
+    if (r.ok && r.rows && r.rows.length) { addProduct(r.rows[0]); return; }
+    r = api('rpurchase-product&q=' + encodeURIComponent(v));
+    showSr(r.ok ? (r.rows || []) : []);
+  });
+
+  /* ---------- supplier, PO ---------- */
+  function fillSuppliers(sel) {
+    var s = $('sup'); s.innerHTML = '<option value="">— Select supplier —</option>'; SUP = {};
+    (BOOT.suppliers || []).forEach(function (x) { SUP[x.id] = x; var o = document.createElement('option'); o.value = x.id; o.textContent = x.name + (x.phone ? ' · ' + x.phone : ''); s.appendChild(o); });
+    if (sel) s.value = sel;
+    supInfo();
+  }
+  function supInfo() {
+    var x = SUP[$('sup').value];
+    $('supInfo').textContent = x ? ('· ' + (x.tax_no ? 'NTN ' + x.tax_no + ' · ' : '') + 'Balance payable Rs ' + f(x.balance) + (x.credit_days ? ' · Credit ' + x.credit_days + ' days' : '')) : '';
+  }
+  function loadPos(keep) {
+    var s = $('po'), v = keep || '';
+    s.innerHTML = '<option value="">— Create new PO from this bill —</option>';
+    if (!$('sup').value) return;
+    var r = api('rpurchase-pos&supplier_id=' + encodeURIComponent($('sup').value));
+    (r.ok ? r.rows : []).forEach(function (p) { var o = document.createElement('option'); o.value = p.id; o.textContent = p.doc_no + ' · ' + p.doc_date + ' · ' + p.line_count + ' items'; s.appendChild(o); });
+    if (v) { if (![].some.call(s.options, function (o) { return o.value === v; })) { var o = document.createElement('option'); o.value = v; o.textContent = 'Linked PO'; s.appendChild(o); } s.value = v; }
+  }
+  $('sup').addEventListener('change', function () { supInfo(); loadPos(); dirty = true; });
+  $('po').addEventListener('change', function () {
+    var id = this.value; if (!id) return;
+    if (R.length && !confirm('Replace the lines on the screen with the lines of this PO?')) { this.value = ''; return; }
+    var r = api('rpurchase-po-lines&id=' + encodeURIComponent(id));
+    if (!r.ok) { toast(r.message || 'Could not load the PO', true); return; }
+    R = (r.lines || []).map(function (p) { return newLine(p, { q: num(p.qty), r: num(p.rate) }); });
+    dirty = true; render();
+  });
+  $('btnSupNew').addEventListener('click', function () {
+    if (ro()) return;
+    ['nsName', 'nsContact', 'nsPhone', 'nsNtn', 'nsStrn', 'nsAddr'].forEach(function (k) { $(k).value = ''; });
+    $('nsOpen').value = '0'; $('nsDisc').value = '0';
+    $('ovSup').classList.add('show'); $('nsName').focus();
+  });
+  $('nsSave').addEventListener('click', function () {
+    var r = api('rpurchase-supplier-save', { name: $('nsName').value, contact_person: $('nsContact').value, phone: $('nsPhone').value,
+      ntn: $('nsNtn').value, strn: $('nsStrn').value, filer: $('nsFiler').value, credit_days: $('nsTerms').value,
+      address: $('nsAddr').value, opening_balance: $('nsOpen').value, disc_pct: $('nsDisc').value });
+    if (!r.ok) { toast(r.message || 'Could not save the supplier', true); return; }
+    BOOT.suppliers.push(r.supplier); BOOT.suppliers.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    fillSuppliers(r.supplier.id); loadPos(); $('ovSup').classList.remove('show'); dirty = true;
+    toast('Supplier added and selected');
+  });
+
+  /* ---------- open / new ---------- */
+  $('btnOpen').addEventListener('click', function () {
+    var r = api('rpurchase-list');
+    $('openRows').innerHTML = (r.ok && r.rows.length) ? r.rows.map(function (d) { return '<tr data-open="' + esc(d.id) + '"><td>' + esc(d.doc_no) + '</td><td>' + esc(d.doc_date) + '</td><td>' + esc(d.supplier_name) + '</td><td>' + esc(d.ref_no) + '</td><td style="text-align:right">' + f(d.total) + '</td><td>' + esc(d.status) + '</td></tr>'; }).join('')
+      : '<tr><td colspan="6" style="color:#6b7279">No purchase entries yet.</td></tr>';
+    $('ovOpen').classList.add('show');
+  });
+  $('openRows').addEventListener('click', function (e) {
+    var tr = e.target.closest('[data-open]'); if (!tr) return;
+    if (dirty && !confirm('Discard the changes on the screen?')) return;
+    $('ovOpen').classList.remove('show'); load(tr.dataset.open);
+  });
+  $('btnNew').addEventListener('click', function () { if (dirty && R.length && !confirm('Discard the changes on the screen?')) return; newEntry(); });
+  $('chipFull').addEventListener('click', function () { $('g').classList.remove('compact'); this.classList.add('on'); $('chipCompact').classList.remove('on'); });
+  $('chipCompact').addEventListener('click', function () { $('g').classList.add('compact'); this.classList.add('on'); $('chipFull').classList.remove('on'); });
+
+  function badges() {
+    function set(id, label, name, at, cls) { var e = $(id); e.className = 'w ' + cls + (name ? ' done' : ''); e.title = name ? label + ' ' + name + (at ? ' · ' + String(at).slice(0, 16) : '') : label + ' — pending';
+      e.innerHTML = '<i>' + label + '</i><span class="nm">' + (name ? esc(name) : '— pending') + '</span>' + (name && at ? '<span class="at">' + esc(String(at).slice(8, 10) + '/' + String(at).slice(5, 7) + ' ' + String(at).slice(11, 16)) + '</span>' : ''); }
+    var me = BOOT.user.name;
+    set('wC', 'Created by', DOC ? DOC.created_by_name || '—' : me, DOC ? DOC.created_at : '', 'c');
+    set('wA', 'Approved by', DOC && DOC.approved_by ? DOC.approved_by_name || '—' : '', DOC && DOC.approved_at, 'a');
+    set('wV', 'Verified by', DOC && DOC.verified_by ? DOC.verified_by_name || '—' : '', DOC && DOC.verified_at, 'v');
+    if (!DOC) { $('wC').classList.remove('done'); $('wC').querySelector('.nm').textContent = me; }
+    $('docNo').textContent = DOC ? DOC.doc_no + ' · ' + (DOC.status === 'DRAFT' ? 'Draft' : DOC.status === 'POSTED' ? 'Posted' : DOC.status) : 'New';
+    ['sup', 'po', 'refNo', 'billDate', 'payMode', 'scan', 'btnSupNew'].forEach(function (k) { $(k).disabled = ro(); });
+  }
+  function newEntry() {
+    DOC = null; R = []; dirty = false;
+    BILL = { bDisc: '', bGst: '', bSub: '', bAdv: '', bTot: '' };
+    $('sup').value = ''; supInfo(); loadPos(); $('refNo').value = ''; $('billDate').value = new Date().toISOString().slice(0, 10); $('payMode').value = 'CREDIT';
+    history.replaceState(null, '', location.pathname);
+    badges(); render(); $('sup').focus();
+  }
+  function load(id) {
+    var r = api('rpurchase-get&id=' + encodeURIComponent(id));
+    if (!r.ok) { toast(r.message || 'Could not open', true); return false; }
+    show(r.doc); return true;
+  }
+  function show(d) {
+    DOC = d; dirty = false;
+    if (d.supplier_id && !SUP[d.supplier_id]) { BOOT.suppliers.push({ id: d.supplier_id, name: d.supplier_name, balance: 0 }); fillSuppliers(); }
+    $('sup').value = d.supplier_id || ''; supInfo(); loadPos(d.source_doc_id || '');
+    $('refNo').value = d.ref_no || ''; $('billDate').value = d.bill_date || ''; $('payMode').value = d.pay_mode || 'CREDIT';
+    var b = function (v) { return v === null || v === undefined ? '' : String(r2(num(v))); };
+    BILL = { bDisc: b(d.bill_discount), bGst: b(d.bill_gst), bSub: b(d.bill_subtotal), bAdv: b(d.bill_adv), bTot: b(d.bill_total) };
+    R = (d.lines || []).map(fromDocLine);
+    history.replaceState(null, '', location.pathname + '?id=' + encodeURIComponent(d.id));
+    badges(); render();
+  }
+  function payload(post) {
+    var conf = !!($('confirm') && $('confirm').checked);   /* calc() redraws the box — read it first */
+    calc(true);
+    return { id: DOC ? DOC.id : '', supplier_id: $('sup').value, po_id: $('po').value, ref_no: $('refNo').value.trim(),
+      bill_date: $('billDate').value, pay_mode: $('payMode').value, confirm: post ? conf : false,
+      bill_discount: BILL.bDisc, bill_gst: BILL.bGst, bill_subtotal: BILL.bSub, bill_adv: BILL.bAdv, bill_total: BILL.bTot,
+      lines: R.map(function (x) {
+        return { product_id: x.pid, barcode: x.bc, qty: x.q, rate: x.r, total: x.tot, disc1_pct: x.d1p, disc1_amt: x.d1a, gst_pct: x.gp, gst_amt: x.gamt,
+          disc2_pct: x.d2p, disc2_amt: x.d2a, adv_pct: x.advp, adv_amt: x.adva, sale_price: x.rp, mkt_price: x.mk,
+          modes: [x.m.rt, x.m.d1, x.m.g, x.m.d2, x.m.adv].join(',') };
+      }) };
+  }
+  var busy = false;
+  function save(post) {
+    if (busy || ro()) return;
+    if (!$('sup').value) { toast('Select the supplier', true); return; }
+    if (!R.length) { toast('Add at least one item', true); return; }
+    if (post && !($('confirm') && $('confirm').checked)) { toast('Tick "Confirm" before posting', true); return; }
+    busy = true;
+    var r = api(post ? 'rpurchase-post' : 'rpurchase-save', payload(post));
+    busy = false;
+    if (!r.ok) { toast(r.message || 'Could not save', true); return; }
+    show(r.doc);
+    toast(post ? 'Purchase ' + r.doc.doc_no + ' posted — stock, cost and supplier balance updated' : 'Draft ' + r.doc.doc_no + ' saved');
+    if (post) { var s = api('rpurchase-boot'); if (s.ok) { BOOT.suppliers = s.suppliers; fillSuppliers(r.doc.supplier_id); } }
+  }
+  function stamp(action, word) {
+    if (!DOC) return;
+    if (dirty && DOC.status === 'DRAFT') { toast('Save the draft first', true); return; }
+    var r = api(action, { id: DOC.id });
+    if (!r.ok) { toast(r.message || 'Failed', true); return; }
+    show(r.doc); toast(word + ' by ' + BOOT.user.name);
+  }
+  function refresh() {
+    var s = api('rpurchase-boot');
+    if (s.ok) { BOOT.suppliers = s.suppliers; fillSuppliers($('sup').value); }
+    if (DOC && !dirty) load(DOC.id); else calc(true);
+    toast('Refreshed');
+  }
+  window.addEventListener('beforeunload', function (e) { if (dirty && R.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  /* ---------- boot ---------- */
+  BOOT = api('rpurchase-boot');
+  if (!BOOT.ok) { $('pe').innerHTML = '<div class="empty">' + esc(BOOT.message || 'Purchase Entry could not start') + '</div>'; return; }
+  $('branch').value = BOOT.branch || '';
+  $('ver').textContent = 'Purchase Entry · ' + (BOOT.build || '');
+  fillSuppliers();
+  var qid = new URLSearchParams(location.search).get('id');
+  if (!(qid && load(qid))) newEntry();
+  window.PE = { R: R, get rows() { return R; }, calc: calc, comp: comp };
+})();
+
+</script>
+</body>
+</html>
+
+<!-- build: V208 build 2026-11-22 -->

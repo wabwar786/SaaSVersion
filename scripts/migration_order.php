@@ -110,6 +110,9 @@ return [
        ho. Idempotent. */
     ['script' => 'migrate_shift_seq',     'optional' => true, 'stage' => 'background'],
     ['script' => 'migrate_retail_v193',   'optional' => true, 'stage' => 'background'],   // V193 customer bills index
+    /* V208 — retail Purchase Entry columns (rtl_docs, rtl_doc_lines, 4 nullable
+       rtl_* columns on suppliers). Also runs on first use of the screen. */
+    ['script' => 'migrate_retail_purchase_v208', 'optional' => true, 'stage' => 'background'],
     /* V171 — `orders.delivery_charge`. Home Delivery ka kiraya ab apni
        jagah likha jata hai, khane ki keemat ya service charge mein
        chhupaya nahi jata. Tax se bahar, default 0, purane bill ka total
@@ -154,4 +157,4 @@ return [
     ['script' => 'check_stock_links',     'optional' => true, 'check' => true],
 ];
 
-// build: V206 build 2026-11-18
+// build: V208 build 2026-11-22

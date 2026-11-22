@@ -4373,6 +4373,72 @@ case 'rdoc-cancel':
   try{ ok(['doc'=>\Aio\Services\RetailDocs::cancel((string)($d['id']??''),(string)($d['reason']??''))]); }
   catch(Throwable $e){ fail(retailMsg($e)); }
 
+/* ============================================================
+   V208 — RETAIL PURCHASE ENTRY (dekhein RetailPurchase). Sirf retail;
+   GRN ka module. Restaurant ka koi raasta yahan se nahi guzarta.
+   ============================================================ */
+case 'rpurchase-boot':
+  needLogin(); needRetail(); needRetailModule('grn');
+  try{ \Aio\Services\RetailPurchase::ensureSchema(); }catch(Throwable $e){ fail(retailMsg($e)); }
+  $bq=DB::pdo()->prepare("SELECT name FROM sites WHERE id=? LIMIT 1");$bq->execute([site_id()]);
+  ok(['suppliers'=>\Aio\Services\RetailPurchase::suppliers(),
+      'branch'=>(string)($bq->fetchColumn()?:'Main Branch'),
+      'user'=>['id'=>Auth::user()['id']??'','name'=>Auth::user()['full_name']??'','is_manager'=>Auth::isManager()||Auth::isAdmin()],
+      'build'=>trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'))]);
+
+case 'rpurchase-supplier-save':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  if(!Auth::canModule('suppliers')&&!Auth::isManager()&&!Auth::isAdmin())fail('You do not have permission to add suppliers',403);
+  try{ ok(['supplier'=>\Aio\Services\RetailPurchase::createSupplier(body())]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpurchase-product':
+  needLogin(); needRetail(); needRetailModule('grn');
+  ok(['rows'=>\Aio\Services\RetailPurchase::findProducts(trim((string)($_GET['code']??'')),(string)($_GET['q']??''))]);
+
+case 'rpurchase-pos':
+  needLogin(); needRetail(); needRetailModule('grn');
+  ok(['rows'=>\Aio\Services\RetailPurchase::openPos((string)($_GET['supplier_id']??''))]);
+
+case 'rpurchase-po-lines':
+  needLogin(); needRetail(); needRetailModule('grn');
+  try{ ok(\Aio\Services\RetailPurchase::poLines((string)($_GET['id']??''))); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpurchase-list':
+  needLogin(); needRetail(); needRetailModule('grn');
+  ok(['rows'=>\Aio\Services\RetailPurchase::recent()]);
+
+case 'rpurchase-get':
+  needLogin(); needRetail(); needRetailModule('grn');
+  $doc=\Aio\Services\RetailPurchase::get((string)($_GET['id']??''));
+  if(!$doc)fail('Purchase entry not found',404);
+  ok(['doc'=>$doc]);
+
+case 'rpurchase-save':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailPurchase::saveDraft($d,(string)($d['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpurchase-post':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailPurchase::post($d,(string)($d['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpurchase-verify':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailPurchase::verify((string)($d['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+case 'rpurchase-approve':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  $d=body();
+  try{ ok(['doc'=>\Aio\Services\RetailPurchase::approve((string)($d['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
 /* Supplier ka khata — balance ledger se GINA jata hai, kahin likha
    nahi hota. `suppliers` table restaurant ke saath mushtarak hai aur
    use V154 mein chhua nahi gaya. */
@@ -4433,4 +4499,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V207 build 2026-11-22
+// build: V208 build 2026-11-22

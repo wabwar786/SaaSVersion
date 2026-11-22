@@ -35,6 +35,8 @@
         ['inventory', 'Stock on Hand', 'stock.html', '▦'],
         ['batches', 'Batch & Expiry', 'batches.html', '◷'],
         ['purchasing', 'Purchasing', 'purchasing.html', '⇩'],
+        /* V208 — 5th item = permission module (GRN ka) */
+        ['purchase_entry', 'Purchase Entry', 'purchase_entry.html', '⇩', 'grn'],
         ['po', 'Purchase Orders', 'purchase_orders.html', '▥'],
         ['grn', 'Goods Receipt (GRN)', 'grn.html', '⊕'],
         ['preturn', 'Purchase Return', 'purchase_return.html', '⇧'],
@@ -127,7 +129,7 @@
   html += '<nav class="nav">';
   html += '<a href="index.html" class="nav-home' + (active === 'dashboard' ? ' active' : '') + '"><span class="ic">▦</span>Dashboard</a>';
   GROUPS.forEach(function (g) {
-    var items = g.items.filter(function (it) { return !allowed || allowed.indexOf(it[0]) > -1; });
+    var items = g.items.filter(function (it) { return !allowed || allowed.indexOf(it[4] || it[0]) > -1; });
     if (!items.length) return;
     html += '<details class="nav-group"' + (groupOpen(g) ? ' open' : '') + '><summary>' + esc(g.title) +
       '<span class="chev">›</span></summary><div class="nav-sub">';
@@ -187,4 +189,4 @@
 
 /* build: V150 build 2026-10-12 */
 
-// build: V154 build 2026-10-13
+// build: V208 build 2026-11-22

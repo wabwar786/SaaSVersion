@@ -95,6 +95,15 @@ final class RetailDocs
             /* Post ho chuka document kabhi na badle — warna bheja hua
                parcha aur apna record alag ho jate. */
             if ($id !== '') {
+                /* V208 — Purchase Entry ki lines (GST, adv tax waghera) yeh
+                   screen nahi samajhti; yahan save hota to sab mit jata. */
+                try {
+                    $kq = $p->prepare("SELECT entry_kind FROM rtl_docs WHERE id=? AND tenant_id=?");
+                    $kq->execute([$id, $tid]);
+                    if ((string)$kq->fetchColumn() === 'PURCHASE')
+                        throw new \DomainException('Open this document in Purchase Entry to change it');
+                } catch (\DomainException $e) { throw new \RuntimeException($e->getMessage()); }
+                  catch (\Throwable $e) { /* entry_kind column abhi nahi — purana amal */ }
                 $q = $p->prepare("SELECT status FROM rtl_docs WHERE id=? AND tenant_id=?");
                 $q->execute([$id, $tid]);
                 $st = (string)$q->fetchColumn();
@@ -288,11 +297,30 @@ final class RetailDocs
     {
         $tid = tenant_id();
         return DB::tx(function (PDO $p) use ($id, $tid) {
+            /* V208 — Purchase Entry ka document sirf Purchase Entry se post hota
+               hai, kyunke wahan supplier bill se milan lazmi hai. */
+            try { $kq = $p->prepare("SELECT entry_kind FROM rtl_docs WHERE id=? AND tenant_id=?");
+                  $kq->execute([$id, $tid]); $kind = (string)$kq->fetchColumn(); } catch (\Throwable $e) { $kind = ''; }
+            if ($kind === 'PURCHASE') throw new \RuntimeException('Open this document in Purchase Entry to post it');
+            self::postInTx($p, $id);
+            return self::get($id);
+        });
+    }
+
+    /**
+     * V208 — posting ka asal kaam, kisi bahar ki transaction ke andar.
+     * `post()` aur `RetailPurchase::post()` dono yahi chalate hain — hisaab
+     * ek hi jagah rehta hai.
+     */
+    public static function postInTx(PDO $p, string $id): void
+    {
+        $tid = tenant_id();
+        (function () use ($p, $id, $tid) {
             $q = $p->prepare("SELECT * FROM rtl_docs WHERE id=? AND tenant_id=? FOR UPDATE");
             $q->execute([$id, $tid]);
             $doc = $q->fetch(PDO::FETCH_ASSOC);
             if (!$doc)                              throw new \RuntimeException('Document not found');
-            if ($doc['status'] === self::POSTED)    return self::get($id);
+            if ($doc['status'] === self::POSTED)    return;
             if ($doc['status'] === self::CANCELLED) throw new \RuntimeException('A cancelled document cannot be posted');
 
             $lq = $p->prepare("SELECT * FROM rtl_doc_lines WHERE doc_id=? AND tenant_id=?");
@@ -413,9 +441,7 @@ final class RetailDocs
 
             try { Audit::log('POST', 'retail_docs', ['record_id' => $id, 'label' => $no,
                              'new' => $type.' / '.$doc['total']]); } catch (\Throwable $e) {}
-
-            return self::get($id);
-        });
+        })();
     }
 
     /** Sirf DRAFT cancel hota hai. Post ho chuka ho to ulta document banayein. */
@@ -572,4 +598,4 @@ final class RetailDocs
     }
 }
 
-// build: V191 build 2026-11-13
+// build: V208 build 2026-11-22

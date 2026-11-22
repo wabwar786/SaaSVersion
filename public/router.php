@@ -83,6 +83,8 @@ $retailModule=[
   'departments.html'=>'departments','categories.html'=>'departments','brands.html'=>'brands',
   'uom.html'=>'uom','pricing.html'=>'pricing','scale.html'=>'scale','labels.html'=>'labels',
   'batches.html'=>'batches','grn.html'=>'grn','purchase_return.html'=>'preturn',
+  /* V208 — Purchase Entry: GRN wala hi module */
+  'purchase_entry.html'=>'grn',
   'stock.html'=>'inventory','purchasing.html'=>'purchasing','purchase_orders.html'=>'po',
   'suppliers.html'=>'suppliers','customers.html'=>'customers','loyalty.html'=>'loyalty',
   'promotions.html'=>'promotions','returns.html'=>'void','shift.html'=>'shift',
@@ -475,4 +477,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V204 build 2026-11-18
+// build: V208 build 2026-11-22

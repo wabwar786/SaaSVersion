@@ -46,8 +46,14 @@ function parseShell(string $file): array
     if (preg_match_all("/title\s*:\s*'([^']+)'\s*,\s*items\s*:\s*\[(.*?)\]\s*\}/s", $block, $m, PREG_SET_ORDER)) {
         foreach ($m as $g) {
             $keys = [];
-            if (preg_match_all("/\[\s*'([a-z_]+)'\s*,/", $g[2], $km))
-                foreach ($km[1] as $k) if (!in_array($k, $keys, true)) $keys[] = $k;
+            /* V208 — 5 hisson wala item (key, naam, page, icon, module) ek
+               mojooda module ka doosra page hai (Purchase Entry -> grn),
+               naya module nahi; isay ginti mein nahi lete. */
+            if (preg_match_all("/\[\s*'([a-z_]+)'\s*,([^\[\]]*)\]/", $g[2], $km, PREG_SET_ORDER))
+                foreach ($km as $it) {
+                    if (substr_count($it[2], ',') >= 3) continue;
+                    if (!in_array($it[1], $keys, true)) $keys[] = $it[1];
+                }
             $out[$g[1]] = $keys;
         }
     }
@@ -136,3 +142,5 @@ foreach (['RESTAURANT' => $rest, 'RETAIL' => $retail] as $ind => $own) {
 
 echo $fail ? "\nMODULE_GROUPS_FAIL problems=$fail\n" : "\nMODULE_GROUPS_OK\n";
 exit($fail ? 1 : 0);
+
+// build: V208 build 2026-11-22
