@@ -3,31 +3,540 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Product Catalog · Retail OS</title>
+<title>Item Creation · Retail OS</title>
 <link rel="stylesheet" href="shared.css">
+<style>
+/* V209 — Item Creation (replaces Product Catalog). Retail only. */
+.ic-wrap{padding:12px 14px;height:100vh;display:flex;flex-direction:column;gap:10px;font-size:13px;color:#1f2529}
+.ic-wrap *{box-sizing:border-box}
+.bar{display:flex;align-items:center;gap:10px}
+.bar h1{font-size:18px;margin:0;font-weight:700}
+.badge{font-size:12px;font-weight:600;color:#444;background:#fff;border:1px solid #d5d8db;border-radius:4px;padding:3px 8px}
+.sp{flex:1}
+.key{font-size:11px;color:#5f666d;border:1px solid #d5d8db;background:#fff;border-radius:4px;padding:3px 8px;margin-left:6px;white-space:nowrap}
+.key b{color:#1f2529;font-family:ui-monospace,Consolas,monospace}
+.grid2{flex:1;display:grid;grid-template-columns:400px minmax(0,1fr);gap:10px;min-height:0}
+.card2{background:#fff;border:1px solid #d5d8db;border-radius:6px;display:flex;flex-direction:column;min-height:0}
+.ch{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #e1e3e5}
+.ch h2{font-size:13px;margin:0;font-weight:700}
+.mode{font-size:11px;font-weight:700;border-radius:3px;padding:2px 8px;border:1px solid}
+.mode.new{color:#1f5c94;background:#eef4fb;border-color:#c8dcf0}
+.mode.edit{color:#5a4a26;background:#f7f2e6;border-color:#e2d6b8}
+#frm{padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:9px 10px;overflow:auto}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f.full{grid-column:span 2}
+.f label{font-size:11px;font-weight:600;color:#5f666d}
+.f label b{color:#b3261e}
+.f input,.f select{height:31px;border:1px solid #c9cdd1;border-radius:4px;padding:0 9px;font:inherit;background:#fff;width:100%;min-width:0}
+.f input:focus,.f select:focus{outline:2px solid #1f5f4a;border-color:#1f5f4a}
+.f input.big{height:36px;font-size:15px;font-weight:700;font-family:ui-monospace,Consolas,monospace}
+.f input:disabled{background:#f4f5f6;color:#7a8087}
+.f input.err{border-color:#b3261e;background:#fdf3f2}
+.f .hint{font-size:10.5px;color:#7a8087}
+.f .hint.err{color:#b3261e;font-weight:600}
+.f .hint.ok{color:#2e7d4f}
+.sel{display:flex;gap:5px}
+.b2{height:32px;padding:0 14px;border:1px solid #c9cdd1;border-radius:4px;background:#fff;font:inherit;font-weight:600;cursor:pointer;color:#2b3137}
+.b2.primary{background:#1f5f4a;border-color:#1f5f4a;color:#fff}
+.b2.sm{height:27px;padding:0 10px;font-size:12px}
+.sel .b2{height:31px;padding:0 10px}
+.b2:disabled{opacity:.55;cursor:default}
+.mg{font-size:11px;font-weight:600}
+.mg.ok{color:#2e7d4f}.mg.bad{color:#b3261e}
+.acts{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #e1e3e5;margin-top:auto}
+.acts .b2.primary{flex:1}
+.flt{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid #e1e3e5;background:#fafafa;align-items:center}
+.flt input,.flt select{height:30px;border:1px solid #c9cdd1;border-radius:4px;padding:0 9px;font:inherit;background:#fff;min-width:0}
+.flt .q{flex:1}
+.flt .c{width:150px}
+.flt select{width:170px}
+.tw{flex:1;overflow:auto}
+.it{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums}
+.it th{position:sticky;top:0;background:#f7f8f9;color:#3d444b;font-size:11px;font-weight:600;text-align:left;padding:7px 8px;border-bottom:1px solid #c9cdd1;white-space:nowrap;z-index:1}
+.it th.n,.it td.n{text-align:right}
+.it td{padding:6px 8px;border-bottom:1px solid #eceef0;white-space:nowrap}
+.it td.code{font-family:ui-monospace,Consolas,monospace;font-weight:600}
+.it td.bc{font-family:ui-monospace,Consolas,monospace;color:#5f666d}
+.it tbody tr{cursor:pointer}
+.it tbody tr:hover td{background:#f4f6f8}
+.it tbody tr.on td{background:#fff6dc}
+.it tbody tr.fresh td{background:#eef6f0}
+.it td.nm{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.ed{border:1px solid #c9cdd1;background:#fff;border-radius:3px;font-size:11px;padding:2px 8px;cursor:pointer}
+.foot{display:flex;gap:16px;align-items:center;padding:7px 12px;border-top:1px solid #e1e3e5;font-size:12px;color:#5f666d}
+.pg{display:flex;gap:4px;margin-left:auto;align-items:center}
+.ver{font-size:10.5px;color:#8a9096;text-align:right}
+.toast2{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#2b3137;color:#fff;padding:8px 16px;border-radius:4px;display:none;z-index:90;max-width:80vw}
+.toast2.err{background:#8f1d17}
+.dc{background:#1f5f4a;color:#fff;border-radius:9px;padding:0 6px;font-size:10.5px;margin-left:4px}
+.dc:empty{display:none}
+.was{color:#8a9096;text-decoration:line-through;font-weight:400;margin-right:6px;font-size:11.5px}
+.dtag{display:inline-block;font-size:10px;font-weight:700;color:#1f5f4a;background:#eaf4ee;border:1px solid #c5ddcd;border-radius:3px;padding:0 5px;margin-left:5px}
+.dnote{font-size:11px;font-weight:600;color:#1f5f4a}
+.ov{position:fixed;inset:0;background:rgba(16,24,22,.45);display:none;align-items:flex-start;justify-content:center;padding-top:60px;z-index:80}
+.ov.show{display:flex}
+.md{background:#fff;border-radius:6px;width:780px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden;font-size:13px}
+.md.small{width:380px}
+.mh{display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid #e1e3e5}
+.mh h3{font-size:15px;margin:0}
+.mb{padding:12px 14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px 12px}
+.mb .f.full{grid-column:span 3}
+.md.small .mb{grid-template-columns:1fr}
+.md.small .mb .f.full{grid-column:span 1}
+.prev{background:#f4f7f5;border:1px solid #cfdccf;border-radius:4px;padding:8px 10px;font-size:12.5px}
+.prev.bad{background:#fbf1f0;border-color:#e3c4c1;color:#a3261e}
+.acts2{display:flex;gap:8px}
+.dl{border-top:1px solid #e1e3e5;max-height:240px;overflow:auto}
+.st{font-size:10.5px;font-weight:700;border-radius:3px;padding:1px 7px;border:1px solid}
+.st.RUNNING{color:#1f5f4a;background:#eaf4ee;border-color:#c5ddcd}.st.SCHEDULED{color:#1f5c94;background:#eef4fb;border-color:#c8dcf0}.st.ENDED{color:#6b7279;background:#f4f5f6;border-color:#d5d8db}
+@media (max-width:1100px){.grid2{grid-template-columns:1fr}.ic-wrap{height:auto}.tw{max-height:70vh}.keys{display:none}}
+</style>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar" id="side"></aside>
   <main class="main">
-    <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Product Catalog</h1><p>Barcode, pricing, tax and stock — the POS source of truth</p></div>
-      <div class="header-spacer"></div>
-      <a class="btn" href="import_products.html" id="btnImportXls" style="margin-right:8px">Import from Excel</a>
-    </header>
-    <div class="content"></div>
+<div class="ic-wrap">
+  <div class="bar">
+    <button class="menu-btn" id="menuBtn">&#9776;</button>
+    <h1>Item Creation</h1>
+    <span class="badge" id="cnt"></span>
+    <button class="b2 sm" id="btnDisc" type="button">Department discount <span class="dc" id="dcnt"></span></button>
+    <a class="b2 sm" href="import_products.html" id="btnImportXls" style="display:inline-flex;align-items:center;text-decoration:none">Import from Excel</a>
+    <div class="sp"></div>
+    <span class="keys"><span class="key"><b>F2</b> New item</span><span class="key"><b>F3</b> Search</span><span class="key"><b>Enter</b> Next box</span><span class="key"><b>Ctrl+S</b> Save</span><span class="key"><b>Esc</b> Clear</span></span>
+  </div>
+
+  <div class="grid2">
+    <div class="card2">
+      <div class="ch"><h2 id="fTitle">New item</h2><span class="mode new" id="fMode">NEW</span><div class="sp"></div><button class="b2 sm" type="button" id="btnClear">Clear</button></div>
+      <form id="frm" onsubmit="return false" autocomplete="off">
+        <div class="f full"><label for="bc">Item code / Barcode <b>*</b></label><input id="bc" data-next="nm" class="big" maxlength="40"><span class="hint" id="bcHint"></span></div>
+        <div class="f full"><label for="nm">Item name <b>*</b></label><input id="nm" data-next="dept" maxlength="150"><span class="hint" id="nmHint"></span></div>
+        <div class="f"><label for="dept">Department <b>*</b></label><div class="sel"><select id="dept" data-next="cat"></select><button class="b2" type="button" tabindex="-1" id="addDept" title="Add department">+</button></div></div>
+        <div class="f"><label for="cat">Category</label><div class="sel"><select id="cat" data-next="co"></select><button class="b2" type="button" tabindex="-1" id="addCat" title="Add category">+</button></div></div>
+        <div class="f full"><label for="co">Company</label><input id="co" data-next="cost" list="coList" placeholder="Type to pick or add" maxlength="120"><datalist id="coList"></datalist></div>
+        <div class="f"><label for="cost">Cost price</label><input id="cost" data-next="sale" inputmode="decimal"></div>
+        <div class="f"><label for="sale">Sale price <b>*</b></label><input id="sale" data-next="unit" inputmode="decimal"><span class="mg" id="mg"></span><span class="dnote" id="dnote"></span></div>
+        <div class="f"><label for="unit">Unit</label><select id="unit" data-next="pack"></select></div>
+        <div class="f"><label for="pack">Packing size</label><input id="pack" data-next="box" placeholder="e.g. 12 PCS in a box" inputmode="decimal"></div>
+        <div class="f"><label for="box">Box code</label><input id="box" data-next="qty" placeholder="Carton barcode" maxlength="40"><span class="hint" id="boxHint">Scanning it sells the full box</span></div>
+        <div class="f"><label for="qty">Opening qty</label><input id="qty" data-next="save" inputmode="decimal"><span class="hint" id="qtyHint">Only for a new item</span></div>
+      </form>
+      <div class="acts"><button class="b2" type="button" id="btnNew">New (F2)</button><button class="b2 primary" type="button" id="save">Save item (Ctrl+S)</button></div>
+    </div>
+
+    <div class="card2">
+      <div class="flt">
+        <input class="c" id="fCode" placeholder="Item code / Barcode">
+        <input class="q" id="fName" placeholder="Search by item name (F3)">
+        <select id="fDept"><option value="">All departments</option></select>
+        <select id="fCat"><option value="">All categories</option></select>
+      </div>
+      <div class="tw">
+        <table class="it">
+          <thead><tr><th class="n">S.No</th><th>Item code / Barcode</th><th>Item name</th><th>Department</th><th>Category</th><th>Company</th><th>Unit</th><th class="n">Packing</th><th>Box code</th><th class="n">Cost</th><th class="n">Sale price</th><th class="n">Stock</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="foot"><span id="shown"></span><div class="pg"><button class="b2 sm" type="button" id="pgPrev">&lsaquo; Prev</button><span id="pgn" style="padding:5px 6px"></span><button class="b2 sm" type="button" id="pgNext">Next &rsaquo;</button></div></div>
+    </div>
+  </div>
+  <div class="ver" id="ver"></div>
+</div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
+
+<div class="ov" id="ovDisc"><div class="md">
+  <div class="mh"><h3>Department discount</h3><span class="sp"></span><button class="b2 sm" type="button" data-close>✕</button></div>
+  <div class="mb" id="dForm">
+    <div class="f"><label for="dDept">Department <b>*</b></label><select id="dDept"></select></div>
+    <div class="f"><label for="dCat">Category</label><select id="dCat"><option value="">All categories</option></select></div>
+    <div class="f"><label for="dPct">Discount % <b>*</b></label><input id="dPct" value="10" inputmode="decimal"></div>
+    <div class="f"><label for="dName">Name (shows on the bill)</label><input id="dName" maxlength="80"></div>
+    <div class="f"><label for="dFrom">From <b>*</b></label><input id="dFrom" type="date"></div>
+    <div class="f"><label for="dTo">To <b>*</b></label><input id="dTo" type="date"></div>
+    <div class="f full"><div class="prev" id="dPrev"></div></div>
+    <div class="f full"><div class="acts2"><span class="sp"></span><button class="b2" type="button" data-close>Cancel</button><button class="b2 primary" type="button" id="dSave">Save discount</button></div></div>
+  </div>
+  <div class="dl"><table class="it"><thead><tr><th>Department</th><th>Category</th><th class="n">Disc %</th><th>From</th><th>To</th><th>Name</th><th>Status</th><th></th></tr></thead><tbody id="dRows"></tbody></table></div>
+</div></div>
+
+<div class="ov" id="ovGrp"><div class="md small">
+  <div class="mh"><h3 id="gTitle">Add department</h3><span class="sp"></span><button class="b2 sm" type="button" data-close>✕</button></div>
+  <div class="mb">
+    <div class="f full"><label for="gName" id="gLab">Name</label><input id="gName" maxlength="120"></div>
+    <div class="f full"><div class="acts2"><span class="sp"></span><button class="b2" type="button" data-close>Cancel</button><button class="b2 primary" type="button" id="gSave">Add</button></div></div>
+  </div>
+</div></div>
+<div class="toast2" id="toast"></div>
+
 <script src="region.js"></script>
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="products"></script>
-<script src="module.js"></script>
-<script src="module_config.js"></script>
-<script>RetailModule.render(MODULE_CONFIGS['products']);</script>
+<script>
+/* ============================================================
+   V209 — ITEM CREATION (Product Catalog ki jagah). Sirf retail.
+   Server (RetailItems) har cheez dobara check karta hai: code
+   duplicate, department, price. Screen sirf jaldi batati hai.
+   ============================================================ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var B = null, EDIT = null, LAST = null, FRESH = '', PAGE = 1, PAGES = 1, ROWS = [], AUTO = '', CHK = {};
+
+  function api(action, payload) {
+    var x = new XMLHttpRequest(), get = payload === undefined;
+    x.open(get ? 'GET' : 'POST', '/api.php?action=' + action + (get ? '&_=' + Date.now() : ''), false);
+    x.setRequestHeader('Accept', 'application/json');
+    if (!get) { x.setRequestHeader('Content-Type', 'application/json'); x.setRequestHeader('X-CSRF-Token', window.APP_CSRF || ''); }
+    try { x.send(get ? null : JSON.stringify(payload)); } catch (e) { return { ok: false, message: 'Server not reachable' }; }
+    var r = {}; try { r = JSON.parse(x.responseText || '{}'); } catch (e) { r = { ok: false, message: 'HTTP ' + x.status }; }
+    if (r && r.csrf && !api._retry) {
+      api._retry = true;
+      try { var t = new XMLHttpRequest(); t.open('GET', '/api.php?action=csrf-token', false); t.send(); var j = JSON.parse(t.responseText || '{}'); if (j.token) window.APP_CSRF = j.token; } catch (e) { }
+      var again = api(action, payload); api._retry = false; return again;
+    }
+    return r;
+  }
+  function q(o) { var a = []; for (var k in o) if (o[k] !== '' && o[k] != null) a.push(k + '=' + encodeURIComponent(o[k])); return a.join('&'); }
+  function toast(m, e) { var t = $('toast'); t.textContent = m; t.className = 'toast2' + (e ? ' err' : ''); t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { t.style.display = 'none'; }, e ? 5000 : 2400); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function f(x) { return Number(x || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+  function num(v) { var n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? 0 : n; }
+  function fmtD(v) { var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return v ? v.slice(8, 10) + '-' + m[+v.slice(5, 7) - 1] + '-' + v.slice(2, 4) : ''; }
+
+  /* ---------- boot ---------- */
+  function boot() {
+    var r = api('ritems-boot');
+    if (!r.ok) { toast(r.message || 'Could not load', true); return false; }
+    B = r; AUTO = r.next_code;
+    $('ver').textContent = 'Item Creation · ' + (r.build || '');
+    fillLists(); drawDiscCount();
+    return true;
+  }
+  function deptName(id) { for (var i = 0; i < B.departments.length; i++) if (B.departments[i].id === id) return B.departments[i].name; return ''; }
+  function catsOf(d) { return B.categories.filter(function (c) { return c.department_id === d; }); }
+  function fillLists() {
+    var o = B.departments.map(function (d) { return '<option value="' + d.id + '">' + esc(d.name) + '</option>'; }).join('');
+    var keep = $('dept').value;
+    $('dept').innerHTML = '<option value="">— Select —</option>' + o; if (keep) $('dept').value = keep;
+    var fd = $('fDept').value; $('fDept').innerHTML = '<option value="">All departments</option>' + o; $('fDept').value = fd;
+    fillFCat();
+    $('coList').innerHTML = B.companies.map(function (c) { return '<option value="' + esc(c.name) + '">'; }).join('');
+    var u = $('unit').value;
+    $('unit').innerHTML = B.units.map(function (x) { return '<option value="' + x.id + '">' + esc(x.code) + '</option>'; }).join('');
+    if (u) $('unit').value = u;
+  }
+  function fillCat(sel) {
+    var d = $('dept').value;
+    $('cat').innerHTML = '<option value="">— None —</option>' + catsOf(d).map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+    if (sel) $('cat').value = sel;
+  }
+  function fillFCat() {
+    var d = $('fDept').value, k = $('fCat').value;
+    var list = d ? catsOf(d) : B.categories;
+    $('fCat').innerHTML = '<option value="">All categories</option>' + list.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + (d ? '' : ' (' + esc(deptName(c.department_id)) + ')') + '</option>'; }).join('');
+    $('fCat').value = k; if ($('fCat').value !== k) $('fCat').value = '';
+  }
+
+  /* ---------- duplicate checks (server; the save checks again) ---------- */
+  function check(code) {
+    var key = code + '|' + (EDIT ? EDIT.id : '');
+    if (CHK[key]) return CHK[key];
+    var r = api('ritems-check&' + q({ code: code, except: EDIT ? EDIT.id : '' }));
+    return (CHK[key] = r.ok ? r : { used: false });
+  }
+  function dupCheck() {
+    var v = $('bc').value.trim(), h = $('bcHint');
+    var hit = v ? check(v) : { used: false };
+    $('bc').classList.toggle('err', !!hit.used);
+    if (hit.used) { h.className = 'hint err'; h.textContent = 'Already used: ' + v + ' — ' + hit.name + ' (Enter opens it for edit)'; }
+    else { h.className = 'hint' + (v ? ' ok' : ''); h.textContent = !v ? 'Scan or type the code' : (!EDIT && v === AUTO ? 'Auto code ' + v + ' — or scan the item’s barcode' : 'Available'); }
+    return !hit.used;
+  }
+  function boxCheck() {
+    var v = $('box').value.trim(), hit = v ? check(v) : { used: false }, same = v && v === $('bc').value.trim();
+    $('box').classList.toggle('err', !!hit.used || !!same);
+    $('boxHint').className = 'hint' + (hit.used || same ? ' err' : '');
+    $('boxHint').textContent = same ? 'Box code must be different from the item code' : hit.used ? 'Already used on ' + hit.name : 'Scanning it sells the full box';
+    return !hit.used && !same;
+  }
+  var tBc = null;
+  $('bc').addEventListener('input', function () { clearTimeout(tBc); tBc = setTimeout(dupCheck, 250); });
+  $('box').addEventListener('input', function () { clearTimeout(tBc); tBc = setTimeout(boxCheck, 250); });
+
+  function margin() {
+    var c = num($('cost').value), s = num($('sale').value), m = $('mg');
+    if (!c || !s) { m.textContent = ''; } else {
+      var p = (s - c) / c * 100; m.textContent = 'Margin ' + p.toFixed(2) + '% · Rs ' + f(s - c) + ' per unit'; m.className = 'mg ' + (p < 0 ? 'bad' : 'ok');
+    }
+    noteDisc();
+  }
+  $('cost').addEventListener('input', margin); $('sale').addEventListener('input', margin);
+
+  /* ---------- discounts ---------- */
+  function running(r) { return r.status === 'RUNNING'; }
+  function stat(r) { if (r.stopped) return 'ENDED'; if (B.today < r.from) return 'SCHEDULED'; if (B.today > r.to) return 'ENDED'; return 'RUNNING'; }
+  function activeDisc(dept, cat) {
+    var best = null;
+    B.discounts.forEach(function (d) {
+      if (stat(d) !== 'RUNNING' || d.department_id !== dept) return;
+      if (d.category_id && d.category_id !== cat) return;
+      if (!best || Number(d.pct) > Number(best.pct)) best = d;
+    });
+    return best;
+  }
+  function saleCell(x) {
+    var d = activeDisc(x.department_id, x.category_id || '');
+    if (!d) return '<b>' + f(x.retail_price) + '</b>';
+    var np = Math.round(x.retail_price * (100 - d.pct)) / 100;
+    return '<span class="was">' + f(x.retail_price) + '</span><b>' + f(np) + '</b><span class="dtag">−' + f(d.pct) + '%</span>';
+  }
+  function noteDisc() {
+    var d = activeDisc($('dept').value, $('cat').value), n = $('dnote'), sp = num($('sale').value);
+    n.textContent = d ? 'Department discount ' + f(d.pct) + '% till ' + fmtD(d.to) + (sp ? ' → POS price ' + f(Math.round(sp * (100 - d.pct)) / 100) : '') : '';
+  }
+  function drawDiscCount() { var n = B.discounts.filter(function (d) { return stat(d) === 'RUNNING'; }).length; $('dcnt').textContent = n ? n + ' running' : ''; }
+
+  /* ---------- form ---------- */
+  function setMode(edit) {
+    $('fTitle').textContent = edit ? 'Edit item ' + EDIT.code : 'New item';
+    $('fMode').textContent = edit ? 'EDIT' : 'NEW'; $('fMode').className = 'mode ' + (edit ? 'edit' : 'new');
+    $('save').textContent = edit ? 'Update item (Ctrl+S)' : 'Save item (Ctrl+S)';
+    $('qty').disabled = !!edit; $('qtyHint').textContent = edit ? 'Stock changes through Purchase / Stock Count' : 'Only for a new item';
+  }
+  function clearForm(noFocus) {
+    EDIT = null; CHK = {};
+    ['bc', 'nm', 'co', 'cost', 'sale', 'box', 'qty'].forEach(function (k) { $(k).value = ''; $(k).classList.remove('err'); });
+    $('nmHint').textContent = '';
+    $('pack').value = '1';
+    var pcs = B.units.filter(function (u) { return u.code === 'PCS'; })[0]; if (pcs) $('unit').value = pcs.id;
+    if (LAST) { $('dept').value = LAST.dept; fillCat(LAST.cat); } else { $('dept').value = ''; fillCat(); }
+    $('bc').value = AUTO;
+    setMode(false); dupCheck(); boxCheck(); margin(); paintSel();
+    if (!noFocus) { $('bc').focus(); $('bc').select(); }
+  }
+  function load(x) {
+    EDIT = x; CHK = {};
+    $('bc').value = x.code; $('nm').value = x.name; $('dept').value = x.department_id || ''; fillCat(x.category_id || '');
+    $('co').value = x.company || ''; $('cost').value = x.cost_price || ''; $('sale').value = x.retail_price || '';
+    if (x.base_unit_id) $('unit').value = x.base_unit_id;
+    $('pack').value = x.packing || 1; $('box').value = x.box_code || ''; $('qty').value = f(x.stock_qty);
+    $('nmHint').textContent = '';
+    setMode(true); dupCheck(); boxCheck(); margin(); paintSel();
+    $('nm').focus(); $('nm').select();
+  }
+  function editId(id) {
+    var x = null; for (var i = 0; i < ROWS.length; i++) if (ROWS[i].id === id) x = ROWS[i];
+    var r = api('ritems-get&id=' + encodeURIComponent(id));
+    if (r.ok) x = r.item;
+    if (x) load(x); else toast(r.message || 'Item not found', true);
+  }
+
+  $('frm').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return; e.preventDefault();
+    var n = e.target.dataset.next; if (!n) return;
+    if (e.target.id === 'bc') {
+      var v = $('bc').value.trim();
+      if (!v) { toast('Enter the item code / barcode', true); return; }
+      CHK = {};
+      if (!dupCheck()) {
+        var r = api('ritems-get&code=' + encodeURIComponent(v));
+        if (r.ok) { load(r.item); toast('Code ' + v + ' already exists — opened for edit'); }
+        return;
+      }
+    }
+    if (e.target.id === 'box' && !boxCheck()) return;
+    if (n === 'save') { save(); return; }
+    $(n).focus(); if ($(n).select) $(n).select();
+  });
+  $('dept').addEventListener('change', function () { fillCat(); noteDisc(); });
+  $('cat').addEventListener('change', noteDisc);
+
+  function save() {
+    var code = $('bc').value.trim(), nm = $('nm').value.trim(), sale = num($('sale').value), cost = num($('cost').value);
+    if (!code) { toast('Enter the item code / barcode', true); $('bc').focus(); return; }
+    CHK = {};
+    if (!dupCheck()) { toast('This code is already on another item', true); $('bc').focus(); return; }
+    if (!nm) { toast('Enter the item name', true); $('nm').focus(); return; }
+    if (!$('dept').value) { toast('Select the department', true); $('dept').focus(); return; }
+    if (sale <= 0) { toast('Enter the sale price', true); $('sale').focus(); return; }
+    if (!boxCheck()) { toast('Fix the box code', true); $('box').focus(); return; }
+    if (cost && sale < cost && !confirm('Sale price is below cost. Save anyway?')) { $('sale').focus(); return; }
+    var same = api('ritems-list&' + q({ name: nm, size: 50 }));
+    if (same.ok) {
+      var dup = (same.rows || []).filter(function (x) { return x.name === nm.toUpperCase().replace(/\s+/g, ' ') && (!EDIT || x.id !== EDIT.id); })[0];
+      if (dup && !confirm('An item with the same name already exists (' + dup.code + '). Save anyway?')) { $('nm').focus(); return; }
+    }
+    var wasEdit = !!EDIT;
+    $('save').disabled = true;
+    var r = api('ritems-save', {
+      id: EDIT ? EDIT.id : '', code: code, auto: !EDIT && code === AUTO ? 1 : 0, name: nm,
+      department_id: $('dept').value, category_id: $('cat').value, company: $('co').value.trim(),
+      cost_price: cost, sale_price: sale, unit_id: $('unit').value, packing: num($('pack').value) || 1,
+      box_code: $('box').value.trim(), opening_qty: EDIT ? 0 : num($('qty').value)
+    });
+    $('save').disabled = false;
+    if (!r.ok) { toast(r.message || 'Could not save', true); return; }
+    var it = r.item; AUTO = r.next_code; FRESH = it.id;
+    LAST = { dept: it.department_id || '', cat: it.category_id || '' };
+    if (it.company && !B.companies.some(function (c) { return c.name === it.company; })) B.companies.push({ id: it.brand_id, name: it.company });
+    if (!wasEdit) B.total++;
+    toast((wasEdit ? 'Updated ' : 'Saved ') + it.code + ' — ' + it.name);
+    fillLists(); clearForm(true);
+    if (!wasEdit) { $('fCode').value = ''; $('fName').value = ''; PAGE = 1; }
+    draw(); $('bc').focus(); $('bc').select();
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if ($('ovDisc').classList.contains('show') || $('ovGrp').classList.contains('show')) {
+      if (e.key === 'Escape') { closeOv(); }
+      return;
+    }
+    if (e.key === 'F2') { e.preventDefault(); clearForm(); }
+    else if (e.key === 'F3') { e.preventDefault(); $('fName').focus(); $('fName').select(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') { clearForm(); }
+  });
+  $('save').onclick = save; $('btnNew').onclick = function () { clearForm(); }; $('btnClear').onclick = function () { clearForm(); };
+
+  /* ---------- grid ---------- */
+  var tF = null;
+  function draw(reset) {
+    if (reset) PAGE = 1;
+    var r = api('ritems-list&' + q({ code: $('fCode').value.trim(), name: $('fName').value.trim(), department_id: $('fDept').value, category_id: $('fCat').value, page: PAGE, size: 100 }));
+    if (!r.ok) { toast(r.message || 'Could not load items', true); return; }
+    ROWS = r.rows; PAGE = r.page; PAGES = r.pages;
+    var s = (PAGE - 1) * r.size;
+    $('rows').innerHTML = ROWS.map(function (x, i) {
+      return '<tr data-id="' + x.id + '">' +
+        '<td class="n">' + (s + i + 1) + '</td><td class="code">' + esc(x.code) + '</td><td class="nm" title="' + esc(x.name) + '">' + esc(x.name) + '</td>' +
+        '<td>' + esc(x.dept) + '</td><td>' + esc(x.cat) + '</td><td>' + esc(x.company) + '</td><td>' + esc(x.unit) + '</td><td class="n">' + f(x.packing) + '</td><td class="bc">' + esc(x.box_code) + '</td>' +
+        '<td class="n">' + f(x.cost_price) + '</td><td class="n">' + saleCell(x) + '</td><td class="n">' + f(x.stock_qty) + '</td>' +
+        '<td><button class="ed" type="button" data-ed="' + x.id + '">Edit</button></td></tr>';
+    }).join('') || '<tr><td colspan="13" style="color:#7a8087;padding:20px">No item matches the filter.</td></tr>';
+    paintSel();
+    var filtered = $('fCode').value || $('fName').value || $('fDept').value || $('fCat').value;
+    $('shown').textContent = r.total ? (filtered ? f(r.total) + ' items match · ' : '') + 'Showing ' + f(s + 1) + '–' + f(s + ROWS.length) + ' of ' + f(r.total) : '0 items';
+    $('pgn').textContent = 'Page ' + PAGE + ' / ' + PAGES;
+    $('pgPrev').disabled = PAGE <= 1; $('pgNext').disabled = PAGE >= PAGES;
+    if (!filtered) B.total = r.total;
+    $('cnt').textContent = f(B.total) + ' items';
+  }
+  function paintSel() {
+    var tr = $('rows').querySelectorAll('tr[data-id]');
+    for (var i = 0; i < tr.length; i++) { var id = tr[i].getAttribute('data-id'); tr[i].className = EDIT && EDIT.id === id ? 'on' : (FRESH === id ? 'fresh' : ''); }
+  }
+  $('rows').addEventListener('dblclick', function (e) { var tr = e.target.closest('tr[data-id]'); if (tr) editId(tr.getAttribute('data-id')); });
+  $('rows').addEventListener('click', function (e) { var b = e.target.closest('[data-ed]'); if (b) { e.stopPropagation(); editId(b.getAttribute('data-ed')); } });
+  ['fCode', 'fName'].forEach(function (k) { $(k).addEventListener('input', function () { clearTimeout(tF); tF = setTimeout(function () { draw(1); }, 250); }); });
+  $('fDept').addEventListener('change', function () { fillFCat(); draw(1); });
+  $('fCat').addEventListener('change', function () { draw(1); });
+  $('pgPrev').onclick = function () { if (PAGE > 1) { PAGE--; draw(); } };
+  $('pgNext').onclick = function () { if (PAGE < PAGES) { PAGE++; draw(); } };
+
+  /* ---------- overlays ---------- */
+  function closeOv() { $('ovDisc').classList.remove('show'); $('ovGrp').classList.remove('show'); }
+  document.querySelectorAll('[data-close]').forEach(function (b) { b.onclick = closeOv; });
+
+  var GK = 'department';
+  function openGrp(kind) {
+    if (kind === 'category' && !$('dept').value) { toast('Select the department first', true); $('dept').focus(); return; }
+    GK = kind;
+    $('gTitle').textContent = kind === 'department' ? 'Add department' : 'Add category to ' + deptName($('dept').value);
+    $('gLab').textContent = kind === 'department' ? 'Department name' : 'Category name';
+    $('gName').value = ''; $('ovGrp').classList.add('show'); $('gName').focus();
+  }
+  $('addDept').onclick = function () { openGrp('department'); };
+  $('addCat').onclick = function () { openGrp('category'); };
+  function grpSave() {
+    var n = $('gName').value.trim(); if (!n) { toast('Enter a name', true); return; }
+    var r = api('ritems-group-add', { kind: GK, name: n, department_id: $('dept').value });
+    if (!r.ok) { toast(r.message || 'Could not add', true); return; }
+    var row = r.row;
+    if (GK === 'department') {
+      if (!B.departments.some(function (d) { return d.id === row.id; })) B.departments.push(row);
+      fillLists(); $('dept').value = row.id; fillCat();
+    } else {
+      if (!B.categories.some(function (c) { return c.id === row.id; })) B.categories.push(row);
+      fillLists(); fillCat(row.id);
+    }
+    closeOv(); toast('Added ' + row.name); $(GK === 'department' ? 'dept' : 'cat').focus(); noteDisc();
+  }
+  $('gSave').onclick = grpSave;
+  $('gName').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); grpSave(); } });
+
+  /* department discount */
+  var nameTyped = false, tP = null;
+  function openDisc() {
+    if (!B.departments.length) { toast('Add a department first', true); return; }
+    $('dDept').innerHTML = B.departments.map(function (d) { return '<option value="' + d.id + '">' + esc(d.name) + '</option>'; }).join('');
+    if ($('dept').value) $('dDept').value = $('dept').value;
+    if (!$('dFrom').value) $('dFrom').value = B.today;
+    if (!$('dTo').value) $('dTo').value = B.today;
+    nameTyped = false; dCats(); drawDisc(); $('ovDisc').classList.add('show'); $('dPct').focus(); $('dPct').select();
+  }
+  $('btnDisc').onclick = openDisc;
+  function dCats() { $('dCat').innerHTML = '<option value="">All categories</option>' + catsOf($('dDept').value).map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join(''); dPrev(); }
+  $('dDept').addEventListener('change', dCats);
+  ['dCat', 'dPct', 'dFrom', 'dTo'].forEach(function (k) { $(k).addEventListener('input', dPrevSoon); $(k).addEventListener('change', dPrevSoon); });
+  $('dName').addEventListener('input', function () { nameTyped = true; });
+  function dPrevSoon() { clearTimeout(tP); tP = setTimeout(dPrev, 200); }
+  function dCheck() {
+    var p = num($('dPct').value), fr = $('dFrom').value, to = $('dTo').value, dp = $('dDept').value, ct = $('dCat').value;
+    if (!(p >= 1 && p <= 90)) return 'Discount must be between 1% and 90%';
+    if (!fr || !to) return 'Select the From and To dates';
+    if (to < fr) return '"To" date is before "From" date';
+    if (to < B.today) return 'These dates are already over';
+    var c = B.discounts.filter(function (d) { return stat(d) !== 'ENDED' && d.department_id === dp && (!d.category_id || !ct || d.category_id === ct) && !(to < d.from || fr > d.to); })[0];
+    if (c) return deptName(dp) + ' already has ' + f(c.pct) + '% from ' + fmtD(c.from) + ' to ' + fmtD(c.to) + ' — dates overlap';
+    return '';
+  }
+  function dPrev() {
+    var dp = $('dDept').value, ct = $('dCat').value, p = num($('dPct').value);
+    var cn = ''; if (ct) B.categories.forEach(function (c) { if (c.id === ct) cn = c.name; });
+    if (!nameTyped) $('dName').value = deptName(dp) + (cn ? ' ' + cn : '') + ' ' + f(p) + '% OFF';
+    var e = dCheck(), b = $('dPrev');
+    if (e) { b.className = 'prev bad'; b.textContent = e; return; }
+    var r = api('ritems-list&' + q({ department_id: dp, category_id: ct, size: 50 }));
+    var n = r.ok ? r.total : 0, ex = r.ok && r.rows[0];
+    b.className = 'prev';
+    b.innerHTML = '<b>' + f(n) + ' items</b> in ' + esc(deptName(dp)) + (cn ? ' / ' + esc(cn) : '') + ' will sell at ' + f(p) + '% off from <b>' + fmtD($('dFrom').value) + '</b> to <b>' + fmtD($('dTo').value) + '</b> (whole days). ' +
+      (ex ? 'Example: ' + esc(ex.name) + ' ' + f(ex.retail_price) + ' → <b>' + f(Math.round(ex.retail_price * (100 - p)) / 100) + '</b>. ' : '') +
+      'Sale prices are not changed; the POS applies the discount and the bill shows it.';
+  }
+  function after(r, msg) {
+    if (!r.ok) { toast(r.message || 'Could not save', true); return; }
+    B.discounts = r.discounts; drawDisc(); drawDiscCount(); dPrev(); draw(); noteDisc(); toast(msg);
+  }
+  $('dSave').onclick = function () {
+    var e = dCheck(); if (e) { toast(e, true); return; }
+    after(api('ritems-discount-save', { department_id: $('dDept').value, category_id: $('dCat').value, pct: num($('dPct').value),
+      from: $('dFrom').value, to: $('dTo').value, name: nameTyped ? $('dName').value.trim() : '' }), 'Discount saved');
+    nameTyped = false;
+  };
+  function drawDisc() {
+    var lab = { RUNNING: 'Running', SCHEDULED: 'Scheduled', ENDED: 'Ended' };
+    $('dRows').innerHTML = B.discounts.map(function (d) {
+      var st = stat(d);
+      return '<tr><td>' + esc(d.department) + '</td><td>' + (esc(d.category) || 'All') + '</td><td class="n"><b>' + f(d.pct) + '%</b></td><td>' + fmtD(d.from) + '</td><td>' + fmtD(d.to) + '</td><td>' + esc(d.name) + '</td><td><span class="st ' + st + '">' + lab[st] + '</span></td><td>' +
+        (st === 'ENDED' || !B.is_manager ? '' : '<button class="ed" type="button" data-stop="' + d.id + '">Stop</button>') + '</td></tr>';
+    }).join('') || '<tr><td colspan="8" style="color:#7a8087;padding:14px">No discount yet.</td></tr>';
+    if (!B.is_manager) { $('dSave').disabled = true; $('dSave').title = 'Only a manager or the owner can set a discount'; }
+  }
+  $('dRows').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-stop]'); if (!b) return;
+    if (!confirm('Stop this discount now?')) return;
+    after(api('ritems-discount-stop', { id: b.getAttribute('data-stop') }), 'Discount stopped');
+  });
+
+  if (boot()) { clearForm(); draw(); }
+})();
+</script>
 </body>
 </html>
 
-<!-- build: V192 build 2026-11-13 -->
+<!-- build: V209 build 2026-11-25 -->

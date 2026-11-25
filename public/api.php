@@ -4374,6 +4374,47 @@ case 'rdoc-cancel':
   catch(Throwable $e){ fail(retailMsg($e)); }
 
 /* ============================================================
+   V209 — RETAIL ITEM CREATION + DEPARTMENT DISCOUNT (dekhein
+   RetailItems). Sirf retail ('products' module). Discount rules
+   site_settings retail/dept_discounts mein — restaurant ko koi rasta nahi.
+   ============================================================ */
+case 'ritems-boot':
+  needLogin(); needRetail(); needRetailModule('products');
+  ok(\Aio\Services\RetailItems::boot()+['build'=>trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'))]);
+case 'ritems-list':
+  needLogin(); needRetail(); needRetailModule('products');
+  ok(\Aio\Services\RetailItems::page($_GET));
+case 'ritems-get':
+  needLogin(); needRetail(); needRetailModule('products');
+  $it=!empty($_GET['code'])?\Aio\Services\RetailItems::byCode((string)$_GET['code']):\Aio\Services\RetailItems::one((string)($_GET['id']??''));
+  if(!$it)fail('Item not found',404); ok(['item'=>$it]);
+case 'ritems-check':
+  needLogin(); needRetail(); needRetailModule('products');
+  ok(\Aio\Services\RetailItems::check((string)($_GET['code']??''),(string)($_GET['except']??'')));
+case 'ritems-next':
+  needLogin(); needRetail(); needRetailModule('products');
+  ok(['next_code'=>\Aio\Services\RetailItems::nextCode()]);
+case 'ritems-save':
+  needLogin(); needRetail(); needRetailModule('products'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(\Aio\Services\RetailItems::save(body())); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'ritems-group-add':
+  needLogin(); needRetail(); needRetailModule('products'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ $b=body(); ok(['row'=>\Aio\Services\RetailItems::addGroup((string)($b['kind']??''),(string)($b['name']??''),(string)($b['department_id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'ritems-discount-save':
+  needLogin(); needRetail(); needRetailModule('products'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(['discounts'=>\Aio\Services\RetailItems::saveDiscount(body())]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'ritems-discount-stop':
+  needLogin(); needRetail(); needRetailModule('products'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(['discounts'=>\Aio\Services\RetailItems::stopDiscount((string)(body()['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'ritems-running':
+  needLogin(); needRetail(); needRetailModule('rpos');
+  ok(['rules'=>array_map(fn($r)=>['department_id'=>$r['department_id'],'category_id'=>$r['category_id']??'','pct'=>(float)$r['pct'],'name'=>$r['name']],\Aio\Services\RetailItems::runningRules())]);
+
+/* ============================================================
    V208 — RETAIL PURCHASE ENTRY (dekhein RetailPurchase). Sirf retail;
    GRN ka module. Restaurant ka koi raasta yahan se nahi guzarta.
    ============================================================ */
@@ -4499,4 +4540,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V208 build 2026-11-22
+// build: V209 build 2026-11-25

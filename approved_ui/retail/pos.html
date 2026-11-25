@@ -375,7 +375,31 @@ function blockedMsg(){flash('Server is not reachable \u2014 bill NOT saved. Pres
 var rowsEl=$('rows'), emptyEl=$('cartEmpty'), scan=$('scan');
 
 function priceOf(p){return level==='Wholesale'?Number(p.wholesale_price||p.retail_price||0):Number(p.retail_price||0)}
-function amt(l){return Math.max(0,l.qty*l.price-(l.disc||0))}
+function amt(l){return Math.max(0,l.qty*l.price-(l.disc||0)-(l.promo||0))}
+
+/* V209 — DEPARTMENT DISCOUNT (Item Creation > Department discount).
+   Chalte rules boot par aur har 5 minute baad (background) aate hain;
+   scan par koi server call nahi. Server (RetailPos) wahi hisaab dobara
+   karta hai — paisa lene se pehle syncQuote dono ko milata hai. */
+var RULES=[];
+function loadRules(sync){
+  if(!LIVE) return;
+  try{
+    var x=new XMLHttpRequest(); x.open('GET','/api.php?action=ritems-running&_='+Date.now(),!sync);
+    x.onload=function(){ try{ var r=JSON.parse(x.responseText||'{}'); if(r.ok){ RULES=r.rules||[]; if(!sync){ for(var i=0;i<cart.length;i++) paintRow(cart[i]); totals(); } } }catch(e){} };
+    x.send(); if(sync) x.onload();
+  }catch(e){}
+}
+function ruleOf(l){
+  if(level!=='Retail'||!l.dept) return null;
+  var best=null;
+  for(var i=0;i<RULES.length;i++){ var r=RULES[i];
+    if(r.department_id!==l.dept) continue;
+    if(r.category_id&&r.category_id!==l.cat) continue;
+    if(!best||Number(r.pct)>Number(best.pct)) best=r; }
+  return best;
+}
+function promoOf(l){ var r=ruleOf(l); return r?Math.min(l.qty*l.price,Math.round(l.qty*l.price*Number(r.pct))/100):0; }
 
 /* ============ CART — incremental DOM ============
    Poora table dobara render karna 30+ lines par mehsoos hota hai.
@@ -402,7 +426,9 @@ function paintRow(l){
   l.cSub.textContent=l.unit+(l.is_scale?' \u00b7 weighed':'')+(l.stock<=0?' \u00b7 NO STOCK':'');
   l.cQty.value=l.qty;
   l.cPrice.textContent=money(l.price);
-  l.cDisc.textContent=l.disc>0?money(l.disc):'\u2014';
+  l.promo=promoOf(l); var pr=l.promo>0?ruleOf(l):null;
+  if(pr) l.cSub.textContent+=' \u00b7 '+pr.name;
+  l.cDisc.textContent=(l.disc||0)+(l.promo||0)>0?money((l.disc||0)+(l.promo||0)):'\u2014';
   l.cAmt.textContent=money(amt(l));
 }
 function selectLine(i){
@@ -427,7 +453,8 @@ function addProduct(p,q,uom){
          tha (screen Rs 109,440, server Rs 4,800). */
       qty:q,price:(uom&&Number(uom.factor)>0)?Number(uom.retail_price||0)/Number(uom.factor):priceOf(p),
       uom_id:uom?uom.id:'',
-      tax:Number(p.tax_rate||0),disc:0,is_scale:!!p.is_scale_item,stock:Number(p.stock_qty||0)};
+      tax:Number(p.tax_rate||0),disc:0,is_scale:!!p.is_scale_item,stock:Number(p.stock_qty||0),
+      dept:p.department_id||'',cat:p.category_id||''};
     cart.unshift(l);
     rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
     selectLine(0);
@@ -577,7 +604,7 @@ function hold(){
         customer_name:c?c.name:'Walk-in',price_level:level,
         line_count:cart.length,total:t.grand,
         cart:cart.map(function(l){return {key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,uom_id:l.uom_id||'',
-          qty:l.qty,price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
+          qty:l.qty,price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock,dept:l.dept||'',cat:l.cat||''}})});
     }catch(err){ flash(err.message||'Could not hold',true); return; }
     /* V191 — hold ke baad agla bill walk-in se shuru. Pehle wohi customer
        chalta rehta aur agla customer ka bill us ke khate mein ja sakta tha. */
@@ -588,7 +615,7 @@ function hold(){
   h.unshift({id:'H'+Date.now(),bill_no:'INV-'+billNo,customer:c?c.name:'Walk-in',customer_id:custId,price_level:level,
     lines:cart.length,total:t.grand,held_at:new Date().toTimeString().slice(0,5),
     cart:cart.map(function(l){return{key:l.key,product_id:l.product_id,name:l.name,unit:l.unit,qty:l.qty,
-      price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock}})});
+      price:l.price,tax:l.tax,disc:l.disc,is_scale:l.is_scale,stock:l.stock,dept:l.dept||'',cat:l.cat||''}})});
   S.set('held_bills',h);
   clearCart(); custId='cu1'; paintCust(); billNo++; $('billNo').textContent='INV-'+billNo;
   paintHeld(); flash('Bill held');
@@ -610,6 +637,7 @@ function recall(id){
     var l=b.cart[j]; cart.unshift(l); rowsEl.insertBefore(makeRow(l),rowsEl.firstChild);
   }
   level=b.price_level; paintLevel();
+  for(var k2=0;k2<cart.length;k2++) paintRow(cart[k2]);   /* V209: level ke mutabiq discount */
   /* V191 — held bill apne hi customer ke sath wapas aata hai. Pehle
      screen par jo customer chuna hota usi ka ban jata (Hameed ka bill
      'Zero Limit' ke khate mein). */
@@ -745,10 +773,14 @@ function syncQuote(){
   var live=cart.filter(function(l){return l.qty>0});
   var changed=false;
   if(q&&q.lines&&q.lines.length===live.length){
+    var promoOff=false;
     for(var i=0;i<live.length;i++){
       var np=Number(q.lines[i].unit_price);
       if(Math.abs(np-live[i].price)>0.0001){live[i].price=np;paintRow(live[i]);changed=true}
+      if(Math.abs(Number(q.lines[i].promo||0)-(live[i].promo||0))>0.009) promoOff=true;
     }
+    /* V209 — discount rule beech mein badla: rules dobara lo */
+    if(promoOff){ loadRules(true); for(var k=0;k<live.length;k++) paintRow(live[k]); changed=true; }
   }
   if(q&&Math.abs(Number(q.discount)-billDisc)>0.009){billDisc=Number(q.discount);changed=true}
   totals();
@@ -869,7 +901,7 @@ function confirmPay(quickCash){
     sold_at:new Date().toISOString().slice(0,16).replace('T',' '),
     reprint_count:0, last_reprint_at:'',
     /* receipt lines sale ke sath mehfooz — duplicate isi se banti hai */
-    items:cart.map(function(l){return {name:l.name,unit:l.unit,qty:l.qty,price:l.price,disc:l.disc||0}})};
+    items:cart.map(function(l){return {name:l.name,unit:l.unit,qty:l.qty,price:l.price,disc:(l.disc||0)+(l.promo||0)}})};
 
   var sales=S.get('sales'); sales.unshift(sale); S.set('sales',sales);
   var prods=S.get('products'),map={};
@@ -1165,6 +1197,7 @@ $('keybar').addEventListener('click',function(e){
   }).join('');
   S.rebuildIndex();
   paintCust(); paintHeld(); paintLevel(); totals();
+  loadRules(false); setInterval(function(){loadRules(false)},300000);   /* V209 */
   scan.focus();
   function tick(){ $('clock').textContent=new Date().toTimeString().slice(0,5) }
   tick(); setInterval(tick,10000);
@@ -1200,4 +1233,4 @@ $('keybar').addEventListener('click',function(e){
 </body>
 </html>
 
-<!-- build: V193 build 2026-11-13 -->
+<!-- build: V209 build 2026-11-25 -->

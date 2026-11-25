@@ -91,7 +91,8 @@ final class RetailCatalog
     public static function productLite(string $id): ?array
     {
         $q = DB::pdo()->prepare(
-            "SELECT id,name,tax_rate,cost_price,retail_price,wholesale_price,stock_qty,base_unit_id,status
+            "SELECT id,name,tax_rate,cost_price,retail_price,wholesale_price,stock_qty,base_unit_id,status,
+                    department_id,category_id
                FROM rtl_products WHERE id=? AND tenant_id=? AND deleted_at IS NULL");
         $q->execute([$id, tenant_id()]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
@@ -700,4 +701,4 @@ final class RetailCatalog
     }
 }
 
-// build: V192 build 2026-11-13
+// build: V209 build 2026-11-25

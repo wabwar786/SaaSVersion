@@ -21,7 +21,7 @@
     },
     {
       title: 'Catalog & Pricing', items: [
-        ['products', 'Product Catalog', 'products.html', '▣'],
+        ['products', 'Item Creation', 'products.html', '▣'],
         ['departments', 'Departments & Categories', 'departments.html', '☰'],
         ['brands', 'Brands', 'brands.html', '◈'],
         ['uom', 'Units & Pack Sizes', 'uom.html', '⇹'],
@@ -185,8 +185,43 @@
     main.insertBefore(bar, main.firstChild);
   })();
   window.addEventListener('resize', function () { if (innerWidth > 1000) close(); });
+
+  /* ---------- V209 — left menu close / open (desktop) ----------
+     Button sidebar ke kinare par; band karne par screen poori page ko.
+     Har computer apni pasand yaad rakhta hai (localStorage). */
+  (function () {
+    var KEY = 'rtl_nav_collapsed';
+    var st = document.createElement('style');
+    st.textContent =
+      '.nav-tog{position:fixed;top:12px;left:calc(var(--side-w) - 14px);z-index:55;width:24px;height:24px;border-radius:50%;' +
+      'border:1px solid var(--line-strong,#c9cdd1);background:var(--surface,#fff);color:var(--muted,#5f666d);font-size:13px;line-height:1;' +
+      'cursor:pointer;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.12);padding:0}' +
+      '.nav-tog:hover{color:var(--ink,#1f2529);border-color:var(--ink,#1f2529)}' +
+      '@media (min-width:1001px){body.nav-collapsed .app{grid-template-columns:0 minmax(0,1fr)}' +
+      'body.nav-collapsed .sidebar{visibility:hidden;border:0}' +
+      'body.nav-collapsed .nav-tog{left:6px}}' +
+      '@media (max-width:1000px){.nav-tog{display:none}}';
+    document.head.appendChild(st);
+    var b = document.createElement('button');
+    b.className = 'nav-tog'; b.id = 'navToggle'; b.type = 'button';
+    function paint() {
+      var c = document.body.classList.contains('nav-collapsed');
+      b.textContent = c ? '\u203a' : '\u2039';
+      b.title = c ? 'Open menu' : 'Close menu';
+    }
+    var on = false; try { on = localStorage.getItem(KEY) === '1'; } catch (e) { }
+    if (on) document.body.classList.add('nav-collapsed');
+    b.onclick = function () {
+      var c = document.body.classList.toggle('nav-collapsed');
+      try { localStorage.setItem(KEY, c ? '1' : '0'); } catch (e) { }
+      paint();
+      try { window.dispatchEvent(new Event('resize')); } catch (e) { }
+    };
+    paint();
+    document.body.appendChild(b);
+  })();
 })();
 
 /* build: V150 build 2026-10-12 */
 
-// build: V208 build 2026-11-22
+// build: V209 build 2026-11-25

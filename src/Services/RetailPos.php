@@ -123,6 +123,17 @@ final class RetailPos
             }
 
             $gross = $qty * $unitPrice;
+            /* V209 — department discount (Item Creation > Department
+               discount). Dates ke andar retail rate par khud lagta hai;
+               screen jo bheje us par bharosa nahi. Cashier ka apna line
+               discount is ke upar alag hai (aur cashier ki had sirf usi
+               par lagti hai). */
+            $promo = 0.0; $promoName = '';
+            if ($priceLevel === 'Retail') {
+                $rule = RetailItems::ruleFor($prod['department_id'] ?? null, $prod['category_id'] ?? null);
+                if ($rule) { $promo = \round($gross * (float)$rule['pct'] / 100, 2); $promoName = (string)$rule['name']; }
+            }
+            $manual = \max(0.0, (float)($l['discount'] ?? 0));
             $clean[] = [
                 'product_id' => $pid,
                 'name'       => (string)$prod['name'],
@@ -130,7 +141,9 @@ final class RetailPos
                 'uom_id'     => $uomId,
                 'qty'        => $qty,
                 'unit_price' => $unitPrice,
-                'discount'   => \min($gross, \max(0.0, (float)($l['discount'] ?? 0))),
+                'discount'   => \min($gross, $manual + $promo),
+                'promo'      => \min($gross, $promo),
+                'promo_name' => $promoName,
                 'tax_rate'   => (float)$prod['tax_rate'],
             ];
         }
@@ -152,7 +165,7 @@ final class RetailPos
     {
         if (Auth::isManager()) return;
         $gross = 0.0; $lineDisc = 0.0;
-        foreach ($clean as $l) { $gross += $l['qty'] * $l['unit_price']; $lineDisc += $l['discount']; }
+        foreach ($clean as $l) { $gross += $l['qty'] * $l['unit_price']; $lineDisc += $l['discount'] - (float)($l['promo'] ?? 0); }
         if ($gross <= 0) return;
         $pct = ($lineDisc + (float)$tot['discount']) / $gross * 100;
         $max = self::cashierMaxDiscPct();
@@ -756,4 +769,4 @@ final class RetailPos
     }
 }
 
-// build: V193 build 2026-11-13
+// build: V209 build 2026-11-25
