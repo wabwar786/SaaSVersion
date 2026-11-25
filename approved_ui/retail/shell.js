@@ -120,6 +120,11 @@
     var s = window.APP_SITE || {};
     return s.branch || 'Main Branch';
   }
+  /* V213 — menu items not in use yet are HIDDEN from the menu only.
+     Pages, data and permissions stay as they are. When a screen is
+     finished, take its key out of this list to show it again. */
+  var HIDDEN = ['purchasing', 'grn', 'brands', 'uom', 'pricing', 'promotions', 'whatsapp', 'accounting',
+                'scale', 'batches', 'loyalty', 'expenses', 'fbr', 'staff', 'branches', 'activity'];
   function groupOpen(g) { return g.items.some(function (it) { return it[0] === active; }); }
 
   var region = window.Region ? Region.current() : { flag: '🇵🇰', label: 'Pakistan' };
@@ -136,7 +141,7 @@
   html += '<nav class="nav">';
   html += '<a href="index.html" class="nav-home' + (active === 'dashboard' ? ' active' : '') + '"><span class="ic">▦</span>Dashboard</a>';
   GROUPS.forEach(function (g) {
-    var items = g.items.filter(function (it) { return !allowed || allowed.indexOf(it[4] || it[0]) > -1; });
+    var items = g.items.filter(function (it) { return HIDDEN.indexOf(it[0]) < 0 && (!allowed || allowed.indexOf(it[4] || it[0]) > -1); });
     if (!items.length) return;
     html += '<details class="nav-group"' + (groupOpen(g) ? ' open' : '') + '><summary>' + esc(g.title) +
       '<span class="chev">›</span></summary><div class="nav-sub">';
@@ -231,4 +236,4 @@
 
 /* build: V150 build 2026-10-12 */
 
-// build: V212 build 2026-11-25
+// build: V213 build 2026-11-25
