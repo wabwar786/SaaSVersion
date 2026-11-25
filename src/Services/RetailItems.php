@@ -104,6 +104,10 @@ final class RetailItems
         $name = \mb_strtoupper(\preg_replace('/\s+/', ' ', \trim($name)));
         if ($name === '') throw new \RuntimeException('Enter a name');
         if (\mb_strlen($name) > 120) throw new \RuntimeException('Name is too long');
+        if ($kind === 'company') {   /* V210 — company = brand */
+            $id = self::companyId($p, $name);
+            return ['id' => $id, 'name' => $name];
+        }
         if ($kind === 'department') {
             $q = $p->prepare("SELECT id,name FROM rtl_departments WHERE tenant_id=? AND deleted_at IS NULL AND name=? LIMIT 1");
             $q->execute([$tid, $name]);
@@ -467,4 +471,4 @@ final class RetailItems
     }
 }
 
-// build: V209 build 2026-11-25
+// build: V210 build 2026-11-25

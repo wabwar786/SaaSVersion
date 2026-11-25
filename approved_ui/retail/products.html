@@ -115,7 +115,7 @@
         <div class="f full"><label for="nm">Item name <b>*</b></label><input id="nm" data-next="dept" maxlength="150"><span class="hint" id="nmHint"></span></div>
         <div class="f"><label for="dept">Department <b>*</b></label><div class="sel"><select id="dept" data-next="cat"></select><button class="b2" type="button" tabindex="-1" id="addDept" title="Add department">+</button></div></div>
         <div class="f"><label for="cat">Category</label><div class="sel"><select id="cat" data-next="co"></select><button class="b2" type="button" tabindex="-1" id="addCat" title="Add category">+</button></div></div>
-        <div class="f full"><label for="co">Company</label><input id="co" data-next="cost" list="coList" placeholder="Type to pick or add" maxlength="120"><datalist id="coList"></datalist></div>
+        <div class="f full"><label for="co">Company</label><div class="sel"><select id="co" data-next="cost"></select><button class="b2" type="button" tabindex="-1" id="addCo" title="Add company">+</button></div></div>
         <div class="f"><label for="cost">Cost price</label><input id="cost" data-next="sale" inputmode="decimal"></div>
         <div class="f"><label for="sale">Sale price <b>*</b></label><input id="sale" data-next="unit" inputmode="decimal"><span class="mg" id="mg"></span><span class="dnote" id="dnote"></span></div>
         <div class="f"><label for="unit">Unit</label><select id="unit" data-next="pack"></select></div>
@@ -225,7 +225,10 @@
     $('dept').innerHTML = '<option value="">— Select —</option>' + o; if (keep) $('dept').value = keep;
     var fd = $('fDept').value; $('fDept').innerHTML = '<option value="">All departments</option>' + o; $('fDept').value = fd;
     fillFCat();
-    $('coList').innerHTML = B.companies.map(function (c) { return '<option value="' + esc(c.name) + '">'; }).join('');
+    var co = $('co').value;
+    B.companies.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+    $('co').innerHTML = '<option value="">— None —</option>' + B.companies.map(function (c) { return '<option value="' + esc(c.name) + '">' + esc(c.name) + '</option>'; }).join('');
+    $('co').value = co; if ($('co').value !== co) $('co').value = '';
     var u = $('unit').value;
     $('unit').innerHTML = B.units.map(function (x) { return '<option value="' + x.id + '">' + esc(x.code) + '</option>'; }).join('');
     if (u) $('unit').value = u;
@@ -310,7 +313,8 @@
   }
   function clearForm(noFocus) {
     EDIT = null; CHK = {};
-    ['bc', 'nm', 'co', 'cost', 'sale', 'box', 'qty'].forEach(function (k) { $(k).value = ''; $(k).classList.remove('err'); });
+    ['bc', 'nm', 'cost', 'sale', 'box', 'qty'].forEach(function (k) { $(k).value = ''; $(k).classList.remove('err'); });
+    $('co').value = '';
     $('nmHint').textContent = '';
     $('pack').value = '1';
     var pcs = B.units.filter(function (u) { return u.code === 'PCS'; })[0]; if (pcs) $('unit').value = pcs.id;
@@ -322,7 +326,7 @@
   function load(x) {
     EDIT = x; CHK = {};
     $('bc').value = x.code; $('nm').value = x.name; $('dept').value = x.department_id || ''; fillCat(x.category_id || '');
-    $('co').value = x.company || ''; $('cost').value = x.cost_price || ''; $('sale').value = x.retail_price || '';
+    $('co').value = x.company || ''; if ($('co').value !== (x.company || '')) $('co').value = ''; $('cost').value = x.cost_price || ''; $('sale').value = x.retail_price || '';
     if (x.base_unit_id) $('unit').value = x.base_unit_id;
     $('pack').value = x.packing || 1; $('box').value = x.box_code || ''; $('qty').value = f(x.stock_qty);
     $('nmHint').textContent = '';
@@ -375,7 +379,7 @@
     $('save').disabled = true;
     var r = api('ritems-save', {
       id: EDIT ? EDIT.id : '', code: code, auto: !EDIT && code === AUTO ? 1 : 0, name: nm,
-      department_id: $('dept').value, category_id: $('cat').value, company: $('co').value.trim(),
+      department_id: $('dept').value, category_id: $('cat').value, company: $('co').value,
       cost_price: cost, sale_price: sale, unit_id: $('unit').value, packing: num($('pack').value) || 1,
       box_code: $('box').value.trim(), opening_qty: EDIT ? 0 : num($('qty').value)
     });
@@ -446,25 +450,29 @@
   function openGrp(kind) {
     if (kind === 'category' && !$('dept').value) { toast('Select the department first', true); $('dept').focus(); return; }
     GK = kind;
-    $('gTitle').textContent = kind === 'department' ? 'Add department' : 'Add category to ' + deptName($('dept').value);
-    $('gLab').textContent = kind === 'department' ? 'Department name' : 'Category name';
+    $('gTitle').textContent = kind === 'department' ? 'Add department' : kind === 'company' ? 'Add company' : 'Add category to ' + deptName($('dept').value);
+    $('gLab').textContent = kind === 'department' ? 'Department name' : kind === 'company' ? 'Company name' : 'Category name';
     $('gName').value = ''; $('ovGrp').classList.add('show'); $('gName').focus();
   }
   $('addDept').onclick = function () { openGrp('department'); };
   $('addCat').onclick = function () { openGrp('category'); };
+  $('addCo').onclick = function () { openGrp('company'); };
   function grpSave() {
     var n = $('gName').value.trim(); if (!n) { toast('Enter a name', true); return; }
     var r = api('ritems-group-add', { kind: GK, name: n, department_id: $('dept').value });
     if (!r.ok) { toast(r.message || 'Could not add', true); return; }
     var row = r.row;
-    if (GK === 'department') {
+    if (GK === 'company') {
+      if (!B.companies.some(function (c) { return c.name === row.name; })) B.companies.push(row);
+      fillLists(); $('co').value = row.name;
+    } else if (GK === 'department') {
       if (!B.departments.some(function (d) { return d.id === row.id; })) B.departments.push(row);
       fillLists(); $('dept').value = row.id; fillCat();
     } else {
       if (!B.categories.some(function (c) { return c.id === row.id; })) B.categories.push(row);
       fillLists(); fillCat(row.id);
     }
-    closeOv(); toast('Added ' + row.name); $(GK === 'department' ? 'dept' : 'cat').focus(); noteDisc();
+    closeOv(); toast('Added ' + row.name); $(GK === 'department' ? 'dept' : GK === 'company' ? 'co' : 'cat').focus(); noteDisc();
   }
   $('gSave').onclick = grpSave;
   $('gName').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); grpSave(); } });
@@ -539,4 +547,4 @@
 </body>
 </html>
 
-<!-- build: V209 build 2026-11-25 -->
+<!-- build: V210 build 2026-11-25 -->
