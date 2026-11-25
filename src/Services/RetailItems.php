@@ -140,7 +140,7 @@ final class RetailItems
         $size = (int)($f['size'] ?? 100); if (!\in_array($size, [50, 100, 200], true)) $size = 100;
         $page = \max(1, (int)($f['page'] ?? 1));
         $w = "p.tenant_id=? AND p.deleted_at IS NULL"; $a = [$tid];
-        foreach (['department_id', 'category_id'] as $k) if (!empty($f[$k])) { $w .= " AND p.`$k`=?"; $a[] = (string)$f[$k]; }
+        foreach (['department_id', 'category_id', 'brand_id'] as $k) if (!empty($f[$k])) { $w .= " AND p.`$k`=?"; $a[] = (string)$f[$k]; }
         $code = \trim((string)($f['code'] ?? ''));
         if ($code !== '') {
             $w .= " AND (EXISTS (SELECT 1 FROM rtl_product_barcodes b WHERE b.tenant_id=p.tenant_id AND b.product_id=p.id
@@ -471,4 +471,4 @@ final class RetailItems
     }
 }
 
-// build: V210 build 2026-11-25
+// build: V211 build 2026-11-25

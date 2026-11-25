@@ -129,7 +129,7 @@
     <div class="card2">
       <div class="flt">
         <input class="c" id="fCode" placeholder="Item code / Barcode">
-        <input class="q" id="fName" placeholder="Search by item name (F3)">
+        <input class="q" id="fName" placeholder="Item name, then Enter (F3)">
         <select id="fDept"><option value="">All departments</option></select>
         <select id="fCat"><option value="">All categories</option></select>
       </div>
@@ -185,6 +185,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
+  var FCO = '';   /* V211 — company filter (set from the left form) */
   var B = null, EDIT = null, LAST = null, FRESH = '', PAGE = 1, PAGES = 1, ROWS = [], AUTO = '', CHK = {};
 
   function api(action, payload) {
@@ -357,8 +358,17 @@
     if (n === 'save') { save(); return; }
     $(n).focus(); if ($(n).select) $(n).select();
   });
-  $('dept').addEventListener('change', function () { fillCat(); noteDisc(); });
-  $('cat').addEventListener('change', noteDisc);
+  /* V211 — choosing Department / Category / Company on the left filters
+     the grid by them (only when picked by hand, not when an item loads). */
+  function followLeft() {
+    $('fDept').value = $('dept').value; fillFCat(); $('fCat').value = $('cat').value;
+    FCO = ''; var n = $('co').value;
+    B.companies.forEach(function (c) { if (c.name === n) FCO = c.id; });
+    draw(1);
+  }
+  $('dept').addEventListener('change', function () { fillCat(); noteDisc(); followLeft(); });
+  $('cat').addEventListener('change', function () { noteDisc(); followLeft(); });
+  $('co').addEventListener('change', followLeft);
 
   function save() {
     var code = $('bc').value.trim(), nm = $('nm').value.trim(), sale = num($('sale').value), cost = num($('cost').value);
@@ -411,7 +421,7 @@
   var tF = null;
   function draw(reset) {
     if (reset) PAGE = 1;
-    var r = api('ritems-list&' + q({ code: $('fCode').value.trim(), name: $('fName').value.trim(), department_id: $('fDept').value, category_id: $('fCat').value, page: PAGE, size: 100 }));
+    var r = api('ritems-list&' + q({ code: $('fCode').value.trim(), name: $('fName').value.trim(), department_id: $('fDept').value, category_id: $('fCat').value, brand_id: FCO, page: PAGE, size: 100 }));
     if (!r.ok) { toast(r.message || 'Could not load items', true); return; }
     ROWS = r.rows; PAGE = r.page; PAGES = r.pages;
     var s = (PAGE - 1) * r.size;
@@ -423,8 +433,9 @@
         '<td><button class="ed" type="button" data-ed="' + x.id + '">Edit</button></td></tr>';
     }).join('') || '<tr><td colspan="13" style="color:#7a8087;padding:20px">No item matches the filter.</td></tr>';
     paintSel();
-    var filtered = $('fCode').value || $('fName').value || $('fDept').value || $('fCat').value;
-    $('shown').textContent = r.total ? (filtered ? f(r.total) + ' items match · ' : '') + 'Showing ' + f(s + 1) + '–' + f(s + ROWS.length) + ' of ' + f(r.total) : '0 items';
+    var filtered = $('fCode').value || $('fName').value || $('fDept').value || $('fCat').value || FCO;
+    var coName = ''; if (FCO) B.companies.forEach(function (c) { if (c.id === FCO) coName = c.name; });
+    $('shown').textContent = (r.total ? (filtered ? f(r.total) + ' items match · ' : '') + 'Showing ' + f(s + 1) + '–' + f(s + ROWS.length) + ' of ' + f(r.total) : '0 items') + (coName ? ' · Company: ' + coName : '');
     $('pgn').textContent = 'Page ' + PAGE + ' / ' + PAGES;
     $('pgPrev').disabled = PAGE <= 1; $('pgNext').disabled = PAGE >= PAGES;
     if (!filtered) B.total = r.total;
@@ -436,8 +447,10 @@
   }
   $('rows').addEventListener('dblclick', function (e) { var tr = e.target.closest('tr[data-id]'); if (tr) editId(tr.getAttribute('data-id')); });
   $('rows').addEventListener('click', function (e) { var b = e.target.closest('[data-ed]'); if (b) { e.stopPropagation(); editId(b.getAttribute('data-ed')); } });
-  ['fCode', 'fName'].forEach(function (k) { $(k).addEventListener('input', function () { clearTimeout(tF); tF = setTimeout(function () { draw(1); }, 250); }); });
-  $('fDept').addEventListener('change', function () { fillFCat(); draw(1); });
+  $('fCode').addEventListener('input', function () { clearTimeout(tF); tF = setTimeout(function () { draw(1); }, 250); });
+  /* V211 — item name filters on Enter only (not while typing) */
+  $('fName').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); draw(1); } });
+  $('fDept').addEventListener('change', function () { FCO = ''; fillFCat(); draw(1); });
   $('fCat').addEventListener('change', function () { draw(1); });
   $('pgPrev').onclick = function () { if (PAGE > 1) { PAGE--; draw(); } };
   $('pgNext').onclick = function () { if (PAGE < PAGES) { PAGE++; draw(); } };
@@ -547,4 +560,4 @@
 </body>
 </html>
 
-<!-- build: V210 build 2026-11-25 -->
+<!-- build: V211 build 2026-11-25 -->
