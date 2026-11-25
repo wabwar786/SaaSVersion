@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supplier Balances · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Supplier Balances</h1><span class="badge" id="asof"></span><div class="sp"></div>
+    <button class="btn sm" id="xls" type="button">Excel</button><button class="btn sm" id="prt" type="button">Print</button><a class="btn sm primary" id="payBtn" href="supplier_payment.html">+ Supplier payment</a></div>
+  <div class="kp"><div class="k warn"><span>Total payable</span><b id="k1">0</b></div><div class="k bad"><span>Overdue (past due date)</span><b id="k2">0</b></div><div class="k"><span>Due in next 7 days</span><b id="k3">0</b></div><div class="k ok"><span>Paid this month</span><b id="k4">0</b></div><div class="k"><span>Unpaid bills</span><b id="k5">0</b></div></div>
+  <div class="card"><div class="flt"><input class="q" id="q" placeholder="Search supplier name or phone"><select id="show"><option value="">All suppliers</option><option value="balance">With balance only</option><option value="overdue">Overdue only</option></select></div>
+    <div class="tw"><table><thead><tr><th class="n">S.No</th><th>Supplier</th><th>Terms</th><th class="n">Unpaid bills</th><th class="n">0–30 days</th><th class="n">31–60 days</th><th class="n">61–90 days</th><th class="n">90+ days</th><th class="n">Overdue</th><th class="n">Balance</th><th></th></tr></thead><tbody id="rows"></tbody><tfoot id="foot"></tfoot></table></div>
+    <div class="note">Balance is always worked out from the ledger (purchases − returns − payments), never typed. Ages are counted from the bill date; "Overdue" uses the supplier's credit days. A negative balance (−) is an advance paid to the supplier.</div></div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="supplier_balances"></script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Supplier Balances (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var DATA = null;
+  if (!B.can.accounting) $('payBtn').style.display = 'none';
+  function load() {
+    var r = P.api('rpay-balances&' + P.q({ q: $('q').value.trim(), show: $('show').value }));
+    if (!r.ok) { P.toast(r.message || 'Could not load', true); return; }
+    DATA = r; var T = r.totals;
+    $('asof').textContent = 'As of ' + D(r.today);
+    $('k1').textContent = f(T.balance); $('k2').textContent = f(T.over); $('k3').textContent = f(T.week); $('k4').textContent = f(T.paid_month); $('k5').textContent = T.bills;
+    $('rows').innerHTML = r.rows.map(function (x, i) {
+      return '<tr><td class="n">' + (i + 1) + '</td><td><b>' + esc(x.name) + '</b></td><td>' + (x.credit_days ? 'Credit ' + x.credit_days + ' days' : 'Cash') + '</td><td class="n">' + x.bills + '</td>' +
+        '<td class="n">' + f(x.b0) + '</td><td class="n">' + f(x.b1) + '</td><td class="n">' + f(x.b2) + '</td><td class="n">' + f(x.b3) + '</td><td class="n ' + (x.over > 0 ? 'red' : '') + '">' + f(x.over) + '</td>' +
+        '<td class="n"><b>' + f(x.balance) + '</b>' + (x.balance < 0 ? ' <span class="st part">Advance</span>' : '') + '</td>' +
+        '<td><a class="btn sm" href="supplier_ledger.html?supplier_id=' + x.id + '">Ledger</a> ' + (B.can.grn && x.bills ? '<button class="btn sm" type="button" data-slip="' + x.id + '">Slip</button> ' : '') + (B.can.accounting ? '<a class="btn sm" href="supplier_payment.html?supplier_id=' + x.id + '">Pay</a>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="11" class="empty">No supplier.</td></tr>';
+    $('foot').innerHTML = '<tr><td></td><td>' + r.rows.length + ' suppliers</td><td></td><td class="n">' + T.bills + '</td><td class="n">' + f(T.b0) + '</td><td class="n">' + f(T.b1) + '</td><td class="n">' + f(T.b2) + '</td><td class="n">' + f(T.b3) + '</td><td class="n">' + f(T.over) + '</td><td class="n">' + f(T.balance) + '</td><td></td></tr>';
+  }
+  var t = null;
+  $('q').addEventListener('input', function () { clearTimeout(t); t = setTimeout(load, 250); });
+  $('show').addEventListener('change', load);
+  $('rows').addEventListener('click', function (e) { var b = e.target.closest('[data-slip]'); if (b) P.slipDialog(b.getAttribute('data-slip'), [], load); });
+  $('xls').onclick = function () {
+    var L = [['Supplier', 'Terms days', 'Unpaid bills', '0-30', '31-60', '61-90', '90+', 'Overdue', 'Balance']];
+    DATA.rows.forEach(function (x) { L.push([x.name, x.credit_days, x.bills, x.b0, x.b1, x.b2, x.b3, x.over, x.balance]); });
+    var csv = L.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'supplier_balances_' + DATA.today + '.csv'; a.click();
+  };
+  $('prt').onclick = function () {
+    var T = DATA.totals;
+    P.print('<h3>SUPPLIER BALANCES</h3><div class="mini">' + esc(P.biz) + ' · As of ' + D(DATA.today) + '</div><table><thead><tr><th>Supplier</th><th class="n">Bills</th><th class="n">0–30</th><th class="n">31–60</th><th class="n">61–90</th><th class="n">90+</th><th class="n">Overdue</th><th class="n">Balance</th></tr></thead><tbody>' +
+      DATA.rows.map(function (x) { return '<tr><td>' + esc(x.name) + '</td><td class="n">' + x.bills + '</td><td class="n">' + f(x.b0) + '</td><td class="n">' + f(x.b1) + '</td><td class="n">' + f(x.b2) + '</td><td class="n">' + f(x.b3) + '</td><td class="n">' + f(x.over) + '</td><td class="n"><b>' + f(x.balance) + '</b></td></tr>'; }).join('') +
+      '<tr><td><b>Total</b></td><td class="n">' + T.bills + '</td><td class="n">' + f(T.b0) + '</td><td class="n">' + f(T.b1) + '</td><td class="n">' + f(T.b2) + '</td><td class="n">' + f(T.b3) + '</td><td class="n">' + f(T.over) + '</td><td class="n"><b>' + f(T.balance) + '</b></td></tr></tbody></table><div class="mini">Retail OS · ' + esc(P.build) + '</div>');
+  };
+  load();
+
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V212 build 2026-11-25 -->

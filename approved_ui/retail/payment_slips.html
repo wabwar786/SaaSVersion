@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Slips · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Payment Slips</h1><span class="badge">Accounts</span><div class="sp"></div><button class="btn sm" id="xls" type="button">Excel</button><button class="btn sm" id="prt" type="button">Print list</button></div>
+  <div class="kp" style="grid-template-columns:repeat(4,1fr)"><div class="k bad"><span>Due today + overdue</span><b id="k1">0</b></div><div class="k warn"><span>Due in next 7 days</span><b id="k2">0</b></div><div class="k"><span>Open slips</span><b id="k3">0</b></div><div class="k ok"><span>Paid this month</span><b id="k4">0</b></div></div>
+  <div class="card"><div class="flt"><input id="q" placeholder="Scan slip no." style="width:180px"><select id="sup" style="width:240px"></select>
+      <select id="st"><option value="OPEN">Open (not paid)</option><option value="DUE">Due today + overdue</option><option value="OVERDUE">Overdue</option><option value="PAID">Paid</option><option value="CANCELLED">Cancelled / closed</option><option value="">All</option></select>
+      <span class="mini">Issued from</span><input type="date" id="from" style="width:150px"><span class="mini">To</span><input type="date" id="to" style="width:150px"></div>
+    <div class="tw"><table><thead><tr><th class="n">S.No</th><th>Slip no.</th><th>Issued</th><th>Supplier</th><th>Type</th><th>Pay on</th><th class="n">Amount</th><th class="n">Paid</th><th class="n">Left</th><th>Status</th><th>Voucher</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="note">"Pay" opens Supplier Payment with the slip filled in. A payment can be less than the slip; the rest stays on the slip (Part paid). Paying a "Pay on date" slip before its date needs a manager / owner. Cancel (or close the unpaid rest) — manager / owner only.</div></div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="payment_slips"></script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Payment Slips (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var DATA = null;
+  $('sup').innerHTML = '<option value="">All suppliers</option>' + B.rows.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+  function lab(x, today) {
+    if (x.status === 'PAID') return '<span class="st paid">Paid</span>';
+    if (x.status === 'CANCELLED') return '<span class="st can">Cancelled</span>';
+    if (x.status === 'CLOSED') return '<span class="st can">Closed</span>';
+    var d = P.daysTo(today, x.pay_on), pre = x.status === 'PART' ? 'Part paid · ' : '';
+    if (d < 0) return '<span class="st over">' + pre + 'Overdue ' + (-d) + ' day' + (d === -1 ? '' : 's') + '</span>';
+    if (d === 0) return '<span class="st over">' + pre + 'Due today</span>';
+    return '<span class="st ' + (x.status === 'PART' ? 'part' : 'unp') + '">' + pre + 'In ' + d + ' day' + (d === 1 ? '' : 's') + '</span>';
+  }
+  function load() {
+    var r = P.api('rpay-slips&' + P.q({ q: $('q').value.trim(), supplier_id: $('sup').value, status: $('st').value, from: $('from').value, to: $('to').value }));
+    if (!r.ok) { P.toast(r.message || 'Could not load', true); return; }
+    DATA = r;
+    $('k1').textContent = f(r.kpi.due); $('k2').textContent = f(r.kpi.week); $('k3').textContent = r.kpi.open; $('k4').textContent = f(r.kpi.paid_month);
+    $('rows').innerHTML = r.rows.map(function (x, i) {
+      var open = x.status === 'OPEN' || x.status === 'PART';
+      return '<tr><td class="n">' + (i + 1) + '</td><td class="code">' + esc(x.slip_no) + '</td><td>' + D(x.issued) + '</td><td>' + esc(x.supplier_name) + '</td><td>' + (x.slip_type === 'NOW' ? 'Pay now' : 'Pay on date') + '</td><td>' + D(x.pay_on) + '</td>' +
+        '<td class="n"><b>' + f(x.amount) + '</b></td><td class="n">' + (x.paid ? f(x.paid) : '') + '</td><td class="n">' + (open ? f(x.left) : '') + '</td><td>' + lab(x, r.today) + '</td><td class="code">' + esc((x.vouchers || '').replace(/,/g, ', ')) + '</td>' +
+        '<td>' + (open && B.can.accounting ? '<a class="btn sm primary" href="supplier_payment.html?slip=' + encodeURIComponent(x.slip_no) + '">Pay</a> ' : '') + '<button class="btn sm" type="button" data-rp="' + esc(x.slip_no) + '">Reprint</button> ' +
+        (open && r.is_manager ? '<button class="btn sm" type="button" data-cx="' + x.id + '" data-no="' + esc(x.slip_no) + '" data-paid="' + x.paid + '">' + (x.paid ? 'Close rest' : 'Cancel') + '</button>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="12" class="empty">No slip matches.</td></tr>';
+  }
+  var t = null;
+  $('q').addEventListener('input', function () { clearTimeout(t); t = setTimeout(load, 300); });
+  $('q').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return; e.preventDefault();
+    var v = $('q').value.trim(); if (!v) return;
+    var r = P.api('rpay-slip&no=' + encodeURIComponent(v));
+    if (r.ok && (r.slip.status === 'OPEN' || r.slip.status === 'PART') && B.can.accounting) location.href = 'supplier_payment.html?slip=' + encodeURIComponent(r.slip.slip_no);
+    else load();
+  });
+  ['sup', 'st', 'from', 'to'].forEach(function (k) { $(k).addEventListener('change', load); });
+  $('rows').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-rp]');
+    if (b) { var r = P.api('rpay-slip&no=' + encodeURIComponent(b.getAttribute('data-rp'))); if (r.ok) P.printSlip(r.slip); else P.toast(r.message, true); return; }
+    b = e.target.closest('[data-cx]'); if (!b) return;
+    var paid = +b.getAttribute('data-paid');
+    var why = prompt((paid ? 'Close the unpaid rest of ' : 'Cancel ') + b.getAttribute('data-no') + '? The bills become free for a new slip.\n\nReason:');
+    if (why === null) return;
+    var r = P.api('rpay-slip-cancel', { id: b.getAttribute('data-cx'), reason: why });
+    if (!r.ok) { P.toast(r.message || 'Could not cancel', true); return; }
+    P.toast(r.slip.slip_no + ' ' + r.slip.status.toLowerCase()); load();
+  });
+  $('xls').onclick = function () {
+    var L = [['Slip no.', 'Issued', 'Supplier', 'Type', 'Pay on', 'Amount', 'Paid', 'Left', 'Status', 'Vouchers']];
+    DATA.rows.forEach(function (x) { L.push([x.slip_no, x.issued, x.supplier_name, x.slip_type === 'NOW' ? 'Pay now' : 'Pay on date', x.pay_on, x.amount, x.paid, x.left, x.status, x.vouchers || '']); });
+    var csv = L.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'payment_slips_' + DATA.today + '.csv'; a.click();
+  };
+  $('prt').onclick = function () {
+    P.print('<h3>PAYMENT SLIPS</h3><div class="mini">' + esc(P.biz) + ' · printed ' + D(DATA.today) + '</div><table><thead><tr><th>Slip</th><th>Supplier</th><th>Pay on</th><th class="n">Amount</th><th class="n">Left</th><th>Status</th></tr></thead><tbody>' +
+      DATA.rows.map(function (x) { return '<tr><td>' + esc(x.slip_no) + '</td><td>' + esc(x.supplier_name) + '</td><td>' + D(x.pay_on) + '</td><td class="n">' + f(x.amount) + '</td><td class="n">' + f(x.left) + '</td><td>' + esc(x.status) + '</td></tr>'; }).join('') + '</tbody></table>');
+  };
+  load();
+
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V212 build 2026-11-25 -->

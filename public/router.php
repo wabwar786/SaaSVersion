@@ -85,6 +85,9 @@ $retailModule=[
   'batches.html'=>'batches','grn.html'=>'grn','purchase_return.html'=>'preturn',
   /* V208 — Purchase Entry: GRN wala hi module */
   'purchase_entry.html'=>'grn',
+  /* V212 — supplier payables (retail back office) */
+  'purchase_register.html'=>'grn','supplier_balances.html'=>'suppliers','supplier_ledger.html'=>'suppliers',
+  'payment_slips.html'=>'accounting','supplier_payment.html'=>'accounting',
   'stock.html'=>'inventory','purchasing.html'=>'purchasing','purchase_orders.html'=>'po',
   'suppliers.html'=>'suppliers','customers.html'=>'customers','loyalty.html'=>'loyalty',
   'promotions.html'=>'promotions','returns.html'=>'void','shift.html'=>'shift',
@@ -278,8 +281,8 @@ if($uiDir==='approved_ui/retail'){
      `module_config.js` isi tarah chhoote hue the, aur un mein kiya hua
      har change deploy ke baad bhi purana hi chalta rehta tha (max-age
      3600). Nayi file banate waqt YAHAN likhna lazmi hai. */
-  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|doc\.js|doc_config\.js|shell\.js)"/',
-                     '$1="/retail/$2?b=r10"', $html);
+  $html=preg_replace('/(src|href)="(shared\.css|region\.js|store\.js|retail_api\.js|barcode\.js|module\.js|module_config\.js|doc\.js|doc_config\.js|shell\.js|pay\.css|pay_common\.js)"/',
+                     '$1="/retail/$2?b=r11"', $html);
 }else{
 /* ============================================================
    JS/CSS par cache-bust — poori list.
@@ -477,4 +480,4 @@ else $html.=$tail;
 header('Cache-Control: no-store, must-revalidate'); // HTML kabhi cache na ho; JS/CSS ?b= se bust hote hain
 echo$html;
 
-// build: V209 build 2026-11-25
+// build: V212 build 2026-11-25

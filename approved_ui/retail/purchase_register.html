@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purchase Register · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Purchase Register</h1><span class="badge">Search any supplier bill</span><div class="sp"></div><button class="btn sm" id="xls" type="button">Excel</button><button class="btn sm" id="prt" type="button">Print list</button></div>
+  <div class="card"><div class="flt" style="flex-wrap:wrap">
+      <input id="bn" placeholder="Supplier bill no." style="width:170px"><input id="ref" placeholder="Our ref no. (GRN-)" style="width:150px"><select id="sup" style="width:240px"></select>
+      <span class="mini">From</span><input type="date" id="from" style="width:150px"><span class="mini">To</span><input type="date" id="to" style="width:150px">
+      <input id="item" placeholder="Item name or barcode on the bill" style="width:230px">
+      <select id="pay" style="width:140px"><option value="">Any payment</option><option value="UNPAID">Unpaid</option><option value="PART">Part paid</option><option value="PAID">Paid</option><option value="OVERDUE">Overdue</option></select>
+      <select id="st" style="width:120px"><option value="POSTED">Posted</option><option value="DRAFT">Draft</option><option value="ALL">All</option></select>
+      <button class="btn sm primary" type="button" id="go">Search (Enter)</button></div>
+    <div class="tw"><table><thead><tr><th class="n">S.No</th><th>Our ref no.</th><th>Supplier bill no.</th><th>Bill date</th><th>Supplier</th><th class="n">Items</th><th class="n">Bill total</th><th class="n">Returns</th><th class="n">Paid</th><th class="n">Balance</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody id="rows"></tbody><tfoot id="foot"></tfoot></table></div>
+    <div class="note">Search works on any date range. "Print copy" prints the purchase as posted with <b style="color:#b3261e">DUPLICATE</b> on top, the print date and who printed it; each print is logged. "Payment slip" gives the supplier a slip to collect payment from Accounts.</div></div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="purchase_register"></script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Purchase Register (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var DATA = null;
+  $('sup').innerHTML = '<option value="">All suppliers</option>' + B.rows.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+  var d0 = new Date(Date.parse(B.today) - 30 * 86400000).toISOString().slice(0, 10);
+  $('from').value = d0; $('to').value = B.today;
+  var LAB = { UNPAID: ['unp', 'Unpaid'], PART: ['part', 'Part paid'], PAID: ['paid', 'Paid'], OVERDUE: ['over', 'Overdue'] };
+  function load() {
+    var r = P.api('rpay-register&' + P.q({ bill_no: $('bn').value.trim(), ref: $('ref').value.trim(), supplier_id: $('sup').value, from: $('from').value, to: $('to').value, item: $('item').value.trim(), pay: $('pay').value, status: $('st').value }));
+    if (!r.ok) { P.toast(r.message || 'Could not load', true); return; }
+    DATA = r; var T = r.totals;
+    $('rows').innerHTML = r.rows.map(function (x, i) {
+      var l = LAB[x.pay_status], posted = x.status === 'POSTED';
+      return '<tr><td class="n">' + (i + 1) + '</td><td class="code">' + esc(x.doc_no) + '</td><td class="bc"><b>' + esc(x.bill_no || '—') + '</b></td><td>' + D(x.bill_date) + '</td><td>' + esc(x.supplier_name) + '</td><td class="n">' + x.items + '</td>' +
+        '<td class="n">' + f(x.total) + '</td><td class="n">' + (posted ? f(x.returns) : '—') + '</td><td class="n">' + (posted ? f(x.paid) : '—') + '</td><td class="n"><b>' + (posted ? f(x.balance) : '—') + '</b></td>' +
+        '<td>' + (l ? '<span class="st ' + l[0] + '">' + l[1] + '</span>' : '') + (x.on_slip ? ' <span class="mini">slip ' + esc(x.on_slip) + '</span>' : '') + '</td><td>' + (posted ? 'Posted' : esc(x.status.charAt(0) + x.status.slice(1).toLowerCase())) + '</td>' +
+        '<td><a class="btn sm" href="purchase_entry.html?id=' + x.id + '">Open</a> ' + (posted ? '<button class="btn sm" type="button" data-cp="' + x.id + '">Print copy</button> ' : '') +
+        (posted && x.balance > 0.004 && !x.on_slip ? '<button class="btn sm" type="button" data-sl="' + x.id + '" data-s="' + x.supplier_id + '">Payment slip</button>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="13" class="empty">No purchase matches.</td></tr>';
+    $('foot').innerHTML = '<tr><td></td><td colspan="4">' + T.bills + ' bills</td><td class="n">' + T.items + '</td><td class="n">' + f(T.total) + '</td><td></td><td class="n">' + f(T.paid) + '</td><td class="n">' + f(T.balance) + '</td><td colspan="3"></td></tr>';
+  }
+  $('go').onclick = load;
+  document.querySelector('.flt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); load(); } });
+  ['sup', 'pay', 'st', 'from', 'to'].forEach(function (k) { $(k).addEventListener('change', load); });
+  $('rows').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cp]'); if (b) { P.printPurchase(b.getAttribute('data-cp')); return; }
+    b = e.target.closest('[data-sl]'); if (b) P.slipDialog(b.getAttribute('data-s'), [b.getAttribute('data-sl')], load);
+  });
+  $('xls').onclick = function () {
+    var L = [['Our ref no.', 'Supplier bill no.', 'Bill date', 'Supplier', 'Items', 'Bill total', 'Returns', 'Paid', 'Balance', 'Payment', 'Status']];
+    DATA.rows.forEach(function (x) { L.push([x.doc_no, x.bill_no, x.bill_date, x.supplier_name, x.items, x.total, x.returns, x.paid, x.balance == null ? '' : x.balance, x.pay_status, x.status]); });
+    var csv = L.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'purchase_register.csv'; a.click();
+  };
+  $('prt').onclick = function () {
+    var T = DATA.totals;
+    P.print('<h3>PURCHASE REGISTER</h3><div class="mini">' + esc(P.biz) + ' · ' + D($('from').value) + ' to ' + D($('to').value) + '</div><table><thead><tr><th>Our ref</th><th>Bill no.</th><th>Date</th><th>Supplier</th><th class="n">Total</th><th class="n">Paid</th><th class="n">Balance</th></tr></thead><tbody>' +
+      DATA.rows.map(function (x) { return '<tr><td>' + esc(x.doc_no) + '</td><td>' + esc(x.bill_no) + '</td><td>' + D(x.bill_date) + '</td><td>' + esc(x.supplier_name) + '</td><td class="n">' + f(x.total) + '</td><td class="n">' + f(x.paid) + '</td><td class="n">' + (x.balance == null ? '' : f(x.balance)) + '</td></tr>'; }).join('') +
+      '<tr><td colspan="4"><b>' + T.bills + ' bills</b></td><td class="n"><b>' + f(T.total) + '</b></td><td class="n">' + f(T.paid) + '</td><td class="n"><b>' + f(T.balance) + '</b></td></tr></tbody></table>');
+  };
+  load();
+
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V212 build 2026-11-25 -->

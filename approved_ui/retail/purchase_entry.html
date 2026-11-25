@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Purchase Entry · Retail OS</title>
 <link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
 <style>
 
 body{background:var(--bg)}
@@ -328,10 +329,12 @@ tfoot td{background:#f7f8f9!important;border-top:1px solid #9aa3ab}
 </div></div>
 <div class="toast2" id="toast"></div>
 
+<div class="pw" id="payHost" style="min-height:0;padding:0;display:block"></div>
 <script src="region.js"></script>
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="purchase_entry"></script>
+<script src="pay_common.js"></script>
 <script>
 /* ============================================================
    V208 — RETAIL PURCHASE ENTRY.
@@ -487,7 +490,7 @@ tfoot td{background:#f7f8f9!important;border-top:1px solid #9aa3ab}
     var acts = '';
     if (ro()) {
       acts = '<span class="state ok">' + esc(DOC.status === 'POSTED' ? 'Posted ' + String(DOC.posted_at || '').slice(0, 16) : DOC.status) + '</span><span class="sp"></span>' +
-        (mgr && !DOC.verified_by && DOC.status === 'POSTED' ? '<button class="btn" id="btnVerify">Verify</button>' : '') + '<button class="btn" id="btnNew2">New entry</button>';
+        (mgr && !DOC.verified_by && DOC.status === 'POSTED' ? '<button class="btn" id="btnVerify">Verify</button>' : '') + (DOC.status === 'POSTED' ? '<button class="btn" id="btnSlip">Payment slip</button><button class="btn" id="btnCopy">Print copy</button>' : '') + '<button class="btn" id="btnNew2">New entry</button>';
     } else {
       acts = st + '<span class="sp"></span>' +
         (DOC && mgr && !DOC.approved_by ? '<button class="btn" id="btnApprove">Approve</button>' : '') +
@@ -543,6 +546,9 @@ tfoot td{background:#f7f8f9!important;border-top:1px solid #9aa3ab}
     else if (t.id === 'btnVerify') stamp('rpurchase-verify', 'Verified');
     else if (t.id === 'btnApprove') stamp('rpurchase-approve', 'Approved');
     else if (t.id === 'btnNew2') newEntry();
+    /* V212 — payment slip for the supplier (Accounts pays against it) + duplicate copy */
+    else if (t.id === 'btnSlip' && window.PAY) { if (!PAY.build) PAY.boot(); PAY.slipDialog(DOC.supplier_id, [DOC.id], function () { render(); }); }
+    else if (t.id === 'btnCopy' && window.PAY) { if (!PAY.build) PAY.boot(); PAY.printPurchase(DOC.id); }
     if (!t.closest('.sr') && t.id !== 'scan') $('sr').style.display = 'none';
   });
 
@@ -730,4 +736,4 @@ tfoot td{background:#f7f8f9!important;border-top:1px solid #9aa3ab}
 </body>
 </html>
 
-<!-- build: V208 build 2026-11-22 -->
+<!-- build: V212 build 2026-11-25 -->

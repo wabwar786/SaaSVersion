@@ -37,10 +37,14 @@
         ['purchasing', 'Purchasing', 'purchasing.html', '⇩'],
         /* V208 — 5th item = permission module (GRN ka) */
         ['purchase_entry', 'Purchase Entry', 'purchase_entry.html', '⇩', 'grn'],
+        /* V212 — purchase register (search any bill + duplicate copy) */
+        ['purchase_register', 'Purchase Register', 'purchase_register.html', '≡', 'grn'],
         ['po', 'Purchase Orders', 'purchase_orders.html', '▥'],
         ['grn', 'Goods Receipt (GRN)', 'grn.html', '⊕'],
         ['preturn', 'Purchase Return', 'purchase_return.html', '⇧'],
         ['suppliers', 'Suppliers', 'suppliers.html', '⌂'],
+        ['supplier_balances', 'Supplier Balances', 'supplier_balances.html', '⚖', 'suppliers'],
+        ['supplier_ledger', 'Supplier Ledger', 'supplier_ledger.html', '☰', 'suppliers'],
         ['count', 'Physical Stock Count', 'stock_count.html', '☑'],
         ['dayclose', 'Day Closing (Stock)', 'stock_day_close.html', '◑'],
         ['wastage', 'Damage / Expiry Write-off', 'wastage.html', '⊘']
@@ -58,6 +62,9 @@
       title: 'Finance & Reports', items: [
         ['expenses', 'Expenses', 'expenses.html', '▼'],
         ['accounting', 'Accounting / Cash', 'accounting.html', '§'],
+        /* V212 — Accounts: payment slips + supplier payment (CPV / BPV) */
+        ['payment_slips', 'Payment Slips', 'payment_slips.html', '⎙', 'accounting'],
+        ['supplier_payment', 'Supplier Payment', 'supplier_payment.html', '₨', 'accounting'],
         ['closing', 'Shift Closing History', 'closing.html', '◑'],
         ['reports', 'Reports', 'reports.html', '▨'],
         ['fbr', 'Tax / Digital Invoice', 'tax.html', '✓']
@@ -224,4 +231,4 @@
 
 /* build: V150 build 2026-10-12 */
 
-// build: V209 build 2026-11-25
+// build: V212 build 2026-11-25

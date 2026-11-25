@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supplier Ledger · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Supplier Ledger</h1><div class="sp"></div>
+    <button class="btn sm" id="xls" type="button">Excel</button><button class="btn sm" id="prt" type="button">Print statement</button><a class="btn sm primary" id="payBtn" href="supplier_payment.html">+ Payment to this supplier</a></div>
+  <div class="card"><div class="flt"><select id="sup" style="width:300px"></select><span class="mini">From</span><input type="date" id="from" style="width:150px"><span class="mini">To</span><input type="date" id="to" style="width:150px">
+      <select id="ty"><option value="">All entries</option><option value="purchase">Purchases</option><option value="payment">Payments</option><option value="return">Returns</option></select><button class="btn sm primary" type="button" id="go">Show</button><div class="sp"></div><span class="mini" id="sinfo"></span></div>
+    <div class="kp" style="padding:10px 12px;grid-template-columns:repeat(4,1fr)"><div class="k"><span id="k1l">Opening</span><b id="k1">0</b></div><div class="k"><span>Purchases (Credit)</span><b id="k2">0</b></div><div class="k ok"><span>Payments + returns (Debit)</span><b id="k3">0</b></div><div class="k warn"><span>Closing balance</span><b id="k4">0</b></div></div>
+    <div class="tw"><table><thead><tr><th>Date</th><th>Entry</th><th>Our ref no.</th><th>Supplier bill no.</th><th>Mode / detail</th><th class="n">Debit (paid / returned)</th><th class="n">Credit (purchased)</th><th class="n">Balance</th></tr></thead><tbody id="rows"></tbody><tfoot id="foot"></tfoot></table></div>
+    <div class="note">Double-click a payment to reprint its voucher. Nothing in the ledger can be edited or deleted: a cancelled payment stays visible and a reverse entry is added.</div></div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="supplier_ledger"></script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Supplier Ledger (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var L = null, qs = new URLSearchParams(location.search);
+  if (!B.can.accounting) $('payBtn').style.display = 'none';
+  $('sup').innerHTML = '<option value="">— Select supplier —</option>' + B.rows.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+  $('sup').value = qs.get('supplier_id') || '';
+  $('from').value = qs.get('from') || B.today.slice(0, 8) + '01'; $('to').value = qs.get('to') || B.today;
+  function load() {
+    var sid = $('sup').value;
+    $('payBtn').href = 'supplier_payment.html' + (sid ? '?supplier_id=' + sid : '');
+    if (!sid) { $('rows').innerHTML = '<tr><td colspan="8" class="empty">Select a supplier.</td></tr>'; $('foot').innerHTML = ''; return; }
+    var r = P.api('rpay-ledger&' + P.q({ supplier_id: sid, from: $('from').value, to: $('to').value, type: $('ty').value }));
+    if (!r.ok) { P.toast(r.message || 'Could not load', true); return; }
+    L = r; var s = r.supplier;
+    $('sinfo').textContent = 'Terms: ' + (s.credit_days ? 'Credit ' + s.credit_days + ' days' : 'Cash') + (s.phone ? ' · Phone ' + s.phone : '');
+    $('k1l').textContent = 'Opening (' + D(r.from) + ')'; $('k1').textContent = f(r.opening); $('k2').textContent = f(r.credit); $('k3').textContent = f(r.debit); $('k4').textContent = f(r.closing);
+    $('rows').innerHTML = '<tr><td>' + D(r.from) + '</td><td>Balance brought forward</td><td></td><td></td><td></td><td></td><td></td><td class="n"><b>' + f(r.opening) + '</b></td></tr>' + r.rows.map(function (x) {
+      var pay = /^(CPV|BPV)/.test(x.type);
+      return '<tr' + (pay ? ' data-v="' + esc(x.ref_id) + '" title="Double-click to reprint the voucher"' : '') + '><td>' + D(x.date) + '</td><td>' + esc(x.entry) + '</td><td class="code">' + esc(x.ref_no) + '</td><td class="bc">' + esc(x.bill_no) + '</td><td>' + esc(x.detail) + '</td>' +
+        '<td class="n">' + (x.debit ? f(x.debit) : '') + '</td><td class="n">' + (x.credit ? f(x.credit) : '') + '</td><td class="n"><b>' + f(x.balance) + '</b></td></tr>';
+    }).join('');
+    $('foot').innerHTML = '<tr><td colspan="5">Closing balance ' + D(r.to) + (r.closing >= 0 ? ' (payable to supplier)' : ' (advance with supplier)') + '</td><td class="n">' + f(r.debit) + '</td><td class="n">' + f(r.credit) + '</td><td class="n">' + f(r.closing) + '</td></tr>';
+  }
+  $('go').onclick = load; $('sup').addEventListener('change', load);
+  $('rows').addEventListener('dblclick', function (e) { var tr = e.target.closest('[data-v]'); if (tr) P.printVoucher(tr.getAttribute('data-v')); });
+  $('xls').onclick = function () {
+    if (!L) return;
+    var A = [['Date', 'Entry', 'Our ref no.', 'Supplier bill no.', 'Detail', 'Debit', 'Credit', 'Balance'], [L.from, 'Opening', '', '', '', '', '', L.opening]];
+    L.rows.forEach(function (x) { A.push([x.date, x.entry, x.ref_no, x.bill_no, x.detail, x.debit, x.credit, x.balance]); });
+    var csv = A.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'ledger_' + L.supplier.name.replace(/\W+/g, '_') + '.csv'; a.click();
+  };
+  $('prt').onclick = function () {
+    if (!L) { P.toast('Select a supplier', true); return; }
+    P.print('<div style="display:flex"><div><h3>SUPPLIER STATEMENT</h3><div class="mini">' + esc(P.biz) + '</div></div><div class="sp"></div><div style="text-align:right"><b>' + esc(L.supplier.name) + '</b><div class="mini">' + D(L.from) + ' to ' + D(L.to) + '</div></div></div>' +
+      '<table><thead><tr><th>Date</th><th>Entry</th><th>Our ref</th><th>Bill no.</th><th>Detail</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Balance</th></tr></thead><tbody><tr><td>' + D(L.from) + '</td><td colspan="6">Opening balance</td><td class="n">' + f(L.opening) + '</td></tr>' +
+      L.rows.map(function (x) { return '<tr><td>' + D(x.date) + '</td><td>' + esc(x.entry) + '</td><td>' + esc(x.ref_no) + '</td><td>' + esc(x.bill_no) + '</td><td>' + esc(x.detail) + '</td><td class="n">' + (x.debit ? f(x.debit) : '') + '</td><td class="n">' + (x.credit ? f(x.credit) : '') + '</td><td class="n">' + f(x.balance) + '</td></tr>'; }).join('') +
+      '<tr><td colspan="5"><b>Closing balance</b></td><td class="n">' + f(L.debit) + '</td><td class="n">' + f(L.credit) + '</td><td class="n"><b>' + f(L.closing) + '</b></td></tr></tbody></table><div class="mini">Printed ' + D(B.today) + ' · Retail OS · ' + esc(P.build) + '</div>');
+  };
+  load();
+
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V212 build 2026-11-25 -->

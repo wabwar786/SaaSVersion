@@ -5,17 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Suppliers · Retail OS</title>
 <link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
 </head>
 <body>
 <div class="app">
   <aside class="sidebar" id="side"></aside>
   <main class="main">
-    <header class="header">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="header-title"><h1>Suppliers</h1><p>Purchase orders, GRN and payables</p></div>
-      <div class="header-spacer"></div>
-    </header>
-    <div class="content"></div>
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Suppliers</h1><span class="badge" id="cnt"></span><div class="sp"></div>
+    <a class="btn sm" href="supplier_balances.html">Supplier balances</a><button class="btn sm primary" id="btnNew" type="button">+ New supplier (F2)</button></div>
+  <div class="main2">
+    <div class="card"><div class="ch"><h2 id="fTitle">New supplier</h2><span class="mode new" id="fMode">NEW</span><div class="sp"></div><button class="btn sm" type="button" id="btnClear">Clear</button></div>
+      <form id="frm" onsubmit="return false" autocomplete="off">
+        <div class="f full"><label for="nm">Supplier name <b>*</b></label><input id="nm" maxlength="180"><span class="hint">If the same name already exists, you are asked before saving.</span></div>
+        <div class="f"><label for="cp">Contact person</label><input id="cp" maxlength="160"></div>
+        <div class="f"><label for="ph">Phone <b>*</b></label><input id="ph" maxlength="50"></div>
+        <div class="f"><label for="city">City</label><input id="city" maxlength="120"></div>
+        <div class="f"><label for="terms">Payment terms</label><select id="terms"><option value="0">Cash</option><option value="7">Credit 7 days</option><option value="15">Credit 15 days</option><option value="30">Credit 30 days</option><option value="45">Credit 45 days</option><option value="60">Credit 60 days</option></select></div>
+        <div class="f"><label for="ntn">NTN</label><input id="ntn" maxlength="40"></div>
+        <div class="f"><label for="strn">STRN</label><input id="strn" maxlength="40"></div>
+        <div class="f"><label for="filer">Filer status</label><select id="filer"><option value="FILER">Filer</option><option value="NON_FILER">Non-filer</option></select></div>
+        <div class="f"><label for="st">Status</label><select id="st"><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select></div>
+        <div class="f"><label for="ob">Opening balance (payable)</label><input id="ob" inputmode="decimal"><span class="hint" id="obHint">Old amount we owe; goes into the ledger once</span></div>
+        <div class="f"><label for="oa">Opening as of</label><input id="oa" type="date"></div>
+        <div class="f full"><label for="pi">Bank / wallet for payments</label><input id="pi" maxlength="160" placeholder="e.g. MCB 0123456789 · JazzCash 0300-..."></div>
+      </form>
+      <div class="note">Opening balance can be changed only until the first purchase or payment. The balance is always worked out from the ledger — it is never typed.</div>
+      <div class="acts"><button class="btn" type="button" id="btnClr2">Clear</button><button class="btn primary" type="button" id="save">Save supplier (Ctrl+S)</button></div>
+    </div>
+    <div class="card"><div class="flt"><input class="q" id="q" placeholder="Search name, phone or city (F3)"><select id="fs"><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="">All</option></select></div>
+      <div class="tw"><table><thead><tr><th class="n">S.No</th><th>Supplier</th><th>Phone</th><th>City</th><th>Terms</th><th class="n">Balance (ledger)</th><th>Status</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+    </div>
+  </div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
   </main>
 </div>
 <div class="scrim" id="scrim"></div>
@@ -23,8 +47,80 @@
 <script src="store.js"></script>
 <script src="retail_api.js"></script>
 <script src="shell.js" data-active="suppliers"></script>
-<script src="module.js"></script>
-<script src="module_config.js"></script>
-<script>RetailModule.render(MODULE_CONFIGS['suppliers']);</script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Suppliers (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var ROWS = B.rows, EDIT = null;
+  $('oa').value = B.today; $('oa').max = B.today;
+  function terms(d) { return +d ? 'Credit ' + d + ' days' : 'Cash'; }
+  function draw() {
+    var q = $('q').value.trim().toLowerCase(), fs = $('fs').value, n = 0;
+    $('rows').innerHTML = ROWS.filter(function (s) {
+      if (fs && String(s.status || 'ACTIVE').toUpperCase() !== fs) return false;
+      return !q || (s.name + ' ' + (s.phone || '') + ' ' + (s.city || '')).toLowerCase().indexOf(q) > -1;
+    }).map(function (s) {
+      n++;
+      return '<tr data-id="' + s.id + '"' + (EDIT && EDIT.id === s.id ? ' class="on"' : '') + '><td class="n">' + n + '</td><td><b>' + esc(s.name) + '</b><div class="mini">' + esc(s.contact_person || '') + '</div></td><td>' + esc(s.phone || '') + '</td><td>' + esc(s.city || '') + '</td><td>' + terms(s.credit_days) + '</td>' +
+        '<td class="n"><b>' + f(s.balance) + '</b>' + (s.balance < 0 ? ' <span class="st part">Advance</span>' : '') + '</td><td><span class="st ' + (String(s.status).toUpperCase() === 'INACTIVE' ? 'can' : 'paid') + '">' + (String(s.status).toUpperCase() === 'INACTIVE' ? 'Inactive' : 'Active') + '</span></td>' +
+        '<td><a class="btn sm" href="supplier_ledger.html?supplier_id=' + s.id + '">Ledger</a> ' + (B.can.accounting ? '<a class="btn sm" href="supplier_payment.html?supplier_id=' + s.id + '">Pay</a>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty">No supplier matches.</td></tr>';
+    $('cnt').textContent = ROWS.length + ' suppliers';
+  }
+  function clearF() {
+    EDIT = null; ['nm', 'cp', 'ph', 'city', 'ntn', 'strn', 'ob', 'pi'].forEach(function (k) { $(k).value = ''; });
+    $('terms').value = '15'; $('filer').value = 'FILER'; $('st').value = 'ACTIVE'; $('oa').value = B.today;
+    $('ob').disabled = $('oa').disabled = false; $('obHint').textContent = 'Old amount we owe; goes into the ledger once';
+    $('fTitle').textContent = 'New supplier'; $('fMode').textContent = 'NEW'; $('fMode').className = 'mode new';
+    $('save').textContent = 'Save supplier (Ctrl+S)'; draw(); $('nm').focus();
+  }
+  function load(id) {
+    var s = ROWS.filter(function (x) { return x.id === id; })[0]; if (!s) return;
+    EDIT = s; $('nm').value = s.name; $('cp').value = s.contact_person || ''; $('ph').value = s.phone || ''; $('city').value = s.city || '';
+    var t = String(s.credit_days || 0); if (!$('terms').querySelector('option[value="' + t + '"]')) { var o = document.createElement('option'); o.value = t; o.textContent = terms(t); $('terms').appendChild(o); }
+    $('terms').value = t; $('ntn').value = s.tax_no || ''; $('strn').value = s.rtl_strn || ''; $('filer').value = s.rtl_filer === 'NON_FILER' ? 'NON_FILER' : 'FILER';
+    $('st').value = String(s.status || 'ACTIVE').toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'; $('pi').value = s.rtl_pay_info || '';
+    $('ob').value = s.opening_balance ? f(s.opening_balance) : ''; $('oa').value = s.opening_as_of || B.today;
+    $('ob').disabled = $('oa').disabled = !!s.opening_locked;
+    $('obHint').textContent = s.opening_locked ? 'Locked — the supplier already has purchases or payments' : 'Old amount we owe; goes into the ledger once';
+    $('fTitle').textContent = 'Edit supplier'; $('fMode').textContent = 'EDIT'; $('fMode').className = 'mode edit';
+    $('save').textContent = 'Update supplier (Ctrl+S)'; draw(); $('nm').focus();
+  }
+  function save(sameOk) {
+    var d = { id: EDIT ? EDIT.id : '', name: $('nm').value, contact_person: $('cp').value, phone: $('ph').value, city: $('city').value,
+      credit_days: +$('terms').value, ntn: $('ntn').value, strn: $('strn').value, filer: $('filer').value, status: $('st').value,
+      opening_balance: P.num($('ob').value), opening_as_of: $('oa').value, pay_info: $('pi').value, same_name_ok: sameOk ? 1 : 0 };
+    if (!d.name.trim()) { P.toast('Enter the supplier name', true); $('nm').focus(); return; }
+    var r = P.api('rpay-supplier-save', d);
+    if (!r.ok && /^SAME_NAME/.test(r.message || '')) { if (confirm('A supplier with this name already exists. Save anyway?')) save(true); return; }
+    if (!r.ok) { P.toast(r.message || 'Could not save', true); return; }
+    P.toast((EDIT ? 'Updated ' : 'Saved ') + r.supplier.name);
+    var x = P.api('rpay-suppliers'); if (x.ok) ROWS = x.rows;
+    clearF();
+  }
+  $('rows').addEventListener('click', function (e) { if (e.target.closest('a')) return; var tr = e.target.closest('tr[data-id]'); if (tr) load(tr.getAttribute('data-id')); });
+  $('q').addEventListener('input', draw); $('fs').addEventListener('change', draw);
+  $('save').onclick = function () { save(false); }; $('btnNew').onclick = $('btnClear').onclick = $('btnClr2').onclick = clearF;
+  $('frm').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return; e.preventDefault();
+    var els = Array.prototype.filter.call($('frm').querySelectorAll('input,select'), function (x) { return !x.disabled; });
+    var i = els.indexOf(e.target); if (i > -1 && i < els.length - 1) els[i + 1].focus(); else save(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F2') { e.preventDefault(); clearF(); }
+    else if (e.key === 'F3') { e.preventDefault(); $('q').focus(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(false); }
+    else if (e.key === 'Escape') clearF();
+  });
+  clearF();
+
+})();
+</script>
 </body>
 </html>
+
+<!-- build: V212 build 2026-11-25 -->

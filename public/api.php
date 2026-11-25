@@ -4374,6 +4374,81 @@ case 'rdoc-cancel':
   catch(Throwable $e){ fail(retailMsg($e)); }
 
 /* ============================================================
+   V212 — RETAIL SUPPLIER PAYABLES (back office). Sirf retail.
+   Slip: Inventory ('grn'). Payment CPV/BPV: Accounts ('accounting').
+   Ledger, balances, suppliers: 'suppliers'. Register + copy: 'grn'.
+   Cancel: manager / owner (service check).
+   ============================================================ */
+case 'rpay-suppliers':
+  needLogin(); needRetail();
+  if(!Auth::canModule('suppliers')&&!Auth::canModule('accounting')&&!Auth::canModule('grn'))needRetailModule('suppliers');
+  $bz=''; try{ $tq=DB::pdo()->prepare("SELECT name FROM tenants WHERE id=?"); $tq->execute([tenant_id()]); $bz=(string)$tq->fetchColumn(); }catch(Throwable $e){}
+  $me=Auth::user()??[];
+  ok(['rows'=>\Aio\Services\RetailPayables::suppliers(),'today'=>date('Y-m-d'),'is_manager'=>Auth::isManager()||Auth::isAdmin(),
+      'biz'=>$bz,'me'=>(string)($me['full_name']??''),
+      'can'=>['grn'=>Auth::canModule('grn'),'accounting'=>Auth::canModule('accounting'),'suppliers'=>Auth::canModule('suppliers')],
+      'build'=>trim((string)@file_get_contents(dirname(__DIR__).'/VERSION'))]);
+case 'rpay-supplier-save':
+  needLogin(); needRetail(); needRetailModule('suppliers'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(['supplier'=>\Aio\Services\RetailPayables::saveSupplier(body())]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-balances':
+  needLogin(); needRetail();
+  if(!Auth::canModule('suppliers')&&!Auth::canModule('accounting'))needRetailModule('suppliers');
+  ok(\Aio\Services\RetailPayables::balances($_GET));
+case 'rpay-ledger':
+  needLogin(); needRetail();
+  if(!Auth::canModule('suppliers')&&!Auth::canModule('accounting'))needRetailModule('suppliers');
+  try{ ok(\Aio\Services\RetailPayables::ledgerView((string)($_GET['supplier_id']??''),(string)($_GET['from']??''),(string)($_GET['to']??''),(string)($_GET['type']??''))); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-open':
+  needLogin(); needRetail();
+  if(!Auth::canModule('grn')&&!Auth::canModule('accounting'))needRetailModule('accounting');
+  try{ ok(\Aio\Services\RetailPayables::supplierInfo((string)($_GET['supplier_id']??''))); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-slip-create':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(['slip'=>\Aio\Services\RetailPayables::createSlip(body())]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-slip':
+  needLogin(); needRetail();
+  if(!Auth::canModule('grn')&&!Auth::canModule('accounting'))needRetailModule('accounting');
+  $sl=\Aio\Services\RetailPayables::slip((string)($_GET['no']??$_GET['id']??''));
+  if(!$sl)fail('Slip not found',404); ok(['slip'=>$sl]);
+case 'rpay-slips':
+  needLogin(); needRetail();
+  if(!Auth::canModule('grn')&&!Auth::canModule('accounting'))needRetailModule('accounting');
+  ok(\Aio\Services\RetailPayables::slips($_GET)+['is_manager'=>Auth::isManager()||Auth::isAdmin()]);
+case 'rpay-slip-cancel':
+  needLogin(); needRetail(); if(!Auth::canModule('grn')&&!Auth::canModule('accounting'))needRetailModule('accounting');
+  if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ $b=body(); ok(['slip'=>\Aio\Services\RetailPayables::cancelSlip((string)($b['id']??''),(string)($b['reason']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-pay':
+  needLogin(); needRetail(); needRetailModule('accounting'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(\Aio\Services\RetailPayables::pay(body())); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-payment':
+  needLogin(); needRetail();
+  if(!Auth::canModule('accounting')&&!Auth::canModule('suppliers'))needRetailModule('accounting');
+  $pm=\Aio\Services\RetailPayables::payment((string)($_GET['id']??''));
+  if(!$pm)fail('Payment not found',404); ok(['payment'=>$pm]);
+case 'rpay-payments':
+  needLogin(); needRetail(); needRetailModule('accounting');
+  ok(['rows'=>\Aio\Services\RetailPayables::payments($_GET),'is_manager'=>Auth::isManager()||Auth::isAdmin()]);
+case 'rpay-cancel':
+  needLogin(); needRetail(); needRetailModule('accounting'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ $b=body(); ok(['payment'=>\Aio\Services\RetailPayables::cancelPayment((string)($b['id']??''),(string)($b['reason']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+case 'rpay-register':
+  needLogin(); needRetail(); needRetailModule('grn');
+  ok(\Aio\Services\RetailPayables::register($_GET));
+case 'rpay-print-doc':
+  needLogin(); needRetail(); needRetailModule('grn'); if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')fail('Use POST for this action.',405); csrf_json();
+  try{ ok(['doc'=>\Aio\Services\RetailPayables::printDoc((string)(body()['id']??''))]); }
+  catch(Throwable $e){ fail(retailMsg($e)); }
+
+/* ============================================================
    V209 — RETAIL ITEM CREATION + DEPARTMENT DISCOUNT (dekhein
    RetailItems). Sirf retail ('products' module). Discount rules
    site_settings retail/dept_discounts mein — restaurant ko koi rasta nahi.
@@ -4540,4 +4615,4 @@ default:fail('Unknown API action',404);}
                   .'Nothing was half-saved. Please try again, or tell support reference '.$ref.'.',500);
 }
 
-// build: V209 build 2026-11-25
+// build: V212 build 2026-11-25

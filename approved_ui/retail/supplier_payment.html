@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supplier Payment · Retail OS</title>
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="pay.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="side"></aside>
+  <main class="main">
+<div class="pw">
+  <div class="bar"><button class="menu-btn" id="menuBtn">&#9776;</button><h1>Supplier Payment</h1><span class="mode new" id="vno">NEW</span><div class="sp"></div>
+    <span class="key"><b>F2</b> New</span><span class="key"><b>F4</b> Scan slip</span><span class="key"><b>Ctrl+S</b> Save &amp; print</span><span class="key"><b>Esc</b> Clear</span></div>
+  <div class="grid3">
+    <div class="card"><div class="ch"><h2>Payment</h2><div class="sp"></div><span class="mini">Paid from: Office / Accounts</span></div>
+      <form id="frm" onsubmit="return false" autocomplete="off" style="grid-template-columns:1fr 1fr">
+        <div class="f full"><label for="slip">Payment slip no. (scan)</label><input id="slip" class="big" placeholder="PS-000000 — or leave empty"><span class="hint" id="slipHint">Scan the slip the supplier brought. Without a slip, pick the supplier.</span></div>
+        <div class="f full"><label for="sup">Supplier <b>*</b></label><select id="sup"></select><span class="hint" id="supHint"></span></div>
+        <div class="f"><label for="pd">Payment date <b>*</b></label><input id="pd" type="date"></div>
+        <div class="f"><label>Voucher</label><input id="vt" readonly value="CPV — Cash" style="font-family:inherit"></div>
+        <div class="f full"><label>Mode <b>*</b> <span style="font-weight:400">— Cash makes a <b>CPV</b>, all others a <b>BPV</b></span></label><div class="modeb" id="modes"><span data-m="CASH" class="on">Cash</span><span data-m="CHEQUE">Cheque</span><span data-m="BANK">Bank</span><span data-m="JAZZCASH">JazzCash</span><span data-m="EASYPAISA">Easypaisa</span></div></div>
+        <div class="f m-bank"><label for="bank">Bank <b>*</b></label><input id="bank" list="bankList" maxlength="80"><datalist id="bankList"><option>MCB Bank</option><option>HBL</option><option>UBL</option><option>Meezan Bank</option><option>Bank Alfalah</option><option>Allied Bank</option><option>Bank Al Habib</option><option>National Bank</option><option>Faysal Bank</option><option>Askari Bank</option></datalist></div>
+        <div class="f m-chq"><label for="chq">Cheque no. <b>*</b></label><input id="chq" maxlength="40"></div>
+        <div class="f m-chq"><label for="chqd">Cheque date <b>*</b></label><input id="chqd" type="date"></div>
+        <div class="f m-txn"><label for="txn">Transaction ID <b class="m-txnreq">*</b></label><input id="txn" maxlength="60"></div>
+        <div class="f m-acc"><label for="acc">Our account</label><input id="acc" maxlength="80" placeholder="e.g. MCB 0123 (Main)"></div>
+        <div class="f full"><label for="amt">Amount <b>*</b></label><input id="amt" class="big" inputmode="decimal"><span class="hint" id="amtHint"></span></div>
+        <div class="f full" id="earlyBox" style="display:none"><label><input type="checkbox" id="early" style="width:auto;height:auto"> Pay early — this slip is for a later date (manager / owner)</label></div>
+        <div class="f full"><label for="note">Note</label><input id="note" maxlength="200" placeholder="Optional"></div>
+      </form>
+      <div class="sum"><span>Bills selected</span><b id="sSel">0</b><span>Paying now</span><b id="sPay">0</b><span id="sAdvL">Kept as advance</span><b id="sAdv">0</b><span class="big">Balance after</span><b class="big" id="sAfter">0</b></div>
+      <div class="acts"><button class="btn" type="button" id="btnClear">Clear</button><button class="btn primary" type="button" id="save">Save &amp; print voucher (Ctrl+S)</button></div>
+    </div>
+    <div class="card">
+      <div class="ch"><h2 id="billsTitle">Unpaid bills</h2><div class="sp"></div><button class="btn sm" type="button" id="auto">Auto (oldest first)</button><button class="btn sm" type="button" id="clr">Clear amounts</button></div>
+      <div class="tw" style="max-height:380px"><table><thead><tr><th></th><th>Our ref no.</th><th>Supplier bill no.</th><th>Bill date</th><th>Due date</th><th>Due</th><th class="n">Bill total</th><th class="n">Returns</th><th class="n">Paid before</th><th class="n">Balance</th><th class="n">Pay now</th><th class="n">Left</th></tr></thead><tbody id="bills"></tbody><tfoot id="bfoot"></tfoot></table></div>
+      <div class="note" id="bnote">With a slip, its bills and amount fill in by themselves. Without a slip, typing the amount fills "Pay now" oldest bill first; you can change any line by hand. If the amount is more than the bills, the extra is kept as an <b>advance</b> and used first on the next payment. A payment can be less than the slip — the rest stays payable on the same slip.</div>
+      <div class="ch" style="border-top:1px solid #e1e3e5"><h2>Recent payments</h2></div>
+      <div class="tw" style="max-height:260px"><table><thead><tr><th>Voucher</th><th>Date</th><th>Supplier</th><th>Mode / detail</th><th>Slip</th><th class="n">Amount</th><th>Status</th><th>By</th><th></th></tr></thead><tbody id="recent"></tbody></table></div>
+    </div>
+  </div>
+  <div class="ver" id="ver"></div>
+  <div class="toast2" id="toast"></div>
+</div>
+  </main>
+</div>
+<div class="scrim" id="scrim"></div>
+<script src="region.js"></script>
+<script src="store.js"></script>
+<script src="retail_api.js"></script>
+<script src="shell.js" data-active="supplier_payment"></script>
+<script src="pay_common.js"></script>
+<script>
+/* V212 — Supplier Payment (retail back office). Server: RetailPayables. */
+(function () {
+  'use strict';
+  var P = PAY, $ = P.$, f = P.f, esc = P.esc, D = P.fmtD;
+
+  var B = P.boot(); if (!B) return;
+  var MODE = 'CASH', ITEMS = [], INFO = null, SLIP = null, MANUAL = false, qs = new URLSearchParams(location.search);
+  $('sup').innerHTML = '<option value="">— Select supplier —</option>' + B.rows.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+  $('pd').value = B.today; $('pd').max = B.today; $('chqd').value = B.today;
+  function paintMode() {
+    $('modes').querySelectorAll('span').forEach(function (x) { x.className = x.getAttribute('data-m') === MODE ? 'on' : ''; });
+    $('vt').value = MODE === 'CASH' ? 'CPV — Cash Payment Voucher' : 'BPV — Bank Payment Voucher';
+    function show(cls, on) { document.querySelectorAll('.' + cls).forEach(function (x) { x.style.display = on ? '' : 'none'; }); }
+    show('m-bank', MODE === 'CHEQUE' || MODE === 'BANK'); show('m-chq', MODE === 'CHEQUE');
+    show('m-txn', MODE !== 'CASH' && MODE !== 'CHEQUE'); show('m-acc', MODE !== 'CASH');
+    show('m-txnreq', MODE === 'JAZZCASH' || MODE === 'EASYPAISA');
+    $('save').textContent = 'Save & print ' + (MODE === 'CASH' ? 'CPV' : 'BPV') + ' (Ctrl+S)';
+  }
+  $('modes').onclick = function (e) { var s = e.target.closest('[data-m]'); if (s) { MODE = s.getAttribute('data-m'); paintMode(); } };
+  function cap(it) { if (!SLIP) return it.balance; var b = SLIP.bills.filter(function (x) { return x.doc_id === it.doc_id; })[0]; return b ? Math.min(it.balance, b.amount) : 0; }
+  function eligible(it) { return SLIP ? SLIP.bills.some(function (x) { return x.doc_id === it.doc_id; }) : it.on_slip === ''; }
+  function loadSupplier(sid, keepAmt) {
+    ITEMS = []; INFO = null;
+    if (!sid) { drawBills(); $('supHint').textContent = ''; return; }
+    var r = P.api('rpay-open&supplier_id=' + encodeURIComponent(sid));
+    if (!r.ok) { P.toast(r.message || 'Could not load', true); return; }
+    INFO = r; ITEMS = r.items.map(function (it) { it.pay = 0; return it; });
+    var s = r.supplier;
+    $('supHint').innerHTML = 'Balance <b style="color:#9a5b00">' + f(r.balance) + '</b> · ' + ITEMS.length + ' open item' + (ITEMS.length === 1 ? '' : 's') + ' · ' + (s.credit_days ? 'Credit ' + s.credit_days + ' days' : 'Cash') + (r.advance > 0 ? ' · <b>Advance ' + f(r.advance) + ' will be used first</b>' : '') + (s.rtl_pay_info ? ' · ' + esc(s.rtl_pay_info) : '');
+    $('billsTitle').textContent = 'Unpaid bills — ' + s.name + (SLIP ? ' · slip ' + SLIP.slip_no : '');
+    if (!keepAmt) autoFill(); else drawBills();
+  }
+  function autoFill() {
+    var left = P.num($('amt').value);
+    ITEMS.forEach(function (it) { it.pay = 0; if (!eligible(it)) return; var t = Math.min(cap(it), left); if (t > 0.004) { it.pay = Math.round(t * 100) / 100; left -= it.pay; } });
+    MANUAL = false; drawBills();
+  }
+  function drawBills() {
+    var today = B.today, tot = { t: 0, r: 0, p: 0, b: 0, n: 0, l: 0 };
+    $('bills').innerHTML = ITEMS.map(function (it, i) {
+      var el = eligible(it), dd = P.daysTo(it.due_date, today), stt = dd > 0 ? '<span class="st over">Overdue ' + dd + ' d</span>' : '<span class="st unp">' + (dd === 0 ? 'Due today' : 'Not due') + '</span>';
+      tot.t += it.total; tot.r += it.returns; tot.p += it.paid; tot.b += it.balance; tot.n += it.pay; tot.l += it.balance - it.pay;
+      return '<tr' + (el ? '' : ' style="opacity:.55" title="' + (it.on_slip ? 'On slip ' + esc(it.on_slip) : 'Not on this slip') + '"') + '><td><input type="checkbox" data-c="' + i + '"' + (it.pay > 0 ? ' checked' : '') + (el ? '' : ' disabled') + '></td>' +
+        '<td class="code">' + esc(it.ref) + '</td><td class="bc">' + esc(it.bill_no || '—') + '</td><td>' + D(it.bill_date) + '</td><td>' + D(it.due_date) + '</td><td>' + stt + (it.on_slip && !SLIP ? ' <span class="mini">slip ' + esc(it.on_slip) + '</span>' : '') + '</td>' +
+        '<td class="n">' + f(it.total) + '</td><td class="n">' + f(it.returns) + '</td><td class="n">' + f(it.paid) + '</td><td class="n"><b>' + f(it.balance) + '</b></td>' +
+        '<td class="n"><input class="payin' + (it.pay > 0 ? ' on' : '') + '" data-p="' + i + '" value="' + (it.pay > 0 ? f(it.pay) : '') + '"' + (el ? '' : ' disabled') + '></td><td class="n">' + f(it.balance - it.pay) + '</td></tr>';
+    }).join('') || '<tr><td colspan="12" class="empty">' + (INFO ? 'No open bill.' : 'Scan a slip or select a supplier.') + '</td></tr>';
+    $('bfoot').innerHTML = ITEMS.length ? '<tr><td></td><td colspan="5">' + ITEMS.length + ' open items</td><td class="n">' + f(tot.t) + '</td><td class="n">' + f(tot.r) + '</td><td class="n">' + f(tot.p) + '</td><td class="n">' + f(tot.b) + '</td><td class="n">' + f(tot.n) + '</td><td class="n">' + f(tot.l) + '</td></tr>' : '';
+    summary();
+  }
+  function summary() {
+    var amt = P.num($('amt').value), sel = 0, pay = 0;
+    ITEMS.forEach(function (it) { if (it.pay > 0) { sel += it.balance; pay += it.pay; } });
+    var adv = Math.max(0, Math.round((amt - pay) * 100) / 100);
+    $('sSel').textContent = f(sel); $('sPay').textContent = f(amt); $('sAdv').textContent = f(adv);
+    $('sAdvL').style.color = adv > 0 ? '#1f5c94' : ''; $('sAfter').textContent = INFO ? f(INFO.balance - amt) : '0';
+    var h = $('amtHint');
+    if (!amt) { h.className = 'hint'; h.textContent = SLIP ? 'Slip balance ' + f(SLIP.left) : ''; }
+    else if (SLIP && amt > SLIP.left + 0.004) { h.className = 'hint err'; h.textContent = 'More than the slip balance ' + f(SLIP.left); }
+    else if (pay > amt + 0.004) { h.className = 'hint err'; h.textContent = 'Bill amounts (' + f(pay) + ') are more than the amount'; }
+    else { h.className = 'hint ok'; var n = ITEMS.filter(function (x) { return x.pay > 0; }).length; h.textContent = (SLIP ? (amt + 0.004 < SLIP.left ? 'Part payment — ' + f(SLIP.left - amt) + ' stays on slip ' + SLIP.slip_no + ' · ' : 'Same as the slip · ') : '') + 'on ' + n + ' item' + (n === 1 ? '' : 's') + (adv > 0 ? ' · ' + f(adv) + ' kept as advance' : ''); }
+  }
+  $('amt').addEventListener('input', function () { if (!MANUAL) autoFill(); else summary(); });
+  $('bills').addEventListener('input', function (e) {
+    var i = e.target.getAttribute('data-p'); if (i === null) return;
+    ITEMS[+i].pay = Math.min(ITEMS[+i].balance, Math.max(0, P.num(e.target.value))); MANUAL = true;
+    var cb = $('bills').querySelector('[data-c="' + i + '"]'); if (cb) cb.checked = ITEMS[+i].pay > 0; summary();
+  });
+  $('bills').addEventListener('change', function (e) {
+    var i = e.target.getAttribute('data-c'); if (i === null) return;
+    var it = ITEMS[+i];
+    if (e.target.checked) { var used = 0; ITEMS.forEach(function (x) { if (x !== it) used += x.pay; }); var amt = P.num($('amt').value); it.pay = amt > 0 ? Math.max(0, Math.min(cap(it), amt - used)) : cap(it); if (!amt) $('amt').value = f(used + it.pay); }
+    else it.pay = 0;
+    MANUAL = true; drawBills();
+  });
+  $('auto').onclick = autoFill;
+  $('clr').onclick = function () { ITEMS.forEach(function (x) { x.pay = 0; }); MANUAL = true; drawBills(); };
+  function loadSlip(no) {
+    no = String(no || '').trim(); if (!no) return;
+    var r = P.api('rpay-slip&no=' + encodeURIComponent(no));
+    var h = $('slipHint');
+    if (!r.ok) { SLIP = null; h.className = 'hint err'; h.textContent = r.message || 'Slip not found'; return; }
+    var s = r.slip;
+    if (s.status !== 'OPEN' && s.status !== 'PART') { SLIP = null; h.className = 'hint err'; h.textContent = 'Slip ' + s.slip_no + ' is ' + s.status.toLowerCase() + (s.vouchers.length ? ' (' + s.vouchers.join(', ') + ')' : '') + ' — it cannot be paid'; return; }
+    SLIP = s; $('slip').value = s.slip_no;
+    h.className = 'hint ok';
+    h.textContent = 'Slip found · ' + (s.slip_type === 'NOW' ? 'Pay now' : 'Pay on ' + D(s.pay_on)) + ' · ' + s.supplier_name + ' · ' + s.bills.map(function (b) { return b.ref; }).join(', ') + ' · Rs ' + f(s.amount) + (s.paid > 0 ? ' · already paid ' + f(s.paid) + ', left ' + f(s.left) : '');
+    $('sup').value = s.supplier_id; $('sup').disabled = true;
+    $('amt').value = f(s.left);
+    var early = s.slip_type === 'DATE' && s.pay_on > B.today;
+    $('earlyBox').style.display = early ? '' : 'none'; $('early').checked = false; $('early').disabled = !B.is_manager;
+    if (early) $('slipHint').textContent += ' — payable on ' + D(s.pay_on) + (B.is_manager ? '; tick "Pay early" to pay now' : '; only a manager / owner can pay it early');
+    loadSupplier(s.supplier_id);
+    $('amt').focus(); $('amt').select();
+  }
+  $('slip').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); loadSlip($('slip').value); } });
+  $('slip').addEventListener('change', function () { if ($('slip').value.trim()) loadSlip($('slip').value); });
+  $('sup').addEventListener('change', function () { SLIP = null; $('slip').value = ''; $('earlyBox').style.display = 'none'; loadSupplier($('sup').value); });
+  function clearF() {
+    SLIP = null; INFO = null; ITEMS = []; MANUAL = false;
+    ['slip', 'amt', 'note', 'chq', 'txn'].forEach(function (k) { $(k).value = ''; });
+    $('sup').disabled = false; $('sup').value = ''; $('slipHint').className = 'hint'; $('slipHint').textContent = 'Scan the slip the supplier brought. Without a slip, pick the supplier.';
+    $('earlyBox').style.display = 'none'; $('supHint').textContent = ''; $('billsTitle').textContent = 'Unpaid bills'; $('pd').value = B.today;
+    MODE = 'CASH'; paintMode(); drawBills(); $('slip').focus();
+  }
+  function save() {
+    var sid = $('sup').value, amt = P.num($('amt').value);
+    if (!sid) { P.toast('Scan a slip or select the supplier', true); return; }
+    if (amt <= 0) { P.toast('Enter the amount', true); $('amt').focus(); return; }
+    var pay = 0, alloc = []; ITEMS.forEach(function (it) { if (it.pay > 0) { pay += it.pay; alloc.push({ doc_id: it.doc_id, amount: it.pay }); } });
+    if (SLIP && amt > SLIP.left + 0.004) { P.toast('Amount is more than the slip balance ' + f(SLIP.left), true); return; }
+    if (pay > amt + 0.004) { P.toast('Bill amounts are more than the payment amount', true); return; }
+    if (amt - pay > 0.004 && !confirm(f(amt - pay) + ' is not on any bill and will be kept as an advance with the supplier. Continue?')) return;
+    if (SLIP && amt + 0.004 < SLIP.left && !confirm('Paying ' + f(amt) + ' of ' + f(SLIP.left) + '. The rest (' + f(SLIP.left - amt) + ') stays payable on slip ' + SLIP.slip_no + '. Continue?')) return;
+    $('save').disabled = true;
+    var r = P.api('rpay-pay', { supplier_id: sid, slip_id: SLIP ? SLIP.id : '', pay_date: $('pd').value, mode: MODE, bank_name: $('bank').value, cheque_no: $('chq').value,
+      cheque_date: $('chqd').value, txn_ref: $('txn').value, our_account: $('acc').value, amount: amt, note: $('note').value,
+      early_ok: $('early').checked ? 1 : 0, alloc: MANUAL ? alloc : null });
+    $('save').disabled = false;
+    if (!r.ok) { P.toast(r.message || 'Could not save', true); return; }
+    P.toast(r.payment.voucher_no + ' saved — balance ' + f(r.balance));
+    P.print(P.voucherHtml(r.payment));
+    clearF(); recent();
+  }
+  function recent() {
+    var r = P.api('rpay-payments&limit=30'); if (!r.ok) return;
+    $('recent').innerHTML = r.rows.map(function (x) {
+      var done = x.status === 'DONE';
+      return '<tr><td class="code">' + esc(x.voucher_no) + '</td><td>' + D(x.pay_date) + '</td><td>' + esc(x.supplier_name) + '</td><td>' + esc(x.mode_text) + '</td><td class="code">' + esc(x.slip_no || '') + '</td><td class="n">' + f(x.amount) + '</td>' +
+        '<td><span class="st ' + (done ? 'paid' : 'can') + '">' + (done ? 'Done' : 'Cancelled') + '</span></td><td>' + esc(x.by_name || '') + '</td>' +
+        '<td><button class="btn sm" type="button" data-rp="' + x.id + '">Reprint</button> ' + (done && r.is_manager ? '<button class="btn sm" type="button" data-cx="' + x.id + '" data-no="' + esc(x.voucher_no) + '">Cancel</button>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="9" class="empty">No payment yet.</td></tr>';
+  }
+  $('recent').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-rp]'); if (b) { P.printVoucher(b.getAttribute('data-rp')); return; }
+    b = e.target.closest('[data-cx]'); if (!b) return;
+    var why = prompt('Cancel ' + b.getAttribute('data-no') + '? The payment stays in the ledger with a reverse entry.\n\nReason:');
+    if (why === null) return;
+    var r = P.api('rpay-cancel', { id: b.getAttribute('data-cx'), reason: why });
+    if (!r.ok) { P.toast(r.message || 'Could not cancel', true); return; }
+    P.toast(r.payment.voucher_no + ' cancelled'); recent(); if ($('sup').value) loadSupplier($('sup').value);
+  });
+  $('save').onclick = save; $('btnClear').onclick = clearF;
+  $('frm').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.target.id === 'slip') return; e.preventDefault();
+    var els = Array.prototype.filter.call($('frm').querySelectorAll('input,select'), function (x) { return !x.disabled && x.offsetParent !== null && !x.readOnly; });
+    var i = els.indexOf(e.target); if (i > -1 && i < els.length - 1) els[i + 1].focus(); else save();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F2') { e.preventDefault(); clearF(); }
+    else if (e.key === 'F4') { e.preventDefault(); $('slip').focus(); $('slip').select(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') clearF();
+  });
+  clearF(); recent();
+  if (qs.get('slip')) loadSlip(qs.get('slip'));
+  else if (qs.get('supplier_id')) { $('sup').value = qs.get('supplier_id'); loadSupplier($('sup').value); $('amt').focus(); }
+
+})();
+</script>
+</body>
+</html>
+
+<!-- build: V212 build 2026-11-25 -->
